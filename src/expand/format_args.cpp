@@ -214,7 +214,13 @@ namespace {
                 // Add an implicit named argument
                 it = named.insert(std::make_pair( ident, static_cast<unsigned>(named_args.size()) )).first;
                 // TODO: Create a token with span information pointing to this location in the string.
-                named_args.push_back(Token(TOK_IDENT, Ident(hygiene, ident)));
+                if( ident == "self" ) {
+                    // Technically, `self` needs hygiene, but mrustc doesn't do that
+                    named_args.push_back(Token(TOK_RWORD_SELF));
+                }
+                else {
+                    named_args.push_back(Token(TOK_IDENT, Ident(hygiene, ident)));
+                }
             }
             return n_free + it->second;
         };
