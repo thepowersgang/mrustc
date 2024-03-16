@@ -363,14 +363,16 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             auto emit_condition = [&](MIR::BasicBlockId& cond_false, const std::vector<PatternBinding>& bindings) {
                 if( arm.m_cond_val )
                 {
+                    auto tmp_scope = builder.new_scope_temp(arm.m_cond_val->span());
+
                     auto freeze_scope = builder.new_scope_freeze(arm.m_cond_val->span());
                     TRACE_FUNCTION_FR("CONDITIONAL", "CONDITIONAL");
                     conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
 
-                    auto tmp_scope = builder.new_scope_temp(arm.m_cond_val->span());
+                    // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
+
                     conv.visit_node_ptr( arm.m_cond_val );
                     MIR::LValue match_cond_val = builder.get_result_in_lvalue(arm.m_cond_val->span(), arm.m_cond_val->m_res_type);
-                    builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
                     builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
 
                     bool is_cond_bb_set = false;
@@ -402,7 +404,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                         // No patterns as output, so `false` is unreachable?
                     }
 
+                    builder.set_cur_block(cond_false);
+                    cond_false = builder.new_bb_unlinked();
+                    builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
+                    builder.end_block(::MIR::Terminator::make_Goto(cond_false));
+
                     builder.set_cur_block(destructure);
+                    builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
                 }
 
                 conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
