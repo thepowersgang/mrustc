@@ -2266,30 +2266,42 @@ namespace {
         {
             if( trait_path.elems.size() != 2 )
                 ERROR(sp, E0000, "Invalid macro path format (must be two items, got " << trait_path);
-            const auto& des_crate = trait_path.elems[0];
+            auto des_crate = trait_path.elems[0];
             const auto& des_mac   = trait_path.elems[1];
+
+            const AST::ExternCrate*   tgt_crate = nullptr;
+            auto ec_it = AST::g_implicit_crates.find(des_crate);
+            if(ec_it != AST::g_implicit_crates.end())
+            {
+                tgt_crate = &crate.m_extern_crates.at(ec_it->second);
+            }
+
             RcString    crate_name;
             RcString    mac_name;
-            for(const auto& ec : crate.m_extern_crates)
+            if( !tgt_crate )
             {
-                if(ec.second.m_short_name == des_crate )
+                for(const auto& ec : crate.m_extern_crates)
                 {
-                    auto it = ec.second.m_hir->m_root_module.m_macro_items.find(des_mac);
-                    if( it == ec.second.m_hir->m_root_module.m_macro_items.end() )
-                        ERROR(sp, E0000, "Cannot find macro `" << des_mac << "` in " << ec.first);
-                    if(const auto* imp = it->second->ent.opt_Import()) {
-                        crate_name = imp->path.m_crate_name;
-                        mac_name = imp->path.m_components[0];
+                    if(ec.second.m_short_name == des_crate )
+                    {
+                        tgt_crate = &ec.second;
+                        break;
                     }
-                    else {
-                        crate_name  = ec.first;
-                        mac_name = des_mac;
-                    }
-                    break;
                 }
             }
-            if( crate_name == RcString() ) {
+            if( !tgt_crate ) {
                 ERROR(sp, E0000, "Cannot find crate `" << des_crate << "`");
+            }
+            auto it = tgt_crate->m_hir->m_root_module.m_macro_items.find(des_mac);
+            if( it == tgt_crate->m_hir->m_root_module.m_macro_items.end() )
+                ERROR(sp, E0000, "Cannot find macro `" << des_mac << "` in " << tgt_crate->m_short_name);
+            if(const auto* imp = it->second->ent.opt_Import()) {
+                crate_name = imp->path.m_crate_name;
+                mac_name = imp->path.m_components[0];
+            }
+            else {
+                crate_name = tgt_crate->m_short_name;
+                mac_name = des_mac;
             }
             mac_path = make_vec2(crate_name, mac_name);
         }
