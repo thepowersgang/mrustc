@@ -209,10 +209,12 @@ $(RUSTC_SRC_TARBALL):
 	@echo [CURL] $@
 	@rm -f $@
 	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
-$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
+rustc-$(RUSTC_VERSION)-src/extracted: $(RUSTC_SRC_TARBALL)
 	tar -xf $(RUSTC_SRC_TARBALL)
+	touch $@
+$(RUSTC_SRC_DL): rustc-$(RUSTC_VERSION)-src/extracted rustc-$(RUSTC_VERSION)-src.patch
 	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
-	touch $(RUSTC_SRC_DL)
+	touch $@
 
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
