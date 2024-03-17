@@ -1512,7 +1512,7 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
                 }
                 else
                 {
-                    name = path.m_class.as_Absolute().crate;
+                    name = path.m_class.as_Absolute().crate.c_str() + 1;
                 }
 
                 // TODO: Get a span covering the final node.
