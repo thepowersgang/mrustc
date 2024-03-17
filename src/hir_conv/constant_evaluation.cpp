@@ -2374,6 +2374,33 @@ namespace HIR {
             MIR_ASSERT(state, var_idx < e.targets.size(), "Switch " << var_idx << " out of range in target list (" << e.targets.size() << ")");
             return e.targets[var_idx];
             }
+        TU_ARMA(SwitchValue, e) {
+            HIR::TypeRef    tmp;
+            const auto& ty = state.get_lvalue_type(tmp, e.val);
+                auto ti = TypeInfo::for_type(ty);
+            auto lit = local_state.get_lval(e.val);
+
+            unsigned target_idx = ~0u;
+            TU_MATCH_HDRA( (e.values), { )
+            default:
+                MIR_TODO(state, "SwitchValue - " << e.values.tag_str());
+            TU_ARMA(Unsigned, vals) {
+                auto v = lit.read_uint(state, ti.bits/8);
+                for(size_t i = 0; i < vals.size(); i ++) {
+                    if(v == vals[i]) {
+                        target_idx = i;
+                        break;
+                    }
+                }
+                }
+            }
+            if( target_idx == ~0u ) {
+                return e.def_target;
+            }
+            else {
+                return e.targets[target_idx];
+            }
+            }
         TU_ARMA(Call, e) {
             const auto& ms = local_state.ms;
             if( const auto* te = e.fcn.opt_Intrinsic() )
