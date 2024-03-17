@@ -1095,7 +1095,15 @@ namespace MIR { namespace eval {
 
                     auto& item = const_cast<::HIR::Static&>(s);
 
-                    ConvertHIR_ConstantEvaluate_Static(resolve.m_crate, impl_params_def, p, item);
+                    static ::std::set<::HIR::Static*>   s_non_recurse;
+                    if( s_non_recurse.count(&item) == 0 ) {
+                        s_non_recurse.insert(&item);
+                        ConvertHIR_ConstantEvaluate_Static(resolve.m_crate, impl_params_def, p, item);
+                        s_non_recurse.erase( s_non_recurse.find(&item) );
+                    }
+                    else {
+                        DEBUG("Recursion detected");
+                    }
                 }
 
                 if( !s.m_value_generated )
