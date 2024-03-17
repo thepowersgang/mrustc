@@ -264,14 +264,19 @@ namespace static_borrow_constants {
             {
                 const auto& ty = node.m_index->m_res_type;
                 DEBUG("_Index: ty = " << ty);
-                if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() && ty.data().as_Path().path.m_data.as_Generic().m_path == m_lang_RangeFull ) {
-                    DEBUG("_Index: RangeFull - can be constant");
-                    m_is_constant = !is_maybe_interior_mut(node);
+                if( node.m_value->m_res_type.data().is_Array() && node.m_value->m_res_type.data().as_Array().size == 0 ) {
+                    m_is_constant = true;
                 }
                 else {
-                    // ... or just allow it - consteval can handle indexing out of bounds, right?
-                    // ref: 1.39 librustc_data_structures/indexed_vec.rs L141 `const fn from_u32_const` uses it as a compile-time assert
-                    m_is_constant = !is_maybe_interior_mut(node);
+                    if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() && ty.data().as_Path().path.m_data.as_Generic().m_path == m_lang_RangeFull ) {
+                        DEBUG("_Index: RangeFull - can be constant");
+                        m_is_constant = !is_maybe_interior_mut(node);
+                    }
+                    else {
+                        // ... or just allow it - consteval can handle indexing out of bounds, right?
+                        // ref: 1.39 librustc_data_structures/indexed_vec.rs L141 `const fn from_u32_const` uses it as a compile-time assert
+                        m_is_constant = !is_maybe_interior_mut(node);
+                    }
                 }
             }
             m_all_constant = saved_all_constant;
@@ -754,20 +759,27 @@ namespace static_borrow_constants {
             return monomorph_cb;
         }
 
-        HIR::ExprPtr extract_node(HIR::ExprNodeP& node, HIR::GenericParams& params_def, HIR::PathParams& constr_params)
+        HIR::ExprPtr extract_node(HIR::ExprNodeP& node, StaticTraitResolve& resolve, HIR::GenericParams& params_def, HIR::PathParams& constr_params)
         {
             auto monomorph = this->create_params(node->span(), params_def, constr_params);
+            resolve.set_item_generics_raw(params_def);
 
             struct V: public HIR::ExprVisitorDef {
+                const Span  sp;
+                const StaticTraitResolve&   resolve;
                 const Monomorph&    monomorph;
                 bool is_generic;
                 std::map<unsigned,unsigned> binding_mapping;
-                V(const Monomorph& monomorph): monomorph(monomorph), is_generic(false) {}
+                V(const StaticTraitResolve& resolve, const Monomorph& monomorph)
+                    : resolve(resolve)
+                    , monomorph(monomorph)
+                    , is_generic(false)
+                {}
 
                 void visit_type(HIR::TypeRef& ty) override {
                     if( monomorphise_type_needed(ty) ) {
                         this->is_generic = true;
-                        auto new_ty = this->monomorph.monomorph_type(Span(), ty);
+                        auto new_ty = this->resolve.monomorph_expand(sp, ty, this->monomorph);
                         DEBUG(ty << " -> " << new_ty);
                         ty = std::move(new_ty);
                     }
@@ -775,9 +787,12 @@ namespace static_borrow_constants {
                 void visit_path_params(HIR::PathParams& pp) override {
                     if( monomorphise_pathparams_needed(pp) ) {
                         this->is_generic = true;
-                        auto new_pp = this->monomorph.monomorph_path_params(Span(), pp, false);
+                        auto new_pp = this->monomorph.monomorph_path_params(sp, pp, false);
                         DEBUG(pp << " -> " << new_pp);
                         pp = std::move(new_pp);
+                        for(auto& ty : pp.m_types) {
+                            this->resolve.expand_associated_types(sp, ty);
+                        }
                     }
                 }
                 void visit_pattern(const Span& sp, HIR::Pattern& pat) override {
@@ -819,7 +834,7 @@ namespace static_borrow_constants {
                     node.m_binding = monomorph.get_value(node.span(), HIR::GenericRef("", node.m_binding)).as_Generic().binding;
                     is_generic = true;
                 }
-            } v(monomorph);
+            } v(resolve, monomorph);
             node->visit(v);
             v.visit_type(node->m_res_type);
             if( !v.is_generic ) {
@@ -895,12 +910,14 @@ namespace static_borrow_constants {
                 }
                 auto usage = value_ptr->m_usage;
 
+                auto new_res_ty = value_ptr->m_res_type.clone();
                 DEBUG("-- Creating static");
                 // Clone the in-scope generics (same as done in closure generation)
                 // - Would be picky, but hard to get the bounds right.
+                StaticTraitResolve  resolve { m_resolve.m_crate };
                 HIR::GenericParams  params_def;
                 HIR::PathParams constr_params;
-                auto val_expr = extract_node(value_ptr, params_def, constr_params);
+                auto val_expr = extract_node(value_ptr, resolve, params_def, constr_params);
 
                 // Create new static
                 auto sp = val_expr->span();
@@ -908,10 +925,11 @@ namespace static_borrow_constants {
                 // Replace all unknown lifetimes with `'static`
                 // - (Currently) there shouldn't be any generics, need to solve that later on?
                 auto static_ty = MonomorphLifetimesStatic().monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
+                resolve.expand_associated_types(sp, static_ty);
 
-                auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
-                auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
-                DEBUG("new_res_ty = " << new_res_ty);
+                //auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
+                //auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
+                //DEBUG("new_res_ty = " << new_res_ty);
 
                 auto path = m_new_static_cb(sp, mv$(static_ty), mv$(val_expr), mv$(params_def), false);
                 DEBUG("> " << path << constr_params);
@@ -930,15 +948,17 @@ namespace static_borrow_constants {
                 DEBUG("-- Creating const");
                 auto usage = node.m_inner->m_usage;
 
+                StaticTraitResolve  resolve { m_resolve.m_crate };
                 HIR::GenericParams  params_def;
                 HIR::PathParams constr_params;
-                auto val_expr = extract_node(node.m_inner, params_def, constr_params);
+                auto val_expr = extract_node(node.m_inner, resolve, params_def, constr_params);
 
                 auto sp = val_expr->span();
 
                 // Replace all unknown lifetimes with `'static`
                 // - (Currently) there shouldn't be any generics, need to solve that later on?
                 auto static_ty = MonomorphLifetimesStatic().monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
+                resolve.expand_associated_types(sp, static_ty);
 
                 auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
                 auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
