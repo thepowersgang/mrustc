@@ -302,7 +302,7 @@ namespace {
                         int next_c_i;
                         uint32_t ch = parse_utf8(s, next_c_i);
                         char next_c = s[next_c_i];
-                        if( ch != '}' && ch != '\0' && (next_c == '<' || next_c == '^' || next_c == '>') ) {
+                        if( s+next_c_i <= s_end && ch != '}' && (next_c == '<' || next_c == '^' || next_c == '>') ) {
                             args.align_char = ch;
                             s += next_c_i;
                         }
@@ -428,7 +428,7 @@ namespace {
                             // - Otherwise keep the ident around for the formatter
 
                             const char* start = s;
-                            while( isalnum(*s) || *s == '_' || (*s < 0 || *s > 127) ) {
+                            while( s != s_end && (isalnum(*s) || *s == '_' || (*s < 0 || *s > 127)) ) {
                                 s ++;
                             }
                             if( *s == '$' )
@@ -449,7 +449,7 @@ namespace {
                         }
                     }
 
-                    if( s[0] == '\0' )
+                    if( s == s_end )
                         ERROR(sp, E0000, "Unexpected end of formatting string");
 
                     // Parse ident?
