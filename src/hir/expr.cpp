@@ -388,9 +388,18 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (ErasedType,
-        this->visit_path(::HIR::Visitor::PathContext::TYPE, e.m_origin);
         for(auto& trait : e.m_traits) {
             this->visit_trait_path(trait);
+        }
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Known, ee) {
+            this->visit_type(ee);
+            }
+        TU_ARMA(Fcn, ee) {
+            this->visit_path(::HIR::Visitor::PathContext::TYPE, ee.m_origin);
+            }
+        TU_ARMA(Alias, ee) {
+            }
         }
         ),
     (Array,

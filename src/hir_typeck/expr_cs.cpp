@@ -1928,6 +1928,14 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         }
     }
 
+    if( const auto* et = l_t.data().opt_ErasedType() )
+    {
+        if( const auto* ee = et->m_inner.opt_Alias() )
+        {
+            TODO(sp, "");
+        }
+    }
+
     auto set_ivar = [&](const HIR::TypeRef& dst, const HIR::TypeRef& src) {
         auto ivar_idx = dst.data().as_Infer().index;
         if( ivar_idx < m_ivars_sized.size() && m_ivars_sized.at(ivar_idx) ) {
@@ -2013,6 +2021,40 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                         this->equate_values(sp, l.m_values[i], r.m_values[i]);
                     }
                 };
+            auto equality_path = [&](const ::HIR::Path& l, const ::HIR::Path& r)->bool {
+                if( l.m_data.tag() != r.m_data.tag() ) {
+                    return false;
+                }
+                TU_MATCH_HDRA( (l.m_data, r.m_data), {)
+                TU_ARMA(Generic, lpe, rpe) {
+                    if( lpe.m_path != rpe.m_path ) {
+                        return false;
+                    }
+                    equality_typeparams(lpe.m_params, rpe.m_params);
+                    }
+                TU_ARMA(UfcsInherent, lpe, rpe) {
+                    equality_typeparams(lpe.params, rpe.params);
+                    if( lpe.item != rpe.item )
+                        return false;
+                    this->equate_types_inner(sp, lpe.type, rpe.type);
+                    }
+                TU_ARMA(UfcsKnown, lpe, rpe) {
+                    if( lpe.trait.m_path != rpe.trait.m_path || lpe.item != rpe.item )
+                        return false;
+                    equality_typeparams(lpe.trait.m_params, rpe.trait.m_params);
+                    equality_typeparams(lpe.params, rpe.params);
+                    this->equate_types_inner(sp, lpe.type, rpe.type);
+                    }
+                TU_ARMA(UfcsUnknown, lpe, rpe) {
+                    // TODO: If the type is fully known, locate a suitable trait item
+                    equality_typeparams(lpe.params, rpe.params);
+                    if( lpe.item != rpe.item )
+                        return false;
+                    this->equate_types_inner(sp, lpe.type, rpe.type);
+                    }
+                }
+                return true;
+                };
 
             // If either side is !, return early
             // TODO: Should ! end up in an ivar?
@@ -2056,36 +2098,8 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                 }
                 }
             TU_ARMA(Path, l_e, r_e) {
-                if( l_e.path.m_data.tag() != r_e.path.m_data.tag() ) {
+                if( !equality_path(l_e.path, r_e.path) ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
-                }
-                TU_MATCH_HDRA( (l_e.path.m_data, r_e.path.m_data), {)
-                TU_ARMA(Generic, lpe, rpe) {
-                    if( lpe.m_path != rpe.m_path ) {
-                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
-                    }
-                    equality_typeparams(lpe.m_params, rpe.m_params);
-                    }
-                TU_ARMA(UfcsInherent, lpe, rpe) {
-                    equality_typeparams(lpe.params, rpe.params);
-                    if( lpe.item != rpe.item )
-                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
-                    this->equate_types_inner(sp, lpe.type, rpe.type);
-                    }
-                TU_ARMA(UfcsKnown, lpe, rpe) {
-                    if( lpe.trait.m_path != rpe.trait.m_path || lpe.item != rpe.item )
-                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
-                    equality_typeparams(lpe.trait.m_params, rpe.trait.m_params);
-                    equality_typeparams(lpe.params, rpe.params);
-                    this->equate_types_inner(sp, lpe.type, rpe.type);
-                    }
-                TU_ARMA(UfcsUnknown, lpe, rpe) {
-                    // TODO: If the type is fully known, locate a suitable trait item
-                    equality_typeparams(lpe.params, rpe.params);
-                    if( lpe.item != rpe.item )
-                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
-                    this->equate_types_inner(sp, lpe.type, rpe.type);
-                    }
                 }
                 }
             TU_ARMA(Generic, l_e, r_e) {
@@ -2120,11 +2134,25 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                 // NOTE: Lifetime is ignored
                 }
             TU_ARMA(ErasedType, l_e, r_e) {
-                ASSERT_BUG(sp, l_e.m_origin != ::HIR::SimplePath(), "ErasedType " << l_t << " wasn't bound to its origin");
-                ASSERT_BUG(sp, r_e.m_origin != ::HIR::SimplePath(), "ErasedType " << r_t << " wasn't bound to its origin");
-                // TODO: Ivar equate origin
-                if( l_e.m_origin != r_e.m_origin ) {
-                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - different source");
+                if( l_e.m_inner.tag() != r_e.m_inner.tag() ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - different erased class");
+                }
+                TU_MATCH_HDRA( (l_e.m_inner, r_e.m_inner), {)
+                TU_ARMA(Fcn, lee, ree) {
+                    ASSERT_BUG(sp, lee.m_origin != ::HIR::SimplePath(), "ErasedType " << l_t << " wasn't bound to its origin");
+                    ASSERT_BUG(sp, ree.m_origin != ::HIR::SimplePath(), "ErasedType " << r_t << " wasn't bound to its origin");
+                    if( !equality_path(lee.m_origin, ree.m_origin) ) {
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - different source");
+                    }
+                    }
+                TU_ARMA(Alias, lee, ree) {
+                    if( lee != ree ) {
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - different source");
+                    }
+                    }
+                TU_ARMA(Known, lee, ree) {
+                    equate_types_inner(sp, lee, ree);
+                    }
                 }
                 }
             TU_ARMA(Array, l_e, r_e) {

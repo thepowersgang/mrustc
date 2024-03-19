@@ -194,7 +194,19 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             for(const auto& lft : e.m_lifetimes)
                 os << "+" << lft;
         }
-        os << "/*" << e.m_origin << "#" << e.m_index << "*/";
+        os << "/*";
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Known, ee) {
+            os << "= " << ee;
+            }
+        TU_ARMA(Fcn, ee) {
+            os << "fn " << ee.m_origin << "#" << ee.m_index;
+            }
+        TU_ARMA(Alias, ee) {
+            os << "type " << ee.get();
+            }
+        }
+        os << "*/";
         }
     TU_ARMA(Array, e) {
         os << "[" << e.inner << "; " << e.size << "]";
@@ -292,7 +304,7 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         return true;
         }
     TU_ARMA(ErasedType, te, xe) {
-        return te.m_origin == xe.m_origin;
+        return te.m_inner == xe.m_inner;
         }
     TU_ARMA(Array, te, xe) {
         if( te.inner != xe.inner )
@@ -350,6 +362,33 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
     }
     throw "";
 }
+Ordering ord(const HIR::TypeData_ErasedType_Inner& l, const HIR::TypeData_ErasedType_Inner& r)
+{
+    ORD( static_cast<unsigned int>(l.tag()), static_cast<unsigned int>(r.tag()) );
+    TU_MATCH_HDRA( (l, r), {)
+    TU_ARMA(Known, le, re) {
+        return le.ord(re);
+        }
+    TU_ARMA(Alias, le, re) {
+        if( le.get() != re.get() ) {
+            if( reinterpret_cast<uintptr_t>(le.get()) < reinterpret_cast<uintptr_t>(re.get()) ) {
+                return OrdLess;
+            }
+            else {
+                return OrdGreater;
+            }
+        }
+        else {
+            return OrdEqual;
+        }
+        }
+    TU_ARMA(Fcn, le, re) {
+        ORD( le.m_origin, re.m_origin );
+        ORD( le.m_index , re.m_index  );
+        }
+    }
+    return OrdEqual;
+}
 Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
 {
     Ordering    rv;
@@ -386,8 +425,8 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         return OrdEqual;
         ),
     (ErasedType,
-        ORD(te.m_origin, xe.m_origin);
-        ORD(te.m_traits, xe.m_traits);
+        //ORD(te.m_traits, xe.m_traits);
+        ORD(te.m_inner, xe.m_inner);
         return OrdEqual;
         ),
     (Array,
@@ -825,7 +864,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return cmp;
         }
     TU_ARMA(ErasedType, te, xe) {
-        if( te.m_origin != xe.m_origin )
+        if( te.m_inner != xe.m_inner )
             return Compare::Unequal;
         return Compare::Equal;
         }
@@ -1016,16 +1055,23 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
         traits.reserve( e.m_traits.size() );
         for(const auto& trait : e.m_traits)
             traits.push_back( trait.clone() );
-        if(e.m_is_type_alias) {
-            ASSERT_BUG(Span(), e.m_origin != HIR::Path(::HIR::SimplePath()), "Cloning type alias impl trait before population");
+
+        HIR::TypeData_ErasedType_Inner  inner;
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Fcn, ee) {
+            inner = HIR::TypeData_ErasedType_Inner::Data_Fcn {
+                ee.m_origin.clone(),
+                ee.m_index
+                };
+            }
+        TU_ARMA(Known, ee) inner = ee.clone();
+        TU_ARMA(Alias, ee) inner = ee;
         }
         return ::HIR::TypeRef( TypeData::make_ErasedType({
-            e.m_origin.clone(),
-            e.m_is_type_alias,
-            e.m_index,
             e.m_is_sized,
             mv$(traits),
-            e.m_lifetimes
+            e.m_lifetimes,
+            mv$(inner)
             }) );
         }
     TU_ARMA(Array, e) {
@@ -1274,9 +1320,22 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
         return rv;
         }
     TU_ARMA(ErasedType, le, re) {
-        auto rv = le.m_origin .compare_with_placeholders( sp, le.m_origin, resolve_placeholder );
-        return rv;
-        //TODO(sp, "ErasedType");
+        if( le.m_inner.tag() != re.m_inner.tag() )
+            return Compare::Unequal;
+        TU_MATCH_HDRA( (le.m_inner, re.m_inner), {)
+        TU_ARMA(Known, l,r) {
+            return l.compare_with_placeholders(sp, r, resolve_placeholder);
+            }
+        TU_ARMA(Alias, l,r) {
+            return l == r ? Compare::Equal : Compare::Unequal;
+            }
+        TU_ARMA(Fcn, l,r) {
+            if(l.m_index != r.m_index)
+                return Compare::Unequal;
+            return l.m_origin .compare_with_placeholders( sp, r.m_origin, resolve_placeholder );
+            }
+        }
+        return Compare::Equal;
         }
     TU_ARMA(Array, le, re) {
         auto rv = Compare::Equal;

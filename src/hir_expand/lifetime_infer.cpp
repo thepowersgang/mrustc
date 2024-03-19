@@ -471,10 +471,13 @@ namespace {
             m_ret_ty = clone_ty_with(sp, m_real_ret_type, [&](const HIR::TypeRef& tpl, HIR::TypeRef& rv)->bool {
                 if( const auto* e = tpl.data().opt_ErasedType() )
                 {
-                    ASSERT_BUG(sp, e->m_index < ep.m_erased_types.size(),
-                        "Erased type index OOB - " << e->m_origin << " " << e->m_index << " >= " << ep.m_erased_types.size());
-                    rv = ep.m_erased_types[e->m_index].clone();
-                    return true;
+                    if( const auto* ee = e->m_inner.opt_Fcn() )
+                    {
+                        ASSERT_BUG(sp, ee->m_index < ep.m_erased_types.size(),
+                            "Erased type index OOB - " << ee->m_origin << " " << ee->m_index << " >= " << ep.m_erased_types.size());
+                        rv = ep.m_erased_types[ee->m_index].clone();
+                        return true;
+                    }
                 }
                 return false;
                 });
@@ -2190,8 +2193,9 @@ namespace {
 
             DEBUG("Validate return: " << ret_ty);
             clone_ty_with(ep->m_span, ret_ty, [&](const HIR::TypeRef& tpl, HIR::TypeRef& rv)->bool {
-                if( const auto* e = tpl.data().opt_ErasedType() )
+                if( tpl.data().is_ErasedType() && tpl.data().as_ErasedType().m_inner.is_Fcn() )
                 {
+                    const auto* e = &tpl.data().as_ErasedType().m_inner.as_Fcn();
                     ASSERT_BUG(ep->m_span, e->m_index < ep.m_erased_types.size(),
                         "Erased type index OOB - " << e->m_origin << " " << e->m_index << " >= " << ep.m_erased_types.size());
 
@@ -2283,7 +2287,7 @@ namespace {
                                 m_hrls.pop_back();
                             }
                         }
-                    } v { state, ep->m_span, e->m_lifetimes };
+                    } v { state, ep->m_span, tpl.data().as_ErasedType().m_lifetimes };
 
                     DEBUG("Checking erased: " << ep.m_erased_types[e->m_index]);
                     DEBUG("vs " << tpl);

@@ -1010,12 +1010,12 @@ namespace {
             TODO(ty.span(), "Handle multiple lifetime parameters - " << ty);
         }
         // Leave `m_origin` until the bind pass
-        return ::HIR::TypeRef( ::HIR::TypeData::make_ErasedType(::HIR::TypeData::Data_ErasedType {
-            ::HIR::Path(::HIR::SimplePath()), false, 0,
+        return ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
             is_sized,
             mv$(traits),
-            mv$(lfts)
-            } ) );
+            mv$(lfts),
+            ::HIR::TypeData_ErasedType_Inner::Data_Fcn { ::HIR::Path(::HIR::SimplePath()), 0 }
+            } );
         }
     TU_ARMA(Function, e) {
         HIR::GenericParams  params;
@@ -1048,7 +1048,7 @@ namespace {
     auto ty = LowerHIR_Type(ta.type());
     if( auto* e = ty.data_mut().opt_ErasedType() ) {
         DEBUG("Flag type alias - " << &ty.data());
-        e->m_is_type_alias = true;
+        e->m_inner = std::make_shared<HIR::TypeData_ErasedType_AliasInner>();
     }
     return ::HIR::TypeAlias {
         LowerHIR_GenericParams(ta.params(), nullptr),

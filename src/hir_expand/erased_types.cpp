@@ -13,6 +13,34 @@
 
 namespace {
 
+    void expand_erased_type(const Span& sp, const StaticTraitResolve& m_resolve, HIR::TypeRef& ty)
+    {
+        const auto& e = ty.data().as_ErasedType();
+
+        HIR::TypeRef    new_ty;
+        TU_MATCH_HDRA( (e.m_inner), { )
+        TU_ARMA(Fcn, ee) {
+            MonomorphState    monomorph_cb;
+            auto val = m_resolve.get_value(sp, ee.m_origin, monomorph_cb);
+            const auto& fcn = *val.as_Function();
+            const auto& erased_types = fcn.m_code.m_erased_types;
+
+            ASSERT_BUG(sp, ee.m_index < erased_types.size(), "Erased type index out of range for " << ee.m_origin << " - " << ee.m_index << " >= " << erased_types.size());
+            const auto& tpl = erased_types[ee.m_index];
+
+            new_ty = monomorph_cb.monomorph_type(sp, tpl);
+            m_resolve.expand_associated_types(sp, new_ty);
+            }
+        TU_ARMA(Alias, ee) {
+            TODO(sp, "Expand ErasedType Alias");
+            }
+        TU_ARMA(Known, ee) {
+            new_ty = ee.clone();
+            }
+        }
+        DEBUG("> " << ty << " => " << new_ty);
+        ty = mv$(new_ty);
+    }
 
     class ExprVisitor_Extract:
         public ::HIR::ExprVisitorDef
@@ -49,20 +77,8 @@ namespace {
             {
                 TRACE_FUNCTION_FR(ty, ty);
 
-                const auto& e = ty.data().as_ErasedType();
+                expand_erased_type(sp, m_resolve, ty);
 
-                MonomorphState    monomorph_cb;
-                auto val = m_resolve.get_value(sp, e.m_origin, monomorph_cb);
-                const auto& fcn = *val.as_Function();
-                const auto& erased_types = fcn.m_code.m_erased_types;
-
-                ASSERT_BUG(sp, e.m_index < erased_types.size(), "Erased type index out of range for " << e.m_origin << " - " << e.m_index << " >= " << erased_types.size());
-                const auto& tpl = erased_types[e.m_index];
-
-                auto new_ty = monomorph_cb.monomorph_type(sp, tpl);
-                m_resolve.expand_associated_types(sp, new_ty);
-                DEBUG("> " << ty << " => " << new_ty);
-                ty = mv$(new_ty);
                 // Recurse (TODO: Cleanly prevent infinite recursion - TRACE_FUNCTION does crude prevention)
                 visit_type(ty);
             }
@@ -113,21 +129,10 @@ namespace {
             static const Span   sp;
             if( ty.data().is_ErasedType() )
             {
-                const auto& e = ty.data().as_ErasedType();
-
                 TRACE_FUNCTION_FR(ty, ty);
 
-                MonomorphState    monomorph_cb;
-                auto val = m_resolve.get_value(sp, e.m_origin, monomorph_cb);
-                const auto& fcn = *val.as_Function();
-                const auto& erased_types = fcn.m_code.m_erased_types;
+                expand_erased_type(sp, m_resolve, ty);
 
-                ASSERT_BUG(sp, e.m_index < erased_types.size(), "Erased type index out of range for " << e.m_origin << " - " << e.m_index << " >= " << erased_types.size());
-                const auto& tpl = erased_types[e.m_index];
-
-                auto new_ty = monomorph_cb.monomorph_type(sp, tpl);
-                DEBUG("> " << ty << " => " << new_ty);
-                ty = mv$(new_ty);
                 // Recurse (TODO: Cleanly prevent infinite recursion - TRACE_FUNCTION does crude prevention)
                 visit_type(ty);
             }

@@ -54,11 +54,14 @@ namespace {
             ret_type = clone_ty_with(sp, real_ret_type, [&](const auto& tpl, auto& rv)->bool {
                 if( const auto* e = tpl.data().opt_ErasedType() )
                 {
-                    ASSERT_BUG(sp, e->m_index < node_ptr.m_erased_types.size(),
-                        "Erased type index OOB - " << e->m_origin << " " << e->m_index << " >= " << node_ptr.m_erased_types.size());
-                    // TODO: Check that erased type bounds are still met
-                    rv = node_ptr.m_erased_types[e->m_index].clone();
-                    return true;
+                    if( const auto* ee = e->m_inner.opt_Fcn() )
+                    {
+                        ASSERT_BUG(sp, ee->m_index < node_ptr.m_erased_types.size(),
+                            "Erased type index OOB - " << ee->m_origin << " " << ee->m_index << " >= " << node_ptr.m_erased_types.size());
+                        // TODO: Check that erased type bounds are still met
+                        rv = node_ptr.m_erased_types[ee->m_index].clone();
+                        return true;
+                    }
                 }
                 return false;
                 });
@@ -796,8 +799,8 @@ namespace {
             // Replace ErasedType and monomorphise
             cache.m_arg_types.push_back( monomorph_cb.monomorph_type(sp, fcn.m_return, false) );
             visit_ty_with_mut(cache.m_arg_types.back(), [&](HIR::TypeRef& ty)->bool {
-                if( this->expand_erased_types && ty.data().is_ErasedType() ) {
-                    const auto& e = ty.data().as_ErasedType();
+                if( this->expand_erased_types && ty.data().is_ErasedType() && ty.data().as_ErasedType().m_inner.is_Fcn() ) {
+                    const auto& e = ty.data().as_ErasedType().m_inner.as_Fcn();
 
                     // Check the origin, because monomorph might end up introducing other erased types
                     if(e.m_origin == path) {

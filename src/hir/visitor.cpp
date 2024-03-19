@@ -354,8 +354,16 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         }
         }
     TU_ARMA(ErasedType, e) {
-        if( e.m_origin != ::HIR::SimplePath() ) {
-            this->visit_path(e.m_origin, ::HIR::Visitor::PathContext::VALUE);
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Known, ee) {
+            this->visit_type(ee);
+            }
+        TU_ARMA(Alias, ee) {}
+        TU_ARMA(Fcn, ee) {
+            if( ee.m_origin != ::HIR::SimplePath() ) {
+                this->visit_path(ee.m_origin, ::HIR::Visitor::PathContext::VALUE);
+            }
+            }
         }
         for(auto& trait : e.m_traits) {
             this->visit_trait_path(trait);

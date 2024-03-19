@@ -110,11 +110,23 @@ struct TyVisitor
             return false;
             }
         TU_ARMA(ErasedType, e) {
-            if( visit_path(e.m_origin) )
-                return true;
             for(auto& trait : e.m_traits)
                 if( visit_trait_path(trait) )
                     return true;
+            TU_MATCH_HDRA( (e.m_inner), {)
+            TU_ARMA(Fcn, ee) {
+                if( visit_path(ee.m_origin) ) {
+                    return true;
+                }
+                }
+            TU_ARMA(Known, ee) {
+                if( visit_type(ee) ) {
+                    return true;
+                }
+                }
+            TU_ARMA(Alias, ee) {
+                }
+            }
             return false;
             }
         TU_ARMA(Array, e) {
@@ -321,8 +333,6 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         return ::HIR::TypeRef( mv$(to) );
         }
     TU_ARMA(ErasedType, e) {
-        auto origin = this->monomorph_path(sp, e.m_origin, allow_infer);
-
         ::std::vector< ::HIR::TraitPath>    traits;
         traits.reserve( e.m_traits.size() );
         for(const auto& trait : e.m_traits)
@@ -330,18 +340,28 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         ::std::vector< ::HIR::LifetimeRef>  lfts;
         for(const auto& lft : e.m_lifetimes)
             lfts.push_back(monomorph_lifetime(sp, lft));
-        
-        if(e.m_is_type_alias) {
-            ASSERT_BUG(Span(), e.m_origin != HIR::Path(::HIR::SimplePath()), "Cloning type alias impl trait before population");
+
+        HIR::TypeData_ErasedType_Inner  inner;
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Fcn, ee) {
+            inner = ::HIR::TypeData_ErasedType_Inner::Data_Fcn {
+                this->monomorph_path(sp, ee.m_origin, allow_infer),
+                ee.m_index
+                };
+            }
+        TU_ARMA(Alias, ee) {
+            inner = ee;
+            }
+        TU_ARMA(Known, ee) {
+            inner = this->monomorph_type(sp, ee, allow_infer);
+            }
         }
 
         return ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
-            mv$(origin),
-            e.m_is_type_alias,
-            e.m_index,
             e.m_is_sized,
             mv$(traits),
-            mv$(lfts)
+            mv$(lfts),
+            mv$(inner)
             } );
         }
     TU_ARMA(Array, e) {
@@ -566,7 +586,31 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
 }
 
 
-::HIR::PathParams clone_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_clone_ty callback) {
+struct CloneTyWith_Monomorph: Monomorphiser {
+    t_cb_clone_ty callback;
+
+    ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+        return HIR::TypeRef(g);
+    }
+    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+        return g;
+    }
+    ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+        return HIR::LifetimeRef(g.binding);
+    }
+
+    ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& ty, bool allow_infer=true) const {
+        ::HIR::TypeRef  rv;
+
+        if( callback(ty, rv) ) {
+            //DEBUG(tpl << " => " << rv);
+            return rv;
+        }
+        return Monomorphiser::monomorph_type(sp, ty, allow_infer);
+    }
+};
+::HIR::PathParams clone_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_clone_ty callback)
+{
     ::HIR::PathParams   rv;
     for( const auto& v : tpl.m_lifetimes )
         rv.m_lifetimes.push_back( v );
@@ -577,176 +621,11 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         rv.m_values.push_back( v.clone() );
     return rv;
 }
-::HIR::GenericPath clone_ty_with__generic_path(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_clone_ty callback) {
-    if( tpl.m_hrls ) {
-        return ::HIR::GenericPath( tpl.m_hrls->clone(), tpl.m_path, clone_path_params_with(sp, tpl.m_params, callback) );
-    }
-    else {
-        return ::HIR::GenericPath( tpl.m_path, clone_path_params_with(sp, tpl.m_params, callback) );
-    }
-}
-::HIR::TraitPath clone_ty_with__trait_path(const Span& sp, const ::HIR::TraitPath& tpl, t_cb_clone_ty callback) {
-    ::HIR::TraitPath    rv {
-        clone_ty_with__generic_path(sp, tpl.m_path, callback),
-        {},
-        {},
-        tpl.m_trait_ptr
-        };
-
-    for(const auto& assoc : tpl.m_type_bounds) {
-        rv.m_type_bounds.insert(::std::make_pair(
-            assoc.first,
-            HIR::TraitPath::AtyEqual {
-                clone_ty_with__generic_path(sp, assoc.second.source_trait, callback),
-                clone_ty_with(sp, assoc.second.type, callback)
-            }
-            ));
-    }
-    for(const auto& assoc : tpl.m_trait_bounds) {
-        auto& traits = rv.m_trait_bounds.insert(::std::make_pair( assoc.first,
-                HIR::TraitPath::AtyBound { clone_ty_with__generic_path(sp, assoc.second.source_trait, callback), {} }
-            ) ).first->second.traits;
-
-        for(const auto& t : assoc.second.traits)
-            traits.push_back(clone_ty_with__trait_path(sp, t, callback));
-    }
-
-    return rv;
-}
-::HIR::Path clone_ty_with__path(const Span& sp, const ::HIR::Path& tpl, t_cb_clone_ty callback) {
-    TU_MATCH_HDRA( (tpl.m_data), {)
-    TU_ARMA(Generic, e2) {
-        return ::HIR::Path( clone_ty_with__generic_path(sp, e2, callback) );
-        }
-    TU_ARMA(UfcsKnown, e2) {
-        return ::HIR::Path::Data::make_UfcsKnown({
-            clone_ty_with(sp, e2.type, callback),
-            clone_ty_with__generic_path(sp, e2.trait, callback),
-            e2.item,
-            clone_path_params_with(sp, e2.params, callback)
-            });
-        }
-    TU_ARMA(UfcsUnknown, e2) {
-        return ::HIR::Path::Data::make_UfcsUnknown({
-            clone_ty_with(sp, e2.type, callback),
-            e2.item,
-            clone_path_params_with(sp, e2.params, callback)
-            });
-        }
-    TU_ARMA(UfcsInherent, e2) {
-        return ::HIR::Path::Data::make_UfcsInherent({
-            clone_ty_with(sp, e2.type, callback),
-            e2.item,
-            clone_path_params_with(sp, e2.params, callback),
-            clone_path_params_with(sp, e2.impl_params, callback)
-            });
-        }
-    }
-    throw "";
-}
 ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback)
 {
-    ::HIR::TypeRef  rv;
-
-    if( callback(tpl, rv) ) {
-        //DEBUG(tpl << " => " << rv);
-        return rv;
-    }
-
-    TU_MATCH_HDRA( (tpl.data()), {)
-    TU_ARMA(Infer, e) {
-        rv = ::HIR::TypeRef(e);
-        }
-    TU_ARMA(Diverge, e) {
-        rv = ::HIR::TypeRef(e);
-        }
-    TU_ARMA(Primitive, e) {
-        rv = ::HIR::TypeRef(e);
-        }
-    TU_ARMA(Path, e) {
-        rv = ::HIR::TypeRef( ::HIR::TypeData::Data_Path {
-            clone_ty_with__path(sp, e.path, callback),
-            e.binding.clone()
-            } );
-        // If the input binding was Opaque, AND the type changed, clear it back to Unbound
-        if( e.binding.is_Opaque() /*&& rv != tpl*/ ) {
-            // NOTE: The replacement can be Self=Self, which should trigger a binding clear.
-            rv.get_unique().as_Path().binding = ::HIR::TypePathBinding();
-        }
-        }
-    TU_ARMA(Generic, e) {
-        rv = ::HIR::TypeRef(e);
-        }
-    TU_ARMA(TraitObject, e) {
-        ::HIR::TypeData::Data_TraitObject  to;
-        to.m_trait = clone_ty_with__trait_path(sp, e.m_trait, callback);
-        for(const auto& trait : e.m_markers)
-        {
-            to.m_markers.push_back( clone_ty_with__generic_path(sp, trait, callback) );
-        }
-        to.m_lifetime = e.m_lifetime;
-        rv = ::HIR::TypeRef( mv$(to) );
-        }
-    TU_ARMA(ErasedType, e) {
-        auto origin = clone_ty_with__path(sp, e.m_origin, callback);
-
-        ::std::vector< ::HIR::TraitPath>    traits;
-        traits.reserve( e.m_traits.size() );
-        for(const auto& trait : e.m_traits)
-            traits.push_back( clone_ty_with__trait_path(sp, trait, callback) );
-
-        if(e.m_is_type_alias) {
-            ASSERT_BUG(Span(), e.m_origin != HIR::Path(::HIR::SimplePath()), "Cloning type alias impl trait before population");
-        }
-
-        rv = ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
-            mv$(origin),
-            e.m_is_type_alias,
-            e.m_index,
-            e.m_is_sized,
-            mv$(traits),
-            e.m_lifetimes
-            } );
-        }
-    TU_ARMA(Array, e) {
-        rv = ::HIR::TypeRef( ::HIR::TypeData::make_Array({ clone_ty_with(sp, e.inner, callback), e.size.clone() }) );
-        }
-    TU_ARMA(Slice, e) {
-        rv = ::HIR::TypeRef::new_slice( clone_ty_with(sp, e.inner, callback) );
-        }
-    TU_ARMA(Tuple, e) {
-        ::std::vector< ::HIR::TypeRef>  types;
-        for(const auto& ty : e) {
-            types.push_back( clone_ty_with(sp, ty, callback) );
-        }
-        rv = ::HIR::TypeRef( mv$(types) );
-        }
-    TU_ARMA(Borrow, e) {
-        rv = ::HIR::TypeRef::new_borrow (e.type, clone_ty_with(sp, e.inner, callback), e.lifetime);
-        }
-    TU_ARMA(Pointer, e) {
-        rv = ::HIR::TypeRef::new_pointer(e.type, clone_ty_with(sp, e.inner, callback));
-        }
-    TU_ARMA(Function, e) {
-        ::HIR::TypeData_FunctionPointer ft;
-        ft.hrls = e.hrls.clone();
-        ft.is_unsafe = e.is_unsafe;
-        ft.m_abi = e.m_abi;
-        ft.m_rettype = clone_ty_with(sp, e.m_rettype, callback);
-        for( const auto& arg : e.m_arg_types )
-            ft.m_arg_types.push_back( clone_ty_with(sp, arg, callback) );
-        rv = ::HIR::TypeRef( mv$(ft) );
-        }
-    TU_ARMA(Closure, e) {
-        ::HIR::TypeData::Data_Closure  oe;
-        oe.node = e.node;
-        rv = ::HIR::TypeRef( mv$(oe) );
-        }
-    TU_ARMA(Generator, e) {
-        TODO(sp, "Cloning a generator type?");
-        }
-    }
-    return rv;
+    CloneTyWith_Monomorph   m;
+    m.callback = std::move(callback);
+    return m.monomorph_type(sp, tpl, true);
 }
 
 

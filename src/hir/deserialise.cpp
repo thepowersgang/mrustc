@@ -1087,14 +1087,14 @@ namespace {
             deserialise_vec< ::HIR::GenericPath>(),
             deserialise_lifetimeref()
             })
-        _(ErasedType, {
-            deserialise_path(),
-            false,
-            static_cast<unsigned int>(m_in.read_count()),
-            m_in.read_bool(),
-            deserialise_vec< ::HIR::TraitPath>(),
-            deserialise_vec< ::HIR::LifetimeRef>()
-            })
+        case ::HIR::TypeData::TAG_ErasedType:
+            TODO(Span(), "ErasedType");
+        //_(ErasedType, {
+        //    m_in.read_bool(),
+        //    deserialise_vec< ::HIR::TraitPath>(),
+        //    deserialise_vec< ::HIR::LifetimeRef>(),
+        //    deserialise_type()
+        //    })
         _(Array, {
             deserialise_type(),
             deserialise_arraysize()

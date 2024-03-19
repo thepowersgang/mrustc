@@ -405,7 +405,7 @@ namespace {
             {
                 for(auto& lft : e->m_lifetimes)
                     visit_lifetime(sp, lft);
-                if( e->m_origin == ::HIR::SimplePath() )
+                if( auto* ee = e->m_inner.opt_Fcn() )
                 {
                     DEBUG("Set origin of ErasedType - " << ty);
                     DEBUG(" - " << &ty.data());
@@ -420,8 +420,8 @@ namespace {
 
                         ::HIR::PathParams    params = m_fcn_ptr->m_params.make_nop_params(1);
                         // Populate with function path
-                        e->m_origin = m_fcn_path->get_full_path();
-                        TU_MATCH_HDRA( (e->m_origin.m_data), {)
+                        ee->m_origin = m_fcn_path->get_full_path();
+                        TU_MATCH_HDRA( (ee->m_origin.m_data), {)
                         TU_ARMA(Generic, e2) {
                             e2.m_params = mv$(params);
                             }
@@ -438,11 +438,7 @@ namespace {
                             throw "";
                             }
                         }
-                        e->m_index = m_fcn_erased_count++;
-                    }
-                    else if( e->m_is_type_alias )
-                    {
-                        // ignore.
+                        ee->m_index = m_fcn_erased_count++;
                     }
                     // If the function _pointer_ is set (but not the path), then we're in the function arguments
                     // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
@@ -455,7 +451,7 @@ namespace {
                         for( const auto& trait : e->m_traits )
                         {
                             m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                                nullptr,    
+                                nullptr,
                                 new_ty.clone(),
                                 trait.clone()
                                 }));

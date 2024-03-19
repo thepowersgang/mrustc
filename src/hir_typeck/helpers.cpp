@@ -268,19 +268,10 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
 
     auto print_traitpath = [&](const HIR::TraitPath& tp) {
         this->print_genericpath(os, tp.m_path, stack);
+        // TODO: ATYs?
     };
-
-    TU_MATCH_HDRA( (ty.data()), {)
-    TU_ARMA(Infer, e) {
-        os << ty;
-        }
-    TU_ARMA(Primitive, e) {
-        os << ty;
-        }
-    TU_ARMA(Diverge, e) { os << ty; }
-    TU_ARMA(Generic, e) { os << ty; }
-    TU_ARMA(Path, e) {
-        TU_MATCH_HDRA( (e.path.m_data), {)
+    auto print_path = [&](const HIR::Path& path) {
+        TU_MATCH_HDRA( (path.m_data), {)
         TU_ARMA(Generic, pe) {
             this->print_genericpath(os, pe, stack);
             }
@@ -302,6 +293,19 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
             BUG(Span(), "UfcsUnknown");
             }
         }
+        };
+
+    TU_MATCH_HDRA( (ty.data()), {)
+    TU_ARMA(Infer, e) {
+        os << ty;
+        }
+    TU_ARMA(Primitive, e) {
+        os << ty;
+        }
+    TU_ARMA(Diverge, e) { os << ty; }
+    TU_ARMA(Generic, e) { os << ty; }
+    TU_ARMA(Path, e) {
+        print_path(e.path);
         }
     TU_ARMA(Borrow, e) {
         os << "&";
@@ -373,7 +377,6 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
         os << ")";
         }
     TU_ARMA(ErasedType, e) {
-        // TODO: Print correctly (with print_type calls)
         os << "impl ";
         for(const auto& tr : e.m_traits) {
             if( &tr != &e.m_traits[0] )
@@ -384,7 +387,19 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
             for(const auto& lft : e.m_lifetimes)
                 os << "+" << lft;
         }
-        os << "/*" << e.m_origin << "#" << e.m_index << "*/";
+        os << "/*";
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Fcn, ee) {
+            os << "fn ";
+            print_path(ee.m_origin);
+            os << "#" << ee.m_index;
+            }
+        TU_ARMA(Known, ee) {
+            print_type(os, ee, stack);
+            }
+        TU_ARMA(Alias, ee) {}
+        }
+        os << "*/";
         }
     TU_ARMA(Tuple, e) {
         os << "(";
@@ -488,7 +503,15 @@ void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
         // TODO: Associated types
         }
     TU_ARMA(ErasedType, e) {
-        H::expand_ivars_path(*this, e.m_origin);
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Fcn, ee) {
+            H::expand_ivars_path(*this, ee.m_origin);
+            }
+        TU_ARMA(Known, ee) {
+            this->expand_ivars(ee);
+            }
+        TU_ARMA(Alias, ee) {}
+        }
         for(auto& trait : e.m_traits)
         {
             this->expand_ivars_params(trait.m_path.m_params);
@@ -933,6 +956,29 @@ bool HMTypeInferrence::pathparams_contain_ivars(const ::HIR::PathParams& pps, bo
 }
 bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty, bool only_unbound) const {
     TRACE_FUNCTION_F("ty = " << ty);
+    auto path_contains_ivars = [this](const HIR::Path& path, bool only_unbound) {
+        TU_MATCH(::HIR::Path::Data, (path.m_data), (pe),
+        (Generic,
+            return this->pathparams_contain_ivars(pe.m_params, only_unbound);
+            ),
+        (UfcsKnown,
+            if( this->type_contains_ivars(pe.type, only_unbound) )
+                return true;
+            if( this->pathparams_contain_ivars(pe.trait.m_params, only_unbound) )
+                return true;
+            return this->pathparams_contain_ivars(pe.params, only_unbound);
+            ),
+        (UfcsInherent,
+            if( this->type_contains_ivars(pe.type, only_unbound) )
+                return true;
+            return this->pathparams_contain_ivars(pe.params, only_unbound);
+            ),
+        (UfcsUnknown,
+            BUG(Span(), "UfcsUnknown");
+            )
+        )
+        throw "";
+        };
     //TU_MATCH(::HIR::TypeData, (this->get_type(ty).m_data), (e),
     TU_MATCH(::HIR::TypeData, (ty.data()), (e),
     (Infer,
@@ -945,26 +991,7 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty, bool only_u
     (Diverge, return false; ),
     (Generic, return false; ),
     (Path,
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
-        (Generic,
-            return pathparams_contain_ivars(pe.m_params, only_unbound);
-            ),
-        (UfcsKnown,
-            if( type_contains_ivars(pe.type, only_unbound) )
-                return true;
-            if( pathparams_contain_ivars(pe.trait.m_params, only_unbound) )
-                return true;
-            return pathparams_contain_ivars(pe.params, only_unbound);
-            ),
-        (UfcsInherent,
-            if( type_contains_ivars(pe.type, only_unbound) )
-                return true;
-            return pathparams_contain_ivars(pe.params, only_unbound);
-            ),
-        (UfcsUnknown,
-            BUG(Span(), "UfcsUnknown");
-            )
-        )
+        return path_contains_ivars(e.path, only_unbound);
         ),
     (Borrow,
         return type_contains_ivars(e.inner, only_unbound);
@@ -998,26 +1025,16 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty, bool only_u
         return pathparams_contain_ivars(e.m_trait.m_path.m_params, only_unbound);
         ),
     (ErasedType,
-        TU_MATCH(::HIR::Path::Data, (e.m_origin.m_data), (pe),
-        (Generic,
-            return pathparams_contain_ivars(pe.m_params, only_unbound);
-            ),
-        (UfcsKnown,
-            if( type_contains_ivars(pe.type, only_unbound) )
-                return true;
-            if( pathparams_contain_ivars(pe.trait.m_params, only_unbound) )
-                return true;
-            return pathparams_contain_ivars(pe.params, only_unbound);
-            ),
-        (UfcsInherent,
-            if( type_contains_ivars(pe.type, only_unbound) )
-                return true;
-            return pathparams_contain_ivars(pe.params, only_unbound);
-            ),
-        (UfcsUnknown,
-            BUG(Span(), "UfcsUnknown");
-            )
-        )
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Fcn, ee) {
+            return path_contains_ivars(ee.m_origin, only_unbound);
+            }
+        TU_ARMA(Known, ee) {
+            return type_contains_ivars(ee, only_unbound);
+            }
+        TU_ARMA(Alias, ee) {
+            }
+        }
         ),
     (Tuple,
         for(const auto& st : e)
@@ -1142,8 +1159,21 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         return pathparams_equal(le.m_trait.m_path.m_params, re.m_trait.m_path.m_params);
         ),
     (ErasedType,
-        ASSERT_BUG(Span(), le.m_origin != ::HIR::SimplePath(), "Erased type with unset origin");
-        return H::compare_path(*this, le.m_origin, re.m_origin);
+        if( le.m_inner.tag() != re.m_inner.tag() )
+            return false;
+        TU_MATCH_HDRA( (le.m_inner, re.m_inner), {)
+        TU_ARMA(Fcn, l,r) {
+            ASSERT_BUG(Span(), l.m_origin != ::HIR::SimplePath(), "Erased type with unset origin");
+            ASSERT_BUG(Span(), r.m_origin != ::HIR::SimplePath(), "Erased type with unset origin");
+            return H::compare_path(*this, l.m_origin, r.m_origin);
+            }
+        TU_ARMA(Known, l,r) {
+            return types_equal(l, r);
+            }
+        TU_ARMA(Alias, l,r) {
+            return l.get() == r.get();  // Pointer comparison
+            }
+        }
         ),
     (Tuple,
         return type_list_equal(*this, le, re);
@@ -1944,8 +1974,17 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         return false;
         }
     TU_ARMA(ErasedType, e) {
-        if( H::check_path(*this, e.m_origin) )
-            return true;
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Fcn, ee) {
+            if( H::check_path(*this, ee.m_origin) )
+                return true;
+            }
+        TU_ARMA(Known, ee) {
+            if( has_associated_type(ee) )
+                return true;
+            }
+        TU_ARMA(Alias, ee) {}
+        }
         for(const auto& m : e.m_traits) {
             if( H::check_pathparams(*this, m.m_path.m_params) )
                 return true;

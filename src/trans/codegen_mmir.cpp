@@ -1129,12 +1129,12 @@ namespace
                 {
                     tmp = clone_ty_with(sp, item.m_return, [&](const auto& x, auto& out) {
                         if( const auto* te = x.data().opt_ErasedType() ) {
-                            out = item.m_code.m_erased_types.at(te->m_index).clone();
-                            return true;
+                            if( const auto* e = te->m_inner.opt_Fcn() ) {
+                                out = item.m_code.m_erased_types.at(e->m_index).clone();
+                                return true;
+                            }
                         }
-                        else {
-                            return false;
-                        }
+                        return false;
                         });
                     tmp = params.monomorph_type(Span(), tmp).clone();
                 }

@@ -2180,50 +2180,52 @@ void Typecheck_Code_CS__EnumerateRules(
         ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& tpl, bool allow_infer=true) const override {
             if( const auto* e = tpl.data().opt_ErasedType() )
             {
-                // NOTE: `Typecheck Outer` visits erased types subtly differently (it recurses then handles)
-                // - This code handles then recurses (as the return needs to be allocated earlier)
-                // SO: We have to expand the list as it comes.
-                if( expr.m_erased_types.size() <= e->m_index )
+                if( const auto* ee = e->m_inner.opt_Fcn() )
                 {
-                    expr.m_erased_types.resize(e->m_index + 1);
-                }
-                ASSERT_BUG(sp, expr.m_erased_types[e->m_index] == HIR::TypeRef(), "Multiple-visits to erased type #" << e->m_index);
-                expr.m_erased_types[e->m_index] = context.m_ivars.new_ivar_tr();
-                auto rv = expr.m_erased_types[e->m_index].clone();
-                auto prev_cur_self = this->cur_self;
-                this->cur_self = &rv;
-                DEBUG(tpl << " -> " << rv);
-
-                auto prev_hrls = this->hrls;
-                for(const auto& trait : e->m_traits)
-                {
-                    auto pp_hrl = trait.m_path.m_hrls ? trait.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
-                    this->hrls = &pp_hrl;
-                    if( trait.m_type_bounds.size() == 0 )
+                    // NOTE: `Typecheck Outer` visits erased types subtly differently (it recurses then handles)
+                    // - This code handles then recurses (as the return needs to be allocated earlier)
+                    // SO: We have to expand the list as it comes.
+                    if( expr.m_erased_types.size() <= ee->m_index )
                     {
-                        context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer), rv, "", false);
+                        expr.m_erased_types.resize(ee->m_index + 1);
                     }
-                    else
+                    ASSERT_BUG(sp, expr.m_erased_types[ee->m_index] == HIR::TypeRef(), "Multiple-visits to erased type #" << ee->m_index);
+                    expr.m_erased_types[ee->m_index] = context.m_ivars.new_ivar_tr();
+                    auto rv = expr.m_erased_types[ee->m_index].clone();
+
+                    auto prev_cur_self = this->cur_self;
+                    this->cur_self = &rv;
+                    DEBUG(tpl << " -> " << rv);
+
+                    auto prev_hrls = this->hrls;
+                    for(const auto& trait : e->m_traits)
                     {
-                        for(const auto& aty : trait.m_type_bounds)
+                        auto pp_hrl = trait.m_path.m_hrls ? trait.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
+                        this->hrls = &pp_hrl;
+                        if( trait.m_type_bounds.size() == 0 )
                         {
-                            auto aty_cloned = this->monomorph_type(sp, aty.second.type);
-                            auto params = this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer);
-                            context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), false);
+                            context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer), rv, "", false);
                         }
+                        else
+                        {
+                            for(const auto& aty : trait.m_type_bounds)
+                            {
+                                auto aty_cloned = this->monomorph_type(sp, aty.second.type);
+                                auto params = this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer);
+                                context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), false);
+                            }
+                        }
+                        this->hrls = nullptr;
                     }
-                    this->hrls = nullptr;
+
+                    this->hrls = prev_hrls;
+                    this->cur_self = prev_cur_self;
+
+                    return rv;
                 }
-
-                this->hrls = prev_hrls;
-                this->cur_self = prev_cur_self;
-
-                return rv;
             }
-            else
-            {
-                return Monomorphiser::monomorph_type(sp, tpl, allow_infer);
-            }
+
+            return Monomorphiser::monomorph_type(sp, tpl, allow_infer);
         }
     };
     // If the result type contans an erased type, replace that with a new ivar and emit trait bounds for it.

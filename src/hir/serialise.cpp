@@ -219,9 +219,10 @@
                 serialise(e.m_lifetime);
                 }
             TU_ARMA(ErasedType, e) {
-                serialise_path(e.m_origin);
-                m_out.write_count(e.m_index);
-                
+                TODO(Span(), "Serialse ErasedType?");
+                //serialise_path(e.m_origin);
+                //m_out.write_count(e.m_index);
+
                 m_out.write_bool(e.m_is_sized);
                 serialise_vec(e.m_traits);
                 serialise_vec(e.m_lifetimes);

@@ -143,14 +143,32 @@ struct TypeData_TraitObject
     ::std::vector< ::HIR::GenericPath > m_markers;
     ::HIR::LifetimeRef  m_lifetime;
 };
+struct TypeData_ErasedType_AliasInner
+{
+    HIR::SimplePath mod_path;
+    HIR::TypeRef    type;
+};
+TAGGED_UNION(TypeData_ErasedType_Inner, Alias,
+    (Fcn, struct {
+        ::HIR::Path m_origin;
+        unsigned int m_index;
+        }),
+    (Known, HIR::TypeRef),
+    (Alias, ::std::shared_ptr<TypeData_ErasedType_AliasInner>)
+);
+
+} // namespace HIR
+extern Ordering ord(const HIR::TypeData_ErasedType_Inner& a, const HIR::TypeData_ErasedType_Inner& b);
+static inline bool operator==(const HIR::TypeData_ErasedType_Inner& a, const HIR::TypeData_ErasedType_Inner& b) { return ord(a,b) == OrdEqual; }
+static inline bool operator!=(const HIR::TypeData_ErasedType_Inner& a, const HIR::TypeData_ErasedType_Inner& b) { return ord(a,b) != OrdEqual; }
+namespace HIR {
+
 struct TypeData_ErasedType
 {
-    ::HIR::Path m_origin;
-    bool    m_is_type_alias;
-    unsigned int m_index;
     bool m_is_sized;
     ::std::vector< ::HIR::TraitPath>    m_traits;
     ::std::vector< ::HIR::LifetimeRef>  m_lifetimes;
+    TypeData_ErasedType_Inner   m_inner;
 };
 struct TypeData_FunctionPointer
 {
@@ -184,7 +202,7 @@ TAGGED_UNION(TypeData, Diverge,
     (Path, TypeData_Path),  // TODO: Pointer wrap
     (Generic, GenericRef),
     (TraitObject, TypeData_TraitObject),  // TODO: Pointer wrap
-    (ErasedType, TypeData_ErasedType),  // TODO: Pointer wrap
+    (ErasedType, /*::std::unique_ptr<*/TypeData_ErasedType),  // TODO: Pointer wrap
     (Array, struct {
         TypeRef inner;
         ArraySize  size;
