@@ -408,12 +408,16 @@ namespace {
                 if( auto* ee = e->m_inner.opt_Fcn() )
                 {
                     DEBUG("Set origin of ErasedType - " << ty);
-                    DEBUG(" - " << &ty.data());
+                    DEBUG("&ty.data() = " << &ty.data());
                     // If not, figure out what to do with it
 
                     // If the function path is set, we're processing the return type of a function
                     // - Add this to the list of erased types associated with the function
-                    if( m_fcn_path )
+                    if( ee->m_origin != HIR::SimplePath() )
+                    {
+                        // Already set, somehow (maybe we're visiting the function after expansion)
+                    }
+                    else if( m_fcn_path )
                     {
                         assert(m_fcn_ptr);
                         DEBUG(*m_fcn_path << " " << m_fcn_erased_count);

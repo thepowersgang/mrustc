@@ -1932,7 +1932,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
     {
         if( const auto* ee = et->m_inner.opt_Alias() )
         {
-            TODO(sp, "");
+            TODO(sp, "Equate type alias erased type");
         }
     }
 
