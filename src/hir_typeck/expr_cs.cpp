@@ -1278,6 +1278,25 @@ namespace {
 
             for( auto& ty : node_ptr.m_erased_types )
                 this->check_type_resolved_top(node.span(), ty);
+
+            for(auto& ent : context.m_erased_type_aliases)
+            {
+                auto t = ent.second.clone();
+                check_type_resolved(node.span(), t, t);
+                // If the type is for the same type alias, then ignore
+                if( t.data().is_ErasedType() && t.data().as_ErasedType().m_inner.is_Alias() && t.data().as_ErasedType().m_inner.as_Alias().get() == ent.first ) {
+                    continue;
+                }
+                if( ent.first->type == HIR::TypeRef() ) {
+                    DEBUG("type " << ent.first->path << " = " << t);
+                    ent.first->type = std::move(t);
+                }
+                else {
+                    if( ent.first->type != t ) {
+                        ERROR(node.span(), E0000, "Disagreement on type for " << ent.first->path << ": " << ent.first->type << " or " << t);
+                    }
+                }
+            }
         }
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
             auto& node = *node_ptr;
@@ -1928,11 +1947,30 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         }
     }
 
+#if 0
+    // If the RHS is an erased type, then expand it
+    if( const auto* et = r_t.data().opt_ErasedType() )
+    {
+        if( const auto* ee = et->m_inner.opt_Alias() )
+        {
+            if( this->m_erased_type_aliases.count(ee->get()) > 0 ) {
+                equate_types_inner(sp, l_t, this->m_erased_type_aliases[ee->get()]);
+                return ;
+            }
+        }
+    }
+#endif
     if( const auto* et = l_t.data().opt_ErasedType() )
     {
         if( const auto* ee = et->m_inner.opt_Alias() )
         {
-            TODO(sp, "Equate type alias erased type");
+            if( this->m_erased_type_aliases.count(ee->get()) == 0 ) {
+                this->m_erased_type_aliases.insert(std::make_pair( ee->get(), r_t.clone() ));
+            }
+            else {
+                equate_types_inner(sp, this->m_erased_type_aliases[ee->get()], r_t);
+            }
+            return ;
         }
     }
 

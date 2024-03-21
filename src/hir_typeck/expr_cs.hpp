@@ -148,6 +148,8 @@ struct Context
     ::std::vector<bool> m_ivars_sized;
     ::std::vector< IVarPossible>    possible_ivar_vals;
 
+    ::std::map<HIR::TypeData_ErasedType_AliasInner*, HIR::TypeRef>  m_erased_type_aliases;
+
     const ::HIR::SimplePath m_lang_Box;
 
     Context(

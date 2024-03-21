@@ -1043,12 +1043,12 @@ namespace {
     throw "BUGCHECK: Reached end of LowerHIR_Type";
 }
 
-::HIR::TypeAlias LowerHIR_TypeAlias(const ::AST::TypeAlias& ta)
+::HIR::TypeAlias LowerHIR_TypeAlias(const HIR::ItemPath& p, const ::AST::TypeAlias& ta)
 {
     auto ty = LowerHIR_Type(ta.type());
     if( auto* e = ty.data_mut().opt_ErasedType() ) {
         DEBUG("Flag type alias - " << &ty.data());
-        e->m_inner = std::make_shared<HIR::TypeData_ErasedType_AliasInner>();
+        e->m_inner = std::make_shared<HIR::TypeData_ErasedType_AliasInner>(p);
     }
     return ::HIR::TypeAlias {
         LowerHIR_GenericParams(ta.params(), nullptr),
@@ -1909,7 +1909,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
                 _add_mod_ns_item(mod, item.name, get_pub(item.is_pub), ::HIR::ExternType {});
                 break;
             }
-            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(e) ) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(item_path, e) ) );
             }
         TU_ARMA(Struct, e) {
             /// Add value reference

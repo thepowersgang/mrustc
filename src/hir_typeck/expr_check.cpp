@@ -1164,6 +1164,24 @@ namespace {
         }
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
+            struct Resolve: HIR::ResolvePlaceholders {
+                const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const override {
+                    //ASSERT_BUG(sp, ty.data().is_Infer(), "Unexpected ivar");
+                    if( const auto* e = ty.data().opt_ErasedType() )
+                    {
+                        if( const auto* ee = e->m_inner.opt_Alias() )
+                        {
+                            if( (*ee)->type != HIR::TypeRef() ) {
+                                return (*ee)->type;
+                            }
+                        }
+                    }
+                    return ty;
+                }
+                const ::HIR::ConstGeneric& get_val(const Span& sp, const HIR::ConstGeneric& v) const override {
+                    return v;
+                }
+            } get_types;
             // TODO: Recurse when an erased type is encountered
             //if( const auto* e = l.data().opt_ErasedType() )
             //{
@@ -1178,7 +1196,7 @@ namespace {
                 // Diverge, matches everything.
                 // TODO: Is this always true?
             }
-            else if( l != r ) {
+            else if( l.compare_with_placeholders(sp, r, get_types) != HIR::Compare::Equal ) {
                 ERROR(sp, E0000, "Type mismatch\n - " << l << "\n!= " << r);
             }
             else {

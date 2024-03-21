@@ -94,3 +94,6 @@
 - `format_args!` implicit bindings through heavy indenting
 - Enum packing - `rustc_parse_format::Piece` two pointers with rustc, three in mrustc
   - mrustc not using null optimisation as well
+- `type Foo = impl Trait` is more complex than first seemed, can be set anywhere in module?
+  - Need to confirm logic from reference, and to rework implementation
+  - See https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html

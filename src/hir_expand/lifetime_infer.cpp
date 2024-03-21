@@ -585,6 +585,16 @@ namespace {
             }
 #endif
 
+            if( TU_TEST1(lhs.data(), ErasedType, .m_inner.is_Alias()) ) {
+                const auto* ee = lhs.data().as_ErasedType().m_inner.as_Alias().get();
+                if( TU_TEST2(rhs.data(), ErasedType, .m_inner, Alias, .get() == ee) ) {
+                }
+                else {
+                    equate_types(sp, ee->type, rhs);
+                    return;
+                }
+            }
+
             ASSERT_BUG(sp, lhs.data().tag() == rhs.data().tag(), "Mismatched types: " << lhs << " != " << rhs);
             TU_MATCH_HDRA( (lhs.data(), rhs.data()), { )
             TU_ARMA(Infer, l, r) BUG(sp, "");

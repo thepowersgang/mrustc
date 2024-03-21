@@ -112,6 +112,12 @@ HIR::ArraySize HIR::ArraySize::clone() const
     throw "";
 }
 
+::HIR::TypeData_ErasedType_AliasInner::TypeData_ErasedType_AliasInner(const HIR::ItemPath& p)
+    : path(p.get_simple_path())
+    , type()
+{
+}
+
 void ::HIR::TypeRef::fmt(::std::ostream& os) const
 {
     if(!m_ptr) {
@@ -1123,9 +1129,9 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
 ::HIR::Compare HIR::TypeRef::compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const
 {
     //TRACE_FUNCTION_F(*this << " ?= " << x);
-    const auto& left = (data().is_Infer() || data().is_Generic() ? resolve_placeholder.get_type(sp, *this) : *this);
+    const auto& left = resolve_placeholder.get_type(sp, *this);
     //const auto& left = *this;
-    const auto& right = (x.data().is_Infer() || x.data().is_Generic()) ? resolve_placeholder.get_type(sp, x) : x;
+    const auto& right = resolve_placeholder.get_type(sp, x);
 
     // If the two types are the same ivar, return equal
     if( left.data().is_Infer() && left == right ) {

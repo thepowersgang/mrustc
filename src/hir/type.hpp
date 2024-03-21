@@ -28,6 +28,7 @@ class ExternType;
 class Struct;
 class Union;
 class Enum;
+class ItemPath;
 struct ExprNode_Closure;
 struct ExprNode_Generator;
 
@@ -145,8 +146,10 @@ struct TypeData_TraitObject
 };
 struct TypeData_ErasedType_AliasInner
 {
-    HIR::SimplePath mod_path;
+    HIR::SimplePath path;
     HIR::TypeRef    type;
+
+    TypeData_ErasedType_AliasInner(const HIR::ItemPath& p);
 };
 TAGGED_UNION(TypeData_ErasedType_Inner, Alias,
     (Fcn, struct {

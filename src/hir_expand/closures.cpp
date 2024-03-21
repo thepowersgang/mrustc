@@ -373,34 +373,6 @@ namespace {
             }
         }
 
-        static void fix_type(const ::HIR::Crate& crate, const Span& sp, const Monomorphiser& monomorphiser, ::HIR::TypeRef& ty) {
-            if( const auto* e = ty.data().opt_Closure() )
-            {
-                DEBUG("Closure: " << e->node->m_obj_path_base); // TODO: Why does this use the `_base`
-                ASSERT_BUG(sp, e->node->m_obj_path_base != HIR::GenericPath(), ty);
-                auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path_base, false);
-                const auto& str = *e->node->m_obj_ptr;
-                DEBUG(ty << " -> " << path);
-                ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
-            }
-            if(const auto* e = ty.data().opt_Generator() )
-            {
-                DEBUG("Generator: " << e->node->m_obj_path);
-                auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path, false);
-                const auto& str = *e->node->m_obj_ptr;
-                DEBUG(ty << " -> " << path);
-                ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
-            }
-
-            if( auto* e = ty.data_mut().opt_Path() )
-            {
-                if( e->binding.is_Unbound() && e->path.m_data.is_UfcsKnown() )
-                {
-                    e->binding = ::HIR::TypePathBinding::make_Opaque({});
-                }
-            }
-        }
-
         void visit_root(::HIR::ExprPtr& root)
         {
             TRACE_FUNCTION;
@@ -525,6 +497,15 @@ namespace {
                 }
             } m(m_monomorphiser);
             ty = m.monomorph_type(Span(), ty, true);
+
+            // HACK: Visit top-level type-alias erased types
+            if( const auto* e = ty.data().opt_ErasedType() )
+            {
+                if( const auto* ee = e->m_inner.opt_Alias() )
+                {
+                    visit_type((*ee)->type);
+                }
+            }
         }
     };
 

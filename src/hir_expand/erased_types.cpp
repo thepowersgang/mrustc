@@ -32,7 +32,10 @@ namespace {
             m_resolve.expand_associated_types(sp, new_ty);
             }
         TU_ARMA(Alias, ee) {
-            TODO(sp, "Expand ErasedType Alias");
+            if( ee->type == HIR::TypeRef() ) {
+                ERROR(Span(), E0000, "Erased type alias " << ee->path << " never set?");
+            }
+            new_ty = ee->type.clone();
             }
         TU_ARMA(Known, ee) {
             new_ty = ee.clone();
