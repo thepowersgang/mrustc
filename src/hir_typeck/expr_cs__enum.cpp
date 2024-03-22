@@ -42,6 +42,9 @@ namespace typecheck
 
         ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
             assert( g.binding < impl_params.m_types.size() );
+            if( impl_params.m_types[g.binding] != HIR::TypeRef() ) {
+                return impl_params.m_types[g.binding].compare_with_placeholders(Span(), ty, _resolve_cb);
+            }
             impl_params.m_types[g.binding] = ty.clone();
             return ::HIR::Compare::Equal;
         }
@@ -434,6 +437,9 @@ namespace typecheck
                 DEBUG("- impl_ty_mono = " << impl_ty_mono);
 
                 context.equate_types(sp, impl_ty_mono, e.type);
+            }
+            else if( cmp == ::HIR::Compare::Unequal ) {
+                BUG(sp, "Failed to match inherent impl?!");
             }
             else {
                 context.m_ivars.add_ivars_params(impl_params);

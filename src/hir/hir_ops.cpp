@@ -17,243 +17,6 @@
 #include <trans/target.hpp>
 
 namespace {
-    bool matches_genericpath(const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic);
-
-    bool matches_constgeneric(const ::HIR::ConstGeneric& left, const ::HIR::ConstGeneric& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
-    {
-        assert( !left.is_Infer() );
-        if(right.is_Infer())
-        {
-            return true;
-        }
-        if(right.is_Generic())
-        {
-            return left.is_Generic();
-        }
-
-        if(left.is_Generic()) {
-            //DEBUG("> Generic left, success");
-            return true;
-        }
-
-        if( left.tag() != right.tag() ) {
-            //DEBUG("> Tag mismatch, failure");
-            return false;
-        }
-
-        return left == right;
-    }
-
-    bool matches_type_int(const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
-    {
-        assert(! left.data().is_Infer() );
-        const auto& right = (right_in.data().is_Infer() ? ty_res.get_type(Span(), right_in) : right_in);
-        if( right_in.data().is_Generic() )
-            expand_generic = false;
-
-        //DEBUG("left = " << left << ", right = " << right);
-
-        // TODO: What indicates what out of ty_res?
-
-        if( const auto* re = right.data().opt_Infer() )
-        {
-            //DEBUG("left = " << left << ", right = " << right);
-            switch(re->ty_class)
-            {
-            case ::HIR::InferClass::None:
-                //return left.m_data.is_Generic();
-                return true;
-            case ::HIR::InferClass::Integer:
-                if(const auto* le = left.data().opt_Primitive()) {
-                    return is_integer(*le);
-                }
-                else {
-                    return left.data().is_Generic();
-                }
-                break;
-            case ::HIR::InferClass::Float:
-                if(const auto* le = left.data().opt_Primitive()) {
-                    return is_float(*le);
-                }
-                else {
-                    return left.data().is_Generic();
-                }
-                break;
-            }
-            throw "";
-        }
-
-        // A local generic could match anything, leave that up to the caller
-        if( left.data().is_Generic() ) {
-            DEBUG("> Generic left, success");
-            return true;
-        }
-        // A local UfcsKnown can only be becuase it couldn't be expanded earlier, assume it could match
-        if( left.data().is_Path() && left.data().as_Path().path.m_data.is_UfcsKnown() ) {
-            // True?
-            //DEBUG("> UFCS Unknown left, success");
-            return true;
-        }
-
-        // If the RHS (provided) is generic, it can only match if it binds to a local type parameter
-        if( right.data().is_Generic() ) {
-            // TODO: This is handled above?
-            //DEBUG("> Generic right, only if left generic");
-            return left.data().is_Generic();
-        }
-        // If the RHS (provided) is generic, it can only match if it binds to a local type parameter
-        if( TU_TEST1(right.data(), Path, .binding.is_Unbound()) ) {
-            //DEBUG("> UFCS Unknown right, fuzzy");
-            return true;
-        }
-
-        if( left.data().tag() != right.data().tag() ) {
-            //DEBUG("> Tag mismatch, failure");
-            return false;
-        }
-        TU_MATCH_HDRA( (left.data(), right.data()), {)
-        TU_ARMA(Infer, le, re) throw "infer";
-        TU_ARMA(Diverge, le, re) return true;
-        TU_ARMA(Primitive, le, re) return le == re;
-        TU_ARMA(Path, le, re) {
-            if( le.path.m_data.tag() != re.path.m_data.tag() )
-                return false;
-            TU_MATCH_DEF(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (ple, pre),
-            (
-                return false;
-                ),
-            (Generic,
-                return matches_genericpath( ple, pre, ty_res, expand_generic);
-                )
-            )
-            }
-        TU_ARMA(Generic, le, re) {
-            throw "";
-            }
-        TU_ARMA(TraitObject, le, re) {
-            if( !matches_genericpath(le.m_trait.m_path, re.m_trait.m_path, ty_res, expand_generic) )
-                return false;
-            if( le.m_markers.size() != re.m_markers.size() )
-                return false;
-            for(unsigned int i = 0; i < le.m_markers.size(); i ++)
-            {
-                const auto& lm = le.m_markers[i];
-                const auto& rm = re.m_markers[i];
-                if( !matches_genericpath(lm, rm, ty_res, expand_generic) )
-                    return false;
-            }
-            return true;
-            }
-        TU_ARMA(ErasedType, le, re) {
-            throw "Unexpected ErasedType in matches_type_int";
-            }
-        TU_ARMA(Array, le, re) {
-            if( ! matches_type_int(le.inner, re.inner, ty_res, expand_generic) )
-                return false;
-            if(le.size.is_Unevaluated()) {
-                // If the left is a generic, allow it.
-                if( re.size.is_Unevaluated()) {
-                    if( !matches_constgeneric(le.size.as_Unevaluated(), re.size.as_Unevaluated(), ty_res, expand_generic) )
-                        return false;
-                }
-                else {
-                    if( le.size.as_Unevaluated().is_Generic() ) {
-                    }
-                    else {
-                        TODO(Span(), "Match an unevaluated array with an evaluated one - " << le.size << " " << re.size);
-                    }
-                }
-            }
-            else {
-                // TODO: Other unresolved sizes?
-                if( le.size != re.size )
-                    return false;
-            }
-            return true;
-            }
-        TU_ARMA(Slice, le, re) {
-            return matches_type_int(le.inner, re.inner, ty_res, expand_generic);
-            }
-        TU_ARMA(Tuple, le, re) {
-            if( le.size() != re.size() )
-                return false;
-            for( unsigned int i = 0; i < le.size(); i ++ )
-                if( !matches_type_int(le[i], re[i], ty_res, expand_generic) )
-                    return false;
-            return true;
-            }
-        TU_ARMA(Borrow, le, re) {
-            if( le.type != re.type )
-                return false;
-            return matches_type_int(le.inner, re.inner, ty_res, expand_generic);
-            }
-        TU_ARMA(Pointer, le, re) {
-            if( le.type != re.type )
-                return false;
-            return matches_type_int(le.inner, re.inner, ty_res, expand_generic);
-            }
-        TU_ARMA(Function, le, re) {
-            if( le.is_unsafe != re.is_unsafe )
-                return false;
-            if( le.m_abi != re.m_abi )
-                return false;
-            if( le.m_arg_types.size() != re.m_arg_types.size() )
-                return false;
-            for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
-                if( !matches_type_int(le.m_arg_types[i], re.m_arg_types[i], ty_res, expand_generic) )
-                    return false;
-            return matches_type_int(le.m_rettype, re.m_rettype, ty_res, expand_generic);
-            }
-        TU_ARMA(Closure, le, re) {
-            return le.node == re.node;
-            }
-        TU_ARMA(Generator, le, re) {
-            return le.node == re.node;
-            }
-        }
-        return false;
-    }
-    bool matches_genericpath(const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
-    {
-        if( left.m_path.m_crate_name != right.m_path.m_crate_name )
-            return false;
-        if( left.m_path.m_components.size() != right.m_path.m_components.size() )
-            return false;
-        for(unsigned int i = 0; i < left.m_path.m_components.size(); i ++ )
-        {
-            if( left.m_path.m_components[i] != right.m_path.m_components[i] )
-                return false;
-        }
-
-        if( left.m_params.m_types.size() > 0 || right.m_params.m_types.size() > 0 )
-        {
-            // Count mismatch. Allow due to defaults.
-            if( left.m_params.m_types.size() != right.m_params.m_types.size() ) {
-            }
-            else {
-                for( unsigned int i = 0; i < right.m_params.m_types.size(); i ++ )
-                {
-                    if( ! matches_type_int(left.m_params.m_types[i], right.m_params.m_types[i], ty_res, expand_generic) )
-                        return false;
-                }
-            }
-        }
-
-        if( left.m_params.m_values.size() > 0 || right.m_params.m_values.size() > 0 )
-        {
-            auto num = std::min( left.m_params.m_values.size(), right.m_params.m_values.size() );
-            for(size_t i = 0; i < num; i ++)
-            {
-                if( !matches_constgeneric(left.m_params.m_values[i], right.m_params.m_values[i], ty_res, expand_generic) )
-                    return false;
-            }
-        }
-
-        return true;
-    }
-}
-
-namespace {
     bool is_unbounded_infer(const ::HIR::TypeRef& type) {
         if( const auto* e = type.data().opt_Infer() ) {
             return e->ty_class == ::HIR::InferClass::None;
@@ -262,8 +25,46 @@ namespace {
             return false;
         }
     }
-}
 
+    class ImplMatcher:
+        public ::HIR::MatchGenerics
+    {
+        std::vector<const HIR::TypeRef*>  impl_types;
+    public:
+        ImplMatcher(const ::HIR::GenericParams& impl_generics):
+            impl_types(impl_generics.m_types.size())
+        {}
+
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type resolve_cb) override {
+            assert( g.binding < impl_types.size() );
+            if( impl_types[g.binding] ) {
+                return impl_types[g.binding]->compare_with_placeholders(Span(), ty, resolve_cb);
+            }
+            impl_types[g.binding] = &ty;
+            return ::HIR::Compare::Equal;
+        }
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
+            // TODO
+            //assert( g.binding < impl_params.m_values.size() );
+            //impl_params.m_values[g.binding] = sz.clone();
+            return ::HIR::Compare::Equal;
+        }
+    };
+
+    bool matches_type_root(const ::HIR::GenericParams& params, const ::HIR::TypeRef& impl_ty, const ::HIR::TypeRef& match_type, ::HIR::t_cb_resolve_type ty_res)
+    {
+        if( is_unbounded_infer(match_type) || TU_TEST1(match_type.data(), Path, .binding.is_Unbound()) ) {
+            return false;
+        }
+        #if 1
+        ImplMatcher m { params };
+        auto cmp = impl_ty.match_test_generics_fuzz(Span(), match_type, ty_res, m);
+        return cmp != HIR::Compare::Unequal;
+        #else
+        return matches_type_int(impl_ty, match_type, ty_res, true);
+        #endif
+    }
+}
 bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
     // NOTE: Don't return any impls when the type is an unbouned ivar. Wouldn't be able to pick anything anyway
@@ -274,25 +75,15 @@ bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_reso
     if( is_unbounded_infer(type) ) {
         return true;
     }
-    // TODO: Allow unbounded types iff there's some non-unbounded parameters?
-    if( is_unbounded_infer(type) || TU_TEST1(type.data(), Path, .binding.is_Unbound()) ) {
-        return false;
-    }
-    return matches_type_int(m_type, type, ty_res, true);
+    return matches_type_root(m_params, m_type, type, ty_res);
 }
 bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    if( is_unbounded_infer(type) || TU_TEST1(type.data(), Path, .binding.is_Unbound()) ) {
-        return false;
-    }
-    return matches_type_int(m_type, type, ty_res, true);
+    return matches_type_root(m_params, m_type, type, ty_res);
 }
 bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    if( is_unbounded_infer(type) || TU_TEST1(type.data(), Path, .binding.is_Unbound()) ) {
-        return false;
-    }
-    return matches_type_int(m_type, type, ty_res, true);
+    return matches_type_root(m_params, m_type, type, ty_res);
 }
 
 namespace {

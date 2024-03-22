@@ -844,6 +844,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         auto cmp = match_generics_pp(sp, te.m_trait.m_path.m_params, xe.m_trait.m_path.m_params, resolve_placeholder, callback);
         for(unsigned int i = 0; i < te.m_markers.size(); i ++)
         {
+            if( te.m_markers[i].m_path != xe.m_markers[i].m_path ) {
+                return Compare::Unequal;
+            }
             cmp &= match_generics_pp(sp, te.m_markers[i].m_params, xe.m_markers[i].m_params, resolve_placeholder, callback);
         }
 
