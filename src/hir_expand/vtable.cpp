@@ -59,7 +59,7 @@ namespace {
             struct Foo {
                 ::HIR::Trait*   trait_ptr;
                 ::HIR::GenericParams    params;
-                unsigned int    i;
+                bool has_conflict;
                 void add_types_from_trait(const HIR::GenericPath& path, const HIR::Trait& tr, const HIR::TraitPath::assoc_list_t& assoc) {
                     for(const auto& ty : tr.m_types) {
                         bool is_known = false;
@@ -71,20 +71,24 @@ namespace {
                             }
                         }
                         if( !is_known ) {
-                            DEBUG(ty.first << " #" << i);
+                            auto i = params.m_types.size();
+                            DEBUG(ty.first << " #" << i << " (from " << path << ")");
                             auto rv = trait_ptr->m_type_indexes.insert( ::std::make_pair(ty.first, i) );
                             if(rv.second == false) {
-                                TODO(Span(), "Handle conflicting associated types - '" << ty.first << "'");
+                                // NOTE: Some traits have multiple parents with the same ATY name
+                                // E.g. `::"rustc_data_structures-0_0_0"::graph::ControlFlowGraph`
+                                DEBUG("Conflicting ATY name " << ty.first);
+                                rv.first->second = UINT_MAX;
+                                this->has_conflict = true;
                             }
                             else {
                                 params.m_types.push_back( ::HIR::TypeParamDef { RcString::new_interned(FMT("a#" << ty.first)), {}, ty.second.is_sized } );
                             }
-                            i ++;
                         }
                     }
                 }
             };
-            Foo visitor { &tr, {}, static_cast<unsigned int>(tr.m_params.m_types.size()) };
+            Foo visitor { &tr, {}, false };
             for(const auto& tp : tr.m_params.m_types) {
                 visitor.params.m_types.push_back( ::HIR::TypeParamDef { tp.m_name, {}, tp.m_is_sized } );
             }
@@ -94,6 +98,7 @@ namespace {
                 assert(st.m_trait_ptr);
                 visitor.add_types_from_trait(st.m_path, *st.m_trait_ptr, st.m_type_bounds);
             }
+            bool has_conflicting_aty_name = visitor.has_conflict;
             auto args = mv$(visitor.params);
 
             struct VtableConstruct {
@@ -248,7 +253,7 @@ namespace {
             // - Alignment of data
             vtc.fields.push_back(::std::make_pair( "#align", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize } ));
             // - Add methods
-            if( ! vtc.add_ents_from_trait(tr, trait_path) )
+            if( ! vtc.add_ents_from_trait(tr, trait_path) || has_conflicting_aty_name )
             {
                 tr.m_value_indexes.clear();
                 tr.m_type_indexes.clear();
