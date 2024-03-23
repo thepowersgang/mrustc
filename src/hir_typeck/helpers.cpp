@@ -2392,18 +2392,20 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         if( it != m_type_equalities.end() )
         {
             result_type = ResultType::Recurse;
+            DEBUG("Equality");
             input = it->second.clone();
             rv = true;
         }
     }
     if(!rv)
     {
-        rv = this->iterate_bounds_traits(sp, pe.type, trait_path.m_path, [&](HIR::Compare _cmp, const ::HIR::TypeRef& bound_type, const ::HIR::GenericPath& bound_trait, const CachedBound& bound_info)->bool {
+        rv = this->iterate_bounds_traits(sp, pe.type, trait_path.m_path, [&](HIR::Compare cmp, const ::HIR::TypeRef& bound_type, const ::HIR::GenericPath& bound_trait, const CachedBound& bound_info)->bool {
             DEBUG("[expand_associated_types_inplace__UfcsKnown] Trait bound - " << bound_type << " : " << bound_trait);
             // 2. Check if the trait (or any supertrait) includes pe.trait
             // TODO: If fuzzy, bail and leave unresolved?
-            auto cmp = bound_trait.compare_with_placeholders(sp, trait_path, this->m_ivars.callback_resolve_infer());
-            if( cmp != HIR::Compare::Unequal ) {
+            cmp &= bound_trait.compare_with_placeholders(sp, trait_path, this->m_ivars.callback_resolve_infer());
+            //if( cmp != HIR::Compare::Unequal ) {
+            if( cmp == HIR::Compare::Equal ) {
                 auto it = bound_info.assoc.find(pe.item);
                 // 1. Check if the bounds include the desired item
                 if( it == bound_info.assoc.end() ) {
@@ -2423,6 +2425,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 }
                 else {
                     result_type = ResultType::Recurse;
+                    DEBUG("TraitBound");
                     input = it->second.type.clone();
                 }
                 return true;
