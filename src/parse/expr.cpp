@@ -576,6 +576,7 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
 
         if( tok.type() == TOK_RWORD_IF )
         {
+            // TODO: Needs chains
             if( lex.lookahead(0) == TOK_RWORD_LET ) {
                 lex.getToken();
                 ::std::vector<AST::Pattern> guard_patterns;
@@ -1297,7 +1298,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex)
     return NEWNODE( AST::ExprNode_Closure, ::std::move(args), ::std::move(rt), ::std::move(code), is_move, is_immovable );
 }
 
-ExprNodeP Parse_ExprVal(TokenStream& lex)
+ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
 {
     TRACE_FUNCTION;
 
@@ -1326,7 +1327,6 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_LIFETIME:
         PUTBACK(tok, lex);
         return Parse_ExprBlockLine(lex, nullptr);
-        break;
 
     case TOK_RWORD_LOOP:
         return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
@@ -1520,6 +1520,13 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     default:
         throw ParseError::Unexpected(lex, tok);
     }
+}
+ExprNodeP Parse_ExprVal(TokenStream& lex)
+{
+    auto attrs = Parse_ItemAttrs(lex);
+    auto rv = Parse_ExprVal_Inner(lex);
+    rv->set_attrs( std::move(attrs) );
+    return rv;
 }
 ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
 {

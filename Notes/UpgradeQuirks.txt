@@ -97,3 +97,4 @@
 - `type Foo = impl Trait` is more complex than first seemed, can be set anywhere in module?
   - Need to confirm logic from reference, and to rework implementation
   - See https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html
+- Attributes on expressions (e.g. on a closure after the `&mut`)
