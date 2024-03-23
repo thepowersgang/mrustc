@@ -2223,6 +2223,17 @@ Token MacroExpander::realGetToken()
                 DEBUG("[" << m_log_index << "] Updated hygine: " << rv);
                 return rv;
                 break; }
+            case TOK_BYTESTRING:
+            case TOK_STRING: {
+                auto h = e.str_hygiene();
+                if( h == m_hygiene.get_parent() )
+                {
+                    h = m_hygiene;
+                }
+                auto rv = Token(e.type(), e.str(), std::move(h));
+                DEBUG("[" << m_log_index << "] Updated hygine: " << rv);
+                return rv;
+                }
             default:
                 DEBUG("[" << m_log_index << "] Raw token: " << e);
                 return e.clone();
