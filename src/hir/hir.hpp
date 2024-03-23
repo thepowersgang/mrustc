@@ -66,6 +66,9 @@ public:
         return Publicity(none_path);
     }
     static Publicity new_priv(::HIR::SimplePath p) {
+        while( !p.m_components.empty() && p.m_components.back().c_str()[0] == '#' ) {
+            p.m_components.pop_back();
+        }
         return Publicity(::std::make_shared<HIR::SimplePath>(::std::move(p)));
     }
 
