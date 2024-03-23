@@ -769,6 +769,7 @@ namespace
             return m_consume_count;
         }
     };
+    bool consume_type(TokenStreamRO& lex);
 
     // Consume an entire TT
     bool consume_tt(TokenStreamRO& lex)
@@ -887,7 +888,7 @@ namespace
             break;
         case TOK_IDENT:
             lex.consume();
-            if( type_mode && (lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT) )
+            if( type_mode && (lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT || lex.next() == TOK_PAREN_OPEN) )
                 ;
             // Allow a lone ident
             else if( lex.next() != TOK_DOUBLE_COLON )
@@ -936,6 +937,16 @@ namespace
             else
             {
                 return false;
+            }
+        }
+        // Handles `Fn()`
+        if( type_mode && lex.next() == TOK_PAREN_OPEN )
+        {
+            if( !consume_tt(lex) )
+                return false;
+            if( lex.consume_if(TOK_THINARROW) ) {
+                if( !consume_type(lex) )
+                    return false;
             }
         }
         return true;
@@ -1556,7 +1567,7 @@ namespace
                                 }
                                 else {
                                     lex.consume_if(TOK_QMARK);
-                                    if( !consume_path(lex) )
+                                    if( !consume_path(lex, true) )
                                         return false;
                                 }
                             } while( lex.consume_if(TOK_PLUS) );
@@ -1792,6 +1803,17 @@ namespace
 
             if( !H::maybe_generics(lex) )
                 return false;
+            if( lex.consume_if(TOK_COLON) ) {
+                do {
+                    if( lex.consume_if(TOK_LIFETIME) ) {
+                    }
+                    else {
+                        if( !consume_path(lex, true) )
+                            return false;
+                    }
+                }
+                while( lex.consume_if(TOK_PLUS) );
+            }
             if(lex.next() != TOK_BRACE_OPEN)
                 return false;
             if( !consume_tt(lex) )
