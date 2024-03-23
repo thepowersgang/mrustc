@@ -6,3 +6,11 @@
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  rustc_index::static_assert_size!(Piece<'_>, 16);
+--- compiler/rustc_ast/src/ast.rs
++++ compiler/rustc_ast/src/ast.rs
+@@ -3167,4 +3167,4 @@
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ mod size_asserts {
+     use super::*;
