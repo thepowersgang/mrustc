@@ -424,7 +424,12 @@ std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
             had_pat = true;
         }
         else {
-            conditions.push_back(AST::IfLet_Condition { std::unique_ptr<AST::Pattern>(), Parse_Expr3(lex) });
+            ExprNodeP val;
+            {
+                SET_PARSE_FLAG(lex, disallow_struct_literal);
+                val = Parse_Expr3(lex); // This is just after `||` and `&&`
+            }
+            conditions.push_back(AST::IfLet_Condition { std::unique_ptr<AST::Pattern>(), std::move(val) });
         }
     } while( lex.getTokenIf(TOK_DOUBLE_AMP) );
 
@@ -439,6 +444,7 @@ std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
                 prev = NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::BOOLAND, ::std::move(prev), ::std::move(conditions[i].value));
             }
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_PIPE);
+            SET_PARSE_FLAG(lex, disallow_struct_literal);
             auto n = Parse_Expr1_5(lex);    // Boolean or
             auto rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::BOOLOR, ::std::move(prev), ::std::move(n) );
 
