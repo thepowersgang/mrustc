@@ -4546,6 +4546,10 @@ bool TraitResolution::find_method(const Span& sp,
     // e.g. `len` `&Self` = `[T]`
     DEBUG("> Inherent methods");
     m_crate.m_inherent_method_cache.find(sp, method_name, ty, m_ivars.callback_resolve_infer(), [&](const HIR::TypeRef& self_ty, const HIR::TypeImpl& impl) {
+        if( !impl.m_methods.at(method_name).publicity.is_visible(this->m_vis_path) ) {
+            // Ignore method: Not visibile
+            return ;
+        }
         if( impl.matches_type(self_ty, m_ivars.callback_resolve_infer()) )
         {
             DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
