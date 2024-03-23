@@ -1050,6 +1050,7 @@ namespace
             case TOK_IDENT:
             case TOK_RWORD_SUPER:
             case TOK_RWORD_SELF:
+            case TOK_RWORD_CRATE:
             case TOK_DOUBLE_COLON:
             case TOK_INTERPOLATED_PATH:
                 consume_path(lex);
