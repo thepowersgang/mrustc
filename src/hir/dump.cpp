@@ -437,9 +437,16 @@ namespace {
                     m_os << " | " << arm.m_patterns[i];
                 }
 
-                if( arm.m_cond_val ) {
-                    m_os << " if let " << arm.m_cond_pat << " = ";
-                    this->visit_node_ptr(arm.m_cond_val);
+                if( arm.m_guards.size() > 0 )
+                {
+                    m_os << " if ";
+                    for(auto& c : arm.m_guards)
+                    {
+                        if( &c == &arm.m_guards.front() )
+                            m_os << " && ";
+                        m_os << "let " << c.pat << " = ";
+                        this->visit_node_ptr(c.val);
+                    }
                 }
                 m_os << " => ";
                 inc_indent();

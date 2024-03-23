@@ -245,14 +245,19 @@ struct ExprNode_Let:
 struct ExprNode_Match:
     public ExprNode
 {
+    struct Guard
+    {
+        /// Guard pattern, always set (but might be `true`/`false`)
+        ::HIR::Pattern  pat;
+        /// Guard value
+        ::HIR::ExprNodeP    val;
+    };
     struct Arm
     {
         // Patterns, must be non-empty
         ::std::vector< ::HIR::Pattern>  m_patterns;
-        // Pattern for the condition, only used if `m_cond_val` is non-null
-        ::HIR::Pattern    m_cond_pat;
-        // Value for condition, optional
-        ::HIR::ExprNodeP    m_cond_val;
+        // A chained (&&) list of guards
+        ::std::vector<Guard>    m_guards;
         // Match arm body, required
         ::HIR::ExprNodeP    m_code;
     };

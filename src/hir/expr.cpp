@@ -105,9 +105,9 @@ DEF_VISIT_H(ExprNode_Match, node) {
     {
         for(auto& pat : arm.m_patterns)
             visit_pattern(node.span(), pat);
-        if( arm.m_cond_val ) {
-            visit_pattern(node.span(), arm.m_cond_pat);
-            visit_node_ptr(arm.m_cond_val);
+        for(auto& c : arm.m_guards) {
+            visit_pattern(node.span(), c.pat);
+            visit_node_ptr(c.val);
         }
         visit_node_ptr(arm.m_code);
     }

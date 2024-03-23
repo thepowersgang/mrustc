@@ -903,13 +903,13 @@ namespace typecheck
                     this->context.handle_pattern(node.span(), pat, val_type);
                 }
 
-                if( arm.m_cond_val )
+                for(auto& c : arm.m_guards)
                 {
                     auto _ = this->push_inner_coerce_scoped(false);
-                    this->context.add_ivars( arm.m_cond_val->m_res_type );
-                    arm.m_cond_val->visit( *this );
+                    this->context.add_ivars( c.val->m_res_type );
+                    c.val->visit( *this );
 
-                    this->context.handle_pattern(node.span(), arm.m_cond_pat, arm.m_cond_val->m_res_type);
+                    this->context.handle_pattern(node.span(), c.pat, c.val->m_res_type);
                 }
 
                 this->context.add_ivars( arm.m_code->m_res_type );

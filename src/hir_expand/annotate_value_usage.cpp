@@ -319,9 +319,9 @@ namespace {
             {
                 for( const auto& pat : arm.m_patterns )
                     add_defs_from_pattern(node.span(), pat);
-                if( arm.m_cond_val ) {
-                    this->visit_node_ptr( arm.m_cond_val );
-                    add_defs_from_pattern(node.span(), arm.m_cond_pat);
+                for( auto& c : arm.m_guards) {
+                    this->visit_node_ptr( c.val );
+                    add_defs_from_pattern(node.span(), c.pat);
                 }
                 this->visit_node_ptr( arm.m_code );
             }

@@ -596,30 +596,22 @@ struct LowerHIR_ExprNode_Visitor:
 
         for(auto& arm : v.m_arms)
         {
-            HIR::Pattern cond_pat;
-            HIR::ExprNodeP  cond;
-            if( arm.m_guard.size() == 0 ) {
-            }
-            else if( arm.m_guard.size() == 1 ) {
-                auto& c = arm.m_guard[0];
-                if( c.opt_pat ) {
-                    cond_pat = LowerHIR_Pattern(*c.opt_pat);
-                }
-                else {
-                    cond_pat = HIR::Pattern { HIR::PatternBinding(), HIR::Pattern::Data::make_Value({ ::HIR::Pattern::Value::make_Integer({
+            ::std::vector< ::HIR::ExprNode_Match::Guard>    guards;
+            guards.reserve(arm.m_guard.size());
+            for(auto& c : arm.m_guard) {
+                auto cond_pat = c.opt_pat
+                    ? LowerHIR_Pattern(*c.opt_pat)
+                    : HIR::Pattern { HIR::PatternBinding(), HIR::Pattern::Data::make_Value({ ::HIR::Pattern::Value::make_Integer({
                         HIR::CoreType::Bool,
                         U128(1)
-                        }) }) };
-                }
-                cond = lower_opt(c.value);
-            }
-            else {
-                TODO(v.span(), "Multiple match guards - " << v);
+                        }) }) }
+                    ;
+                auto cond_val = lower_opt(c.value);
+                guards.push_back(::HIR::ExprNode_Match::Guard { std::move(cond_pat), std::move(cond_val) });
             }
             ::HIR::ExprNode_Match::Arm  new_arm {
                 {},
-                mv$(cond_pat),
-                mv$(cond),
+                mv$(guards),
                 lower(arm.m_code)
                 };
 

@@ -361,25 +361,25 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     );
 
             auto emit_condition = [&](MIR::BasicBlockId& cond_false, const std::vector<PatternBinding>& bindings) {
-                if( arm.m_cond_val )
+                for( auto& c : arm.m_guards )
                 {
-                    auto tmp_scope = builder.new_scope_temp(arm.m_cond_val->span());
+                    auto tmp_scope = builder.new_scope_temp(c.val->span());
 
-                    auto freeze_scope = builder.new_scope_freeze(arm.m_cond_val->span());
+                    auto freeze_scope = builder.new_scope_freeze(c.val->span());
                     TRACE_FUNCTION_FR("CONDITIONAL", "CONDITIONAL");
                     conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
 
                     // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
 
-                    conv.visit_node_ptr( arm.m_cond_val );
-                    MIR::LValue match_cond_val = builder.get_result_in_lvalue(arm.m_cond_val->span(), arm.m_cond_val->m_res_type);
+                    conv.visit_node_ptr( c.val );
+                    MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
                     builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
 
                     bool is_cond_bb_set = false;
                     auto destructure = builder.new_bb_unlinked();
 
                     auto pat_builder = PatternRulesetBuilder { builder.resolve() };
-                    pat_builder.append_from(node.span(), arm.m_cond_pat, arm.m_cond_val->m_res_type);
+                    pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);
 
                     for(auto& sr : pat_builder.m_rulesets)
                     {
@@ -393,9 +393,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                             is_cond_bb_set = true;
                             cond_false = builder.new_bb_unlinked();
 
-                            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_cond_val->span(), sr.m_rules.data(), sr.m_rules.size(),
-                                arm.m_cond_val->m_res_type, match_cond_val, 0, cond_false);
-                            conv.destructure_from_list(arm.m_code->span(), arm.m_cond_val->m_res_type, match_cond_val.clone(), sr.m_bindings);
+                            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, c.val->span(), sr.m_rules.data(), sr.m_rules.size(),
+                                c.val->m_res_type, match_cond_val, 0, cond_false);
+                            conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), sr.m_bindings);
                             builder.end_block(::MIR::Terminator::make_Goto(destructure));
                         }
                     }
@@ -457,7 +457,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         builder.terminate_scope( sp, mv$(pat_scope) );
 
         // Condition
-        if(arm.m_cond_val)
+        if(arm.m_guards.size() > 0)
         {
             ac.has_condition = true;
 
