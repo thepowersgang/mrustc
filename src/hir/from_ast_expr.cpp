@@ -598,20 +598,23 @@ struct LowerHIR_ExprNode_Visitor:
         {
             HIR::Pattern cond_pat;
             HIR::ExprNodeP  cond;
-            TU_MATCH_HDRA( (arm.m_cond), { )
-            TU_ARMA(None, e) {}
-            TU_ARMA(Expr, e) {
-                cond_pat = HIR::Pattern { HIR::PatternBinding(), HIR::Pattern::Data::make_Value({ ::HIR::Pattern::Value::make_Integer({
-                    HIR::CoreType::Bool,
-                    U128(1)
-                    }) }) };
-                cond = lower_opt(e);
+            if( arm.m_guard.size() == 0 ) {
+            }
+            else if( arm.m_guard.size() == 1 ) {
+                auto& c = arm.m_guard[0];
+                if( c.opt_pat ) {
+                    cond_pat = LowerHIR_Pattern(*c.opt_pat);
                 }
-            TU_ARMA(Pattern, iflet) {
-                ASSERT_BUG(v.span(), iflet.patterns.size() == 1, "TODO: Multiple patterns");
-                cond_pat = LowerHIR_Pattern(iflet.patterns[0]);
-                cond = lower(iflet.val);
+                else {
+                    cond_pat = HIR::Pattern { HIR::PatternBinding(), HIR::Pattern::Data::make_Value({ ::HIR::Pattern::Value::make_Integer({
+                        HIR::CoreType::Bool,
+                        U128(1)
+                        }) }) };
                 }
+                cond = lower_opt(c.value);
+            }
+            else {
+                TODO(v.span(), "Multiple match guards - " << v);
             }
             ::HIR::ExprNode_Match::Arm  new_arm {
                 {},
@@ -619,7 +622,7 @@ struct LowerHIR_ExprNode_Visitor:
                 mv$(cond),
                 lower(arm.m_code)
                 };
-            
+
             for(const auto& pat : arm.m_patterns)
                 new_arm.m_patterns.push_back( LowerHIR_Pattern(pat) );
 

@@ -319,24 +319,23 @@ NODE(ExprNode_Loop, {
 },{
     return NEWNODE(ExprNode_Loop, m_type, m_label, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
 })
-NODE(ExprNode_WhileLet, {
-    if(m_label != "") {
-        os << "'" << m_label << ": ";
-    }
-    os << "while let ";
-    for(size_t i = 0; i < m_conditions.size(); i ++) {
-        if( i != 0 ) {
-            os << " && ";
+
+namespace {
+    void fmt_iflet_conditions(::std::ostream& os, const ::std::vector<AST::IfLet_Condition>& conditions) {
+        for(const auto& cond : conditions) {
+            if( &cond != &conditions.front() ) {
+                os << " && ";
+            }
+            if( cond.opt_pat ) {
+                os << *cond.opt_pat << " = ";
+            }
+            os << "(" << *cond.value << ")";
         }
-        if( m_conditions[i].opt_pat ) {
-            os << *m_conditions[i].opt_pat << " = ";
-        }
-        os << "(" << *m_conditions[i].value << ")";
     }
-    os << " { " << *m_code << " }";
-    },{
-        decltype(m_conditions)    new_conds;
-        for(const auto& cond : m_conditions) {
+    ::std::vector<AST::IfLet_Condition> clone_iflet_conditions(const ::std::vector<AST::IfLet_Condition>& conditions) {
+        ::std::vector<AST::IfLet_Condition> new_conds;
+        new_conds.reserve( conditions.size() );
+        for(const auto& cond : conditions) {
             AST::IfLet_Condition   new_cond;
             if( cond.opt_pat ) {
                 new_cond.opt_pat = std::make_unique<AST::Pattern>( cond.opt_pat->clone() );
@@ -344,44 +343,32 @@ NODE(ExprNode_WhileLet, {
             new_cond.value = cond.value->clone();
             new_conds.push_back(std::move(new_cond));
         }
+        return new_conds;
+    }
+}
+
+NODE(ExprNode_WhileLet, {
+    if(m_label != "") {
+        os << "'" << m_label << ": ";
+    }
+    os << "while let ";
+    fmt_iflet_conditions(os, m_conditions);
+    os << " { " << *m_code << " }";
+    },{
+        auto new_conds = clone_iflet_conditions(m_conditions);
         return NEWNODE(ExprNode_WhileLet, m_label, mv$(new_conds), m_code->clone());
     })
 
-MatchGuard MatchGuard::clone() const
-{
-    TU_MATCH_HDRA( (*this), {)
-    TU_ARMA(None, _e)   return MatchGuard();
-    TU_ARMA(Expr, e)    return MatchGuard(e->clone());
-    TU_ARMA(Pattern, e) {
-        Data_Pattern inner;
-        inner.val = e.val->clone();
-        inner.patterns.reserve(e.patterns.size());
-        for(const auto& pat : e.patterns) {
-            inner.patterns.push_back(pat.clone());
-        }
-        return MatchGuard(mv$(inner));
-        }
-    }
-    throw "";
-}
 NODE(ExprNode_Match, {
     os << "match ("<<*m_val<<") {";
     for(const auto& arm : m_arms)
     {
         for( const auto& pat : arm.m_patterns )
             os << " " << pat;
-        TU_MATCH_HDRA( (arm.m_cond), {)
-        TU_ARMA(None, _e)   {}
-        TU_ARMA(Expr, e) {
-            os << " if " << *e;
-            }
-        TU_ARMA(Pattern, e) {
-            os << " if let " ;
-            for(const auto& pat : e.patterns) {
-                os << "|" << pat;
-            }
-            os << " = " << *e.val;
-            }
+        if( arm.m_guard.size() > 0 )
+        {
+            os << " if ";
+            fmt_iflet_conditions(os, arm.m_guard);
         }
 
         os << " => " << *arm.m_code << ",";
@@ -394,7 +381,7 @@ NODE(ExprNode_Match, {
         for( const auto& pat : arm.m_patterns ) {
             patterns.push_back( pat.clone() );
         }
-        arms.push_back( ExprNode_Match_Arm( mv$(patterns), arm.m_cond.clone(), arm.m_code->clone() ) );
+        arms.push_back( ExprNode_Match_Arm( mv$(patterns), clone_iflet_conditions(arm.m_guard), arm.m_code->clone() ) );
         arms.back().m_attrs = arm.m_attrs.clone();
     }
     return NEWNODE(ExprNode_Match, m_val->clone(), mv$(arms));
@@ -409,27 +396,11 @@ NODE(ExprNode_If, {
 })
 NODE(ExprNode_IfLet, {
     os << "if let ";
-    for(size_t i = 0; i < m_conditions.size(); i ++) {
-        if( i != 0 ) {
-            os << " && ";
-        }
-        if( m_conditions[i].opt_pat ) {
-            os << *m_conditions[i].opt_pat << " = ";
-        }
-        os << "(" << *m_conditions[i].value << ")";
-    }
+    fmt_iflet_conditions(os, m_conditions);
     os << " { " << *m_true << " }";
     if(m_false) os << " else { " << *m_false << " }";
 },{
-    decltype(m_conditions)    new_conds;
-    for(const auto& cond : m_conditions) {
-        AST::IfLet_Condition   new_cond;
-        if( cond.opt_pat ) {
-            new_cond.opt_pat = std::make_unique<AST::Pattern>( cond.opt_pat->clone() );
-        }
-        new_cond.value = cond.value->clone();
-        new_conds.push_back(std::move(new_cond));
-    }
+    auto new_conds = clone_iflet_conditions(m_conditions);
     return NEWNODE(ExprNode_IfLet, mv$(new_conds), m_true->clone(), OPT_CLONE(m_false));
 })
 
@@ -774,10 +745,8 @@ NV(ExprNode_Match,
     visit(node.m_val);
     for( auto& arm : node.m_arms )
     {
-        TU_MATCH_HDRA( (arm.m_cond), { )
-        TU_ARMA(None, e) {}
-        TU_ARMA(Expr, e) visit(e);
-        TU_ARMA(Pattern, e) {}
+        for(auto& c : arm.m_guard) {
+            visit(c.value);
         }
         visit(arm.m_code);
     }

@@ -429,7 +429,17 @@ std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
                 SET_PARSE_FLAG(lex, disallow_struct_literal);
                 val = Parse_Expr3(lex); // This is just after `||` and `&&`
             }
-            conditions.push_back(AST::IfLet_Condition { std::unique_ptr<AST::Pattern>(), std::move(val) });
+
+            // Chain boolean expressions to simplify downstream representation
+            if( conditions.size() > 0 && !conditions.back().opt_pat ) {
+                conditions.back().value = NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::BOOLAND,
+                    ::std::move( conditions.back().value ),
+                    ::std::move( val )
+                    );
+            }
+            else {
+                conditions.push_back(AST::IfLet_Condition { std::unique_ptr<AST::Pattern>(), std::move(val) });
+            }
         }
     } while( lex.getTokenIf(TOK_DOUBLE_AMP) );
 
@@ -576,22 +586,7 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
 
         if( tok.type() == TOK_RWORD_IF )
         {
-            // TODO: Needs chains
-            if( lex.lookahead(0) == TOK_RWORD_LET ) {
-                lex.getToken();
-                ::std::vector<AST::Pattern> guard_patterns;
-                guard_patterns.reserve(1);
-                guard_patterns.push_back(Parse_Pattern(lex));
-                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-                auto val = Parse_Expr1(lex);
-                arm.m_cond = AST::MatchGuard::Data_Pattern {
-                    std::move(val),
-                    std::move(guard_patterns)
-                };
-            }
-            else {
-                arm.m_cond = Parse_Expr1(lex);
-            }
+            arm.m_guard = Parse_IfLetChain(lex);
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_FATARROW);

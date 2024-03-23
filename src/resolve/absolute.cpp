@@ -2244,20 +2244,14 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
                     this->context.end_patbind_arm(pat.span());
                 }
                 this->context.end_patbind();
-                
-                TU_MATCH_HDRA( (arm.m_cond), { )
-                TU_ARMA(None, e) {}
-                TU_ARMA(Expr, e) {
-                    e->visit(*this);
+
+                for(auto& cond : arm.m_guard) {
+                    if( cond.opt_pat ) {
+                        this->context.start_patbind();
+                        Resolve_Absolute_Pattern(this->context, true,  *cond.opt_pat);
+                        this->context.end_patbind();
                     }
-                TU_ARMA(Pattern, iflet) {
-                    this->context.start_patbind();
-                    for(auto& pat : iflet.patterns ) {
-                        Resolve_Absolute_Pattern(this->context, true,  pat);
-                    }
-                    this->context.end_patbind();
-                    iflet.val->visit(*this);
-                    }
+                    cond.value->visit(*this);
                 }
                 assert( arm.m_code );
                 arm.m_code->visit( *this );

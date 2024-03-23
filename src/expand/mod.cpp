@@ -1087,13 +1087,13 @@ struct CExpandExpr:
             // - `Some(pattern ) => code`
             arms.push_back( ::AST::ExprNode_Match_Arm(
                 ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Some, ::make_vec1( mv$(node.m_pattern) ) ) ),
-                AST::MatchGuard(),
+                {},
                 mv$(node.m_code)
                 ) );
             // - `None => break label`
             arms.push_back( ::AST::ExprNode_Match_Arm(
                 ::make_vec1( ::AST::Pattern(::AST::Pattern::TagValue(), node.span(), ::AST::Pattern::Value::make_Named(path_None)) ),
-                AST::MatchGuard(),
+                {},
                 ::AST::ExprNodeP(new ::AST::ExprNode_Flow(::AST::ExprNode_Flow::BREAK, node.m_label, nullptr))
                 ) );
 
@@ -1104,7 +1104,7 @@ struct CExpandExpr:
                     )),
                 ::make_vec1(::AST::ExprNode_Match_Arm(
                     ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "it") ),
-                    AST::MatchGuard(),
+                    {},
                     ::AST::ExprNodeP(new ::AST::ExprNode_Loop(
                         node.m_label,
                         ::AST::ExprNodeP(new ::AST::ExprNode_Match(
@@ -1136,13 +1136,13 @@ struct CExpandExpr:
                 // - `pattern => body`
                 arms.push_back( ::AST::ExprNode_Match_Arm(
                     ::make_vec1( std::move(*cond.opt_pat) ),
-                    AST::MatchGuard(),
+                    {},
                     std::move(true_block)
                 ) );
                 // - `_ => break,`
                 arms.push_back( ::AST::ExprNode_Match_Arm(
                     ::make_vec1( ::AST::Pattern() ),
-                    AST::MatchGuard(),
+                    {},
                     std::move(node_nomatch)
                 ) );
                 true_block.reset(new ::AST::ExprNode_Match( std::move(cond.value), std::move(arms) ));
@@ -1194,17 +1194,11 @@ struct CExpandExpr:
             for(auto& pat : arm.m_patterns) {
                 Expand_Pattern(this->expand_state, this->cur_mod(),  pat, true);
             }
-            TU_MATCH_HDRA( (arm.m_cond), { )
-            TU_ARMA(None, e) {}
-            TU_ARMA(Expr, e) {
-                this->visit_nodelete(node, e);
+            for(auto& cond : arm.m_guard) {
+                if( cond.opt_pat ) {
+                    Expand_Pattern(this->expand_state, this->cur_mod(),  *cond.opt_pat, true);
                 }
-            TU_ARMA(Pattern, e) {
-                for(auto& pat : e.patterns) {
-                    Expand_Pattern(this->expand_state, this->cur_mod(),  pat, true);
-                }
-                this->visit_nodelete(node, e.val);
-                }
+                this->visit_nodelete(node, cond.value);
             }
 
             this->visit_nodelete(node, arm.m_code);
@@ -1458,13 +1452,13 @@ struct CExpandExpr:
                 // `Ok(v) => v,`
                 arms.push_back(::AST::ExprNode_Match_Arm(
                     ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "v") )) ),
-                    AST::MatchGuard(),
+                    {},
                     ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path("v") ) )
                     ));
                 // `Err(e) => return Try::from_error(From::from(e)),`
                 arms.push_back(::AST::ExprNode_Match_Arm(
                     ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "e") )) ),
-                    AST::MatchGuard(),
+                    {},
                     ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
                         (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of return if in a try block.
                         (m_try_stack.empty() ? RcString("") : m_try_stack.back()),
@@ -1500,13 +1494,13 @@ struct CExpandExpr:
                 // `Continue(v) => v,`
                 arms.push_back(::AST::ExprNode_Match_Arm(
                     ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_ControlFlow_Continue, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "v") )) ),
-                    AST::MatchGuard(),
+                    {},
                     ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path("v") ) )
                     ));
                 // `Break(r) => return R::from_residual(r),`
                 arms.push_back(::AST::ExprNode_Match_Arm(
                     ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_ControlFlow_Break, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "e") )) ),
-                    AST::MatchGuard(),
+                    {},
                     ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
                         (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of return if in a try block.
                         (m_try_stack.empty() ? RcString("") : m_try_stack.back()),

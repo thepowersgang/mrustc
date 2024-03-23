@@ -353,31 +353,20 @@ struct ExprNode_WhileLet:
     NODE_METHODS();
 };
 
-TAGGED_UNION_EX(MatchGuard, (), None, (
-    (None, struct{}),
-    (Expr, ExprNodeP),
-    (Pattern, struct {
-        ExprNodeP   val;
-        ::std::vector<Pattern> patterns;
-        })
-    ), (), (), (
-    MatchGuard clone() const;
-)
-);
 struct ExprNode_Match_Arm
 {
     AttributeList   m_attrs;
     ::std::vector<Pattern>  m_patterns;
-    MatchGuard   m_cond;
+    std::vector<IfLet_Condition> m_guard;
 
     ExprNodeP    m_code;
 
 
     ExprNode_Match_Arm()
     {}
-    ExprNode_Match_Arm(::std::vector<Pattern> patterns, MatchGuard cond, ExprNodeP code):
+    ExprNode_Match_Arm(::std::vector<Pattern> patterns, std::vector<IfLet_Condition> guard, ExprNodeP code):
         m_patterns( mv$(patterns) ),
-        m_cond( mv$(cond) ),
+        m_guard( mv$(guard) ),
         m_code( mv$(code) )
     {}
 };
