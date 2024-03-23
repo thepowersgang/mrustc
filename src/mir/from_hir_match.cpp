@@ -361,56 +361,70 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     );
 
             auto emit_condition = [&](MIR::BasicBlockId& cond_false, const std::vector<PatternBinding>& bindings) {
-                for( auto& c : arm.m_guards )
+                if( !arm.m_guards.empty() )
                 {
-                    auto tmp_scope = builder.new_scope_temp(c.val->span());
-
-                    auto freeze_scope = builder.new_scope_freeze(c.val->span());
                     TRACE_FUNCTION_FR("CONDITIONAL", "CONDITIONAL");
+
+                    const Span& top_span = arm.m_guards.front().val->span();
+
+                    // Set up a scope that doesn't allow modification of variable states outside it
+                    auto freeze_scope = builder.new_scope_freeze(top_span);
                     conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
 
-                    // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
-
-                    conv.visit_node_ptr( c.val );
-                    MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
-                    builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
+                    // A scope for temporary variables defined within these expressions
+                    auto tmp_scope = builder.new_scope_temp(top_span);
 
                     bool is_cond_bb_set = false;
-                    auto destructure = builder.new_bb_unlinked();
 
-                    auto pat_builder = PatternRulesetBuilder { builder.resolve() };
-                    pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);
-
-                    for(auto& sr : pat_builder.m_rulesets)
+                    for( auto& c : arm.m_guards )
                     {
-                        if( sr.m_is_impossible ) {
-                        }
-                        else {
-                            // If `cond_false` is set, then activate it and create a new one
-                            if(is_cond_bb_set) {
-                                builder.set_cur_block(cond_false);
+                        // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
+
+                        conv.visit_node_ptr( c.val );
+                        MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
+
+                        auto destructure = builder.new_bb_unlinked();
+
+                        auto pat_builder = PatternRulesetBuilder { builder.resolve() };
+                        pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);
+
+                        for(auto& sr : pat_builder.m_rulesets)
+                        {
+                            if( sr.m_is_impossible ) {
                             }
-                            is_cond_bb_set = true;
-                            cond_false = builder.new_bb_unlinked();
+                            else {
+                                if( &c == &arm.m_guards.front() ) {
+                                    // If `cond_false` is set, then activate it and create a new one
+                                    if(is_cond_bb_set) {
+                                        builder.set_cur_block(cond_false);
+                                    }
+                                    is_cond_bb_set = true;
+                                    cond_false = builder.new_bb_unlinked();
+                                }
+                                else {
+                                    // already in the previous loop's `destructure`
+                                }
 
-                            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, c.val->span(), sr.m_rules.data(), sr.m_rules.size(),
-                                c.val->m_res_type, match_cond_val, 0, cond_false);
-                            conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), sr.m_bindings);
-                            builder.end_block(::MIR::Terminator::make_Goto(destructure));
+                                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, c.val->span(), sr.m_rules.data(), sr.m_rules.size(),
+                                    c.val->m_res_type, match_cond_val, 0, cond_false);
+                                conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), sr.m_bindings);
+                                builder.end_block(::MIR::Terminator::make_Goto(destructure));
+                            }
                         }
-                    }
-                    if(!is_cond_bb_set) {
+                        if(!is_cond_bb_set) {
+                            cond_false = builder.new_bb_unlinked();
+                            // No patterns as output, so `false` is unreachable?
+                        }
+
+                        builder.set_cur_block(cond_false);
                         cond_false = builder.new_bb_unlinked();
-                        // No patterns as output, so `false` is unreachable?
+                        builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
+                        builder.end_block(::MIR::Terminator::make_Goto(cond_false));
+
+                        builder.set_cur_block(destructure);
                     }
-
-                    builder.set_cur_block(cond_false);
-                    cond_false = builder.new_bb_unlinked();
-                    builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
-                    builder.end_block(::MIR::Terminator::make_Goto(cond_false));
-
-                    builder.set_cur_block(destructure);
                     builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
+                    builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
                 }
 
                 conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);

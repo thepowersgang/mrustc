@@ -320,6 +320,7 @@ namespace {
                 for( const auto& pat : arm.m_patterns )
                     add_defs_from_pattern(node.span(), pat);
                 for( auto& c : arm.m_guards) {
+                    auto _ = this->push_usage( this->get_usage_for_pattern(c.val->span(), c.pat, c.val->m_res_type) );
                     this->visit_node_ptr( c.val );
                     add_defs_from_pattern(node.span(), c.pat);
                 }
