@@ -4159,6 +4159,7 @@ namespace {
             while( (out_ty_p = context.m_resolve.autoderef(sp, *out_ty_p, tmp_ty)) )
             {
                 const auto& out_ty = context.m_ivars.get_type(*out_ty_p);
+                DEBUG("From? " << out_ty);
                 count += 1;
 
                 if( const auto* sep = out_ty.data().opt_Infer() )
@@ -4189,6 +4190,12 @@ namespace {
                         return CoerceResult::Unknown;
                     }
                     // Literal infer, keep going (but remember how many times we dereferenced?)
+                }
+
+                if( TU_TEST1(out_ty.data(), Generic, .is_placeholder()) )
+                {
+                    DEBUG("Src derefed to a placeholder generic type (" << out_ty << "), return Unknown");
+                    return CoerceResult::Unknown;
                 }
 
                 if( TU_TEST1(out_ty.data(), Path, .binding.is_Unbound()) )

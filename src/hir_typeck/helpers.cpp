@@ -4252,7 +4252,10 @@ const ::HIR::TypeRef* TraitResolution::type_is_owned_box(const Span& sp, const :
 const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::TypeRef& ty_in,  ::HIR::TypeRef& tmp_type) const
 {
     const auto& ty = this->m_ivars.get_type(ty_in);
-    if(const auto* e = ty.data().opt_Borrow()) {
+    if( ty.data().is_Infer() ) {
+        return nullptr;
+    }
+    else if(const auto* e = ty.data().opt_Borrow()) {
         DEBUG("Deref " << ty << " into " << e->inner);
         return &this->m_ivars.get_type(e->inner);
     }
