@@ -92,41 +92,12 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 TODO(bound.span, "Handle two layers of HRBs in a bound");
             }
 
-#if 0
-            // If there are outer HRBs, see if they can be converted to HRBs on the trait only.
-            if( !e.outer_hrbs.empty() ) {
-                // TODO: Check if there's a HRL mentioned in `type`
-                DEBUG("Checking that there are no HRLs in: " << type << " for " << bound);
-
-                // HACK: Run a monomorph as a visitor
-                struct M: public MonomorphiserNop {
-                    mutable bool found_hrl;
-                    HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& ref) const override {
-                        if( ref.is_hrl() ) {
-                            found_hrl = true;
-                        }
-                        return MonomorphiserNop::monomorph_lifetime(sp, ref);
-                    }
-                    M(): found_hrl(false) {}
-                } m;
-                m.monomorph_type(bound.span, type);
-                ASSERT_BUG(bound.span, !m.found_hrl, "TODO: Handle outer HRL used in type - " << type);
-
-                if( !e.inner_hrbs.empty() ) {
-                    TODO(bound.span, "Handle two layers of HRBs in a bound");
-                }
-                // The HRBs will be handled below
-            }
-#endif
-
-            static const AST::HigherRankedBounds empty_hrbs;
-            const auto& outer_hrbs = e.inner_hrbs.empty() ? empty_hrbs : e.outer_hrbs;
-            auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, e.inner_hrbs.empty() ? e.outer_hrbs : e.inner_hrbs, /*allow_bounds=*/true);
+            auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, e.inner_hrbs, /*allow_bounds=*/true);
             auto tp_bounds = mv$(bound_trait_path.m_trait_bounds);
             bound_trait_path.m_trait_bounds.clear();
 
             rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                box$(LowerHIR_HigherRankedBounds(outer_hrbs)),
+                box$(LowerHIR_HigherRankedBounds(e.outer_hrbs)),
                 type.clone(),
                 mv$(bound_trait_path)
                 }));
@@ -138,7 +109,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 for(auto& trait : bound.second.traits)
                 {
                     rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                        box$(LowerHIR_HigherRankedBounds(outer_hrbs)),
+                        box$(LowerHIR_HigherRankedBounds(e.outer_hrbs)),
                         ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), src_trait.clone(), name), {} ),
                         std::move(trait)
                         }));

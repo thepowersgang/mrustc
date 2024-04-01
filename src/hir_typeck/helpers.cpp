@@ -414,7 +414,7 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
 void HMTypeInferrence::print_genericpath(::std::ostream& os, const ::HIR::GenericPath& gp, LList<const ::HIR::TypeRef*> stack) const
 {
     if(gp.m_hrls && !gp.m_hrls->is_empty()) {
-        os << gp.m_hrls->fmt_args();
+        os << "for" << gp.m_hrls->fmt_args() << " ";
     }
     os << gp.m_path;
     this->print_pathparams(os, gp.m_params, stack);
@@ -797,6 +797,9 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
             }
 
             ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
+                if( tpl.is_param() ) {
+                    return Monomorphiser::monomorph_lifetime(sp, tpl);
+                }
                 return HIR::LifetimeRef();
             }
 

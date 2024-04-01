@@ -767,6 +767,7 @@ namespace {
                         break;
                     }
                 }
+                ASSERT_BUG(sp, ge.group() < 2, "Unexpected HRL/placeholder - " << ge);
                 if(rv == SIZE_MAX)
                 {
                     ASSERT_BUG(sp, !m_frozen, "get_lifetime would add a new param after freeze - " << ge);
@@ -968,8 +969,11 @@ namespace {
                         });
                 TU_ARMA(TypeLifetime, e)
                     return ::HIR::GenericBound::make_TypeLifetime({ this->monomorph_type(sp, e.type), this->monomorph_lifetime(sp, e.valid_for) });
-                TU_ARMA(TraitBound, e)
+                TU_ARMA(TraitBound, e) {
+                    const static HIR::GenericParams null_hrtbs;
+                    auto _ = this->push_hrb(e.hrtbs ? *e.hrtbs : null_hrtbs);
                     return ::HIR::GenericBound::make_TraitBound  ({ (e.hrtbs ? box$(e.hrtbs->clone()) : nullptr), this->monomorph_type(sp, e.type), this->monomorph_traitpath(sp, e.trait, false) });
+                    }
                 TU_ARMA(TypeEquality, e)
                     return ::HIR::GenericBound::make_TypeEquality({ this->monomorph_type(sp, e.type), this->monomorph_type(sp, e.other_type) });
                 }

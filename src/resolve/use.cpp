@@ -77,7 +77,7 @@ void Resolve_Use(::AST::Crate& crate)
             }
             else
             {
-                DEBUG("No implict crate " << name);
+                DEBUG("No implicit crate " << name);
             }
         }
 

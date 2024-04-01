@@ -9,6 +9,10 @@
 #include <hir/type.hpp>
 #include <algorithm>
 
+namespace {
+    bool g_compare_hrls = false;
+}
+
 ::HIR::SimplePath HIR::SimplePath::operator+(const RcString& s) const
 {
     ::HIR::SimplePath ret(m_crate_name);
@@ -181,10 +185,13 @@ Ordering HIR::GenericPath::ord(const HIR::GenericPath& x) const
         return OrdEqual;
 
     // NOTE: An empty set is treated as the same as none
-    ORD(m_hrls.get() && !m_hrls->is_empty(), x.m_hrls.get() && !x.m_hrls->is_empty());
-    if( m_hrls && x.m_hrls ) {
-        ORD(m_hrls->m_lifetimes.size(), x.m_hrls->m_lifetimes.size());
-        ORD(m_hrls->m_bounds, x.m_hrls->m_bounds);
+    if( g_compare_hrls )
+    {
+        ORD(m_hrls.get() && !m_hrls->is_empty(), x.m_hrls.get() && !x.m_hrls->is_empty());
+        if( m_hrls && x.m_hrls ) {
+            ORD(m_hrls->m_lifetimes.size(), x.m_hrls->m_lifetimes.size());
+            ORD(m_hrls->m_bounds, x.m_hrls->m_bounds);
+        }
     }
     return OrdEqual;
 }
@@ -316,6 +323,9 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
                 return Compare::Fuzzy;
             }
             if( val_t != val_x ) {
+                if( val_t.is_Unevaluated() || val_x.is_Unevaluated() ) {
+                    return Compare::Fuzzy;
+                }
                 return Compare::Unequal;
             }
         }
@@ -345,6 +355,19 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
 ::HIR::Compare HIR::GenericPath::compare_with_placeholders(const Span& sp, const ::HIR::GenericPath& x, ::HIR::t_cb_resolve_type resolve_placeholder) const
 {
     using ::HIR::Compare;
+
+#if 1
+    if( g_compare_hrls )
+    {
+        if( (this->m_hrls && !this->m_hrls->is_empty()) != (x.m_hrls && !x.m_hrls->is_empty()) )
+            return Compare::Unequal;
+        if( this->m_hrls && x.m_hrls )
+        {
+            if( this->m_hrls->m_lifetimes.size() != x.m_hrls->m_lifetimes.size() )
+                return Compare::Unequal;
+        }
+    }
+#endif
 
     if( this->m_path.m_crate_name != x.m_path.m_crate_name )
         return Compare::Unequal;

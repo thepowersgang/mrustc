@@ -124,7 +124,7 @@ struct TraitResolveCommon
 
 private:
     void prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
-    void prep_indexes__add_trait_bound(const Span& sp, ::HIR::TypeRef type, ::HIR::TraitPath trait_path, bool add_parents=true);
+    void prep_indexes__add_trait_bound(const Span& sp, const ::HIR::GenericParams* hrtbs, ::HIR::TypeRef type, ::HIR::TraitPath trait_path, bool add_parents=true);
 
 
     /// Iterate over in-scope bounds (function then type)

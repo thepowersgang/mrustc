@@ -141,7 +141,7 @@ namespace typecheck
     void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeRef& self_ty, bool use_defaults, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
         fix_param_count_(sp, context, self_ty, use_defaults, path, param_defs, params);
     }
-    
+
     void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, const Monomorphiser& ms, bool is_impl_level)
     {
         TRACE_FUNCTION;
@@ -153,12 +153,19 @@ namespace typecheck
             TU_ARMA(TypeLifetime, be) {
                 }
             TU_ARMA(TraitBound, be) {
-                DEBUG("Bound " << be.type << ":  " << be.trait);
+                static const HIR::GenericParams empty_hrtb;
+                const auto& outer_hrtb = be.hrtbs ? *be.hrtbs : empty_hrtb;
+                DEBUG("Bound for" << outer_hrtb.fmt_args() << " " << be.type << ":  " << be.trait);
+                ASSERT_BUG(sp, int(!outer_hrtb.is_empty()) + int(!(be.trait.m_path.m_hrls ? *be.trait.m_path.m_hrls : empty_hrtb).is_empty()) < 2,
+                    "Unexpected nested HRTBs: for" << outer_hrtb.fmt_args() << " " << be.type << ":  " << be.trait);
+
+                auto _ = ms.push_hrb(outer_hrtb);
                 auto real_type = ms.monomorph_type(sp, be.type);
                 auto real_trait = ms.monomorph_traitpath(sp, be.trait, false);
-                // TODO: Replace any HRLs with unbound/empty lifetimes
                 DEBUG("= (" << real_type << ": " << real_trait << ")");
-                auto pp_hrl = real_trait.m_path.m_hrls ? real_trait.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
+                // Replace any HRLs with unbound/empty lifetimes
+                auto pp_hrl = (real_trait.m_path.m_hrls && !real_trait.m_path.m_hrls->is_empty()) ? real_trait.m_path.m_hrls->make_empty_params(true) : outer_hrtb.make_empty_params(true);
+                DEBUG("outer_hrb = " << outer_hrtb.fmt_args() << ", pp_hrl = " << pp_hrl);
                 auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
                 const auto& trait_path = real_trait.m_path.m_path;
                 const auto& trait_params = real_trait.m_path.m_params;
