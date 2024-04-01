@@ -83,6 +83,7 @@
 - new `Cargo.toml` keys
 - `Cargo.toml` can pull `edition` from the workspace (`cargo`'s `Cargo.toml`)
 - Cargo features prefixed with `dep:`
+  - Possible quirk with `zerovec v0.9.4` - uses `dep:` but also relies on old behaviour
 - `proc_macro::is_available`
 - `FromStr` impls for `proc_macro::Literal` etc
 - `pub use bool;` - Stabilised in 1.43, but wasn't needed until now

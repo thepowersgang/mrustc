@@ -598,7 +598,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             {
                 list->push_back( sv.as_string() );
                 if( list->back().compare(0, 4, "dep:") == 0 ) {
-                    rv.m_enable_implicit_optional_dep_features = false;
+                    //rv.m_enable_implicit_optional_dep_features = false;
                 }
             }
         }
