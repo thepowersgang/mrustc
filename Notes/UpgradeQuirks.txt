@@ -100,3 +100,4 @@
   - See https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html
 - Attributes on expressions (e.g. on a closure after the `&mut`)
 - chained if-let in match guards
+- Proc macro items want to see `#[repr]` too (TODO: Formally, what attributes do derive macros see?)

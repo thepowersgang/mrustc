@@ -331,6 +331,8 @@ public:
     }
 
     bool attr_is_used(const RcString& n) const {
+        if( n == "repr" )
+            return true;
         return ::std::find(m_proc_macro_desc.attributes.begin(), m_proc_macro_desc.attributes.end(), n) != m_proc_macro_desc.attributes.end();
     }
 
