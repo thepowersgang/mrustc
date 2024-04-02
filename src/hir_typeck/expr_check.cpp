@@ -829,11 +829,13 @@ namespace {
                 TU_ARMA(TypeLifetime, be) {
                     }
                 TU_ARMA(TraitBound, be) {
+                    HIR::GenericParams  empty_hrtb;
+                    auto _ = cache.m_monomorph->push_hrb(be.hrtbs ? *be.hrtbs : empty_hrtb);
+                    DEBUG("Bound " << be.type << ":  " << be.trait);
                     auto real_type = cache.m_monomorph->monomorph_type(sp, be.type);
                     m_resolve.expand_associated_types(sp, real_type);
                     auto real_trait = cache.m_monomorph->monomorph_traitpath(sp, be.trait, false);
                     m_resolve.expand_associated_types_tp(sp, real_trait);
-                    DEBUG("Bound " << be.type << ":  " << be.trait);
                     DEBUG("= (" << real_type << ": " << real_trait << ")");
                     const auto& trait_params = real_trait.m_path.m_params;
 
