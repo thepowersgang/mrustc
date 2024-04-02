@@ -243,10 +243,10 @@ void MirBuilder::define_variable(unsigned int idx)
     {
         return mv$(*e);
     }
-    else if( auto* e = rv.opt_Use() )
-    {
-        return mv$(*e);
-    }
+    //else if( auto* e = rv.opt_Use() )
+    //{
+    //    return mv$(*e);
+    //}
     else
     {
         auto temp = new_temporary(ty);
