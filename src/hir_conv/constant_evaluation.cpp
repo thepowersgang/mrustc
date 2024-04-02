@@ -2572,6 +2572,34 @@ namespace HIR {
                     }
                     dst.write_uint(state, ti.bits, rv);
                 }
+                else if( te->name == "rotate_left" || te->name == "rotate_right" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Primitive(), te->name << " with non-primitive " << ty);
+                    auto ti = TypeInfo::for_type(ty);
+
+                    auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
+                    auto count = local_state.read_param_uint(ti.bits, e.args.at(1));
+                    MIR_ASSERT(state, count <= ti.bits, "Excessive rotation");
+                    unsigned count_i = count.truncate_u64();
+
+                    U128    rv;
+                    if( count_i == 0 || ti.bits == 64 ) {
+                        rv = val;
+                    }
+                    else if( te->name == "rotate_left" ) {
+                        // NOTE: `read_param_uint` has zeroes in the high bits, so anything above `ti.bits` should be zero
+                        auto a = val << count_i;
+                        auto b = val >> (ti.bits - count_i);
+                        rv = a | b;
+                    }
+                    else {
+                        auto a = val >> count_i;
+                        auto b = val << (ti.bits - count_i);
+                        rv = a | b;
+                    }
+                    // Writing back will truncate away the higher bits
+                    dst.write_uint(state, ti.bits, rv);
+                }
                 // ---
                 else if( te->name == "add_with_overflow" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
@@ -2604,6 +2632,11 @@ namespace HIR {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1));
+                }
+                else if( te->name == "wrapping_mul" ||  te->name == "unchecked_mul" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
+                    do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::MUL, e.args.at(1));
                 }
                 else if( te->name == "unchecked_shl" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
