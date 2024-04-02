@@ -677,9 +677,11 @@ namespace static_borrow_constants {
             DEBUG("Impl: " << m_resolve.impl_generics().fmt_args());
             DEBUG("Item: " << m_resolve.item_generics().fmt_args());
             // - 0xFFFF "Self" -> 0 "Super" (if present)
-            if( m_resolve.has_self() )
+            // NOTE: Check `has_self` (which just checskf or impl params) and `m_self_type` (the actual self type)
+            // - Needed for some constant evalulated values
+            if( m_resolve.has_self() && m_self_type )
             {
-                assert( m_self_type );
+                ASSERT_BUG(sp, m_self_type, "Missing self type (disagreement between m_resolve and ExprVisitor_Mutate)");
                 constructor_path_params.m_types.push_back( m_self_type->clone() );
                 params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
             }
@@ -1258,6 +1260,12 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
         if( const auto* e = p.m_data.opt_UfcsKnown() ) {
             self_type = &e->type;
         }
+    }
+    if( self_type ) {
+        DEBUG("self_type = " << *self_type);
+    }
+    else {
+        DEBUG("self_type = NONE");
     }
 
     static_borrow_constants::ExprVisitor_Mutate  ev(resolve, self_type, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr, HIR::GenericParams generics, bool is_const)->HIR::SimplePath {
