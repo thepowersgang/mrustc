@@ -231,6 +231,50 @@ namespace
             }
         }
 
+        void visit_generic_path(::HIR::GenericPath& p, ::HIR::Visitor::PathContext pc) override
+        {
+            const static Span   sp;
+            // Get the type definition and fill in omitted lifetimes
+            const HIR::GenericParams* gp = nullptr;
+            switch(pc)
+            {
+            case HIR::Visitor::PathContext::TYPE:
+            case HIR::Visitor::PathContext::TRAIT: {
+                const auto& ti = m_resolve.m_crate.get_typeitem_by_path(sp, p.m_path);
+                TU_MATCH_HDRA( (ti), {)
+                TU_ARMA(Import, e) BUG(sp, "Unexpected reference to import - " << p);
+                TU_ARMA(Module, e) BUG(sp, "Unexpected reference to module - " << p);
+                TU_ARMA(TypeAlias, e) { gp = &e.m_params; }
+                TU_ARMA(TraitAlias, e) { gp = &e.m_params; }
+                TU_ARMA(ExternType, e) { gp = nullptr; }
+                TU_ARMA(Enum  , e) { gp = &e.m_params; }
+                TU_ARMA(Struct, e) { gp = &e.m_params; }
+                TU_ARMA(Union , e) { gp = &e.m_params; }
+                TU_ARMA(Trait , e) { gp = &e.m_params; }
+                }
+                } break;
+            case HIR::Visitor::PathContext::VALUE: {
+                const auto& vi = m_resolve.m_crate.get_valitem_by_path(sp, p.m_path);
+                TU_MATCH_HDRA( (vi), { )
+                TU_ARMA(Import, e) BUG(sp, "Unexpected reference to import - " << p);
+                TU_ARMA(Constant, e) { gp = nullptr; }
+                TU_ARMA(Static  , e) { gp = nullptr; }
+                TU_ARMA(Function, e) { gp = &e.m_params; }
+                TU_ARMA(StructConstant   , e) { gp = &m_resolve.m_crate.get_struct_by_path(sp, e.ty).m_params; }
+                TU_ARMA(StructConstructor, e) { gp = &m_resolve.m_crate.get_struct_by_path(sp, e.ty).m_params; }
+                }
+                } break;
+            }
+            if( p.m_params.m_lifetimes.size() < (gp ? gp->m_lifetimes.size() : 0) && m_current_lifetime.size() && m_current_lifetime.back() )
+            {
+                assert(gp); // Should be non-null because `.size()` is unsigned, and the above is `.size() < 0` if `gp` is null
+                DEBUG(p);
+                p.m_params.m_lifetimes.resize( gp->m_lifetimes.size() );
+                DEBUG(p);
+            }
+            HIR::Visitor::visit_generic_path(p, pc);
+        }
+
         void visit_path_params(::HIR::PathParams& pp) override
         {
             static Span _sp;
@@ -327,7 +371,6 @@ namespace
                     }
                 }
 
-                const bool HACK_STATIC_IN_STRUCT = false;
                 // https://doc.rust-lang.org/reference/lifetime-elision.html#default-trait-object-lifetimes
                 // If the trait object is used as a type argument of a generic type then the containing type is first used to try to infer a bound.
                 // - If there is a unique bound from the containing type then that is the default
@@ -514,6 +557,7 @@ namespace
                                 }
                                 if(const auto* tep = ty.data().opt_Function()) {
                                     // Push HRLs?
+                                    (void)tep;
                                 }
                                 if(const auto* tep = ty.data().opt_TraitObject()) {
                                     add_lifetime(tep->m_lifetime);
@@ -617,6 +661,27 @@ namespace
                 this->visit_generic_path(tp.m_path, ::HIR::Visitor::PathContext::TYPE);
                 DEBUG(tp.m_path);
 
+                // TODO: Also visit ATY bounds
+                #if 1
+                if( tp.m_path.m_hrls && tp.m_path.m_hrls->m_lifetimes.size() == 1 )
+                {
+                    HIR::LifetimeRef    lft { /*tp.m_path.m_hrls->m_lifetimes[0].m_name,*/ 3*256+0 };
+                    m_current_lifetime.push_back( &lft );
+                    for(auto& assoc : tp.m_type_bounds)
+                    {
+                        this->visit_generic_path(assoc.second.source_trait, ::HIR::Visitor::PathContext::TYPE);
+                        this->visit_type(assoc.second.type);
+                    }
+                    for(auto& assoc : tp.m_trait_bounds)
+                    {
+                        this->visit_generic_path(assoc.second.source_trait, ::HIR::Visitor::PathContext::TYPE);
+                        for(auto& trait : assoc.second.traits)
+                            this->visit_trait_path(trait);
+                    }
+                    m_current_lifetime.pop_back();
+                }
+                #endif
+
                 saved_params.restore();
 
                 // Fix the source paths in ATYs
@@ -670,37 +735,6 @@ namespace
                         return false;
                     }
                 } h(m_resolve.m_crate);
-                auto fix_path = [this,&has_apply_elision](HIR::GenericPath& gp) {
-                    bool created_hrls;
-                    if( has_apply_elision(gp, created_hrls) )
-                    {
-                        m_current_lifetime.push_back(nullptr);
-
-                        auto saved_params = push_params(gp.m_hrls.get(), 3);
-
-                        DEBUG("[fix_path] >> " << gp);
-                        this->visit_generic_path(gp, ::HIR::Visitor::PathContext::TYPE);
-
-                        saved_params.restore();
-
-                        m_current_lifetime.pop_back();
-                        if(created_hrls && gp.m_hrls->is_empty()) {
-                            gp.m_hrls.reset();
-                        }
-                    }
-                    else {
-                        m_current_lifetime.push_back(nullptr);
-
-                        auto saved_params = push_params(gp.m_hrls.get(), 3);
-
-                        DEBUG("[fix_path] >> " << gp);
-                        this->visit_generic_path(gp, ::HIR::Visitor::PathContext::TYPE);
-
-                        saved_params.restore();
-
-                        m_current_lifetime.pop_back();
-                    }
-                };
                 auto fix_source = [&](HIR::GenericPath& gp, const RcString& name) {
                     //fix_path(gp);
                     DEBUG("[fix_source] >> " << gp);

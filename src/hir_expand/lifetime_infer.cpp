@@ -1504,15 +1504,16 @@ namespace {
                             ::HIR::PathParams   hrl_params = e.hrls.make_empty_params(true);
                             this->visit_path_params(hrl_params);
                             auto ms = MonomorphHrlsOnly(hrl_params);
+                            DEBUG("(Bounded) trait_args = " << e.trait_args);
                             auto mm_trait_args = ms.monomorph_path_params(node.span(), e.trait_args, true);
                             auto mm_res = ms.monomorph_type(node.span(), e.assoc.at("Output").type, true);
                             DEBUG("mm_trait_args=" << mm_trait_args << " mm_res=" << mm_res);
 
-                            equate_pps(node.span(), mm_trait_args, params); 
+                            equate_pps(node.span(), mm_trait_args, params);
                             equate_types(node.span(), node.m_res_type, mm_res);
                         }
                         else {
-                            equate_pps(node.span(), e.trait_args, params); 
+                            equate_pps(node.span(), e.trait_args, params);
                             equate_types(node.span(), node.m_res_type, impl_ref.get_type("Output", {}));
                         }
                         }
@@ -1522,6 +1523,7 @@ namespace {
                             ::HIR::PathParams   hrl_params = e.hrls->make_empty_params(true);
                             this->visit_path_params(hrl_params);
                             auto ms = MonomorphHrlsOnly(hrl_params);
+                            DEBUG("(BoundedPtr) trait_args = " << *e.trait_args << " res=" << e.assoc->at("Output").type);
                             auto mm_trait_args = ms.monomorph_path_params(node.span(), *e.trait_args, true);
                             auto mm_res = ms.monomorph_type(node.span(), e.assoc->at("Output").type, true);
                             DEBUG("mm_trait_args=" << mm_trait_args << " mm_res=" << mm_res);
@@ -1927,7 +1929,6 @@ namespace {
 
         // Before running algorithm, dump the HIR (just as a reference for debugging)
         DEBUG("\n" << FMT_CB(os, HIR_DumpExpr(os, ep)));
-
 
         // Build up a simplified list of in-scope liftime rules (bounds)
         {
