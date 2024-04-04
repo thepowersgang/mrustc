@@ -164,7 +164,15 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                         }
                         if( !i.is_None() )
                         {
-                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, path.nodes.back().c_str(), i);
+                            const RcString& item_name = path.nodes.back();
+                            bool is_pub = false;
+                            for(const auto& item : mod.m_items) {
+                                if( !item->data.is_None() && item->name == item_name ) {
+                                    is_pub = item->is_pub;
+                                    break;
+                                }
+                            }
+                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, is_pub, item_name.c_str(), i);
                             if( lex ) {
                                 i = AST::Item::make_None({});
                                 lex->parse_state().module = &mod;

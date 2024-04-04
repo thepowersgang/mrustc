@@ -70,7 +70,7 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcStr
 
     if(location != IndexName::Namespace)
     {
-        ASSERT_BUG(sp, ir.m_class.as_Absolute().nodes.size() > 0, "Non-namespace path must have nodes");
+        ASSERT_BUG(sp, ir.m_class.as_Absolute().nodes.size() > 0, "Non-namespace path must have nodes - " << location << " " << name << " = " << ir);
     }
 
     bool was_import = (ir != mod.path() + name);
@@ -345,6 +345,12 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
 
                 ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
                 const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
+                // Import of the crate root
+                if( spath.m_components.size() == 0 ) {
+                    pb.binding = ::AST::PathBinding_Type::make_Module({nullptr, {nullptr, hmod}});
+                    _add_item(sp, dst_mod, IndexName::Namespace, it.first, is_pub, ::AST::Path(pb), false);
+                    continue ;
+                }
                 for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
                     const auto& hit = hmod->m_mod_items.at( spath.m_components[i] );
                     // Only support enums on the penultimate component

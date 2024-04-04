@@ -1281,12 +1281,12 @@ namespace {
 }
 ::std::unique_ptr<TokenStream> ProcMacro_Invoke(
     const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt,
-    slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Item& i
+    slice<const AST::Attribute> attrs, bool is_pub, const ::std::string& item_name, const ::AST::Item& i
     )
 {
     return ProcMacro_Invoke(sp, crate, mac_path, &tt, [&](Visitor& v) {
         v.visit_top_attrs(attrs);
-        v.visit_item(item_name, false, i);
+        v.visit_item(item_name, is_pub, i);
         });
 }
 // -- function-like input
