@@ -1062,11 +1062,11 @@ namespace {
             TODO(sp, "ExprNode_UniOp");
         }
 
-        void visit_top_attrs(slice<const ::AST::Attribute>& attrs)
+        void visit_top_attrs(slice<const ::AST::Attribute>& attrs, bool emit_all = false)
         {
             for(const auto& a : attrs)
             {
-                if( a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial()) )
+                if( emit_all || (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial())) )
                 {
                     DEBUG("Send " << a);
                     m_pmi.send_symbol("#");
@@ -1285,7 +1285,7 @@ namespace {
     )
 {
     return ProcMacro_Invoke(sp, crate, mac_path, &tt, [&](Visitor& v) {
-        v.visit_top_attrs(attrs);
+        v.visit_top_attrs(attrs, true);
         v.visit_item(item_name, is_pub, i);
         });
 }

@@ -219,12 +219,19 @@ void Expand_Attrs_CfgAttr(AST::AttributeList& attrs)
         }
     }
 }
+namespace {
+    slice<const AST::Attribute> get_attrs_after(const ::AST::AttributeList& attrs, const ::AST::Attribute& a) {
+        const auto* start = &a + 1;
+        const auto* end = &attrs.m_items.back()+1;
+        return slice<const AST::Attribute>(start, end - start);
+    }
+}
 void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Module& mod, ::AST::Item& item)
 {
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
-            // TODO: Pass attributes _after_ this attribute
-            d.handle(sp, a, es.crate, path, mod, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a + 1), item);
+            // Pass attributes _after_ this attribute
+            d.handle(sp, a, es.crate, path, mod, get_attrs_after(attrs, a), item);
         }
         });
 }
@@ -233,7 +240,7 @@ void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, Attr
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
             // TODO: Pass attributes _after_ this attribute
-            d.handle(sp, a, es.crate, path, trait, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a + 1), item);
+            d.handle(sp, a, es.crate, path, trait, get_attrs_after(attrs, a), item);
         }
         });
 }
@@ -242,7 +249,7 @@ void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, Attr
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
             // TODO: Pass attributes _after_ this attribute
-            d.handle(sp, a, es.crate, impl, name, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a + 1), item);
+            d.handle(sp, a, es.crate, impl, name, get_attrs_after(attrs, a), item);
         }
         });
 }
