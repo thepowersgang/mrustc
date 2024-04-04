@@ -101,3 +101,4 @@
 - Attributes on expressions (e.g. on a closure after the `&mut`)
 - chained if-let in match guards
 - Proc macro items want to see `#[repr]` too (TODO: Formally, what attributes do derive macros see?)
+- Proc macro attributes - hadn't actually expanded those

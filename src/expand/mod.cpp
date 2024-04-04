@@ -142,6 +142,47 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
             }
         }
     }
+    if( !found && stage == AttrStage::Pre ) {
+        auto m = Expand_LookupMacro(sp, es.crate, es.modstack, a.name());
+        if( !m.is_None() ) {
+            if( const auto* proc_mac_p = m.opt_ExternalProcMacro() ) {
+                const auto* proc_mac = *proc_mac_p;
+                struct ProcMacroDecorator: public ExpandDecorator {
+                    ::std::vector<RcString> mac_path;
+                    AttrStage stage() const override { return AttrStage::Pre; }
+                    bool run_during_iter() const override { return false; }
+
+                    void handle(
+                        const Span& sp,
+                        const AST::Attribute& attr,
+                        ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i
+                        ) const override
+                    {
+                        if( i.is_Function() || i.is_Use() ) {
+                            WARNING(sp, W0000, "HACK: Ignoring proc macro on " << i.tag_str());
+                            return ;
+                        }
+                        if( !i.is_None() )
+                        {
+                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, path.nodes.back().c_str(), i);
+                            if( lex ) {
+                                i = AST::Item::make_None({});
+                                lex->parse_state().module = &mod;
+                                Parse_ModRoot_Items(*lex, mod);
+                            }
+                            else {
+                                ERROR(sp, E0000, "proc_macro derive failed");
+                            }
+                        }
+                    }
+                } d;
+                d.mac_path.push_back(proc_mac->path.m_crate_name);
+                d.mac_path.insert(d.mac_path.end(), proc_mac->path.m_components.begin(), proc_mac->path.m_components.end());
+                f(sp, d, a);
+                found = true;
+            }
+        }
+    }
     if( !found ) {
         // TODO: Create no-op handlers for a whole heap of attributes
         // - There's a LOT
@@ -223,6 +264,14 @@ bool Expand_Attrs_CfgOnly(const ExpandState& es, AST::AttributeList& attrs)
     return !remove;
 }
 
+MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LList<const AST::Module*> modstack, const AST::AttributeName& path)
+{
+    AST::Path   p = AST::Path::new_relative({}, {});
+    for(const auto& ent : path.elems) {
+        p += AST::PathNode(ent);
+    }
+    return Expand_LookupMacro(mi_span, crate, modstack, p);
+}
 MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LList<const AST::Module*> modstack, const AST::Path& path)
 {
     ASSERT_BUG(mi_span, path.size() > 0, "Path should have nodes: " << path);

@@ -2219,11 +2219,12 @@ namespace {
     std::vector<RcString> find_macro(const Span& sp, const AST::Crate& crate, const AST::Module& mod, const AST::AttributeName& trait_path)
     {
         std::vector<RcString>   mac_path;
-        //auto mac_name = RcString::new_interned( FMT("derive#" << trait.name().elems.back()) );
-        auto mac_name = trait_path.elems.back();
 
         if( trait_path.elems.size() == 1 )
         {
+            //auto mac_name = RcString::new_interned( FMT("derive#" << trait.name().elems.back()) );
+            auto mac_name = trait_path.elems.back();
+
             for(const auto& mac_import : mod.m_macro_imports)
             {
                 if( mac_import.name == mac_name )
@@ -2240,70 +2241,25 @@ namespace {
                     }
                 }
             }
-
-            if(mac_path.empty())
-            {
-                auto p = AST::Path::new_relative(Ident::Hygiene(), {trait_path.elems[0]});
-                auto mac = Expand_LookupMacro(sp, crate, LList<const AST::Module*>(nullptr, &mod), p);
-                
-                TU_MATCH_HDRA( (mac), {)
-                TU_ARMA(None, e) {
-                    }
-                TU_ARMA(ExternalProcMacro, ext_proc_mac) {
-                    mac_path.push_back(ext_proc_mac->path.m_crate_name);
-                    mac_path.insert(mac_path.end(), ext_proc_mac->path.m_components.begin(), ext_proc_mac->path.m_components.end());
-                    }
-                TU_ARMA(BuiltinProcMacro, proc_mac) {
-                    TODO(sp, "Handle builtin proc macro");
-                    }
-                TU_ARMA(MacroRules, mr_ptr) {
-                    TODO(sp, "Custom derive using macro_rules?");
-                    }
-                }
-            }
         }
-        else
+        if(mac_path.empty())
         {
-            if( trait_path.elems.size() != 2 )
-                ERROR(sp, E0000, "Invalid macro path format (must be two items, got " << trait_path);
-            auto des_crate = trait_path.elems[0];
-            const auto& des_mac   = trait_path.elems[1];
+            auto mac = Expand_LookupMacro(sp, crate, LList<const AST::Module*>(nullptr, &mod), trait_path);
 
-            const AST::ExternCrate*   tgt_crate = nullptr;
-            auto ec_it = AST::g_implicit_crates.find(des_crate);
-            if(ec_it != AST::g_implicit_crates.end())
-            {
-                tgt_crate = &crate.m_extern_crates.at(ec_it->second);
-            }
-
-            RcString    crate_name;
-            RcString    mac_name;
-            if( !tgt_crate )
-            {
-                for(const auto& ec : crate.m_extern_crates)
-                {
-                    if(ec.second.m_short_name == des_crate )
-                    {
-                        tgt_crate = &ec.second;
-                        break;
-                    }
+            TU_MATCH_HDRA( (mac), {)
+            TU_ARMA(None, e) {
+                }
+            TU_ARMA(ExternalProcMacro, ext_proc_mac) {
+                mac_path.push_back(ext_proc_mac->path.m_crate_name);
+                mac_path.insert(mac_path.end(), ext_proc_mac->path.m_components.begin(), ext_proc_mac->path.m_components.end());
+                }
+            TU_ARMA(BuiltinProcMacro, proc_mac) {
+                TODO(sp, "Handle builtin proc macro");
+                }
+            TU_ARMA(MacroRules, mr_ptr) {
+                TODO(sp, "Custom derive using macro_rules?");
                 }
             }
-            if( !tgt_crate ) {
-                ERROR(sp, E0000, "Cannot find crate `" << des_crate << "`");
-            }
-            auto it = tgt_crate->m_hir->m_root_module.m_macro_items.find(des_mac);
-            if( it == tgt_crate->m_hir->m_root_module.m_macro_items.end() )
-                ERROR(sp, E0000, "Cannot find macro `" << des_mac << "` in " << tgt_crate->m_short_name);
-            if(const auto* imp = it->second->ent.opt_Import()) {
-                crate_name = imp->path.m_crate_name;
-                mac_name = imp->path.m_components[0];
-            }
-            else {
-                crate_name = tgt_crate->m_short_name;
-                mac_name = des_mac;
-            }
-            mac_path = make_vec2(crate_name, mac_name);
         }
         return mac_path;
     }

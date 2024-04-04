@@ -609,7 +609,7 @@ namespace {
                 TODO(sp, "proc_macro send primitive - " << ty);
                 ),
             (Function,
-                TODO(sp, "proc_macro send function - " << ty);
+                TODO(sp, "proc_macro send function type - " << ty);
                 ),
             (Tuple,
                 m_pmi.send_symbol("(");
@@ -1217,6 +1217,10 @@ namespace {
             TU_ARMA(Union, e) {
                 visit_union(name, is_pub, e);
                 }
+
+            //TU_ARMA(Function, e) {
+            //    visit_function(name, is_pub, e);
+            //    }
             }
         }
     };
@@ -1229,7 +1233,18 @@ namespace {
         return ::std::unique_ptr<TokenStream>();
     if( attr_input ) {
         // TODO: Assert that this is a `#[proc_macro_attribute]` macro
-        Visitor(sp, pmi).visit_tokentree(*attr_input);
+        if( attr_input->size() != 0 )
+        {
+            // If the input is non-empty, then it must be a parenthesised token tree
+            assert(attr_input->size() >= 2);
+            assert((*attr_input)[0].tok() == TOK_PAREN_OPEN);
+            Visitor v(sp, pmi);
+            // - Strip the parens when sending
+            for(size_t i = 1; i < attr_input->size() - 1; i++)
+            {
+                v.visit_tokentree( (*attr_input)[i] );
+            }
+        }
         pmi.send_done();
     }
     // 2. Feed item as a token stream.
@@ -1264,10 +1279,14 @@ namespace {
         v.visit_union(item_name, false, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt, slice<const AST::Attribute> attrs, const ::AST::Item& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(
+    const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt,
+    slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Item& i
+    )
 {
     return ProcMacro_Invoke(sp, crate, mac_path, &tt, [&](Visitor& v) {
         v.visit_top_attrs(attrs);
+        v.visit_item(item_name, false, i);
         });
 }
 // -- function-like input

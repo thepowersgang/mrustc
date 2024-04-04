@@ -14,7 +14,10 @@ extern ::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::A
 extern ::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& name, const ::AST::Union& i);
 
 // Attribute macros
-extern ::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt, slice<const AST::Attribute> attrs, const ::AST::Item& i);
+extern ::std::unique_ptr<TokenStream> ProcMacro_Invoke(
+    const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt,
+    slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Item& i
+    );
 
 // Function-like macros
 extern ::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt);
