@@ -102,3 +102,4 @@
 - chained if-let in match guards
 - Proc macro items want to see `#[repr]` too (TODO: Formally, what attributes do derive macros see?)
 - Proc macro attributes - hadn't actually expanded those
+- `include!` inside `mod foo { }` path rules
