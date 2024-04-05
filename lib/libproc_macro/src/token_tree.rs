@@ -76,7 +76,7 @@ impl ::std::fmt::Display for Group
         Delimiter::Parenthesis => f.write_str(")")?,
         Delimiter::Brace => f.write_str("}")?,
         Delimiter::Bracket => f.write_str("]")?,
-        Delimiter::None => {},
+        Delimiter::None => f.write_str(" ")?,
         }
         Ok(())
     }

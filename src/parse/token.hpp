@@ -166,6 +166,7 @@ public:
     }
     bool operator!=(const Token& r) const { return !(*this == r); }
 
+    /// Return a re-parseable version of the token
     ::std::string to_str() const;
 
     void set_pos(Position pos) { m_pos = pos; }

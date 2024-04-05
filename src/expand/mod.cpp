@@ -158,10 +158,6 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                         ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i
                         ) const override
                     {
-                        if( i.is_Function() || i.is_Use() ) {
-                            WARNING(sp, W0000, "HACK: Ignoring proc macro on " << i.tag_str());
-                            return ;
-                        }
                         if( !i.is_None() )
                         {
                             const RcString& item_name = path.nodes.back();

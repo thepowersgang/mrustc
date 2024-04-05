@@ -53,6 +53,18 @@ Lexer::Lexer(const ::std::string& filename, AST::Edition edition, ParseState ps)
         }
     }
 }
+Lexer::Lexer(::std::istringstream& ss, AST::Edition edition, ParseState ps)
+    : TokenStream(ps)
+    , m_path("-")
+    , m_line(1)
+    , m_line_ofs(0)
+    , m_istream_fp(nullptr)
+    , m_istream(ss)
+    , m_last_char_valid(false)
+    , m_edition(edition)
+    , m_hygiene( Ident::Hygiene::new_scope() )
+{
+}
 
 
 #define LINECOMMENT -1

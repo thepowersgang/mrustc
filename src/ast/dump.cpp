@@ -85,9 +85,30 @@ public:
         m_os << "try ";
         AST::NodeVisitor::visit(n.m_inner);
     }
+    void dump_token(const Token& t) {
+        m_os << t.to_str() << " ";
+    }
+    void dump_tokentree(const TokenTree& tt) {
+        if( tt.is_token() ) {
+            dump_token(tt.tok());
+        }
+        else {
+            for(size_t i = 0; i < tt.size(); i ++)
+            {
+                dump_tokentree(tt[i]);
+            }
+        }
+    }
     virtual void visit(AST::ExprNode_Macro& n) override {
         m_expr_root = false;
-        m_os << n.m_path << "!( /* TODO: Macro TT */ )";
+        m_os << n.m_path << "!";
+        if( n.m_ident != "" ) {
+            m_os << " ";
+            m_os << n.m_ident;
+        }
+        m_os << "(";
+        dump_tokentree(n.m_tokens);
+        m_os << ")";
     }
     virtual void visit(AST::ExprNode_Asm& n) override {
         m_os << "asm!( \"" << n.m_text << "\"";
@@ -262,7 +283,7 @@ public:
             AST::NodeVisitor::visit(n.m_cond);
             break;
         case AST::ExprNode_Loop::FOR:
-            m_os << "while for ";
+            m_os << "for ";
             print_pattern(n.m_pattern, true);
             m_os << " in ";
             AST::NodeVisitor::visit(n.m_cond);
@@ -690,13 +711,6 @@ private:
     void dec_indent();
 };
 
-void Dump_Rust(const char *filename, const AST::Crate& crate)
-{
-    ::std::ofstream os(filename);
-    RustPrinter printer(os);
-    printer.handle_module(crate.root_module());
-}
-
 void RustPrinter::print_attrs(const AST::AttributeList& attrs)
 {
     for(const auto& a : attrs.m_items)
@@ -955,7 +969,7 @@ void RustPrinter::print_params(const AST::GenericParams& params)
                 }
             TU_ARMA(Lifetime, p) {
                 //m_os << p.attrs();
-                m_os << p;
+                m_os << "'" << p;
                 }
             TU_ARMA(Type, p) {
                 m_os << p.attrs();
@@ -1097,13 +1111,13 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         ),
     (Struct, {
         const auto& v = p.data().as_Struct();
-        m_os << v.path << "(";
+        m_os << v.path << "{";
         for(const auto& sp : v.sub_patterns) {
             m_os << sp.name << ": ";
             print_pattern(sp.pat, is_refutable);
             m_os << ",";
         }
-        m_os << ")";
+        m_os << "}";
         }),
     (Tuple,
         m_os << "(";
@@ -1338,4 +1352,16 @@ RepeatLitStr RustPrinter::indent()
 void RustPrinter::dec_indent()
 {
     m_indent_level --;
+}
+
+void Dump_Rust(const char *filename, const AST::Crate& crate)
+{
+    ::std::ofstream os(filename);
+    RustPrinter printer(os);
+    printer.handle_module(crate.root_module());
+}
+void DumpAST_Node(::std::ostream& os, const AST::ExprNode& node)
+{
+    RustPrinter printer(os);
+    const_cast<AST::ExprNode&>( node ).visit(printer);
 }

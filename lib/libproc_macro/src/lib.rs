@@ -75,18 +75,6 @@ pub mod token_stream {
         }
     }
 
-    //impl ::std::string::ToString for TokenStream
-    //{
-    //    fn to_string(&self) -> String {
-    //        use std::fmt::Write;
-    //        let mut s = String::new();
-    //        for v in &self.inner
-    //        {
-    //            write!(&mut s, "{}", v).unwrap();
-    //        }
-    //        s
-    //    }
-    //}
     impl ::std::fmt::Display for TokenStream
     {
         fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -94,11 +82,11 @@ pub mod token_stream {
             {
                 write!(f, "{}", v)?;
                 // Put a space after every token that isn't punctuation
-                if let &crate::TokenTree::Punct(_) = v {
-                }
-                else {
+                //if let &crate::TokenTree::Punct(_) = v {
+                //}
+                //else {
                     write!(f, " ")?;
-                }
+                //}
             }
             Ok(())
         }
@@ -201,6 +189,7 @@ pub fn main(macros: &[MacroDesc])
                 MacroType::SingleStream(h) => (h)(input),
                 MacroType::Attribute(h) => {
                     let input_body = crate::serialisation::recv_token_stream(::std::io::stdin().lock());
+                    debug!("INPUT BODY = `{}`\r", input_body);
                     (h)(input, input_body)
                     },
                 };

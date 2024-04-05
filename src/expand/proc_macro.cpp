@@ -261,6 +261,7 @@ public:
     bool check_good();
     void send_done() {
         send_symbol("");
+        m_dump_file_out.flush();
         DEBUG("Input tokens sent");
     }
     void send_symbol(const char* val) {
@@ -270,6 +271,9 @@ public:
     void send_ident(const char* val) {
         this->send_u8(static_cast<uint8_t>(TokenClass::Ident));
         this->send_bytes(val, ::std::strlen(val));
+    }
+    void send_ident(const Ident& val) {
+        send_ident(val.name.c_str());
     }
     void send_lifetime(const char* val) {
         this->send_u8(static_cast<uint8_t>(TokenClass::Lifetime));
@@ -409,172 +413,176 @@ namespace {
     {
         const Span& sp;
         ProcMacroInv&   m_pmi;
+        bool emit_all_attrs;
         Visitor(const Span& sp, ProcMacroInv& pmi):
             sp(sp),
             m_pmi(pmi)
         {
         }
 
+        void visit_token(const ::Token& tok)
+        {
+            switch(tok.type())
+            {
+            case TOK_NULL:
+                BUG(sp, "Unexpected NUL in token stream");
+            case TOK_EOF:
+                BUG(sp, "Unexpected EOF in token stream");
+
+            case TOK_NEWLINE:
+            case TOK_WHITESPACE:
+            case TOK_COMMENT:
+                BUG(sp, "Unexpected whitepace in tokenstream");
+                break;
+            case TOK_INTERPOLATED_TYPE:
+                TODO(sp, "TOK_INTERPOLATED_TYPE");
+            case TOK_INTERPOLATED_PATH:
+                TODO(sp, "TOK_INTERPOLATED_PATH");
+            case TOK_INTERPOLATED_PATTERN:
+                TODO(sp, "TOK_INTERPOLATED_PATTERN");
+            case TOK_INTERPOLATED_STMT:
+            case TOK_INTERPOLATED_BLOCK:
+            case TOK_INTERPOLATED_EXPR:
+                TODO(sp, "TOK_INTERPOLATED_{STMT/EXPR/BLOCK}");
+            case TOK_INTERPOLATED_META:
+            case TOK_INTERPOLATED_ITEM:
+            case TOK_INTERPOLATED_VIS:
+                TODO(sp, "TOK_INTERPOLATED_...");
+            // Value tokens
+            case TOK_IDENT:     m_pmi.send_ident(tok.ident().name.c_str());   break;  // TODO: Raw idents
+            case TOK_LIFETIME:  m_pmi.send_lifetime(tok.ident().name.c_str());  break;  // TODO: Hygine?
+            case TOK_INTEGER:   m_pmi.send_int(tok.datatype(), tok.intval());   break;
+            case TOK_CHAR:      m_pmi.send_char(tok.intval().truncate_u64());  break;
+            case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
+            case TOK_STRING:        m_pmi.send_string(tok.str());       break;
+            case TOK_BYTESTRING:    m_pmi.send_bytestring(tok.str());   break;
+
+            case TOK_HASH:      m_pmi.send_symbol("#"); break;
+            case TOK_UNDERSCORE:m_pmi.send_symbol("_"); break;
+
+            // Symbols
+            case TOK_PAREN_OPEN:    m_pmi.send_symbol("("); break;
+            case TOK_PAREN_CLOSE:   m_pmi.send_symbol(")"); break;
+            case TOK_BRACE_OPEN:    m_pmi.send_symbol("{"); break;
+            case TOK_BRACE_CLOSE:   m_pmi.send_symbol("}"); break;
+            case TOK_LT:    m_pmi.send_symbol("<"); break;
+            case TOK_GT:    m_pmi.send_symbol(">"); break;
+            case TOK_SQUARE_OPEN:   m_pmi.send_symbol("["); break;
+            case TOK_SQUARE_CLOSE:  m_pmi.send_symbol("]"); break;
+            case TOK_COMMA:     m_pmi.send_symbol(","); break;
+            case TOK_SEMICOLON: m_pmi.send_symbol(";"); break;
+            case TOK_COLON:     m_pmi.send_symbol(":"); break;
+            case TOK_DOUBLE_COLON:  m_pmi.send_symbol("::"); break;
+            case TOK_STAR:  m_pmi.send_symbol("*"); break;
+            case TOK_AMP:   m_pmi.send_symbol("&"); break;
+            case TOK_PIPE:  m_pmi.send_symbol("|"); break;
+
+            case TOK_FATARROW:  m_pmi.send_symbol("=>"); break;
+            case TOK_THINARROW: m_pmi.send_symbol("->"); break;
+            case TOK_THINARROW_LEFT: m_pmi.send_symbol("<-"); break;
+
+            case TOK_PLUS:  m_pmi.send_symbol("+"); break;
+            case TOK_DASH:  m_pmi.send_symbol("-"); break;
+            case TOK_EXCLAM:    m_pmi.send_symbol("!"); break;
+            case TOK_PERCENT:   m_pmi.send_symbol("%"); break;
+            case TOK_SLASH:     m_pmi.send_symbol("/"); break;
+
+            case TOK_DOT:       m_pmi.send_symbol("."); break;
+            case TOK_DOUBLE_DOT:    m_pmi.send_symbol(".."); break;
+            case TOK_DOUBLE_DOT_EQUAL:  m_pmi.send_symbol("..="); break;
+            case TOK_TRIPLE_DOT:    m_pmi.send_symbol("..."); break;
+
+            case TOK_EQUAL:     m_pmi.send_symbol("="); break;
+            case TOK_PLUS_EQUAL:    m_pmi.send_symbol("+="); break;
+            case TOK_DASH_EQUAL:    m_pmi.send_symbol("-"); break;
+            case TOK_PERCENT_EQUAL: m_pmi.send_symbol("%="); break;
+            case TOK_SLASH_EQUAL:   m_pmi.send_symbol("/="); break;
+            case TOK_STAR_EQUAL:    m_pmi.send_symbol("*="); break;
+            case TOK_AMP_EQUAL:     m_pmi.send_symbol("&="); break;
+            case TOK_PIPE_EQUAL:    m_pmi.send_symbol("|="); break;
+
+            case TOK_DOUBLE_EQUAL:  m_pmi.send_symbol("=="); break;
+            case TOK_EXCLAM_EQUAL:  m_pmi.send_symbol("!="); break;
+            case TOK_GTE:    m_pmi.send_symbol(">="); break;
+            case TOK_LTE:    m_pmi.send_symbol("<="); break;
+
+            case TOK_DOUBLE_AMP:    m_pmi.send_symbol("&&"); break;
+            case TOK_DOUBLE_PIPE:   m_pmi.send_symbol("||"); break;
+            case TOK_DOUBLE_LT:     m_pmi.send_symbol("<<"); break;
+            case TOK_DOUBLE_GT:     m_pmi.send_symbol(">>"); break;
+            case TOK_DOUBLE_LT_EQUAL:   m_pmi.send_symbol("<="); break;
+            case TOK_DOUBLE_GT_EQUAL:   m_pmi.send_symbol(">="); break;
+
+            case TOK_DOLLAR:    m_pmi.send_symbol("$"); break;
+
+            case TOK_QMARK:     m_pmi.send_symbol("?");     break;
+            case TOK_AT:        m_pmi.send_symbol("@");     break;
+            case TOK_TILDE:     m_pmi.send_symbol("~");     break;
+            case TOK_BACKSLASH: m_pmi.send_symbol("\\");    break;
+            case TOK_CARET:     m_pmi.send_symbol("^");     break;
+            case TOK_CARET_EQUAL:   m_pmi.send_symbol("^="); break;
+            case TOK_BACKTICK:  m_pmi.send_symbol("`");     break;
+
+            // Reserved Words
+            case TOK_RWORD_PUB:     m_pmi.send_ident("pub");    break;
+            case TOK_RWORD_PRIV:    m_pmi.send_ident("priv");   break;
+            case TOK_RWORD_MUT:     m_pmi.send_ident("mut");    break;
+            case TOK_RWORD_CONST:   m_pmi.send_ident("const");  break;
+            case TOK_RWORD_STATIC:  m_pmi.send_ident("static"); break;
+            case TOK_RWORD_UNSAFE:  m_pmi.send_ident("unsafe"); break;
+            case TOK_RWORD_EXTERN:  m_pmi.send_ident("extern"); break;
+            case TOK_RWORD_CRATE:   m_pmi.send_ident("crate");  break;
+            case TOK_RWORD_MOD:     m_pmi.send_ident("mod");    break;
+            case TOK_RWORD_STRUCT:  m_pmi.send_ident("struct"); break;
+            case TOK_RWORD_ENUM:    m_pmi.send_ident("enum");   break;
+            case TOK_RWORD_TRAIT:   m_pmi.send_ident("trait");  break;
+            case TOK_RWORD_FN:      m_pmi.send_ident("fn");     break;
+            case TOK_RWORD_USE:     m_pmi.send_ident("use");    break;
+            case TOK_RWORD_IMPL:    m_pmi.send_ident("impl");   break;
+            case TOK_RWORD_TYPE:    m_pmi.send_ident("type");   break;
+            case TOK_RWORD_WHERE:   m_pmi.send_ident("where");  break;
+            case TOK_RWORD_AS:      m_pmi.send_ident("as");     break;
+            case TOK_RWORD_LET:     m_pmi.send_ident("let");    break;
+            case TOK_RWORD_MATCH:   m_pmi.send_ident("match");  break;
+            case TOK_RWORD_IF:      m_pmi.send_ident("if");     break;
+            case TOK_RWORD_ELSE:    m_pmi.send_ident("else");   break;
+            case TOK_RWORD_LOOP:    m_pmi.send_ident("loop");   break;
+            case TOK_RWORD_WHILE:   m_pmi.send_ident("while");  break;
+            case TOK_RWORD_FOR:     m_pmi.send_ident("for");    break;
+            case TOK_RWORD_IN:      m_pmi.send_ident("in");     break;
+            case TOK_RWORD_DO:      m_pmi.send_ident("do");     break;
+            case TOK_RWORD_CONTINUE:m_pmi.send_ident("continue"); break;
+            case TOK_RWORD_BREAK:   m_pmi.send_ident("break");  break;
+            case TOK_RWORD_RETURN:  m_pmi.send_ident("return"); break;
+            case TOK_RWORD_YIELD:   m_pmi.send_ident("yeild");  break;
+            case TOK_RWORD_BOX:     m_pmi.send_ident("box");    break;
+            case TOK_RWORD_REF:     m_pmi.send_ident("ref");    break;
+            case TOK_RWORD_FALSE:   m_pmi.send_ident("false"); break;
+            case TOK_RWORD_TRUE:    m_pmi.send_ident("true");   break;
+            case TOK_RWORD_SELF:    m_pmi.send_ident("self");   break;
+            case TOK_RWORD_SUPER:   m_pmi.send_ident("super");  break;
+            case TOK_RWORD_MOVE:    m_pmi.send_ident("move");   break;
+            case TOK_RWORD_ABSTRACT:m_pmi.send_ident("abstract"); break;
+            case TOK_RWORD_FINAL:   m_pmi.send_ident("final");  break;
+            case TOK_RWORD_OVERRIDE:m_pmi.send_ident("override"); break;
+            case TOK_RWORD_VIRTUAL: m_pmi.send_ident("virtual"); break;
+            case TOK_RWORD_TYPEOF:  m_pmi.send_ident("typeof"); break;
+            case TOK_RWORD_BECOME:  m_pmi.send_ident("become"); break;
+            case TOK_RWORD_UNSIZED: m_pmi.send_ident("unsized"); break;
+            case TOK_RWORD_MACRO:   m_pmi.send_ident("macro");  break;
+
+            // 2018
+            case TOK_RWORD_ASYNC:   m_pmi.send_ident("async");  break;
+            case TOK_RWORD_AWAIT:   m_pmi.send_ident("await");  break;
+            case TOK_RWORD_DYN:     m_pmi.send_ident("dyn");    break;
+            case TOK_RWORD_TRY:     m_pmi.send_ident("try");    break;
+            }
+        }
         void visit_tokentree(const ::TokenTree& tt)
         {
             if( tt.is_token() )
             {
-                const auto& tok = tt.tok();
-                switch(tok.type())
-                {
-                case TOK_NULL:
-                    BUG(sp, "Unexpected NUL in token stream");
-                case TOK_EOF:
-                    BUG(sp, "Unexpected EOF in token stream");
-
-                case TOK_NEWLINE:
-                case TOK_WHITESPACE:
-                case TOK_COMMENT:
-                    BUG(sp, "Unexpected whitepace in tokenstream");
-                    break;
-                case TOK_INTERPOLATED_TYPE:
-                    TODO(sp, "TOK_INTERPOLATED_TYPE");
-                case TOK_INTERPOLATED_PATH:
-                    TODO(sp, "TOK_INTERPOLATED_PATH");
-                case TOK_INTERPOLATED_PATTERN:
-                    TODO(sp, "TOK_INTERPOLATED_PATTERN");
-                case TOK_INTERPOLATED_STMT:
-                case TOK_INTERPOLATED_BLOCK:
-                case TOK_INTERPOLATED_EXPR:
-                    TODO(sp, "TOK_INTERPOLATED_{STMT/EXPR/BLOCK}");
-                case TOK_INTERPOLATED_META:
-                case TOK_INTERPOLATED_ITEM:
-                case TOK_INTERPOLATED_VIS:
-                    TODO(sp, "TOK_INTERPOLATED_...");
-                // Value tokens
-                case TOK_IDENT:     m_pmi.send_ident(tok.ident().name.c_str());   break;  // TODO: Raw idents
-                case TOK_LIFETIME:  m_pmi.send_lifetime(tok.ident().name.c_str());  break;  // TODO: Hygine?
-                case TOK_INTEGER:   m_pmi.send_int(tok.datatype(), tok.intval());   break;
-                case TOK_CHAR:      m_pmi.send_char(tok.intval().truncate_u64());  break;
-                case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
-                case TOK_STRING:        m_pmi.send_string(tok.str());       break;
-                case TOK_BYTESTRING:    m_pmi.send_bytestring(tok.str());   break;
-
-                case TOK_HASH:      m_pmi.send_symbol("#"); break;
-                case TOK_UNDERSCORE:m_pmi.send_symbol("_"); break;
-
-                // Symbols
-                case TOK_PAREN_OPEN:    m_pmi.send_symbol("("); break;
-                case TOK_PAREN_CLOSE:   m_pmi.send_symbol(")"); break;
-                case TOK_BRACE_OPEN:    m_pmi.send_symbol("{"); break;
-                case TOK_BRACE_CLOSE:   m_pmi.send_symbol("}"); break;
-                case TOK_LT:    m_pmi.send_symbol("<"); break;
-                case TOK_GT:    m_pmi.send_symbol(">"); break;
-                case TOK_SQUARE_OPEN:   m_pmi.send_symbol("["); break;
-                case TOK_SQUARE_CLOSE:  m_pmi.send_symbol("]"); break;
-                case TOK_COMMA:     m_pmi.send_symbol(","); break;
-                case TOK_SEMICOLON: m_pmi.send_symbol(";"); break;
-                case TOK_COLON:     m_pmi.send_symbol(":"); break;
-                case TOK_DOUBLE_COLON:  m_pmi.send_symbol("::"); break;
-                case TOK_STAR:  m_pmi.send_symbol("*"); break;
-                case TOK_AMP:   m_pmi.send_symbol("&"); break;
-                case TOK_PIPE:  m_pmi.send_symbol("|"); break;
-
-                case TOK_FATARROW:  m_pmi.send_symbol("=>"); break;
-                case TOK_THINARROW: m_pmi.send_symbol("->"); break;
-                case TOK_THINARROW_LEFT: m_pmi.send_symbol("<-"); break;
-
-                case TOK_PLUS:  m_pmi.send_symbol("+"); break;
-                case TOK_DASH:  m_pmi.send_symbol("-"); break;
-                case TOK_EXCLAM:    m_pmi.send_symbol("!"); break;
-                case TOK_PERCENT:   m_pmi.send_symbol("%"); break;
-                case TOK_SLASH:     m_pmi.send_symbol("/"); break;
-
-                case TOK_DOT:       m_pmi.send_symbol("."); break;
-                case TOK_DOUBLE_DOT:    m_pmi.send_symbol(".."); break;
-                case TOK_DOUBLE_DOT_EQUAL:  m_pmi.send_symbol("..="); break;
-                case TOK_TRIPLE_DOT:    m_pmi.send_symbol("..."); break;
-
-                case TOK_EQUAL:     m_pmi.send_symbol("="); break;
-                case TOK_PLUS_EQUAL:    m_pmi.send_symbol("+="); break;
-                case TOK_DASH_EQUAL:    m_pmi.send_symbol("-"); break;
-                case TOK_PERCENT_EQUAL: m_pmi.send_symbol("%="); break;
-                case TOK_SLASH_EQUAL:   m_pmi.send_symbol("/="); break;
-                case TOK_STAR_EQUAL:    m_pmi.send_symbol("*="); break;
-                case TOK_AMP_EQUAL:     m_pmi.send_symbol("&="); break;
-                case TOK_PIPE_EQUAL:    m_pmi.send_symbol("|="); break;
-
-                case TOK_DOUBLE_EQUAL:  m_pmi.send_symbol("=="); break;
-                case TOK_EXCLAM_EQUAL:  m_pmi.send_symbol("!="); break;
-                case TOK_GTE:    m_pmi.send_symbol(">="); break;
-                case TOK_LTE:    m_pmi.send_symbol("<="); break;
-
-                case TOK_DOUBLE_AMP:    m_pmi.send_symbol("&&"); break;
-                case TOK_DOUBLE_PIPE:   m_pmi.send_symbol("||"); break;
-                case TOK_DOUBLE_LT:     m_pmi.send_symbol("<<"); break;
-                case TOK_DOUBLE_GT:     m_pmi.send_symbol(">>"); break;
-                case TOK_DOUBLE_LT_EQUAL:   m_pmi.send_symbol("<="); break;
-                case TOK_DOUBLE_GT_EQUAL:   m_pmi.send_symbol(">="); break;
-
-                case TOK_DOLLAR:    m_pmi.send_symbol("$"); break;
-
-                case TOK_QMARK:     m_pmi.send_symbol("?");     break;
-                case TOK_AT:        m_pmi.send_symbol("@");     break;
-                case TOK_TILDE:     m_pmi.send_symbol("~");     break;
-                case TOK_BACKSLASH: m_pmi.send_symbol("\\");    break;
-                case TOK_CARET:     m_pmi.send_symbol("^");     break;
-                case TOK_CARET_EQUAL:   m_pmi.send_symbol("^="); break;
-                case TOK_BACKTICK:  m_pmi.send_symbol("`");     break;
-
-                    // Reserved Words
-                case TOK_RWORD_PUB:     m_pmi.send_ident("pub");    break;
-                case TOK_RWORD_PRIV:    m_pmi.send_ident("priv");   break;
-                case TOK_RWORD_MUT:     m_pmi.send_ident("mut");    break;
-                case TOK_RWORD_CONST:   m_pmi.send_ident("const");  break;
-                case TOK_RWORD_STATIC:  m_pmi.send_ident("static"); break;
-                case TOK_RWORD_UNSAFE:  m_pmi.send_ident("unsafe"); break;
-                case TOK_RWORD_EXTERN:  m_pmi.send_ident("extern"); break;
-                case TOK_RWORD_CRATE:   m_pmi.send_ident("crate");  break;
-                case TOK_RWORD_MOD:     m_pmi.send_ident("mod");    break;
-                case TOK_RWORD_STRUCT:  m_pmi.send_ident("struct"); break;
-                case TOK_RWORD_ENUM:    m_pmi.send_ident("enum");   break;
-                case TOK_RWORD_TRAIT:   m_pmi.send_ident("trait");  break;
-                case TOK_RWORD_FN:      m_pmi.send_ident("fn");     break;
-                case TOK_RWORD_USE:     m_pmi.send_ident("use");    break;
-                case TOK_RWORD_IMPL:    m_pmi.send_ident("impl");   break;
-                case TOK_RWORD_TYPE:    m_pmi.send_ident("type");   break;
-                case TOK_RWORD_WHERE:   m_pmi.send_ident("where");  break;
-                case TOK_RWORD_AS:      m_pmi.send_ident("as");     break;
-                case TOK_RWORD_LET:     m_pmi.send_ident("let");    break;
-                case TOK_RWORD_MATCH:   m_pmi.send_ident("match");  break;
-                case TOK_RWORD_IF:      m_pmi.send_ident("if");     break;
-                case TOK_RWORD_ELSE:    m_pmi.send_ident("else");   break;
-                case TOK_RWORD_LOOP:    m_pmi.send_ident("loop");   break;
-                case TOK_RWORD_WHILE:   m_pmi.send_ident("while");  break;
-                case TOK_RWORD_FOR:     m_pmi.send_ident("for");    break;
-                case TOK_RWORD_IN:      m_pmi.send_ident("in");     break;
-                case TOK_RWORD_DO:      m_pmi.send_ident("do");     break;
-                case TOK_RWORD_CONTINUE:m_pmi.send_ident("continue"); break;
-                case TOK_RWORD_BREAK:   m_pmi.send_ident("break");  break;
-                case TOK_RWORD_RETURN:  m_pmi.send_ident("return"); break;
-                case TOK_RWORD_YIELD:   m_pmi.send_ident("yeild");  break;
-                case TOK_RWORD_BOX:     m_pmi.send_ident("box");    break;
-                case TOK_RWORD_REF:     m_pmi.send_ident("ref");    break;
-                case TOK_RWORD_FALSE:   m_pmi.send_ident("false"); break;
-                case TOK_RWORD_TRUE:    m_pmi.send_ident("true");   break;
-                case TOK_RWORD_SELF:    m_pmi.send_ident("self");   break;
-                case TOK_RWORD_SUPER:   m_pmi.send_ident("super");  break;
-                case TOK_RWORD_MOVE:    m_pmi.send_ident("move");   break;
-                case TOK_RWORD_ABSTRACT:m_pmi.send_ident("abstract"); break;
-                case TOK_RWORD_FINAL:   m_pmi.send_ident("final");  break;
-                case TOK_RWORD_OVERRIDE:m_pmi.send_ident("override"); break;
-                case TOK_RWORD_VIRTUAL: m_pmi.send_ident("virtual"); break;
-                case TOK_RWORD_TYPEOF:  m_pmi.send_ident("typeof"); break;
-                case TOK_RWORD_BECOME:  m_pmi.send_ident("become"); break;
-                case TOK_RWORD_UNSIZED: m_pmi.send_ident("unsized"); break;
-                case TOK_RWORD_MACRO:   m_pmi.send_ident("macro");  break;
-
-                // 2018
-                case TOK_RWORD_ASYNC:   m_pmi.send_ident("async");  break;
-                case TOK_RWORD_AWAIT:   m_pmi.send_ident("await");  break;
-                case TOK_RWORD_DYN:     m_pmi.send_ident("dyn");    break;
-                case TOK_RWORD_TRY:     m_pmi.send_ident("try");    break;
-                }
+                visit_token(tt.tok());
             }
             else
             {
@@ -585,6 +593,34 @@ namespace {
             }
         }
 
+        void visit_pattern(const ::AST::Pattern& pat)
+        {
+            for(const auto& b : pat.bindings() ) {
+                if( b.m_mutable ) {
+                    m_pmi.send_ident("mut");
+                }
+                switch(b.m_type)
+                {
+                case ::AST::PatternBinding::Type::MOVE:
+                    break;
+                case ::AST::PatternBinding::Type::REF:
+                    m_pmi.send_ident("ref");
+                    break;
+                case ::AST::PatternBinding::Type::MUTREF:
+                    m_pmi.send_ident("ref");
+                    m_pmi.send_ident("mut");
+                    break;
+                }
+                m_pmi.send_ident(b.m_name);
+            }
+            TU_MATCH_HDRA( (pat.data()), { )
+            default:
+                TODO(sp, "visit_pattern " << pat.data().tag_str() << " - " << pat);
+            TU_ARMA(MaybeBind, e) {
+                m_pmi.send_ident(e.name);
+                }
+            }
+        }
         void visit_type(const ::TypeRef& ty)
         {
             // TODO: Correct handling of visit_type
@@ -937,7 +973,24 @@ namespace {
         }
         void visit_node(const ::AST::ExprNode& e)
         {
-            const_cast<::AST::ExprNode&>(e).visit(*this);
+            DEBUG(e);
+            // TODO: Dump to a string, then re-parse into a TT and then send that TT
+            // - Avoids needing to repeat logic
+            ::std::stringstream ss;
+            DumpAST_Node(ss, e);
+            ss << " ";
+
+            ::std::istringstream    iss { ss.str() };
+            Lexer   l { iss, AST::Edition::Rust2021, {} };
+            for(;;) {
+                auto t = l.getToken();
+                if( t == TOK_EOF ) {
+                    break;
+                }
+                // TODO: If this is an ident, then get the comment after it that specifies the hygine info
+                visit_token(t);
+            }
+            //const_cast<::AST::ExprNode&>(e).visit(*this);
         }
         void visit_nodes(const ::AST::Expr& e)
         {
@@ -957,7 +1010,14 @@ namespace {
                 break;
             }
             m_pmi.send_symbol("{");
-            TODO(sp, "");
+            for(const auto& n : node.m_nodes)
+            {
+                this->visit_node(*n);
+                if( node.m_yields_final_value && &n == &node.m_nodes.back() ) {
+                    break;
+                }
+                m_pmi.send_symbol(";");
+            }
             m_pmi.send_symbol("}");
         }
         void visit(::AST::ExprNode_Try& node) {
@@ -1062,32 +1122,29 @@ namespace {
             TODO(sp, "ExprNode_UniOp");
         }
 
-        void visit_top_attrs(slice<const ::AST::Attribute>& attrs, bool emit_all = false)
+        void visit_top_attrs(slice<const ::AST::Attribute>& attrs)
         {
             for(const auto& a : attrs)
             {
-                if( emit_all || (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial())) )
-                {
-                    DEBUG("Send " << a);
-                    m_pmi.send_symbol("#");
-                    m_pmi.send_symbol("[");
-                    this->visit_meta_item(a);
-                    m_pmi.send_symbol("]");
-                }
+                this->visit_attr(a);
             }
         }
         void visit_attrs(const ::AST::AttributeList& attrs)
         {
             for(const auto& a : attrs.m_items)
             {
-                if( a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial()) )
-                {
-                    DEBUG("Send " << a);
-                    m_pmi.send_symbol("#");
-                    m_pmi.send_symbol("[");
-                    this->visit_meta_item(a);
-                    m_pmi.send_symbol("]");
-                }
+                this->visit_attr(a);
+            }
+        }
+        void visit_attr(const ::AST::Attribute& a)
+        {
+            if( this->emit_all_attrs || (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial())) )
+            {
+                DEBUG("Send " << a);
+                m_pmi.send_symbol("#");
+                m_pmi.send_symbol("[");
+                this->visit_meta_item(a);
+                m_pmi.send_symbol("]");
             }
         }
         void visit_meta_item(const ::AST::Attribute& i)
@@ -1202,12 +1259,53 @@ namespace {
         {
             TODO(sp, "visit_union");
         }
+
+        void visit_function(const ::std::string& name, bool is_pub, const ::AST::Function& fcn)
+        {
+            if( is_pub ) {
+                m_pmi.send_ident("pub");
+            }
+
+            if( fcn.is_unsafe() ) {
+                m_pmi.send_ident("unsafe");
+            }
+            if( fcn.is_const() ) {
+                m_pmi.send_ident("const");
+            }
+            if( fcn.abi() != "" ) {
+                m_pmi.send_ident("extern");
+                m_pmi.send_string(fcn.abi());
+            }
+            m_pmi.send_ident("fn");
+            m_pmi.send_ident(name.c_str());
+            this->visit_params(fcn.params());
+            m_pmi.send_symbol("(");
+            for( const auto& arg : fcn.args() ) {
+                this->visit_attrs(arg.attrs);
+                this->visit_pattern(arg.pat);
+                m_pmi.send_symbol(":");
+                this->visit_type(arg.ty);
+                m_pmi.send_symbol(",");
+            }
+            if( fcn.is_variadic() ) {
+                m_pmi.send_symbol("...");
+            }
+            m_pmi.send_symbol(")");
+            //if( fcn.rettype() != TypeRef() ) {
+                m_pmi.send_symbol("->");
+                this->visit_type(fcn.rettype());
+            //}
+            this->visit_bounds(fcn.params());
+            this->visit_nodes(fcn.code());
+        }
+
         void visit_item(const ::std::string& name, bool is_pub, const ::AST::Item& item)
         {
             TU_MATCH_HDRA((item), {)
             default:
                 TODO(sp, "visit_item - " << item.tag_str());
                 break;
+            // Types
             TU_ARMA(Struct, e) {
                 visit_struct(name, is_pub, e);
                 }
@@ -1218,9 +1316,10 @@ namespace {
                 visit_union(name, is_pub, e);
                 }
 
-            //TU_ARMA(Function, e) {
-            //    visit_function(name, is_pub, e);
-            //    }
+            // Values
+            TU_ARMA(Function, e) {
+                visit_function(name, is_pub, e);
+                }
             }
         }
     };
@@ -1285,7 +1384,8 @@ namespace {
     )
 {
     return ProcMacro_Invoke(sp, crate, mac_path, &tt, [&](Visitor& v) {
-        v.visit_top_attrs(attrs, true);
+        v.emit_all_attrs = true;
+        v.visit_top_attrs(attrs);
         v.visit_item(item_name, is_pub, i);
         });
 }
@@ -1586,8 +1686,10 @@ void ProcMacroInv::recv_bytes_raw(void* out_void, size_t len)
         rem -= n;
     }
 
-    if( m_dump_file_res.is_open() )
+    if( m_dump_file_res.is_open() ) {
         m_dump_file_res.write( reinterpret_cast<const char*>(out_void), len );
+        m_dump_file_res.flush();
+    }
 }
 uint64_t ProcMacroInv::recv_v128u()
 {
