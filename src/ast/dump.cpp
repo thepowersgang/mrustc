@@ -463,7 +463,20 @@ public:
             m_os << "0x" << ::std::hex << n.m_value << ::std::dec << "_/*bool/str*/";
             break;
         case CORETYPE_CHAR:
-            m_os << "'\\u{" << ::std::hex << n.m_value << ::std::dec << "}'";
+            //if( 0x20 <= n.m_value && n.m_value < 128 ) {
+            if( n.m_value >= 0x20 && n.m_value < 128 ) {
+                switch(n.m_value.truncate_u64())
+                {
+                case '\'':  m_os << "'\\''";    break;
+                case '\\':  m_os << "'\\\\'";   break;
+                default:
+                    m_os << "'" << (char)n.m_value.truncate_u64() << "'";
+                    break;
+                }
+            }
+            else {
+                m_os << "'\\u{" << ::std::hex << n.m_value << ::std::dec << "}'";
+            }
             break;
         case CORETYPE_F32:
         case CORETYPE_F64:

@@ -451,7 +451,14 @@ namespace {
             // Value tokens
             case TOK_IDENT:     m_pmi.send_ident(tok.ident().name.c_str());   break;  // TODO: Raw idents
             case TOK_LIFETIME:  m_pmi.send_lifetime(tok.ident().name.c_str());  break;  // TODO: Hygine?
-            case TOK_INTEGER:   m_pmi.send_int(tok.datatype(), tok.intval());   break;
+            case TOK_INTEGER:
+                if( tok.datatype() == CORETYPE_CHAR ) {
+                    m_pmi.send_char(tok.intval().truncate_u64());
+                }
+                else {
+                    m_pmi.send_int(tok.datatype(), tok.intval());
+                }
+                break;
             case TOK_CHAR:      m_pmi.send_char(tok.intval().truncate_u64());  break;
             case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
             case TOK_STRING:        m_pmi.send_string(tok.str());       break;

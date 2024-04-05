@@ -367,13 +367,27 @@ struct EscapedString {
     // Value tokens
     case TOK_IDENT:     return m_data.as_Ident().name.c_str();
     case TOK_LIFETIME:  return FMT("'" << m_data.as_Ident().name.c_str());
-    case TOK_INTEGER:
-        if( m_data.as_Integer().m_datatype == CORETYPE_ANY ) {
+    case TOK_INTEGER: {
+        auto v = m_data.as_Integer().m_intval;
+        switch(m_data.as_Integer().m_datatype)
+        {
+        case CORETYPE_CHAR:
+            if( v >= 0x20 && v < 128 ) {
+                switch(v.truncate_u64())
+                {
+                case '\'': return "'\\''";
+                case '\\': return "'\\\\'";
+                default:
+                    return FMT("'" << (char)v.truncate_u64() << "'");
+                }
+            }
+            return FMT("'\\u{" << ::std::hex << v << ::std::dec << "}'");
+        case CORETYPE_ANY:
             return FMT(m_data.as_Integer().m_intval);
+        default:
+            return FMT(m_data.as_Integer().m_intval << "_" << coretype_name(m_data.as_Integer().m_datatype));
         }
-        else {
-            return FMT(m_data.as_Integer().m_intval << "_" << m_data.as_Integer().m_datatype);
-        }
+        break; }
     case TOK_CHAR:      return FMT("'\\u{"<< ::std::hex << m_data.as_Integer().m_intval << "}");
     case TOK_FLOAT:
         if( m_data.as_Float().m_datatype == CORETYPE_ANY ) {

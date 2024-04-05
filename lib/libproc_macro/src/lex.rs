@@ -109,8 +109,10 @@ impl ::std::str::FromStr for TokenStream {
 
             if c == '\''
             {
-                it.consume();
-                c = it.cur();
+                c = match it.consume() {
+                    Some(c) => c,
+                    None => return err("Unterminated char literal"),
+                    };
                 if (c.is_alphabetic() || c == '_') && it.next().map(|x| x != '\'').unwrap_or(true) {
                     // Lifetime
                     let ident = get_ident(&mut it, String::new());
@@ -119,23 +121,43 @@ impl ::std::str::FromStr for TokenStream {
                 }
                 else {
                     // Char lit
-                    if c == '\\' {
-                        panic!("TODO: char literal with escape");
-                    }
-                    else {
-                        rv.push(Literal::character(c).into());
-                        match it.consume()
-                        {
-                        Some('\'') => {},
-                        Some(c) => {
-                            debug!("Stray charcter '{}'", c);
-                            return err("Multiple characters in char literal");
-                            },
-                        None => {
-                            return err("Unterminated char literal");
-                            },
+                    let new_c = if c == '\\' {
+                            match match it.consume()
+                                {
+                                Some(c) => c,
+                                None => return err("Unterminated char literal"),
+                                }
+                            {
+                            '0' => '\0',
+                            'n' => '\n',
+                            'r' => '\r',
+                            '\\' => '\\',
+                            '\'' => '\'',
+                            'u' => {
+                                if it.consume() != Some('{') {
+                                    return err("Expected `{` after `\\u` in char literal");
+                                }
+                                panic!("TODO: char literal - unicode literal");
+                                },
+                            c @ _ => panic!("TODO: char literal with escape - '\\{}'", c),
+                            }
                         }
+                        else {
+                            c
+                        };
+                    rv.push(Literal::character(new_c).into());
+                    match it.consume()
+                    {
+                    Some('\'') => {},
+                    Some(c) => {
+                        debug!("Stray charcter '{}'", c);
+                        return err("Multiple characters in char literal");
+                        },
+                    None => {
+                        return err("Unterminated char literal");
+                        },
                     }
+                    it.consume();   // Eat the final `'` returned above
                 }
             }
             else if c == '/' && it.next() == Some('/')
@@ -441,6 +463,12 @@ mod tests {
             None => {},
             }
         }};
+    }
+
+    #[test]
+    fn char_literals()
+    {
+        TokenStream::from_str("'!'").expect("failed to parse");
     }
 
     #[test]
