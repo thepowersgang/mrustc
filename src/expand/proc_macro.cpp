@@ -1272,7 +1272,7 @@ namespace {
             if( fcn.is_const() ) {
                 m_pmi.send_ident("const");
             }
-            if( fcn.abi() != "" ) {
+            if( fcn.abi() != ABI_RUST ) {
                 m_pmi.send_ident("extern");
                 m_pmi.send_string(fcn.abi());
             }
