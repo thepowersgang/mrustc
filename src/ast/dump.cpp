@@ -615,13 +615,15 @@ public:
     }
     virtual void visit(AST::ExprNode_Cast& n) override {
         m_expr_root = false;
+        m_os << "(";
         AST::NodeVisitor::visit(n.m_value);
-        m_os << " as " << n.m_type;
+        m_os << ") as " << n.m_type;
     }
     virtual void visit(AST::ExprNode_TypeAnnotation& n) override {
         m_expr_root = false;
+        m_os << "(";
         AST::NodeVisitor::visit(n.m_value);
-        m_os << ": " << n.m_type;
+        m_os << ") : " << n.m_type;
     }
     virtual void visit(AST::ExprNode_BinOp& n) override {
         m_expr_root = false;
