@@ -1306,12 +1306,41 @@ namespace {
             this->visit_nodes(fcn.code());
         }
 
+        void visit_use(const ::std::string& name, bool is_pub, const ::AST::UseItem& item)
+        {
+            if( is_pub ) {
+                m_pmi.send_ident("pub");
+            }
+            m_pmi.send_ident("use");
+
+            if( item.entries.size() == 1 ) {
+                visit_path(item.entries[0].path);
+                if( item.entries[0].name == "" ) {
+                    m_pmi.send_symbol("::");
+                    m_pmi.send_symbol("*");
+                }
+                else if( item.entries[0].name != item.entries[0].path.nodes().back().name() ) {
+                    m_pmi.send_ident("as");
+                    m_pmi.send_ident( item.entries[0].name.c_str() );
+                }
+                else {
+                }
+            }
+            else {
+                TODO(sp, "Multiple items");
+            }
+            m_pmi.send_symbol(";");
+        }
+
         void visit_item(const ::std::string& name, bool is_pub, const ::AST::Item& item)
         {
             TU_MATCH_HDRA((item), {)
             default:
                 TODO(sp, "visit_item - " << item.tag_str());
                 break;
+            TU_ARMA(Use, e) {
+                visit_use(name, is_pub, e);
+                }
             // Types
             TU_ARMA(Struct, e) {
                 visit_struct(name, is_pub, e);
@@ -1360,11 +1389,11 @@ namespace {
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
-// --- Dervive/attribute inputs
+// --- Derive inputs
 ::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Struct& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
-        // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
+        DEBUG("derive on struct");
         v.visit_top_attrs(attrs);
         v.visit_struct(item_name, false, i);
         });
@@ -1372,7 +1401,7 @@ namespace {
 ::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Enum& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
-        // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
+        DEBUG("derive on enum");
         v.visit_top_attrs(attrs);
         v.visit_enum(item_name, false, i);
         });
@@ -1380,11 +1409,12 @@ namespace {
 ::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Union& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
-        // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
+        DEBUG("derive on union");
         v.visit_top_attrs(attrs);
         v.visit_union(item_name, false, i);
         });
 }
+// --- attribute
 ::std::unique_ptr<TokenStream> ProcMacro_Invoke(
     const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt,
     slice<const AST::Attribute> attrs, bool is_pub, const ::std::string& item_name, const ::AST::Item& i
