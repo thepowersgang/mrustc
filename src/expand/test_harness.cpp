@@ -99,11 +99,12 @@ void Expand_TestHarness(::AST::Crate& crate)
         if( TARGETVER_LEAST_1_74 )
         {
             desc_vals.push_back({ {}, "ignore_message", NEWNODE(_NamedValue, ::AST::Path(crate.m_ext_cratename_std, {AST::PathNode("option"), AST::PathNode("Option"), AST::PathNode("None")})) });
-            desc_vals.push_back({ {}, "source_file", NEWNODE(_String, test.span->filename.c_str()) });
-            desc_vals.push_back({ {}, "start_line", NEWNODE(_Integer, U128(test.span->start_line), CORETYPE_UINT) });
-            desc_vals.push_back({ {}, "start_col" , NEWNODE(_Integer, U128(test.span->start_ofs ), CORETYPE_UINT) });
-            desc_vals.push_back({ {}, "end_line"  , NEWNODE(_Integer, U128(test.span->end_line  ), CORETYPE_UINT) });
-            desc_vals.push_back({ {}, "end_col"   , NEWNODE(_Integer, U128(test.span->end_ofs   ), CORETYPE_UINT) });
+            auto sp = test.span.get_top_file_span();
+            desc_vals.push_back({ {}, "source_file", NEWNODE(_String, sp.filename.c_str()) });
+            desc_vals.push_back({ {}, "start_line", NEWNODE(_Integer, U128(sp.start_line), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "start_col" , NEWNODE(_Integer, U128(sp.start_ofs ), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "end_line"  , NEWNODE(_Integer, U128(sp.end_line  ), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "end_col"   , NEWNODE(_Integer, U128(sp.end_ofs   ), CORETYPE_UINT) });
         }
         auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
 

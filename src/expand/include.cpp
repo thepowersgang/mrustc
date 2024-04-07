@@ -85,7 +85,7 @@ class CIncludeExpander:
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         //::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
-        ::std::string file_path = get_path_relative_to(sp->filename.c_str(), mv$(path));
+        ::std::string file_path = get_path_relative_to(sp.get_top_file_span().filename.c_str(), mv$(path));
         crate.m_extra_files.push_back(file_path);
 
         try {

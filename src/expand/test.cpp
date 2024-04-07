@@ -26,6 +26,7 @@ class CTestHandler:
         if( crate.m_test_harness )
         {
             ::AST::TestDesc td;
+            td.span = sp;
             for(const auto& node : path.nodes)
             {
                 td.name += "::";

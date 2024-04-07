@@ -11,13 +11,8 @@
 #include <ast/crate.hpp>
 
 namespace {
-    const Span& get_top_span(const Span& sp) {
-        auto* top_span = &sp;
-        while((*top_span)->parent_span != Span())
-        {
-            top_span = &(*top_span)->parent_span;
-        }
-        return *top_span;
+    const SpanInner_Source* get_top_span(const Span& sp) {
+        return &sp.get_top_file_span();
     }
 }
 

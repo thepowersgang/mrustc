@@ -107,3 +107,4 @@
   - Probably before... but I've always done it afterwards
 - `match foo { Self::Bar => ... }` - Simple fix
 - `#[derive(::"cratename"::TraitName)]`
+- Hygiene/spans from proc macros, changing how `$crate` expands
