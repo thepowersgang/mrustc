@@ -1403,7 +1403,7 @@ namespace typecheck
             TU_ARMA(Struct, e) {
                 if( e->m_data.is_Unit() || e->m_data.is_Tuple() )
                 {
-                    ASSERT_BUG(node.span(), node.m_values.size() == 0, "Values provided for unit-like struct");
+                    ASSERT_BUG(node.span(), node.m_values.size() == 0, "Values provided for " << e->m_data.tag_str() << "-like struct");
 
                     if( node.m_base_value ) {
                         auto _ = this->push_inner_coerce_scoped(false);
