@@ -980,12 +980,13 @@ namespace {
         }
         void visit_node(const ::AST::ExprNode& e)
         {
-            DEBUG(e);
+            DEBUG("NODE: " << e);
             // TODO: Dump to a string, then re-parse into a TT and then send that TT
             // - Avoids needing to repeat logic
             ::std::stringstream ss;
             DumpAST_Node(ss, e);
             ss << " ";
+            DEBUG("STRING: " << ss.str());
 
             ::std::istringstream    iss { ss.str() };
             Lexer   l { iss, AST::Edition::Rust2021, {} };
@@ -1440,8 +1441,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* exe
     m_proc_macro_desc(proc_macro_desc),
     m_edition(edition)
 {
-    // TODO: Optionally dump the data sent to the client.
-    if( getenv("MRUSTC_DUMP_PROCMACRO") )
+    if( getenv("MRUSTC_DUMP_PROCMACRO") && getenv("MRUSTC_DUMP_PROCMACRO")[0] )
     {
         // TODO: Dump both input and output, AND (optionally) dump each invocation
         static unsigned int dump_count = 0;
@@ -1454,7 +1454,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* exe
     }
     else
     {
-        DEBUG("Set MRUSTC_DUMP_PROCMACRO=dump_prefix to dump to `dump_prefix-NNN-{out,res}.bin`");
+        DEBUG("Set MRUSTC_DUMP_PROCMACRO=procmacro_dump to dump to `procmacro_dump-NNN-{out,res}.bin`");
     }
 #ifdef _WIN32
     std::string commandline = std::string{ executable } + " " + proc_macro_desc.name.c_str();
