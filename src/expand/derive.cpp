@@ -1955,19 +1955,29 @@ static const Deriver* find_impl(const RcString& trait_name)
 }
 
 namespace {
-    std::vector<AST::AttributeName>   get_derive_items(const AST::Attribute& attr)
+    std::vector<AST::Path>   get_derive_items(const AST::Attribute& attr)
     {
-        std::vector<AST::AttributeName> rv;
+        std::vector<AST::Path> rv;
 
         TTStream    lex(attr.span(), ParseState(), attr.data());
         lex.getTokenCheck(TOK_PAREN_OPEN);
         while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
 
-            AST::AttributeName  item;
-            do {
-                item.elems.push_back( lex.getTokenCheck(TOK_IDENT).ident().name );
-            } while(lex.getTokenIf(TOK_DOUBLE_COLON));
-            rv.push_back(std::move(item));
+            if( lex.getTokenIf(TOK_DOUBLE_COLON) ) {
+                auto item = AST::Path(lex.getTokenCheck(TOK_STRING).str().c_str(), {});
+                lex.getTokenCheck(TOK_DOUBLE_COLON);
+                do {
+                    item += AST::PathNode(lex.getTokenCheck(TOK_IDENT).ident().name);
+                } while(lex.getTokenIf(TOK_DOUBLE_COLON));
+                rv.push_back(std::move(item));
+            }
+            else {
+                auto item = AST::Path::new_relative({}, {});
+                do {
+                    item += AST::PathNode(lex.getTokenCheck(TOK_IDENT).ident().name);
+                } while(lex.getTokenIf(TOK_DOUBLE_COLON));
+                rv.push_back(std::move(item));
+            }
 
             if(lex.lookahead(0) != TOK_COMMA)
                 break;
@@ -1995,14 +2005,14 @@ namespace {
         return type;
     }
 
-    std::vector<RcString> find_macro(const Span& sp, const AST::Crate& crate, const AST::Module& mod, const AST::AttributeName& trait_path)
+    std::vector<RcString> find_macro(const Span& sp, const AST::Crate& crate, const AST::Module& mod, const AST::Path& trait_path)
     {
         std::vector<RcString>   mac_path;
 
-        if( trait_path.elems.size() == 1 )
+        if( trait_path.is_trivial() )
         {
             //auto mac_name = RcString::new_interned( FMT("derive#" << trait.name().elems.back()) );
-            auto mac_name = trait_path.elems.back();
+            auto mac_name = trait_path.as_trivial();
 
             for(const auto& mac_import : mod.m_macro_imports)
             {
@@ -2027,6 +2037,7 @@ namespace {
 
             TU_MATCH_HDRA( (mac), {)
             TU_ARMA(None, e) {
+                TODO(sp, "Unable to find derive macro for - " << trait_path);
                 }
             TU_ARMA(ExternalProcMacro, ext_proc_mac) {
                 mac_path.push_back(ext_proc_mac->path.m_crate_name);
@@ -2062,14 +2073,14 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         };
 
     bool    fail = false;
-    ::std::vector<AST::AttributeName>   missing_handlers;
+    ::std::vector<AST::Path>   missing_handlers;
     for( const auto& trait_path : derive_items )
     {
         DEBUG("- " << trait_path);
 
-        if( trait_path.elems.size() == 1 )
+        if( trait_path.is_trivial() )
         {
-            auto dp = find_impl(trait_path.elems[0]);
+            auto dp = find_impl(trait_path.as_trivial());
             if( dp ) {
                 mod.add_item(sp, false, "", dp->handle_item(sp, opts, item.params(), type, item), {} );
                 continue ;
