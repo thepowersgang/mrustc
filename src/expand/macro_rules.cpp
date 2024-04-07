@@ -43,7 +43,7 @@ class CMacroUseHandler:
     AttrStage stage() const override { return AttrStage::Post; }
     bool run_during_iter() const override { return true; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
     {
         TRACE_FUNCTION_F("[CMacroUseHandler] path=" << path);
 
@@ -215,7 +215,7 @@ class CMacroExportHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
     {
         // TODO: Flags on the attribute
         // - `local_inner_macros`: Forces macro lookups within the expansion to search within the source crate
@@ -305,7 +305,7 @@ class CMacroReexportHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
     {
         if( !i.is_Crate() ) {
             ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());
@@ -329,7 +329,7 @@ class CBuiltinMacroHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Pre; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
     {
         RcString    name;
         if(i.is_MacroInv()) {

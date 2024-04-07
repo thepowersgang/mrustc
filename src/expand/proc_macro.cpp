@@ -36,7 +36,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -79,7 +79,7 @@ class Decorator_ProcMacroAttribute:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -96,7 +96,7 @@ class Decorator_ProcMacro:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -1391,28 +1391,28 @@ namespace {
     return box$(pmi);
 }
 // --- Derive inputs
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Struct& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, bool pub, const ::std::string& item_name, const ::AST::Struct& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on struct");
         v.visit_top_attrs(attrs);
-        v.visit_struct(item_name, false, i);
+        v.visit_struct(item_name, pub, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Enum& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, bool pub, const ::std::string& item_name, const ::AST::Enum& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on enum");
         v.visit_top_attrs(attrs);
-        v.visit_enum(item_name, false, i);
+        v.visit_enum(item_name, pub, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Union& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, bool pub, const ::std::string& item_name, const ::AST::Union& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on union");
         v.visit_top_attrs(attrs);
-        v.visit_union(item_name, false, i);
+        v.visit_union(item_name, pub, i);
         });
 }
 // --- attribute

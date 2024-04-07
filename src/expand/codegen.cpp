@@ -20,7 +20,7 @@ namespace {
 
         AttrStage   stage() const override { return AttrStage::Pre; }
 
-        void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
             if( i.is_None() ) {
             }
             else if( i.is_Function() ) {
@@ -30,7 +30,7 @@ namespace {
                 // TODO: Error
             }
         }
-        void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
             if( i.is_None() ) {
             }
             else if( i.is_Function() ) {
@@ -122,7 +122,7 @@ class CHandler_Repr:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         if(i.is_None())
         {
         }
@@ -274,7 +274,7 @@ class CHandler_RustcNonnullOptimizationGuaranteed:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         // TODO: Types only
         if( i.is_Struct() ) {
         }
@@ -290,7 +290,7 @@ class CHandler_RustcLayoutScalarValidRangeStart:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         // TODO: Types only
         if( auto* s = i.opt_Struct() ) {
             TTStream    lex(sp, ParseState(), mi.data());
@@ -316,7 +316,7 @@ class CHandler_RustcLayoutScalarValidRangeEnd:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         // TODO: Types only
         if( auto* s = i.opt_Struct() ) {
             TTStream    lex(sp, ParseState(), mi.data());
@@ -342,7 +342,7 @@ class CHandler_LinkName:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         auto link_name = mi.parse_equals_string(crate, mod);
         ASSERT_BUG(sp, link_name != "", "Empty #[link_name] attribute");
 
@@ -370,7 +370,7 @@ class CHandler_LinkSection:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         auto link_section = mi.parse_equals_string(crate, mod);
         ASSERT_BUG(sp, link_section != "", "Empty #[link_section] attribute");
 
@@ -398,7 +398,7 @@ class CHandler_Link:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         if(i.is_None()) {
         }
         else if( auto* b = i.opt_ExternBlock() )
@@ -463,7 +463,7 @@ class CHandler_Linkage:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         TTStream    lex(sp, ParseState(), mi.data());
         lex.getTokenCheck(TOK_EQUAL);
         auto tok = lex.getTokenCheck(TOK_STRING);
@@ -514,7 +514,7 @@ class CHandler_TargetFeature:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         // TODO: Only valid on functions?
     }
 };

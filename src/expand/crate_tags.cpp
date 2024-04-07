@@ -63,7 +63,7 @@ public:
         crate.m_lang_items.insert(::std::make_pair( "mrustc-allocator", AST::AbsolutePath() ));
     }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[allocator] can only be put on functions and the crate - found on " << i.tag_str());
         }

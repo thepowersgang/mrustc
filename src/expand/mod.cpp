@@ -155,20 +155,12 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                     void handle(
                         const Span& sp,
                         const AST::Attribute& attr,
-                        ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i
+                        ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i
                         ) const override
                     {
                         if( !i.is_None() )
                         {
-                            const RcString& item_name = path.nodes.back();
-                            bool is_pub = false;
-                            for(const auto& item : mod.m_items) {
-                                if( !item->data.is_None() && item->name == item_name ) {
-                                    is_pub = item->is_pub;
-                                    break;
-                                }
-                            }
-                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, is_pub, item_name.c_str(), i);
+                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, is_pub, path.nodes.back().c_str(), i);
                             if( lex ) {
                                 i = AST::Item::make_None({});
                                 lex->parse_state().module = &mod;
@@ -229,12 +221,12 @@ namespace {
         return slice<const AST::Attribute>(start, end - start);
     }
 }
-void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Module& mod, ::AST::Item& item)
+void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Module& mod, bool is_pub, ::AST::Item& item)
 {
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
             // Pass attributes _after_ this attribute
-            d.handle(sp, a, es.crate, path, mod, get_attrs_after(attrs, a), item);
+            d.handle(sp, a, es.crate, path, mod, get_attrs_after(attrs, a), is_pub, item);
         }
         });
 }
@@ -247,12 +239,12 @@ void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, Attr
         }
         });
 }
-void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Impl& impl, const RcString& name, ::AST::Item& item)
+void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Impl& impl, bool is_pub, const RcString& name, ::AST::Item& item)
 {
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
             // TODO: Pass attributes _after_ this attribute
-            d.handle(sp, a, es.crate, impl, name, get_attrs_after(attrs, a), item);
+            d.handle(sp, a, es.crate, impl, name, get_attrs_after(attrs, a), is_pub, item);
         }
         });
 }
@@ -1726,7 +1718,7 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
 
         auto attrs = mv$(i.attrs);
         Expand_Attrs_CfgAttr(attrs);
-        Expand_Attrs(es, attrs, AttrStage::Pre,  impl, i.name, *i.data);
+        Expand_Attrs(es, attrs, AttrStage::Pre,  impl, i.is_pub, i.name, *i.data);
 
         TU_MATCH_HDRA( (*i.data), {)
         default:
@@ -1778,7 +1770,7 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
         // Run post-expansion decorators and restore attributes
         {
             auto& i = impl.items()[idx];
-            Expand_Attrs(es, attrs, AttrStage::Post,  impl, i.name, *i.data);
+            Expand_Attrs(es, attrs, AttrStage::Post,  impl, i.is_pub, i.name, *i.data);
             // TODO: How would this be populated? It got moved out?
             if( i.attrs.m_items.size() == 0 )
                 i.attrs = mv$(attrs);
@@ -1930,10 +1922,11 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
         }
 
         auto attrs = mv$(i.attrs);
+        bool is_pub = i.is_pub;
         if( es.mode == ExpandMode::FirstPass )
         {
             Expand_Attrs_CfgAttr(attrs);
-            Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, i.data);
+            Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, is_pub, i.data);
         }
 
         // Do modules without moving the definition (so the module path is always valid)
@@ -1943,7 +1936,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
             LList<const AST::Module*>   sub_modstack(&es.modstack, &e);
             ExpandState es_inner(es.crate, sub_modstack, es.mode);
             Expand_Mod(es_inner, path, e, 0);
-            Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, i.data);
+            Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, is_pub, i.data);
             es.change |= es_inner.change;
             es.has_missing |= es_inner.has_missing;
             i.attrs = std::move(attrs);
@@ -1974,7 +1967,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 auto ttl = Expand_Macro(es, mod, mi_owned);
                 if( ttl )
                 {
-                    Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, dat);
+                    Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, is_pub, dat);
 
                     // Re-parse tt
                     // TODO: All new items should be placed just after this?
@@ -2267,7 +2260,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 Expand_Path(es, mod, *p.ent.path);
             }
         }
-        Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, dat);
+        Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, is_pub, dat);
 
         {
 

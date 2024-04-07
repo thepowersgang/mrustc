@@ -2045,7 +2045,7 @@ namespace {
 }
 
 template<typename T>
-static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::AbsolutePath& path, slice<const AST::Attribute> attrs, const T& item)
+static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::AbsolutePath& path, slice<const AST::Attribute> attrs, bool is_pub, const T& item)
 {
     auto derive_items = get_derive_items(attr);
     if( derive_items.empty() ) {
@@ -2081,7 +2081,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         bool found = false;
         if( !mac_path.empty() )
         {
-            auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, path.nodes.back().c_str(), item);
+            auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, is_pub, path.nodes.back().c_str(), item);
             if( lex )
             {
                 lex->parse_state().module = &mod;
@@ -2110,7 +2110,7 @@ class Decorator_Derive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
@@ -2120,13 +2120,13 @@ public:
             // Ignore, it's been deleted
             ),
         (Union,
-            derive_item(sp, crate, mod, attr, path, attrs, e);
+            derive_item(sp, crate, mod, attr, path, attrs, is_pub, e);
             ),
         (Enum,
-            derive_item(sp, crate, mod, attr, path, attrs, e);
+            derive_item(sp, crate, mod, attr, path, attrs, is_pub, e);
             ),
         (Struct,
-            derive_item(sp, crate, mod, attr, path, attrs, e);
+            derive_item(sp, crate, mod, attr, path, attrs, is_pub, e);
             )
         )
     }
