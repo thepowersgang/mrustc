@@ -278,7 +278,13 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
                 auto p = Parse_Path(lex, PATH_GENERIC_EXPR);
                 if( lex.lookahead(0) == TOK_EXCLAM && lex.lookahead(1) == TOK_BRACE_OPEN ) {
                     GET_CHECK_TOK(tok, lex, TOK_EXCLAM);
-                    return Parse_ExprMacro(lex, std::move(p));
+                    auto rv = Parse_ExprMacro(lex, std::move(p));
+                    // If the block is followed by `.` or `?`, it's actually an expression!
+                    if( lex.lookahead(0) == TOK_DOT || lex.lookahead(0) == TOK_QMARK ) {
+                        lex.putback( Token(Token::TagTakeIP(), InterpolatedFragment(InterpolatedFragment::EXPR, rv.release())) );
+                        return Parse_ExprBlockLine_Stmt(lex, *add_silence);
+                    }
+                    return rv;
                 }
                 tok = Token(Token::TagTakeIP(), InterpolatedFragment(std::move(p)));
             }
