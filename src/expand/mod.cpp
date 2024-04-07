@@ -195,6 +195,13 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
 }
 void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
+    // TODO: Reduce load on derive etc by visiting `cfg` first?
+    for( auto& a : attrs.m_items )
+    {
+        if( a.name() == "cfg" ) {
+            Expand_Attr(es, a.span(), a, stage, f);
+        }
+    }
     for( auto& a : attrs.m_items )
     {
         Expand_Attr(es, a.span(), a, stage, f);
@@ -1864,6 +1871,64 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
             }
         }
 
+        // Pre-exapand inner `#[cfg]`
+        {
+            struct H {
+                static void filter_cfg(::std::vector<AST::StructItem>& lst) {
+                    auto new_end = ::std::remove_if(lst.begin(), lst.end(), [&](const AST::StructItem& v) { return !check_cfg_attrs(v.m_attrs); });
+                    DEBUG(lst.size() << " -> " << new_end - lst.begin());
+                    lst.erase(new_end, lst.end());
+                }
+                static void filter_cfg(::std::vector<AST::TupleItem>& lst) {
+                    auto new_end = ::std::remove_if(lst.begin(), lst.end(), [&](const AST::TupleItem& v) { return !check_cfg_attrs(v.m_attrs); });
+                    DEBUG(lst.size() << " -> " << new_end - lst.begin());
+                    lst.erase(new_end, lst.end());
+                }
+            };
+            DEBUG(i.data.tag_str() << " " << mod.path() << "::" << i.name);
+            TU_MATCH_HDRA( (i.data), { )
+            // Expand cfg within types, so derive macros don't need to care
+            TU_ARMA(Struct, str) {
+                TU_MATCH_HDRA((str.m_data), {)
+                TU_ARMA(Unit, e) {
+                    }
+                TU_ARMA(Struct, e) {
+                    H::filter_cfg(e.ents);
+                    }
+                TU_ARMA(Tuple, e) {
+                    H::filter_cfg(e.ents);
+                    }
+                }
+                }
+            TU_ARMA(Union, unm) {
+                H::filter_cfg(unm.m_variants);
+                }
+            TU_ARMA(Enum, enm) {
+                for(auto it = enm.variants().begin(); it != enm.variants().end(); )
+                {
+                    if( !check_cfg_attrs(it->m_attrs) ) {
+                        it = enm.variants().erase(it);
+                    }
+                    else {
+                        TU_MATCH_HDRA( (it->m_data), { )
+                        TU_ARMA(Value, e) {}
+                        TU_ARMA(Tuple, e) {
+                            H::filter_cfg(e.m_items);
+                            }
+                        TU_ARMA(Struct, e) {
+                            H::filter_cfg(e.m_fields);
+                            }
+                        }
+
+                        ++ it;
+                    }
+                }
+                }
+            default:
+                break;
+            }
+        }
+
         auto attrs = mv$(i.attrs);
         if( es.mode == ExpandMode::FirstPass )
         {
@@ -2254,6 +2319,7 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
 //
 void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::unique_ptr<AST::Named<AST::Item>>>& new_root_items)
 {
+    TRACE_FUNCTION_F(mod.path());
     for(auto& i : mod.m_items)
     {
         if(const auto* mi = i->data.opt_MacroInv() )
@@ -2312,8 +2378,8 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::
                 ERROR(i->span, E0000, "#[macro_export] on non-macro_rules - " << i->data.tag_str());
             }
         }
-        else if( i->data.is_Module() ) {
-            Expand_Mod_Early(crate, i->data.as_Module(), new_root_items);
+        else if(auto* e = i->data.opt_Module() ) {
+            Expand_Mod_Early(crate, *e, new_root_items);
         }
         else {
         }
@@ -2345,13 +2411,13 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::
                     auto old_items = std::move(mod.m_items);
                     // Parse module items
                     Parse_ModRoot_Items(*ttl, mod);
-                    auto new_item_count = mod.m_items.size();
+                    //auto new_item_count = mod.m_items.size();
                     // Then insert the newly created items
                     old_items.insert(old_items.begin() + idx + 1, std::make_move_iterator(mod.m_items.begin()), std::make_move_iterator(mod.m_items.end()));
                     // and move the (updated) item list back in
                     mod.m_items = std::move(old_items);
 
-                    auto next_non_macro_item = idx + 1 + new_item_count;
+                    //auto next_non_macro_item = idx + 1 + new_item_count;
                     //macro_recursion_stack.push_back(next_non_macro_item == mod.m_items.size() ? nullptr : &*mod.m_items[next_non_macro_item]);
                     //mod.m_items[idx]->data = AST::Item::make_None({});
                 }

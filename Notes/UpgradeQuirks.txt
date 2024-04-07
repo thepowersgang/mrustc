@@ -103,3 +103,5 @@
 - Proc macro items want to see `#[repr]` too (TODO: Formally, what attributes do derive macros see?)
 - Proc macro attributes - hadn't actually expanded those
 - `include!` inside `mod foo { }` path rules
+- Do derives expand before or after the attached item has been expanded?
+  - Probably before... but I've always done it afterwards

@@ -12,6 +12,7 @@
 #include "cfg.hpp"
 #include <ast/expr.hpp> // Needed to clear a ExprNodeP
 #include <ast/crate.hpp>
+#include <ast/attrs.hpp>
 #include <parse/parseerror.hpp>
 
 #include <map>
@@ -163,6 +164,18 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi)
 {
     TTStream    lex(sp, ParseState(), mi.data());
     return check_cfg_stream(lex);
+}
+bool check_cfg_attrs(const ::AST::AttributeList& attrs)
+{
+    for( auto& a : attrs.m_items )
+    {
+        if( a.name() == "cfg" ) {
+            if( !check_cfg(a.span(), a) ) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 std::vector<AST::Attribute> check_cfg_attr(const ::AST::Attribute& mi)
 {
