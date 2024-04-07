@@ -652,12 +652,18 @@ Token Lexer::getTokenInt()
                 ch = this->getc();
                 if( ch == '*' ) {
                     ch = this->getc();
-                    if( ch == '*' )
-                    {
+                    if( ch == '*' ) {
+                        // `/***....` - more than two `*`s is a normal block comment with a bunch of stuff
                         str += "*";
                     }
-                    else
+                    else if( ch == '/' ) {
+                        // `/**/` - an empty block comment
+                        return Token(TOK_COMMENT, str, realGetHygiene());
+                    }
+                    else {
+                        // `/**` - A doc comment
                         is_doc = true;
+                    }
                 }
                 else if( ch == '!' ) {
                     is_pdoc = true;
