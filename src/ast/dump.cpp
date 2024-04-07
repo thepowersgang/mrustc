@@ -106,9 +106,9 @@ public:
             m_os << " ";
             m_os << n.m_ident;
         }
-        m_os << "(";
+        m_os << (n.m_is_braced ? "{" : "(");
         dump_tokentree(n.m_tokens);
-        m_os << ")";
+        m_os << (n.m_is_braced ? "}" : ")");
     }
     virtual void visit(AST::ExprNode_Asm& n) override {
         m_os << "asm!( \"" << n.m_text << "\"";
