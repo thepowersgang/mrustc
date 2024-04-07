@@ -232,13 +232,26 @@ public:
             const auto& ty = path.m_data.as_UfcsUnknown().type;
             const auto& name = path.m_data.as_UfcsUnknown().item;
 
-            if( !ty.data().is_Path() ) {
-                ERROR(sp, E0000, "Expeted path in pattern binding, got " << ty);
+            const HIR::GenericPath* gp_p;
+            if( ty.data().is_Generic() && ty.data().as_Generic().binding == GENERIC_Self ) {
+                if(!m_impl_type) {
+                    ERROR(sp, E0000, "Use of `Self` pattern outside of an impl block");
+                }
+                if(!TU_TEST1(m_impl_type->data(), Path, .path.m_data.is_Generic()) ) {
+                    ERROR(sp, E0000, "Use of `Self` pattern in non-struct impl block - " << *m_impl_type);
+                }
+                gp_p = &m_impl_type->data().as_Path().path.m_data.as_Generic();
             }
-            if( !ty.data().as_Path().path.m_data.is_Generic() ) {
-                ERROR(sp, E0000, "Expeted generic path in pattern binding, got " << ty);
+            else {
+                if( !ty.data().is_Path() ) {
+                    ERROR(sp, E0000, "Expeted path in pattern binding, got " << ty);
+                }
+                if( !ty.data().as_Path().path.m_data.is_Generic() ) {
+                    ERROR(sp, E0000, "Expeted generic path in pattern binding, got " << ty);
+                }
+                gp_p = &ty.data().as_Path().path.m_data.as_Generic();
             }
-            const auto& gp = ty.data().as_Path().path.m_data.as_Generic();
+            const auto& gp = *gp_p;
             const auto& ti = m_crate.get_typeitem_by_path(sp, gp.m_path);
             if( !ti.is_Enum() ) {
                 ERROR(sp, E0000, "Expeted enum path in pattern binding, got " << ti.tag_str());
@@ -277,7 +290,6 @@ public:
             return ::HIR::Pattern::PathBinding::make_Struct(&str);
         }
 
-        // TODO: `Self { ... }` encoded as `<Self>::`
         ASSERT_BUG(sp, path.m_data.is_Generic(), path);
         auto& gp = path.m_data.as_Generic();
 

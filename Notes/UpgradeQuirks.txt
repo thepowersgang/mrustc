@@ -105,3 +105,4 @@
 - `include!` inside `mod foo { }` path rules
 - Do derives expand before or after the attached item has been expanded?
   - Probably before... but I've always done it afterwards
+- `match foo { Self::Bar => ... }` - Simple fix
