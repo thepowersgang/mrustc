@@ -446,7 +446,8 @@ namespace {
             case TOK_INTERPOLATED_STMT:
             case TOK_INTERPOLATED_BLOCK:
             case TOK_INTERPOLATED_EXPR:
-                TODO(sp, "TOK_INTERPOLATED_{STMT/EXPR/BLOCK}");
+                visit_node( const_cast<::Token&>(tok).frag_node() );
+                break;
             case TOK_INTERPOLATED_META:
             case TOK_INTERPOLATED_ITEM:
             case TOK_INTERPOLATED_VIS:

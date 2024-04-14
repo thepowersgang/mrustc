@@ -150,6 +150,7 @@ public:
     AST::Path& frag_path() { assert(m_type == TOK_INTERPOLATED_PATH); return *reinterpret_cast<AST::Path*>( m_data.as_Fragment() ); }
     AST::Pattern& frag_pattern() { assert(m_type == TOK_INTERPOLATED_PATTERN); return *reinterpret_cast<AST::Pattern*>( m_data.as_Fragment() ); }
     AST::Attribute& frag_meta() { assert(m_type == TOK_INTERPOLATED_META); return *reinterpret_cast<AST::Attribute*>( m_data.as_Fragment() ); }
+    AST::ExprNode& frag_node();
 
     ::std::unique_ptr<AST::ExprNode> take_frag_node();
     ::AST::Named<AST::Item> take_frag_item();

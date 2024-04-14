@@ -254,6 +254,12 @@ Token Token::clone() const
     return rv;
 }
 
+AST::ExprNode& Token::frag_node()
+{
+    assert( m_type == TOK_INTERPOLATED_EXPR || m_type == TOK_INTERPOLATED_STMT || m_type == TOK_INTERPOLATED_BLOCK );
+    auto ptr = m_data.as_Fragment();
+    return*reinterpret_cast<AST::ExprNode*>( ptr );
+}
 ::std::unique_ptr<AST::ExprNode> Token::take_frag_node()
 {
     assert( m_type == TOK_INTERPOLATED_EXPR || m_type == TOK_INTERPOLATED_STMT || m_type == TOK_INTERPOLATED_BLOCK );
