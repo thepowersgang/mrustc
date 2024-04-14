@@ -223,6 +223,7 @@ struct ProcMacroInv:
     public TokenStream
 {
     Span    m_parent_span;
+    Span    m_this_span;
     const ::HIR::ProcMacro& m_proc_macro_desc;
     AST::Edition    m_edition;
     ::std::ofstream m_dump_file_out;
@@ -417,6 +418,8 @@ namespace {
         Visitor(const Span& sp, ProcMacroInv& pmi):
             sp(sp),
             m_pmi(pmi)
+            //,emit_all_attrs(false)
+            ,emit_all_attrs(true)
         {
         }
 
@@ -846,7 +849,7 @@ namespace {
                     TU_MATCH_HDRA( (param), {)
                     TU_ARMA(None, p) {
                         // Uh... oops?
-                        BUG(Span(), "Enountered GenericParam::None");
+                        BUG(sp, "Enountered GenericParam::None");
                         }
                     TU_ARMA(Lifetime, p) {
                         m_pmi.send_lifetime(p.name().name.c_str());
@@ -858,7 +861,7 @@ namespace {
                             }
                             TU_MATCH_HDRA((params.m_bounds[i]), {)
                             default:
-                                BUG(Span(), "");
+                                BUG(sp, "");
                             TU_ARMA(None, be) {}
                             TU_ARMA(Lifetime, be) {
                                 m_pmi.send_lifetime(be.test.name().name.c_str());
@@ -877,7 +880,7 @@ namespace {
                             }
                             TU_MATCH_HDRA((params.m_bounds[i]), {)
                             default:
-                                BUG(Span(), "");
+                                BUG(sp, "");
                             TU_ARMA(None, be) {}
                             TU_ARMA(Lifetime, be) {
                                 m_pmi.send_lifetime(be.test.name().name.c_str());
@@ -885,7 +888,7 @@ namespace {
                             TU_ARMA(IsTrait, be) {
                                 assert(be.outer_hrbs.empty());  // Shouldn't be possible in this position
                                 if( !be.inner_hrbs.empty() ) {
-                                    TODO(Span(), "be.inner_hrbs");
+                                    TODO(sp, "be.inner_hrbs");
                                 }
                                 visit_path(be.trait);
                                 }
@@ -947,12 +950,12 @@ namespace {
                         }
                     TU_ARMA(IsTrait, be) {
                         if( !be.outer_hrbs.empty() ) {
-                            TODO(Span(), "be.inner_hrbs");
+                            TODO(sp, "be.inner_hrbs");
                         }
                         visit_type(be.type);
                         m_pmi.send_symbol(":");
                         if( !be.inner_hrbs.empty() ) {
-                            TODO(Span(), "be.inner_hrbs");
+                            TODO(sp, "be.inner_hrbs");
                         }
                         visit_path(be.trait);
                         }
@@ -1438,6 +1441,7 @@ namespace {
 ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
     TokenStream(ParseState()),
     m_parent_span(sp),
+    m_this_span( Span( m_parent_span, proc_macro_desc.path.m_crate_name, proc_macro_desc.name ) ),
     m_proc_macro_desc(proc_macro_desc),
     m_edition(edition)
 {
@@ -1713,7 +1717,7 @@ void ProcMacroInv::recv_bytes_raw(void* out_void, size_t len)
         auto n = read(this->handles.child_stdout, &val[ofs], rem);
 #endif
         if( n == 0 ) {
-            BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
+            BUG(this->m_this_span, "Unexpected EOF while reading from child process");
         }
         if( n < 0 ) {
             BUG(this->m_parent_span, "Error while reading from child process");
@@ -1758,7 +1762,9 @@ U128 ProcMacroInv::recv_v128u_u128()
 }
 
 Position ProcMacroInv::getPosition() const {
-    return Position();
+    DEBUG("" << m_this_span);
+    //return Position(m_this_span);
+    return Position(m_parent_span);
 }
 Token ProcMacroInv::realGetToken() {
     auto rv = this->realGetToken_();

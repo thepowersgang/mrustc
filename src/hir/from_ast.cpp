@@ -2600,6 +2600,9 @@ public:
                 for(auto& mi : mod.m_macro_items) {
                     if(auto* mrpp = mi.second->ent.opt_MacroRules()) {
                         auto& mr = **mrpp;
+                        if( mr.m_source_crate.size() == 0 ) {
+                            mr.m_source_crate = g_crate_name;
+                        }
                         for(auto& rule : mr.m_rules)
                         {
                             fix_macro_contents(rule.m_contents);

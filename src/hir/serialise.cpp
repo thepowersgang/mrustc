@@ -561,9 +561,10 @@
         void serialise(const ::MacroRules& mac)
         {
             //m_exported: IGNORE, should be set
+            m_out.write_string(mac.m_source_crate);
+            m_out.write_tag(static_cast<unsigned int>(mac.m_edition));
             assert(mac.m_rules.size() > 0);
             serialise_vec(mac.m_rules);
-            m_out.write_string(mac.m_source_crate);
             serialise(mac.m_hygiene);
         }
         void serialise(const ::MacroPatEnt& pe) {

@@ -360,17 +360,13 @@ namespace {
         }
         ::MacroRules deserialise_macrorules()
         {
-            ::MacroRules    rv;
+            auto crate_name = m_in.read_istring();
+            auto edition = static_cast<AST::Edition>(m_in.read_tag());
+            ::MacroRules    rv( crate_name, edition );
             // NOTE: This is set after loading.
             //rv.m_exported = true;
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
-            rv.m_source_crate = m_in.read_istring();
             rv.m_hygiene = deserialise_hygine();
-            if(rv.m_source_crate == "")
-            {
-                assert(m_crate_name != "");
-                rv.m_source_crate = m_crate_name;
-            }
             return rv;
         }
         ::SimplePatIfCheck deserialise_simplepatifcheck() {

@@ -18,6 +18,10 @@ Span::Span(Span parent, const Position& pos):
     m_ptr(SpanInner_Source::alloc( parent, pos.filename, pos.line,pos.ofs, pos.line,pos.ofs ))
 {
 }
+Span::Span(Span parent, RcString source_crate, RcString macro_name)
+    : m_ptr(SpanInner_Macro::alloc(parent, source_crate, macro_name))
+{
+}
 Span::Span(const Span& x):
     m_ptr(x.m_ptr)
 {

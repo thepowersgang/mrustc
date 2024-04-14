@@ -563,6 +563,15 @@ MacroRulesArm Parse_MacroRules_MakeArm(Span pat_sp, ::std::vector<MacroPatEnt> p
     return arm;
 }
 
+namespace {
+    MacroRulesPtr make_mr_ptr(const TokenStream& lex) {
+        auto s = lex.point_span();
+        auto rv = MacroRulesPtr(new MacroRules( s->crate_name(), lex.get_edition() ));
+        rv->m_hygiene = lex.get_hygiene();
+        return rv;
+    }
+}
+
 /// Parse an entire macro_rules! block into a format that exec.cpp can use
 MacroRulesPtr Parse_MacroRules(TokenStream& lex)
 {
@@ -587,9 +596,7 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
         throw ParseError::Unexpected(lex, tok, { TOK_EOF, TOK_BRACE_CLOSE });
     DEBUG("- " << rules.size() << " rules");
 
-    auto rv = MacroRulesPtr(new MacroRules( ));
-    rv->m_hygiene = lex.get_hygiene();
-
+    auto rv = make_mr_ptr(lex);
     // Re-parse the patterns into a unified form
     for(auto& rule : rules)
     {
@@ -614,10 +621,9 @@ MacroRulesPtr Parse_MacroRulesSingleArm(TokenStream& lex)
     // TODO: Pass a flag that annotates all idents with the current module?
     auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, state);
 
-    auto mr = new MacroRules( );
-    mr->m_hygiene = lex.get_hygiene();
-    mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
-    return MacroRulesPtr(mr);
+    auto rv = make_mr_ptr(lex);
+    rv->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
+    return rv;
 }
 
 namespace {

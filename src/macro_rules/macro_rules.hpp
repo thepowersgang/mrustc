@@ -191,13 +191,16 @@ public:
     /// Crate that defined this macro
     /// - Populated on deserialise if not already set
     RcString   m_source_crate;
+    AST::Edition m_edition;
 
     Ident::Hygiene  m_hygiene;
 
     /// Expansion rules
     ::std::vector<MacroRulesArm>  m_rules;
 
-    MacroRules()
+    MacroRules(RcString source_crate, AST::Edition edition)
+        : m_source_crate(std::move(source_crate))
+        , m_edition(edition)
     {
     }
     virtual ~MacroRules();

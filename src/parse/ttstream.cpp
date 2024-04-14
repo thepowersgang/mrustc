@@ -12,6 +12,10 @@ TTStream::TTStream(Span parent, ParseState ps, const TokenTree& input_tt):
     TokenStream(ps),
     m_parent_span( mv$(parent) )
 {
+    DEBUG("parent " << m_parent_span);
+    for(auto s = m_parent_span; s; s = s->parent_span) {
+        DEBUG("parent " << s->parent_span);
+    }
     DEBUG("input_tt = [" << input_tt << "]");
     DEBUG("Set edition " << input_tt.get_edition());
     m_edition = input_tt.get_edition();
@@ -65,7 +69,7 @@ Token TTStream::realGetToken()
 Position TTStream::getPosition() const
 {
     // TODO: Position associated with the previous/next token?
-    return Position("TTStream", 0,0);
+    return Position( RcString(), 0,0);
 }
 AST::Edition TTStream::realGetEdition() const
 {
@@ -85,6 +89,7 @@ TTStreamO::TTStreamO(Span parent, ParseState ps, TokenTree input_tt):
     m_parent_span( mv$(parent) ),
     m_input_tt( mv$(input_tt) )
 {
+    assert(m_parent_span);
     m_stack.push_back( ::std::make_pair(0, nullptr) );
 }
 TTStreamO::~TTStreamO()

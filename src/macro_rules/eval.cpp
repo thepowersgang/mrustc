@@ -469,8 +469,7 @@ class MacroExpander:
     static unsigned s_next_log_index;
     unsigned m_log_index;
 
-    const RcString  m_macro_filename;
-
+    Span    m_this_span;
     const RcString  m_crate_name;
     Span m_invocation_span;
     AST::Edition    m_invocation_edition;
@@ -498,7 +497,7 @@ public:
     ):
         TokenStream(ParseState()),
         m_log_index(s_next_log_index++),
-        m_macro_filename( FMT("Macro:" << macro_name) ),
+        m_this_span(sp, crate_name, macro_name.c_str()),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( sp ),
         m_invocation_edition( edition ),
@@ -609,6 +608,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 ::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, const AST::Crate& crate, AST::Module& mod)
 {
     TRACE_FUNCTION_F("'" << name << "', " << input);
+    DEBUG("rules.m_source_crate = " << rules.m_source_crate);
     DEBUG("rules.m_hygiene = " << rules.m_hygiene);
 
     ParameterMappings   bound_tts;
@@ -628,7 +628,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 
     TokenStream* ret_ptr = new MacroExpander(
         name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate == "" ? crate.m_crate_name_real : rules.m_source_crate,
-        rules.m_source_crate == "" ? crate.m_edition : crate.m_extern_crates.at(rules.m_source_crate).m_hir->m_edition
+        rules.m_edition
         );
 
     return ::std::unique_ptr<TokenStream>( ret_ptr );
@@ -2182,7 +2182,7 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
 Position MacroExpander::getPosition() const
 {
     // TODO: Return the attached position of the last fetched token
-    return Position(m_macro_filename, 0, m_state.top_pos());
+    return Position(m_this_span);
 }
 AST::Edition MacroExpander::realGetEdition() const
 {

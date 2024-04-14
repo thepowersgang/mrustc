@@ -24,13 +24,6 @@ class Position;
 struct SpanInner;
 struct SpanInner_Source;
 
-struct ProtoSpan
-{
-    RcString   filename;
-
-    unsigned int start_line;
-    unsigned int start_ofs;
-};
 struct Span
 {
 private:
@@ -66,6 +59,7 @@ public:
         return *this;
     }
 
+    operator bool() const { return m_ptr != nullptr; }
     bool operator==(const Span& x) const { return m_ptr == x.m_ptr; }
     bool operator!=(const Span& x) const { return !(*this == x); }
 
@@ -83,6 +77,15 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const Span& sp);
 private:
     void print_span_message(::std::function<void(::std::ostream&)> tag, ::std::function<void(::std::ostream&)> msg) const;
+};
+struct ProtoSpan
+{
+    // If `span` is populated, then this `ProtoSpan` was from a macro expansion
+    Span    span;
+    RcString   filename;
+
+    unsigned int start_line;
+    unsigned int start_ofs;
 };
 struct SpanInner
 {

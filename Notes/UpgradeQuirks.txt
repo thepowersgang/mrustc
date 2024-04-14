@@ -108,3 +108,15 @@
 - `match foo { Self::Bar => ... }` - Simple fix
 - `#[derive(::"cratename"::TraitName)]`
 - Hygiene/spans from proc macros, changing how `$crate` expands
+  - What are the rules for this? May be a feature related to `proc_macro_hack`, as the hacks expand interestingly.
+  - `foocrate::pm_hack!(..)` expands to `#[derive(foocrate_impl::pm_hack)] enum Foo { Value = stringify!( ... ), } pm_hack_macro!()`
+  - So, the `$crate` would expand to `foocrate_impl`?
+  - Case: `unic-langid-macros::langid`
+    - Implemented with `#[proc_macro_hack]` in `unic-langid-macros-impl`
+    - Exported with `#[proc_macro_hack]` in `unic-langid-macros`, along with `unic_langid_impl::{subtags, LanguageIdentifier}`
+    - Expands to include `$crate::LanguageIdentifier::from_raw_parts_unchecked`
+    - So, the `$crate` should be `unic-langid-macros`, the re-export site.
+    - How does re-exporting work? See above, the export site defines a macro that expands to an enum and a macro call.
+    - So, the `$crate` is expanded into the target, but from source "defined" by the export site.
+    - Which means that the export site must be used as the `$crate` origin
+

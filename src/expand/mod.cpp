@@ -1962,6 +1962,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
 
             if( !mi_owned.is_expanded() )
             {
+                assert(mi_owned.span());
                 TRACE_FUNCTION_F("Macro invoke " << mi_owned.path());
 
                 auto ttl = Expand_Macro(es, mod, mi_owned);

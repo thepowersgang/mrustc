@@ -13,6 +13,7 @@
 #include <ident.hpp>
 #include <memory>
 #include <int128.h>
+#include "span.hpp"
 
 enum eTokenType
 {
@@ -25,6 +26,7 @@ enum eTokenType
 class Position
 {
 public:
+    Span    span;
     RcString    filename;
     unsigned int    line;
     unsigned int    ofs;
@@ -33,6 +35,12 @@ public:
         filename(""),
         line(0),
         ofs(0)
+    {}
+    Position(Span sp)
+        : span(std::move(sp))
+        , filename("")
+        , line(0)
+        , ofs(0)
     {}
     Position(RcString filename, unsigned int line, unsigned int ofs):
         filename(filename),
