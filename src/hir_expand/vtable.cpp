@@ -52,7 +52,7 @@ namespace {
             TRACE_FUNCTION_F(p);
 
             StaticTraitResolve  resolve { m_crate };
-            resolve.set_item_generics_raw(tr.m_params);
+            resolve.set_impl_generics_raw(MetadataType::Unknown, tr.m_params);
             ::HIR::GenericPath  trait_path( p.get_simple_path(), tr.m_params.make_nop_params(0) );
 
             ::std::unordered_map< ::std::string,unsigned int>  assoc_type_indexes;
