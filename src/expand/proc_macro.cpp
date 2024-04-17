@@ -438,7 +438,8 @@ namespace {
                 BUG(sp, "Unexpected whitepace in tokenstream");
                 break;
             case TOK_INTERPOLATED_TYPE:
-                TODO(sp, "TOK_INTERPOLATED_TYPE");
+                visit_type(const_cast<::Token&>(tok).frag_type());
+                break;
             case TOK_INTERPOLATED_PATH:
                 TODO(sp, "TOK_INTERPOLATED_PATH");
             case TOK_INTERPOLATED_PATTERN:
@@ -650,7 +651,11 @@ namespace {
                 m_pmi.send_symbol(")");
                 ),
             (Macro,
-                TODO(sp, "proc_macro send macro type - " << ty);
+                visit_path(te.inv->path());
+                m_pmi.send_symbol("!");
+                m_pmi.send_symbol("(");
+                visit_tokentree(te.inv->input_tt());
+                m_pmi.send_symbol(")");
                 ),
             (Primitive,
                 TODO(sp, "proc_macro send primitive - " << ty);
@@ -706,12 +711,14 @@ namespace {
                 this->visit_path(*te);
                 ),
             (TraitObject,
+                m_pmi.send_ident("dyn");
                 m_pmi.send_symbol("(");
                 for(const auto& t : te.traits)
                 {
+                    if( &t != &te.traits.front() )
+                        m_pmi.send_symbol("+");
                     this->visit_hrbs(t.hrbs);
                     this->visit_path(*t.path);
-                    m_pmi.send_symbol("+");
                 }
                 // TODO: Lifetimes
                 m_pmi.send_symbol(")");
@@ -923,7 +930,7 @@ namespace {
         {
             if( !params.m_bounds.empty() )
             {
-                m_pmi.send_ident("where");
+                bool where_sent = false;
 
                 for(const auto& e : params.m_bounds)
                 {
@@ -935,8 +942,13 @@ namespace {
                         if( p.bounds_start <= i && i < p.bounds_end )
                             already_emitted = true;
                     }
-                    if(already_emitted)
+                    if(already_emitted || e.is_None())
                         continue ;
+
+                    if( !where_sent ) {
+                        m_pmi.send_ident("where");
+                        where_sent = true;
+                    }
                     TU_MATCH_HDRA((e), {)
                     TU_ARMA(None, be)   continue;
                     TU_ARMA(Lifetime, be) {

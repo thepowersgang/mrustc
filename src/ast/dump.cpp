@@ -195,6 +195,7 @@ public:
         print_type(n.m_type);
         m_os << " = ";
         AST::NodeVisitor::visit(n.m_value);
+        m_os << ";";
     }
     virtual void visit(AST::ExprNode_Assign& n) override {
         m_expr_root = false;
@@ -448,8 +449,9 @@ public:
         }
         m_os << "| ->";
         print_type(n.m_return);
-        m_os << " ";
+        m_os << " { ";
         AST::NodeVisitor::visit(n.m_code);
+        m_os << " }";
     }
     virtual void visit(AST::ExprNode_Integer& n) override {
         m_expr_root = false;
@@ -1007,14 +1009,21 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
 {
     if( !params.m_bounds.empty() )
     {
-        m_os << indent() << "where\n";
         inc_indent();
         bool is_first = true;
 
         for( const auto& b : params.m_bounds )
         {
-            if( !is_first )
+            if( b.is_None() ) {
+                m_os << "/*-*/";
+                continue ;
+            }
+            if( !is_first ) {
                 m_os << ",\n";
+            }
+            else {
+                m_os << indent() << "where\n";
+            }
             is_first = false;
 
             m_os << indent();
