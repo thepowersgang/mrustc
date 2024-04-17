@@ -100,6 +100,8 @@ void Resolve_Use(::AST::Crate& crate)
             std::vector<const AST::Module*>   parent_mods;
             const AST::Module* cur_mod = &crate.m_root_module;
             parent_mods.push_back(cur_mod);
+            // Walk the path to create a list of parent modules
+            // - Resets the list every time there's a non-anon module
             for( unsigned int i = 0; i < base_path.nodes().size(); i ++ )
             {
                 const auto& name = base_path.nodes()[i].name();
@@ -122,8 +124,8 @@ void Resolve_Use(::AST::Crate& crate)
                             break;
                         }
                     }
+                    ASSERT_BUG(span, next_mod, "Could not find module '" << name << "' in " << cur_mod->path());
                 }
-                assert(next_mod);
                 cur_mod = next_mod;
                 if( name.c_str()[0] != '#' ) {
                     parent_mods.clear();
@@ -133,14 +135,18 @@ void Resolve_Use(::AST::Crate& crate)
             parent_mods.pop_back();
             DEBUG("parent_mods.size() = " << parent_mods.size());
 
-            while( !parent_mods.empty()
-                && !Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
+            for(;;)
             {
+                DEBUG("Module " << cur_mod->path());
+                if( Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
+                {
+                    break;
+                }
+                if( parent_mods.empty() ) {
+                    ERROR(span, E0000, "Unable to find " << e.nodes.front().name());
+                }
                 cur_mod = parent_mods.back();
                 parent_mods.pop_back();
-            }
-            if( parent_mods.empty() ) {
-                ERROR(span, E0000, "Unable to find " << e.nodes.front().name());
             }
             DEBUG("Found item in " << cur_mod->path());
 
