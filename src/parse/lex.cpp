@@ -720,9 +720,12 @@ Token Lexer::getTokenInt()
                     // Character constant with an escape code
                     uint32_t val = this->parseEscape('\'');
                     if(this->getc() != '\'') {
-                        throw ParseError::Todo("Proper error for lex failures");
+                        TODO(this->point_span(), "Proper error for lex failures - multi-char const?");
                     }
                     return Token( U128(val), CORETYPE_CHAR);
+                }
+                else if( firstchar.v == '\'' ) {
+                    TODO(this->point_span(), "Proper error for empty char literals");
                 }
                 else {
                     ch = this->getc();
@@ -743,7 +746,7 @@ Token Lexer::getTokenInt()
                         return Token(TOK_LIFETIME, Ident(this->realGetHygiene(), RcString::new_interned(str)));
                     }
                     else {
-                        throw ParseError::Todo("Lex Fail - Expected ' after character constant");
+                        TODO(this->point_span(), "Lex Fail - Expected ' after character constant");
                     }
                 }
                 break; }
@@ -1113,7 +1116,7 @@ uint32_t Lexer::parseEscape(char enclosing)
         else
             return ch.v;
     default:
-        throw ParseError::Todo( FMT("Unknown escape sequence \\" << ch) );
+        throw ParseError::Todo(*this, FMT("Unknown escape sequence \\" << ch) );
     }
 }
 

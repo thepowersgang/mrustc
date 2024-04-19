@@ -985,8 +985,7 @@ void RustPrinter::print_params(const AST::GenericParams& params)
                 m_os << "/*-*/";
                 }
             TU_ARMA(Lifetime, p) {
-                //m_os << p.attrs();
-                m_os << "'" << p;
+                m_os << p;
                 }
             TU_ARMA(Type, p) {
                 m_os << p.attrs();
@@ -1032,10 +1031,10 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
                 m_os << "/*-*/";
                 ),
             (Lifetime,
-                m_os << "'" << ent.test << ": '" << ent.bound;
+                m_os << ent.test << ": " << ent.bound;
                 ),
             (TypeLifetime,
-                m_os << ent.type << ": '" << ent.bound;
+                m_os << ent.type << ": " << ent.bound;
                 ),
             (IsTrait,
                 m_os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;
@@ -1141,6 +1140,9 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             print_pattern(sp.pat, is_refutable);
             m_os << ",";
         }
+        if( v.is_exhaustive ) {
+            m_os << "..";
+        }
         m_os << "}";
         }),
     (Tuple,
@@ -1150,14 +1152,17 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         ),
     (Slice,
         m_os << "[";
-        m_os << v.sub_pats;
+        for(const auto& sp : v.sub_pats) {
+            print_pattern(sp, is_refutable);
+            m_os << ", ";
+        }
         m_os << "]";
         ),
     (SplitSlice,
         m_os << "[";
         bool needs_comma = false;
-        if(v.leading.size()) {
-            m_os << v.leading;
+        for(const auto& sp : v.leading) {
+            print_pattern(sp, is_refutable);
             m_os << ", ";
         }
 
@@ -1186,14 +1191,19 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             if( needs_comma ) {
                 m_os << ", ";
             }
-            m_os << v.trailing;
+            for(const auto& sp : v.trailing) {
+                print_pattern(sp, is_refutable);
+                m_os << ", ";
+            }
         }
         m_os << "]";
         ),
     (Or,
         m_os << "(";
-        for(const auto& e : v)
-            m_os << (&e == &v.front() ? "" : " | ") << e;
+        for(const auto& e : v) {
+            m_os << (&e == &v.front() ? "" : " | ");
+            print_pattern(e, is_refutable);
+        }
         m_os << ")";
         )
     )
@@ -1230,7 +1240,7 @@ void RustPrinter::handle_struct(const AST::Struct& s)
         inc_indent();
         for( const auto& i : e.ents )
         {
-            m_os << indent() << (i.m_is_public ? "pub " : "") << i.m_name << ": " << i.m_type.print_pretty() << "\n";
+            m_os << indent() << (i.m_is_public ? "pub " : "") << i.m_name << ": " << i.m_type.print_pretty() << ",\n";
         }
         dec_indent();
         m_os << indent() << "}\n";

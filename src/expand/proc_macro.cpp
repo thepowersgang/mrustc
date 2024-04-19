@@ -624,12 +624,37 @@ namespace {
                     break;
                 }
                 m_pmi.send_ident(b.m_name);
+                m_pmi.send_symbol("@");
             }
             TU_MATCH_HDRA( (pat.data()), { )
             default:
                 TODO(sp, "visit_pattern " << pat.data().tag_str() << " - " << pat);
+            TU_ARMA(Any, e) {
+                m_pmi.send_symbol("_");
+                }
             TU_ARMA(MaybeBind, e) {
                 m_pmi.send_ident(e.name);
+                }
+            TU_ARMA(Tuple, e) {
+                m_pmi.send_symbol("(");
+                visit_tuple_pattern(e);
+                m_pmi.send_symbol(")");
+                }
+            }
+        }
+        void visit_tuple_pattern(const AST::Pattern::TuplePat& v)
+        {
+            for(const auto& p : v.start) {
+                visit_pattern(p);
+                m_pmi.send_symbol(",");
+            }
+            if( v.has_wildcard )
+            {
+                m_pmi.send_symbol("..");
+                m_pmi.send_symbol(",");
+                for(const auto& p : v.end) {
+                    visit_pattern(p);
+                    m_pmi.send_symbol(",");
                 }
             }
         }
