@@ -953,6 +953,21 @@ struct CExpandExpr:
     }
     void visit(::AST::ExprNode_Flow& node) override {
         this->visit_nodelete(node, node.m_value);
+
+        if( node.m_type == AST::ExprNode_Flow::YEET )
+        {
+            auto core_crate = crate.m_ext_cratename_core;
+            auto path_FromResidual_from_residual = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("FromResidual"), ::AST::PathNode("from_residual")});
+
+            replacement = ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
+                (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of return if in a try block.
+                (m_try_stack.empty() ? RcString("") : m_try_stack.back()),
+                ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
+                    ::AST::Path(path_FromResidual_from_residual),
+                    ::make_vec1( std::move(node.m_value) )
+                    ))
+                ));
+        }
     }
     void visit(::AST::ExprNode_LetBinding& node) override {
         Expand_Type(this->expand_state, this->cur_mod(),  node.m_type);
@@ -1482,7 +1497,7 @@ struct CExpandExpr:
         // - Desugar question mark operator before resolve so it can create names
         if( node.m_type == ::AST::ExprNode_UniOp::QMARK ) {
             auto core_crate = crate.m_ext_cratename_core;
-            
+
             // TODO: Find a way of creating bindings during HIR lower instead (so lang items are available)
 
             //auto it = crate.m_lang_items.find("try");
