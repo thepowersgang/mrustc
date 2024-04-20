@@ -16,6 +16,7 @@ pub fn dump_token_stream<R: ::std::io::Read>(reader: R)
     {
         match v
         {
+        Token::EndOfStream => println!("EOS"),
         Token::Symbol(s) => println!("SYM {}", s),
         Token::Ident(s) => println!("IDENT {}", s),
         Token::Lifetime(s) => println!("LIFETIME {}", s),
@@ -25,6 +26,8 @@ pub fn dump_token_stream<R: ::std::io::Read>(reader: R)
         Token::Unsigned(val, ty) => println!("UNSIGNED {val:?} ty={ty}", val=val, ty=ty),
         Token::Signed(val, ty) => println!("SIGNED {val:?} ty={ty}", val=val, ty=ty),
         Token::Float(val, ty) => println!("FLOAT {val:?} ty={ty}", val=val, ty=ty),
+        Token::SpanRef(idx) => println!("SPAN#{}", idx),
+        Token::SpanDef(sd) => println!("SPAN={}(...)", sd.idx),
         }
     }
 }
@@ -55,6 +58,7 @@ pub fn dump_token_stream_pretty<R: ::std::io::Read>(reader: R)
     {
         match v
         {
+        Token::EndOfStream => print!("-EOS-"),
         Token::Symbol(s) => print!("{} ", s),
         Token::Ident(s) => print!("{} ", s),
         Token::Lifetime(s) => print!("'{} ", s),
@@ -64,6 +68,8 @@ pub fn dump_token_stream_pretty<R: ::std::io::Read>(reader: R)
         Token::Unsigned(val, ty) => print!("{val:?} /*ty={ty}*/", val=val, ty=ty),
         Token::Signed(val, ty) => print!("{val:?} /*ty={ty}*/", val=val, ty=ty),
         Token::Float(val, ty) => print!("{val:?} /*ty={ty}*/", val=val, ty=ty),
+        Token::SpanRef(idx) => println!("/*SPAN#{}*/", idx),
+        Token::SpanDef(_) => println!(""),
         }
     }
     println!("");
@@ -119,10 +125,11 @@ fn main()
         assert_eq!(b[0], 0);
     }
     // 
+    let stdin = ::std::io::stdin();
     if is_pretty {
-        dump_token_stream_pretty(::std::io::stdin().lock());
+        dump_token_stream_pretty(stdin.lock());
     }
     else {
-        dump_token_stream(::std::io::stdin().lock());
+        dump_token_stream(stdin.lock());
     }
 }

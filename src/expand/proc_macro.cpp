@@ -15,6 +15,7 @@
 #include "proc_macro.hpp"
 #include <parse/lex.hpp>
 #include <parse/ttstream.hpp>
+#include <unordered_set>
 #ifdef _WIN32
 # define NOMINMAX
 # define NOGDI  // Don't include GDI functions (defines some macros that collide with mrustc ones)
@@ -195,16 +196,18 @@ void Expand_ProcMacro(::AST::Crate& crate)
 
 enum class TokenClass
 {
-    Symbol = 0,
-    Ident = 1,
-    Lifetime = 2,
-    String = 3,
-    ByteString = 4, // String
-    CharLit = 5,    // v128
-    UnsignedInt = 6,
-    SignedInt = 7,
-    Float = 8,
-    Fragment = 9,
+    EndOfStream = 0,
+    Symbol      = 1,
+    Ident       = 2,
+    Lifetime    = 3,
+    String      = 4,
+    ByteString  = 5,    // String
+    CharLit     = 6,    // v128
+    UnsignedInt = 7,
+    SignedInt   = 8,
+    Float       = 9,
+    SpanRef  = 10,
+    SpanDef  = 11,
 };
 enum class FragType
 {
@@ -228,6 +231,12 @@ struct ProcMacroInv:
     AST::Edition    m_edition;
     ::std::ofstream m_dump_file_out;
     ::std::ofstream m_dump_file_res;
+
+    /// Spans that have had an index assigned
+    ::std::unordered_map<const SpanInner*,size_t>  known_spans;
+    /// Span indexes that have been sent
+    ::std::unordered_set<size_t>  sent_spans;
+    size_t  next_span_index = 2;
 
     struct Handles
     {
@@ -261,7 +270,7 @@ public:
 
     bool check_good();
     void send_done() {
-        send_symbol("");
+        this->send_u8(static_cast<uint8_t>(TokenClass::EndOfStream));
         m_dump_file_out.flush();
         DEBUG("Input tokens sent");
     }
@@ -335,6 +344,31 @@ public:
         this->send_bytes_raw(&v, sizeof(v));
     }
 
+    void send_span_def(size_t index, const Span& sp) {
+        this->known_spans[sp.get()] = index;
+        this->sent_spans.insert(index);
+
+        this->send_u8(static_cast<uint8_t>(TokenClass::SpanDef));
+        this->send_v128u(index);
+        this->send_v128u(0);    // TODO: Parent span
+        if( const auto* sp_p = dynamic_cast<const SpanInner_Source*>(sp.get()) ) {
+            this->send_bytes(sp_p->filename.c_str(), sp_p->filename.size());
+            this->send_u8(1);   // path_is_real
+            this->send_v128u( sp_p->start_line );
+            this->send_v128u( sp_p->end_line );
+            this->send_v128u( sp_p->start_ofs );
+            this->send_v128u( sp_p->end_ofs );
+        }
+        else {
+            this->send_bytes("MACRO", 5);   // TODO: better filename?
+            this->send_u8(0);   // path_is_real
+            this->send_v128u( 0 );
+            this->send_v128u( 0 );
+            this->send_v128u( 0 );
+            this->send_v128u( 0 );
+        }
+    }
+
     bool attr_is_used(const RcString& n) const {
         if( n == "repr" )
             return true;
@@ -401,6 +435,7 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     // 3. Create ProcMacroInv
     auto rv = ProcMacroInv(sp, crate.m_edition, proc_macro_exe_name.c_str(), *pmp);
     rv.parse_state().crate = &crate;
+
     return rv;
 
     // NOTE: 1.39 failure_derive (2015) emits `::failure::foo` but `libcargo` doesn't have `failure` in root (it's a 2018 crate)
@@ -1589,8 +1624,10 @@ ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* exe
     // Close the ends we don't care about.
     close(stdin_pipes[0]);
     close(stdout_pipes[1]);
-
 #endif
+
+    // Invocation span is #1 (#0 is always empty/undefined)
+    this->send_span_def(1, sp);
 }
 ProcMacroInv::Handles::Handles(Handles&& x):
 #ifdef _WIN32
@@ -1816,6 +1853,13 @@ Token ProcMacroInv::realGetToken_() {
 
     switch( static_cast<TokenClass>(v) )
     {
+    case TokenClass::EndOfStream:
+        TODO(this->m_parent_span, "EndOfStream");
+    case TokenClass::SpanRef:
+        TODO(this->m_parent_span, "SpanDef");
+    case TokenClass::SpanDef:
+        TODO(this->m_parent_span, "SpanDef");
+        break;
     case TokenClass::Symbol: {
         auto val = this->recv_bytes();
         if( val == "" ) {
@@ -1823,7 +1867,7 @@ Token ProcMacroInv::realGetToken_() {
             return Token(TOK_EOF);
         }
         auto t = Lex_FindOperator(val);
-        ASSERT_BUG(this->m_parent_span, t != TOK_NULL, "Unknown symbol from child process - " << val);
+        ASSERT_BUG(this->m_parent_span, t != TOK_NULL, "Unknown symbol from child process - '" << val << "'");
         return t;
         }
     case TokenClass::Ident: {
@@ -1901,8 +1945,8 @@ Token ProcMacroInv::realGetToken_() {
         this->recv_bytes_raw(&val, sizeof(val));
         return Token::make_float(val, ty);
         }
-    case TokenClass::Fragment:
-        TODO(this->m_parent_span, "Handle ints/floats/fragments from child process");
+    //case TokenClass::Fragment:
+    //    TODO(this->m_parent_span, "Handle ints/floats/fragments from child process");
     }
     BUG(this->m_parent_span, "Invalid token class from child process - " << int(v));
 

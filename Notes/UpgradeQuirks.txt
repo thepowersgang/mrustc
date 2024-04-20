@@ -119,4 +119,5 @@
     - How does re-exporting work? See above, the export site defines a macro that expands to an enum and a macro call.
     - So, the `$crate` is expanded into the target, but from source "defined" by the export site.
     - Which means that the export site must be used as the `$crate` origin
-
+- proc_macro Span `source_file` method
+  - `rustc_fluent_macro` uses it to get the parent dir, so can't just fake it :(

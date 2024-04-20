@@ -2,6 +2,10 @@
 //
 // Unlike the original rustc version, this one is designed to live complely detached from its compiler.
 #![allow(ellipsis_inclusive_range_patterns)]
+#![feature(crate_in_paths)]
+#![feature(optin_builtin_traits)]
+#![feature(vec_resize_with)]
+#![feature(const_vec_new)]
 
 macro_rules! some_else {
     ($e:expr => $alt:expr) => {match $e { Some(v) => v, None => $alt }};
@@ -182,19 +186,25 @@ pub fn main(macros: &[MacroDesc])
             ::std::io::stdout().write(&[0]).expect("Stdout write error?");
             ::std::io::stdout().flush().expect("Stdout write error?");
             debug!("Waiting for input\r");
-            let input = crate::serialisation::recv_token_stream(::std::io::stdin().lock());
+            let stdin = ::std::io::stdin();
+            let input = crate::serialisation::recv_token_stream(stdin.lock());
             debug!("INPUT = `{}`\r", input);
             let output = match m.handler
                 {
-                MacroType::SingleStream(h) => (h)(input),
+                MacroType::SingleStream(h) => {
+                    Span::freeze_definitions();
+                    (h)(input)
+                    },
                 MacroType::Attribute(h) => {
-                    let input_body = crate::serialisation::recv_token_stream(::std::io::stdin().lock());
+                    let input_body = crate::serialisation::recv_token_stream(stdin.lock());
                     debug!("INPUT BODY = `{}`\r", input_body);
+                    Span::freeze_definitions();
                     (h)(input, input_body)
                     },
                 };
             debug!("OUTPUT = `{}`\r", output);
-            crate::serialisation::send_token_stream(::std::io::stdout().lock(), output);
+            let stdout = ::std::io::stdout();
+            crate::serialisation::send_token_stream(stdout.lock(), output);
             ::std::io::Write::flush(&mut ::std::io::stdout()).expect("Stdout write error?");
             note!("Done");
             return ;

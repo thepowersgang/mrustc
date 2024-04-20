@@ -26,7 +26,13 @@ impl ::std::fmt::Display for TokenTree
 impl TokenTree
 {
     pub fn span(&self) -> Span {
-        Span {}
+        match self
+        {
+        &TokenTree::Group(ref v) => v.span,
+        &TokenTree::Ident(ref v) => v.span,
+        &TokenTree::Punct(ref v) => v.span,
+        &TokenTree::Literal(ref v) => v.span,
+        }
     }
     pub fn set_span(&mut self, span: Span) {
         let _ = span;
@@ -209,7 +215,7 @@ impl ::std::str::FromStr for Literal
     fn from_str(v: &str) -> Result<Self,Self::Err> {
         let mut ts = crate::TokenStream::from_str(v)?.inner;
         match &mut ts[..] {
-        &mut [TokenTree::Literal(ref mut rv)] => Ok(::std::mem::replace(rv, Literal { span: Span {}, val: LiteralValue::CharLit('\0') })),
+        &mut [TokenTree::Literal(ref mut rv)] => Ok(::std::mem::replace(rv, Literal { span: Span::from_raw(0), val: LiteralValue::CharLit('\0') })),
         _ => Err(crate::lex::LexError { inner: "Wasn't a literal" }),
         }
     }
