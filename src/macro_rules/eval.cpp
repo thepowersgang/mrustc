@@ -969,6 +969,7 @@ namespace
             if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" )
                 lex.consume();
             if(0)
+        case TOK_RWORD_IMPL:
         case TOK_RWORD_DYN:
             lex.consume();
         case TOK_RWORD_CRATE:
