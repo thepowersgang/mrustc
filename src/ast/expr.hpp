@@ -186,6 +186,8 @@ struct ExprNode_Flow:
         YIELD,
         CONTINUE,
         BREAK,
+        // `do yeet value` - a failed `?`
+        YEET,
     } m_type;
     Ident   m_target;
     ExprNodeP    m_value;

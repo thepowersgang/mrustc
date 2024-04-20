@@ -156,10 +156,13 @@ struct LowerHIR_ExprNode_Visitor:
             m_rv.reset( new ::HIR::ExprNode_Yield( v.span(), lower(v.m_value) ) );
             break;
         case ::AST::ExprNode_Flow::CONTINUE:
-        case ::AST::ExprNode_Flow::BREAK:
+        case ::AST::ExprNode_Flow::BREAK: {
             auto val = v.m_value ? lower(v.m_value) : ::HIR::ExprNodeP();
             ASSERT_BUG(v.span(), !(v.m_type == ::AST::ExprNode_Flow::CONTINUE && val), "Continue with a value isn't allowed");
             m_rv.reset( new ::HIR::ExprNode_LoopControl( v.span(), v.m_target.name, (v.m_type == ::AST::ExprNode_Flow::CONTINUE), mv$(val) ) );
+            } break;
+        case ::AST::ExprNode_Flow::YEET:
+            BUG(v.span(), "do yeet should have been desugared");
             break;
         }
     }

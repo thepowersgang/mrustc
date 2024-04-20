@@ -184,6 +184,7 @@ public:
         case AST::ExprNode_Flow::YIELD:     m_os << "yield ";  break;
         case AST::ExprNode_Flow::BREAK:     m_os << "break ";  break;
         case AST::ExprNode_Flow::CONTINUE:  m_os << "continue ";  break;
+        case AST::ExprNode_Flow::YEET:      m_os << "do yeet ";  break;
         }
         AST::NodeVisitor::visit(n.m_value);
     }

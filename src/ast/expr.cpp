@@ -243,6 +243,7 @@ NODE(ExprNode_Flow, {
     case YIELD:     os << "yield"; break;
     case BREAK:     os << "break"; break;
     case CONTINUE:  os << "continue"; break;
+    case YEET:      os << "do yeet"; break;
     }
     if(m_value)
         os << " " << *m_value;

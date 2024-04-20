@@ -348,6 +348,8 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             return ret;
 
         // Flow control
+        case TOK_RWORD_DO:
+            // `do yeet`
         case TOK_RWORD_RETURN:
         case TOK_RWORD_YIELD:
         case TOK_RWORD_CONTINUE:
@@ -622,6 +624,38 @@ ExprNodeP Parse_Expr_Try(TokenStream& lex)
     return NEWNODE(AST::ExprNode_Try, ::std::move(inner));
 }
 
+ExprNodeP Parse_FlowControl(TokenStream& lex, AST::ExprNode_Flow::Type type)
+{
+    Token   tok;
+    Ident lifetime = Ident("");
+    // continue/break can specify a target
+    if(type == AST::ExprNode_Flow::CONTINUE || type == AST::ExprNode_Flow::BREAK )
+    {
+        if( lex.lookahead(0) == TOK_LIFETIME )
+        {
+            GET_TOK(tok, lex);
+            lifetime = tok.ident();
+        }
+    }
+    // Return value
+    // TODO: Should this prevent `continue value;`?
+    ExprNodeP   val;
+    switch(LOOK_AHEAD(lex))
+    {
+    case TOK_EOF:
+    case TOK_SEMICOLON:
+    case TOK_COMMA:
+    case TOK_BRACE_CLOSE:
+    case TOK_PAREN_CLOSE:
+    case TOK_SQUARE_CLOSE:
+        break;
+    default:
+        val = Parse_Expr0(lex);
+        break;
+    }
+    return NEWNODE( AST::ExprNode_Flow, type, std::move(lifetime), ::std::move(val) );
+}
+
 /// Parses the 'stmt' fragment specifier
 /// - Flow control
 /// - Expressions
@@ -638,50 +672,20 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     case TOK_RWORD_LET:
         return Parse_Stmt_Let(lex);
     case TOK_RWORD_YIELD:
+        return Parse_FlowControl(lex, AST::ExprNode_Flow::YIELD);
     case TOK_RWORD_CONTINUE:
+        return Parse_FlowControl(lex, AST::ExprNode_Flow::CONTINUE);
     case TOK_RWORD_BREAK:
+        return Parse_FlowControl(lex, AST::ExprNode_Flow::BREAK);
     case TOK_RWORD_RETURN:
-        {
-        AST::ExprNode_Flow::Type    type;
-        switch(tok.type())
-        {
-        case TOK_RWORD_RETURN:  type = AST::ExprNode_Flow::RETURN; break;
-        case TOK_RWORD_YIELD:   type = AST::ExprNode_Flow::YIELD;    break;
-        case TOK_RWORD_CONTINUE: type = AST::ExprNode_Flow::CONTINUE; break;
-        case TOK_RWORD_BREAK:    type = AST::ExprNode_Flow::BREAK;    break;
-        default:    throw ParseError::BugCheck(/*lex,*/ "return/yield/continue/break");
-        }
-        Ident lifetime = Ident("");
-        // continue/break can specify a target
-        if(tok.type() == TOK_RWORD_CONTINUE || tok.type() == TOK_RWORD_BREAK)
-        {
-            if( lex.lookahead(0) == TOK_LIFETIME )
-            {
-                GET_TOK(tok, lex);
-                lifetime = tok.ident();
-            }
-        }
-        // Return value
-        // TODO: Should this prevent `continue value;`?
-        ExprNodeP   val;
-        switch(LOOK_AHEAD(lex))
-        {
-        case TOK_EOF:
-        case TOK_SEMICOLON:
-        case TOK_COMMA:
-        case TOK_BRACE_CLOSE:
-        case TOK_PAREN_CLOSE:
-        case TOK_SQUARE_CLOSE:
-            break;
-        default:
-            val = Parse_Expr0(lex);
-            break;
-        }
-        return NEWNODE( AST::ExprNode_Flow, type, std::move(lifetime), ::std::move(val) );
-        }
+        return Parse_FlowControl(lex, AST::ExprNode_Flow::RETURN);
     case TOK_BRACE_OPEN:
         PUTBACK(tok, lex);
         return Parse_ExprBlockNode(lex);
+    //case TOK_RWORD_DO:
+    //    if( lex.lookahead(0) == "yeet" ) {
+    //        return Parse_FlowControl(lex, AST::ExprNode_Flow::YEET);
+    //    }
     default:
         PUTBACK(tok, lex);
         return Parse_Expr0(lex);
@@ -1338,17 +1342,16 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
     case TOK_RWORD_TRY: // Only emitted in 2018
         return Parse_Expr_Try(lex);
     case TOK_RWORD_DO:
-        if( TARGETVER_LEAST_1_29 )
+        GET_TOK(tok, lex);
+        // `do catch` (1.29) - stabilised later as `try`
+        if( tok.type() == TOK_IDENT && tok.ident().name == "catch" )
         {
-            // `do catch` - stabilised later as `try`
-            if( GET_TOK(tok, lex) == TOK_IDENT && tok.ident().name == "catch" )
-            {
-                return Parse_Expr_Try(lex);
-            }
-            else
-            {
-                throw ParseError::Unexpected(lex, tok);
-            }
+            return Parse_Expr_Try(lex);
+        }
+        // `do yeet` (1.74) - Not stabilised (as of 2024-04)
+        else if( tok.type() == TOK_IDENT && tok.ident().name == "yeet" )
+        {
+            return Parse_FlowControl(lex, AST::ExprNode_Flow::YEET);
         }
         else
         {
