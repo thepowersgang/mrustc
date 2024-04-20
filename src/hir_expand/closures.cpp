@@ -497,15 +497,6 @@ namespace {
                 }
             } m(m_monomorphiser);
             ty = m.monomorph_type(Span(), ty, true);
-
-            // HACK: Visit top-level type-alias erased types
-            if( const auto* e = ty.data().opt_ErasedType() )
-            {
-                if( const auto* ee = e->m_inner.opt_Alias() )
-                {
-                    visit_type((*ee)->type);
-                }
-            }
         }
     };
 
@@ -1959,5 +1950,31 @@ void HIR_Expand_Closures(::HIR::Crate& crate)
 {
     OuterVisitor    ov(crate);
     ov.visit_crate( crate );
+
+    struct OuterVisitorPass2: public HIR::Visitor {
+        StaticTraitResolve  m_resolve;
+
+    public:
+        OuterVisitorPass2(const ::HIR::Crate& crate)
+            : m_resolve(crate)
+        {}
+        void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override {
+            HIR::Visitor::visit_type_alias(p, item);
+
+            MonomorphiserNop    mm;
+            ExprVisitor_Fixup   fixup(m_resolve.m_crate, nullptr, mm);
+            visit_ty_with(item.m_type, [&fixup](const HIR::TypeRef& ty)->bool {
+                if( const auto* e = ty.data().opt_ErasedType() )
+                {
+                    if( const auto* ee = e->m_inner.opt_Alias() )
+                    {
+                        fixup.visit_type((*ee)->type);
+                    }
+                }
+                return false;
+                });
+        }
+    };
+    OuterVisitorPass2(crate).visit_crate(crate);
 }
 
