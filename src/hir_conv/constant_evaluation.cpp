@@ -2803,6 +2803,13 @@ namespace HIR {
                     ValueRef vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
                     memset(vr_dst.ext_write_bytes(state, nbytes), val.truncate_u64(), nbytes);
                 }
+                else if( te->name == "variant_count" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Path(), "`variant_count` on non-enum - " << ty);
+                    MIR_ASSERT(state, ty.data().as_Path().binding.is_Enum(), "`variant_count` on non-enum - " << ty);
+                    const auto* enm = ty.data().as_Path().binding.as_Enum();
+                    dst.write_uint(state, Target_GetPointerBits(), enm->num_variants());
+                }
                 else {
                     MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << terminator);
                 }
