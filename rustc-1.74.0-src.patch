@@ -22,3 +22,13 @@
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  mod size_asserts {
      use super::*;
+--- compiler/rustc_errors/src/lib.rs
++++ compiler/rustc_errors/src/lib.rs
+@@ -86,6 +86,6 @@
+ // `PResult` is used a lot. Make sure it doesn't unintentionally get bigger.
+ // (See also the comment on `DiagnosticBuilderInner`'s `diagnostic` field.)
+ #[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(PResult<'_, ()>, 16);
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ rustc_data_structures::static_assert_size!(PResult<'_, bool>, 16);
