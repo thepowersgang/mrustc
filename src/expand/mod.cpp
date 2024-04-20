@@ -957,16 +957,25 @@ struct CExpandExpr:
         if( node.m_type == AST::ExprNode_Flow::YEET )
         {
             auto core_crate = crate.m_ext_cratename_core;
+            auto path_ops_Yeet = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Yeet")});
             auto path_FromResidual_from_residual = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("FromResidual"), ::AST::PathNode("from_residual")});
 
+            auto v = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
+                ::AST::Path(path_ops_Yeet),
+                ::make_vec1( std::move(node.m_value) )
+                ));
+            v->set_span(node.span());
+            v = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
+                ::AST::Path(path_FromResidual_from_residual),
+                ::make_vec1( std::move(v) )
+                ));
+            v->set_span(node.span());
             replacement = ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
                 (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of return if in a try block.
                 (m_try_stack.empty() ? RcString("") : m_try_stack.back()),
-                ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path(path_FromResidual_from_residual),
-                    ::make_vec1( std::move(node.m_value) )
-                    ))
+                std::move(v)
                 ));
+            replacement->set_span(node.span());
         }
     }
     void visit(::AST::ExprNode_LetBinding& node) override {
