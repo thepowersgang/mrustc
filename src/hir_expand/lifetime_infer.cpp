@@ -126,7 +126,7 @@ namespace {
                 add_type_lifetime_bound(te->inner, valid_for);
             }
             else if( const auto* te = ty.data().opt_Path() ) {
-                if( const auto* pe = te->path.m_data.opt_Generic() ) {
+                if( /*const auto* pe =*/ te->path.m_data.opt_Generic() ) {
                     // TODO: Look up variance of the lifetime params
                     // 
                     // TODO: Get the variance info of each parameter (instead of assuming "variant")
@@ -377,7 +377,7 @@ namespace {
                     fails.push_back(rhs);
                     return false;
                 }
-                else if( const auto* rhs_l = opt_local(sp, rhs) ) {
+                else if( /*const auto* rhs_l =*/ opt_local(sp, rhs) ) {
                     // Only valid if the source is identical? Or if the source's scope is longer than the destination
                     fails.push_back(rhs);
                     return false;
@@ -1604,7 +1604,7 @@ namespace {
                 TODO(node.span(), "PathValue - " << node.m_path << " - " << v.tag_str());
             TU_ARMA(EnumConstructor, ve) {
                 const auto& variant_ty = ve.e->m_data.as_Data().at(ve.v).type;
-                const auto& variant_path = variant_ty.data().as_Path().path.m_data.as_Generic();
+                //const auto& variant_path = variant_ty.data().as_Path().path.m_data.as_Generic();
                 const auto& str = *variant_ty.data().as_Path().binding.as_Struct();
                 const auto& fields = str.m_data.as_Tuple();
 
@@ -1867,8 +1867,26 @@ namespace {
         }
 
         void visit(::HIR::ExprNode_Closure& node) override {
+            const Span& sp = node.span();
             m_returns.push_back(&node.m_return);
             HIR::ExprVisitorDef::visit(node);
+            if( !node.m_is_move ) {
+                if( node.m_capture_lifetime == HIR::LifetimeRef() ) {
+                    node.m_capture_lifetime = m_state.allocate_ivar(sp);
+                }
+
+                for( const auto& cap : node.m_avu_cache.captured_vars ) {
+                    if( cap.usage != ::HIR::ValueUsage::Move ) {
+                        HIR::TypeRef    tmp_ty;
+                        const auto* cap_ty_p = &m_binding_types_ptr->at(cap.root_slot);
+                        for(const auto& n : cap.fields) {
+                            tmp_ty = m_resolve.get_field_type(sp, *cap_ty_p, n);
+                            cap_ty_p = &tmp_ty;
+                        }
+                        equate_type_lifetimes(node.span(), node.m_capture_lifetime, *cap_ty_p);
+                    }
+                }
+            }
             m_returns.pop_back();
         }
         void visit(::HIR::ExprNode_Generator& node) override {
@@ -1992,7 +2010,7 @@ namespace {
                     if(const auto* te = ty.data().opt_TraitObject()) {
                         check_lifetime_variant(te->m_lifetime);
                     }
-                    if(const auto* te = ty.data().opt_Path() ) {
+                    if( /*const auto* te =*/ ty.data().opt_Path() ) {
                         if( !m_stack.empty() && m_stack.back() ) {
                             m_state.add_type_lifetime_bound(ty, *m_stack.back());
                         }
@@ -2018,7 +2036,6 @@ namespace {
             {
                 added = false;
                 for(size_t i = 0; i < state.m_bounds.size(); i ++) {
-                     const auto& v = state.m_bounds[i].valid_for;
                      for(size_t j = 0; j < state.m_bounds.size(); j ++) {
                          // `'a: 'b` and `'b: 'c` then add `'a: 'c`
                          if( !state.m_bounds[i].ty && state.m_bounds[i].valid_for == state.m_bounds[j].lft ) {
@@ -2345,12 +2362,13 @@ namespace {
 
         private:
             HIR::LifetimeRef clean_up_local(const Span& sp, const HIR::LifetimeRef& tpl) const {
+                ASSERT_BUG(sp, tpl.binding < ::HIR::LifetimeRef::MAX_LOCAL, "Found invalid lifetime - " << tpl);
                 // If this is a composite, check if there is a clear shortest option
                 // - If there is, use that instead
                 // - Otherwise, keep as a composite
                 //   > Ensure that the composite is recorded? (or just let the downstream code re-derive)
                 if( const auto* l = state.opt_local(sp, tpl) ) {
-                    if( const auto* c = l->data.opt_Composite() ) {
+                    if( /*const auto* c =*/ l->data.opt_Composite() ) {
                         ::std::vector<HIR::LifetimeRef> flat;
                         flatten_composite(flat, sp, tpl);
                         DEBUG(tpl << " flat=" << flat);
@@ -2431,9 +2449,12 @@ namespace {
                 void visit_path_params(HIR::PathParams& pp) override {
                     pp = ms.monomorph_path_params(Span(), pp, false);
                 }
-                //void visit(HIR::ExprNode_CallMethod& node) override {
-                //    node.m_params = ms.monomorph_path_params(node.span(), node.m_params, false);
-                //}
+                void visit(HIR::ExprNode_Closure& node) override {
+                    if( !node.m_is_move ) {
+                        node.m_capture_lifetime = ms.monomorph_lifetime(node.span(), node.m_capture_lifetime);
+                    }
+                    HIR::ExprVisitorDef::visit(node);
+                }
             } visitor(ms);
             visitor.visit_root(ep);
         }

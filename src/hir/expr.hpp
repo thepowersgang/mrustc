@@ -864,6 +864,8 @@ struct ExprNode_Closure:
         ::std::vector<Capture>  captured_vars;
     } m_avu_cache;
 
+    // Lifetime for captured borrows, filled by lifetime infer pass
+    ::HIR::LifetimeRef  m_capture_lifetime;
     // - Path to the generated closure type
     const ::HIR::Struct*    m_obj_ptr = nullptr;
     ::HIR::GenericPath  m_obj_path_base;

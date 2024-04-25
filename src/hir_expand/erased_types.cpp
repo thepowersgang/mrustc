@@ -42,6 +42,13 @@ namespace {
             }
         }
         DEBUG("> " << ty << " => " << new_ty);
+        struct M: public MonomorphiserNop {
+            HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
+                ASSERT_BUG(sp, lft.binding < ::HIR::LifetimeRef::MAX_LOCAL, "Found local/ivar lifetime - " << lft);
+                return lft;
+            }
+        };
+        M().monomorph_type(sp, new_ty);
         ty = mv$(new_ty);
     }
 

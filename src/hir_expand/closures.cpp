@@ -764,6 +764,7 @@ namespace {
                     ASSERT_BUG(sp, !m_frozen, "get_lifetime would add a new param after freeze - " << ge);
                     rv = constructor_path_params.m_lifetimes.size();
                     constructor_path_params.m_lifetimes.push_back(ge.binding);
+                    DEBUG("ADD " << constructor_path_params.m_lifetimes.back());
                     params.m_lifetimes.push_back(::HIR::LifetimeDef());
                     //params.m_values.back().m_name = ge.name;
                 }
@@ -803,6 +804,7 @@ namespace {
                             // Allocate a new lifetime param
                             auto idx = params.m_lifetimes.size();
                             params.m_lifetimes.push_back(HIR::LifetimeDef());
+                            constructor_path_params.m_lifetimes.push_back(tpl);
                             DEBUG("Allocate lifetime: 'I" << idx);
                             m_lifetime_mappings.insert(std::make_pair( tpl.binding, ::HIR::LifetimeRef(idx) ));
                             return ::HIR::LifetimeRef(idx);
@@ -1099,6 +1101,7 @@ namespace {
                 }
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty_mono) } );
             }
+            assert( constructor_path_params.m_lifetimes.size() == params.m_lifetimes.size() );
             if( lifetime_needed ) {
                 auto ref_capture_lft_idx = params.m_lifetimes.size();
 
@@ -1115,11 +1118,11 @@ namespace {
                 params.m_lifetimes.back().m_name = RcString::new_interned("captures");
                 DEBUG("Added by-borrow lifetime: #" << ref_capture_lft_idx << " - " << params.fmt_args());
                 monomorph_cb.m_capture_lifetime = HIR::LifetimeRef(ref_capture_lft_idx);
+                ASSERT_BUG(sp, node.m_capture_lifetime != HIR::LifetimeRef(), "Capture lifetime unset");
+                constructor_path_params.m_lifetimes.push_back( node.m_capture_lifetime );
             }
             // Any lifetimes added need to be included (arguments and captures)
-            while( constructor_path_params.m_lifetimes.size() < params.m_lifetimes.size() ) {
-                constructor_path_params.m_lifetimes.push_back(HIR::LifetimeRef(HIR::LifetimeRef::MAX_LOCAL + 1));
-            }
+            assert( constructor_path_params.m_lifetimes.size() == params.m_lifetimes.size() );
 
             // --- ---
             if( node.m_is_copy )
