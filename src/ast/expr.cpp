@@ -405,6 +405,11 @@ NODE(ExprNode_IfLet, {
     return NEWNODE(ExprNode_IfLet, mv$(new_conds), m_true->clone(), OPT_CLONE(m_false));
 })
 
+NODE(ExprNode_WildcardPattern, {
+    os << "_";
+},{
+    return NEWNODE(ExprNode_WildcardPattern);
+})
 NODE(ExprNode_Integer, {
     if( m_datatype == CORETYPE_CHAR )
         os << "'\\u{" << ::std::hex << m_value << ::std::dec << "}'";
@@ -772,6 +777,7 @@ NV(ExprNode_IfLet,
     UNINDENT();
 })
 
+NV(ExprNode_WildcardPattern, {(void)node;})
 NV(ExprNode_Integer, {(void)node;})
 NV(ExprNode_Float, {(void)node;})
 NV(ExprNode_Bool, {(void)node;})

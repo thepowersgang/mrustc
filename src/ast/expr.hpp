@@ -417,6 +417,12 @@ struct ExprNode_IfLet:
     }
     NODE_METHODS();
 };
+/// Represents `_` in expression position
+struct ExprNode_WildcardPattern:
+    public ExprNode
+{
+    NODE_METHODS();
+};
 // Literal integer
 struct ExprNode_Integer:
     public ExprNode
@@ -767,6 +773,7 @@ public:
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
 
+    NT(ExprNode_WildcardPattern);
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
@@ -818,6 +825,7 @@ public:
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
 
+    NT(ExprNode_WildcardPattern);
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
     NT(ExprNode_Bool);

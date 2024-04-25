@@ -1053,6 +1053,11 @@ struct CExpandExpr:
                 void visit(::AST::ExprNode_Match& v) override { invalid(v); }
                 void visit(::AST::ExprNode_If& v) override { invalid(v); }
                 void visit(::AST::ExprNode_IfLet& v) override { invalid(v); }
+
+                void visit(::AST::ExprNode_WildcardPattern& v) override {
+                    m_rv_set = true;
+                    m_rv = AST::Pattern(v.span(), AST::Pattern::Data::make_Any({}));
+                }
                 void visit(::AST::ExprNode_Integer& v) override { invalid(v); }
                 void visit(::AST::ExprNode_Float& v) override { invalid(v); }
                 void visit(::AST::ExprNode_Bool& v) override { invalid(v); }
@@ -1345,6 +1350,7 @@ struct CExpandExpr:
         this->replacement.reset(replacement);
 #endif
     }
+    void visit(::AST::ExprNode_WildcardPattern& node) override { }
     void visit(::AST::ExprNode_Integer& node) override { }
     void visit(::AST::ExprNode_Float& node) override { }
     void visit(::AST::ExprNode_Bool& node) override { }

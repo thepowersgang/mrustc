@@ -817,6 +817,7 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_INTEGER:
     case TOK_FLOAT:
     case TOK_STRING:
+    case TOK_UNDERSCORE:
     case TOK_RWORD_TRUE:
     case TOK_RWORD_FALSE:
     case TOK_RWORD_SELF:
@@ -1447,6 +1448,8 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
         PUTBACK(tok, lex);
         return Parse_ExprVal_Closure(lex);
 
+    case TOK_UNDERSCORE:
+        return NEWNODE( AST::ExprNode_WildcardPattern );
     case TOK_INTEGER:
         return NEWNODE( AST::ExprNode_Integer, tok.intval(), tok.datatype() );
     case TOK_FLOAT:

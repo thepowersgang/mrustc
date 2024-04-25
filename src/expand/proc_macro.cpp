@@ -1150,6 +1150,9 @@ namespace {
             TODO(sp, "ExprNode_IfLet");
         }
 
+        void visit(::AST::ExprNode_WildcardPattern& node) {
+            m_pmi.send_symbol("_");
+        }
         void visit(::AST::ExprNode_Integer& node) {
             m_pmi.send_int(node.m_datatype, node.m_value);
         }

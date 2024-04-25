@@ -665,6 +665,10 @@ TODO(v.span(), "while let (chained)");
 #endif
     }
 
+    virtual void visit(::AST::ExprNode_WildcardPattern& v) override {
+        ERROR(v.span(), E0000, "`_` is only valid in expressions on the left-hand side of an assignment");
+    }
+
     virtual void visit(::AST::ExprNode_Integer& v) override {
         struct H {
             static ::HIR::CoreType get_type(Span sp, ::eCoreType ct) {

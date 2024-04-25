@@ -454,6 +454,9 @@ public:
         AST::NodeVisitor::visit(n.m_code);
         m_os << " }";
     }
+    virtual void visit(AST::ExprNode_WildcardPattern& n) override {
+        m_os << "_";
+    }
     virtual void visit(AST::ExprNode_Integer& n) override {
         m_expr_root = false;
         switch(n.m_datatype)
