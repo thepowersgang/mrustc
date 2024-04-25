@@ -122,3 +122,5 @@
 - proc_macro Span `source_file` method
   - `rustc_fluent_macro` uses it to get the parent dir, so can't just fake it :(
 - `do yeet` :(
+- BUG: Lifetimes with closures were invalid
+- Static-borrow-constants didn't save the contents, unless actively in consteval (leading to downstream consteval)

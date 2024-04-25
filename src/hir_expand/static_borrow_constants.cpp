@@ -984,6 +984,8 @@ namespace static_borrow_constants {
         const ::HIR::TypeRef*   m_self_type = nullptr;
         const HIR::ItemPath*  m_current_module_path;
         const HIR::Module*  m_current_module;
+        // Is the current context constant (a `const fn` or `const` item)
+        bool m_is_const;
 
         struct NewStatic {
             HIR::SimplePath path;
@@ -1016,6 +1018,7 @@ namespace static_borrow_constants {
                     /*m_value=*/mv$(val_expr)
                     );
                 new_static.m_params = mv$(generics);
+                new_static.m_save_literal = m_is_const;
                 DEBUG(path << " = " << new_static.m_value_res);
                 list.push_back(NewStatic { path, std::move(new_static), is_const });
                 return path;
@@ -1186,9 +1189,11 @@ namespace static_borrow_constants {
             if( item.m_code )
             {
                 auto _ = m_resolve.set_item_generics(item.m_params);
+                m_is_const = item.m_const;
                 DEBUG("Function code " << p);
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_code);
                 ev.visit_node_ptr( item.m_code );
+                m_is_const = false;
             }
             else
             {
@@ -1205,8 +1210,10 @@ namespace static_borrow_constants {
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
             if( item.m_value )
             {
+                m_is_const = true;
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
+                m_is_const = false;
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
