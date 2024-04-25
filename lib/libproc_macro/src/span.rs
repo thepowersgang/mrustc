@@ -14,8 +14,8 @@ impl Span
             assert!(!SPANS_COMPLETE);
             &mut SPANS
             };
-        if lh.len() <= idx {
-            lh.resize_with(idx + 1, || None);
+        while lh.len() <= idx {
+            lh.push(None);
         }
         lh[idx] = Some(RealSpan {
             file: source_file,
@@ -60,7 +60,7 @@ impl Span
     // Unstable at 1.54
     pub fn source_file(&self) -> SourceFile {
         match unsafe { assert!(SPANS_COMPLETE); SPANS.get(self.0) } {
-        Some(Some(v)) => v.file.clone(),
+        Some(&Some(ref v)) => v.file.clone(),
         _ => panic!("Undefined span #{}", self.0),
         }
     }
