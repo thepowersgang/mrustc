@@ -278,9 +278,21 @@ public:
         this->send_u8(static_cast<uint8_t>(TokenClass::Symbol));
         this->send_bytes(val, ::std::strlen(val));
     }
-    void send_ident(const char* val) {
+    void send_rword(const char* val) {
         this->send_u8(static_cast<uint8_t>(TokenClass::Ident));
         this->send_bytes(val, ::std::strlen(val));
+    }
+    void send_ident(const char* val) {
+        this->send_u8(static_cast<uint8_t>(TokenClass::Ident));
+        if( Lex_FindReservedWord(val, m_edition) != TOK_NULL ) {
+            auto size = ::std::strlen(val);
+            this->send_v128u( 2 + size );
+            this->send_bytes_raw("r#", 2);
+            this->send_bytes_raw(val, size);
+        }
+        else {
+            this->send_bytes(val, ::std::strlen(val));
+        }
     }
     void send_ident(const Ident& val) {
         send_ident(val.name.c_str());
@@ -571,58 +583,58 @@ namespace {
             case TOK_BACKTICK:  m_pmi.send_symbol("`");     break;
 
             // Reserved Words
-            case TOK_RWORD_PUB:     m_pmi.send_ident("pub");    break;
-            case TOK_RWORD_PRIV:    m_pmi.send_ident("priv");   break;
-            case TOK_RWORD_MUT:     m_pmi.send_ident("mut");    break;
-            case TOK_RWORD_CONST:   m_pmi.send_ident("const");  break;
-            case TOK_RWORD_STATIC:  m_pmi.send_ident("static"); break;
-            case TOK_RWORD_UNSAFE:  m_pmi.send_ident("unsafe"); break;
-            case TOK_RWORD_EXTERN:  m_pmi.send_ident("extern"); break;
-            case TOK_RWORD_CRATE:   m_pmi.send_ident("crate");  break;
-            case TOK_RWORD_MOD:     m_pmi.send_ident("mod");    break;
-            case TOK_RWORD_STRUCT:  m_pmi.send_ident("struct"); break;
-            case TOK_RWORD_ENUM:    m_pmi.send_ident("enum");   break;
-            case TOK_RWORD_TRAIT:   m_pmi.send_ident("trait");  break;
-            case TOK_RWORD_FN:      m_pmi.send_ident("fn");     break;
-            case TOK_RWORD_USE:     m_pmi.send_ident("use");    break;
-            case TOK_RWORD_IMPL:    m_pmi.send_ident("impl");   break;
-            case TOK_RWORD_TYPE:    m_pmi.send_ident("type");   break;
-            case TOK_RWORD_WHERE:   m_pmi.send_ident("where");  break;
-            case TOK_RWORD_AS:      m_pmi.send_ident("as");     break;
-            case TOK_RWORD_LET:     m_pmi.send_ident("let");    break;
-            case TOK_RWORD_MATCH:   m_pmi.send_ident("match");  break;
-            case TOK_RWORD_IF:      m_pmi.send_ident("if");     break;
-            case TOK_RWORD_ELSE:    m_pmi.send_ident("else");   break;
-            case TOK_RWORD_LOOP:    m_pmi.send_ident("loop");   break;
-            case TOK_RWORD_WHILE:   m_pmi.send_ident("while");  break;
-            case TOK_RWORD_FOR:     m_pmi.send_ident("for");    break;
-            case TOK_RWORD_IN:      m_pmi.send_ident("in");     break;
-            case TOK_RWORD_DO:      m_pmi.send_ident("do");     break;
-            case TOK_RWORD_CONTINUE:m_pmi.send_ident("continue"); break;
-            case TOK_RWORD_BREAK:   m_pmi.send_ident("break");  break;
-            case TOK_RWORD_RETURN:  m_pmi.send_ident("return"); break;
-            case TOK_RWORD_YIELD:   m_pmi.send_ident("yeild");  break;
-            case TOK_RWORD_BOX:     m_pmi.send_ident("box");    break;
-            case TOK_RWORD_REF:     m_pmi.send_ident("ref");    break;
-            case TOK_RWORD_FALSE:   m_pmi.send_ident("false"); break;
-            case TOK_RWORD_TRUE:    m_pmi.send_ident("true");   break;
-            case TOK_RWORD_SELF:    m_pmi.send_ident("self");   break;
-            case TOK_RWORD_SUPER:   m_pmi.send_ident("super");  break;
-            case TOK_RWORD_MOVE:    m_pmi.send_ident("move");   break;
-            case TOK_RWORD_ABSTRACT:m_pmi.send_ident("abstract"); break;
-            case TOK_RWORD_FINAL:   m_pmi.send_ident("final");  break;
-            case TOK_RWORD_OVERRIDE:m_pmi.send_ident("override"); break;
-            case TOK_RWORD_VIRTUAL: m_pmi.send_ident("virtual"); break;
-            case TOK_RWORD_TYPEOF:  m_pmi.send_ident("typeof"); break;
-            case TOK_RWORD_BECOME:  m_pmi.send_ident("become"); break;
-            case TOK_RWORD_UNSIZED: m_pmi.send_ident("unsized"); break;
-            case TOK_RWORD_MACRO:   m_pmi.send_ident("macro");  break;
+            case TOK_RWORD_PUB:     m_pmi.send_rword("pub");    break;
+            case TOK_RWORD_PRIV:    m_pmi.send_rword("priv");   break;
+            case TOK_RWORD_MUT:     m_pmi.send_rword("mut");    break;
+            case TOK_RWORD_CONST:   m_pmi.send_rword("const");  break;
+            case TOK_RWORD_STATIC:  m_pmi.send_rword("static"); break;
+            case TOK_RWORD_UNSAFE:  m_pmi.send_rword("unsafe"); break;
+            case TOK_RWORD_EXTERN:  m_pmi.send_rword("extern"); break;
+            case TOK_RWORD_CRATE:   m_pmi.send_rword("crate");  break;
+            case TOK_RWORD_MOD:     m_pmi.send_rword("mod");    break;
+            case TOK_RWORD_STRUCT:  m_pmi.send_rword("struct"); break;
+            case TOK_RWORD_ENUM:    m_pmi.send_rword("enum");   break;
+            case TOK_RWORD_TRAIT:   m_pmi.send_rword("trait");  break;
+            case TOK_RWORD_FN:      m_pmi.send_rword("fn");     break;
+            case TOK_RWORD_USE:     m_pmi.send_rword("use");    break;
+            case TOK_RWORD_IMPL:    m_pmi.send_rword("impl");   break;
+            case TOK_RWORD_TYPE:    m_pmi.send_rword("type");   break;
+            case TOK_RWORD_WHERE:   m_pmi.send_rword("where");  break;
+            case TOK_RWORD_AS:      m_pmi.send_rword("as");     break;
+            case TOK_RWORD_LET:     m_pmi.send_rword("let");    break;
+            case TOK_RWORD_MATCH:   m_pmi.send_rword("match");  break;
+            case TOK_RWORD_IF:      m_pmi.send_rword("if");     break;
+            case TOK_RWORD_ELSE:    m_pmi.send_rword("else");   break;
+            case TOK_RWORD_LOOP:    m_pmi.send_rword("loop");   break;
+            case TOK_RWORD_WHILE:   m_pmi.send_rword("while");  break;
+            case TOK_RWORD_FOR:     m_pmi.send_rword("for");    break;
+            case TOK_RWORD_IN:      m_pmi.send_rword("in");     break;
+            case TOK_RWORD_DO:      m_pmi.send_rword("do");     break;
+            case TOK_RWORD_CONTINUE:m_pmi.send_rword("continue"); break;
+            case TOK_RWORD_BREAK:   m_pmi.send_rword("break");  break;
+            case TOK_RWORD_RETURN:  m_pmi.send_rword("return"); break;
+            case TOK_RWORD_YIELD:   m_pmi.send_rword("yeild");  break;
+            case TOK_RWORD_BOX:     m_pmi.send_rword("box");    break;
+            case TOK_RWORD_REF:     m_pmi.send_rword("ref");    break;
+            case TOK_RWORD_FALSE:   m_pmi.send_rword("false"); break;
+            case TOK_RWORD_TRUE:    m_pmi.send_rword("true");   break;
+            case TOK_RWORD_SELF:    m_pmi.send_rword("self");   break;
+            case TOK_RWORD_SUPER:   m_pmi.send_rword("super");  break;
+            case TOK_RWORD_MOVE:    m_pmi.send_rword("move");   break;
+            case TOK_RWORD_ABSTRACT:m_pmi.send_rword("abstract"); break;
+            case TOK_RWORD_FINAL:   m_pmi.send_rword("final");  break;
+            case TOK_RWORD_OVERRIDE:m_pmi.send_rword("override"); break;
+            case TOK_RWORD_VIRTUAL: m_pmi.send_rword("virtual"); break;
+            case TOK_RWORD_TYPEOF:  m_pmi.send_rword("typeof"); break;
+            case TOK_RWORD_BECOME:  m_pmi.send_rword("become"); break;
+            case TOK_RWORD_UNSIZED: m_pmi.send_rword("unsized"); break;
+            case TOK_RWORD_MACRO:   m_pmi.send_rword("macro");  break;
 
             // 2018
-            case TOK_RWORD_ASYNC:   m_pmi.send_ident("async");  break;
-            case TOK_RWORD_AWAIT:   m_pmi.send_ident("await");  break;
-            case TOK_RWORD_DYN:     m_pmi.send_ident("dyn");    break;
-            case TOK_RWORD_TRY:     m_pmi.send_ident("try");    break;
+            case TOK_RWORD_ASYNC:   m_pmi.send_rword("async");  break;
+            case TOK_RWORD_AWAIT:   m_pmi.send_rword("await");  break;
+            case TOK_RWORD_DYN:     m_pmi.send_rword("dyn");    break;
+            case TOK_RWORD_TRY:     m_pmi.send_rword("try");    break;
             }
         }
         void visit_tokentree(const ::TokenTree& tt)
@@ -644,18 +656,18 @@ namespace {
         {
             for(const auto& b : pat.bindings() ) {
                 if( b.m_mutable ) {
-                    m_pmi.send_ident("mut");
+                    m_pmi.send_rword("mut");
                 }
                 switch(b.m_type)
                 {
                 case ::AST::PatternBinding::Type::MOVE:
                     break;
                 case ::AST::PatternBinding::Type::REF:
-                    m_pmi.send_ident("ref");
+                    m_pmi.send_rword("ref");
                     break;
                 case ::AST::PatternBinding::Type::MUTREF:
-                    m_pmi.send_ident("ref");
-                    m_pmi.send_ident("mut");
+                    m_pmi.send_rword("ref");
+                    m_pmi.send_rword("mut");
                     break;
                 }
                 m_pmi.send_ident(b.m_name);
@@ -735,15 +747,15 @@ namespace {
             (Borrow,
                 m_pmi.send_symbol("&");
                 if( te.is_mut )
-                    m_pmi.send_ident("mut");
+                    m_pmi.send_rword("mut");
                 this->visit_type(*te.inner);
                 ),
             (Pointer,
                 m_pmi.send_symbol("*");
                 if( te.is_mut )
-                    m_pmi.send_ident("mut");
+                    m_pmi.send_rword("mut");
                 else
-                    m_pmi.send_ident("const");
+                    m_pmi.send_rword("const");
                 this->visit_type(*te.inner);
                 ),
             (Array,
@@ -771,7 +783,7 @@ namespace {
                 this->visit_path(*te);
                 ),
             (TraitObject,
-                m_pmi.send_ident("dyn");
+                m_pmi.send_rword("dyn");
                 m_pmi.send_symbol("(");
                 for(const auto& t : te.traits)
                 {
@@ -784,7 +796,7 @@ namespace {
                 m_pmi.send_symbol(")");
                 ),
             (ErasedType,
-                m_pmi.send_ident("impl");
+                m_pmi.send_rword("impl");
                 for(const auto& t : te.traits)
                 {
                     this->visit_hrbs(t.hrbs);
@@ -799,7 +811,7 @@ namespace {
         {
             if( !hrbs.empty() )
             {
-                m_pmi.send_ident("for");
+                m_pmi.send_rword("for");
                 m_pmi.send_symbol("<");
                 for(const auto& v : hrbs.m_lifetimes)
                 {
@@ -825,14 +837,14 @@ namespace {
                 nodes = &pe.nodes;
                 ),
             (Self,
-                m_pmi.send_ident("self");
+                m_pmi.send_rword("self");
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
                 ),
             (Super,
                 for(unsigned i = 0; i < pe.count; i ++)
                 {
-                    m_pmi.send_ident("super");
+                    m_pmi.send_rword("super");
                     m_pmi.send_symbol("::");
                 }
                 nodes = &pe.nodes;
@@ -848,7 +860,7 @@ namespace {
                 this->visit_type(*pe.type);
                 if( pe.trait )
                 {
-                    m_pmi.send_ident("as");
+                    m_pmi.send_rword("as");
                     this->visit_path(*pe.trait);
                 }
                 m_pmi.send_symbol(">");
@@ -974,7 +986,7 @@ namespace {
                         }
                     TU_ARMA(Value, p) {
                         this->visit_attrs(p.attrs());
-                        m_pmi.send_ident("const");
+                        m_pmi.send_rword("const");
                         m_pmi.send_ident(p.name().name.c_str());
                         m_pmi.send_symbol(":");
                         visit_type(p.type());
@@ -1006,7 +1018,7 @@ namespace {
                         continue ;
 
                     if( !where_sent ) {
-                        m_pmi.send_ident("where");
+                        m_pmi.send_rword("where");
                         where_sent = true;
                     }
                     TU_MATCH_HDRA((e), {)
@@ -1087,10 +1099,10 @@ namespace {
             case AST::ExprNode_Block::Type::Bare:
                 break;
             case AST::ExprNode_Block::Type::Unsafe:
-                m_pmi.send_ident("unsafe");
+                m_pmi.send_rword("unsafe");
                 break;
             case AST::ExprNode_Block::Type::Const:
-                m_pmi.send_ident("const");
+                m_pmi.send_rword("const");
                 break;
             }
             m_pmi.send_symbol("{");
@@ -1249,10 +1261,10 @@ namespace {
         void visit_struct(const ::std::string& name, bool is_pub, const ::AST::Struct& str)
         {
             if( is_pub ) {
-                m_pmi.send_ident("pub");
+                m_pmi.send_rword("pub");
             }
 
-            m_pmi.send_ident("struct");
+            m_pmi.send_rword("struct");
             m_pmi.send_ident(name.c_str());
             this->visit_params(str.params());
             TU_MATCH(AST::StructData, (str.m_data), (se),
@@ -1266,7 +1278,7 @@ namespace {
                 {
                     this->visit_attrs(si.m_attrs);
                     if( si.m_is_public )
-                        m_pmi.send_ident("pub");
+                        m_pmi.send_rword("pub");
                     this->visit_type(si.m_type);
                     m_pmi.send_symbol(",");
                 }
@@ -1282,7 +1294,7 @@ namespace {
                 {
                     this->visit_attrs(si.m_attrs);
                     if( si.m_is_public )
-                        m_pmi.send_ident("pub");
+                        m_pmi.send_rword("pub");
                     m_pmi.send_ident(si.m_name.c_str());
                     m_pmi.send_symbol(":");
                     this->visit_type(si.m_type);
@@ -1295,10 +1307,10 @@ namespace {
         void visit_enum(const ::std::string& name, bool is_pub, const ::AST::Enum& enm)
         {
             if( is_pub ) {
-                m_pmi.send_ident("pub");
+                m_pmi.send_rword("pub");
             }
 
-            m_pmi.send_ident("enum");
+            m_pmi.send_rword("enum");
             m_pmi.send_ident(name.c_str());
             this->visit_params(enm.params());
             this->visit_bounds(enm.params());
@@ -1350,20 +1362,20 @@ namespace {
         void visit_function(const ::std::string& name, bool is_pub, const ::AST::Function& fcn)
         {
             if( is_pub ) {
-                m_pmi.send_ident("pub");
+                m_pmi.send_rword("pub");
             }
 
             if( fcn.is_unsafe() ) {
-                m_pmi.send_ident("unsafe");
+                m_pmi.send_rword("unsafe");
             }
             if( fcn.is_const() ) {
-                m_pmi.send_ident("const");
+                m_pmi.send_rword("const");
             }
             if( fcn.abi() != ABI_RUST ) {
-                m_pmi.send_ident("extern");
+                m_pmi.send_rword("extern");
                 m_pmi.send_string(fcn.abi());
             }
-            m_pmi.send_ident("fn");
+            m_pmi.send_rword("fn");
             m_pmi.send_ident(name.c_str());
             this->visit_params(fcn.params());
             m_pmi.send_symbol("(");
@@ -1389,9 +1401,9 @@ namespace {
         void visit_use(const ::std::string& name, bool is_pub, const ::AST::UseItem& item)
         {
             if( is_pub ) {
-                m_pmi.send_ident("pub");
+                m_pmi.send_rword("pub");
             }
-            m_pmi.send_ident("use");
+            m_pmi.send_rword("use");
 
             if( item.entries.size() == 1 ) {
                 visit_path(item.entries[0].path);
@@ -1400,7 +1412,7 @@ namespace {
                     m_pmi.send_symbol("*");
                 }
                 else if( item.entries[0].name != item.entries[0].path.nodes().back().name() ) {
-                    m_pmi.send_ident("as");
+                    m_pmi.send_rword("as");
                     m_pmi.send_ident( item.entries[0].name.c_str() );
                 }
                 else {
@@ -1875,9 +1887,12 @@ Token ProcMacroInv::realGetToken_() {
         }
     case TokenClass::Ident: {
         auto val = this->recv_bytes();
-        auto t = Lex_FindReservedWord(val, AST::Edition::Rust2015);
+        auto t = Lex_FindReservedWord(val, m_edition);
         if( t != TOK_NULL )
             return t;
+        if(val[0] == 'r' && val[1] == '#' ) {
+            return Token(TOK_IDENT, RcString::new_interned(val.c_str() + 2));
+        }
         return Token(TOK_IDENT, RcString::new_interned(val));
         }
     case TokenClass::Lifetime: {

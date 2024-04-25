@@ -125,3 +125,4 @@
 - BUG: Lifetimes with closures were invalid
 - Static-borrow-constants didn't save the contents, unless actively in consteval (leading to downstream consteval)
 - `_ = ` - Assign to underscore pattern
+- `r#type` in a derive/proc_macro
