@@ -177,10 +177,12 @@ struct LowerHIR_ExprNode_Visitor:
 
             auto base = v.m_letelse_slots.first;
             auto count = v.m_letelse_slots.second;
+            DEBUG(pat);
             struct V: public HIR::Visitor {
                 unsigned base;
                 unsigned count;
                 std::vector<HIR::PatternBinding>    bindings;
+                std::map<unsigned, unsigned>    mapping;
                 V(unsigned base, unsigned count)
                     : base(base)
                     , count(count)
@@ -188,13 +190,18 @@ struct LowerHIR_ExprNode_Visitor:
                 void visit_pattern(::HIR::Pattern& pat) override {
                     HIR::Visitor::visit_pattern(pat);
                     for(size_t i = 0; i < pat.m_bindings.size(); i ++) {
-                        ASSERT_BUG(Span(), bindings.size() < this->count, "Miscount of variables in `let-else`");
-                        auto new_idx = base + bindings.size();
 
-                        bindings.push_back( HIR::PatternBinding(pat.m_bindings[i]) );
-                        bindings.back().m_type = HIR::PatternBinding::Type::Move;
+                        auto it = mapping.find(pat.m_bindings[i].m_slot);
+                        if( it == mapping.end() ) {
+                            ASSERT_BUG(Span(), bindings.size() < this->count, "Miscount of variables in `let-else` - only allocated " << this->count);
+                            auto new_idx = base + bindings.size();
+
+                            bindings.push_back( HIR::PatternBinding(pat.m_bindings[i]) );
+                            bindings.back().m_type = HIR::PatternBinding::Type::Move;
+                            it = mapping.insert(std::make_pair(pat.m_bindings[i].m_slot, new_idx)).first;
+                        }
                         pat.m_bindings[i].m_mutable = false;
-                        pat.m_bindings[i].m_slot = new_idx;
+                        pat.m_bindings[i].m_slot = it->second;
                     }
                 }
             } visitor(base, count);
