@@ -733,7 +733,11 @@ namespace {
                 TODO(sp, "proc_macro send primitive - " << ty);
                 ),
             (Function,
-                TODO(sp, "proc_macro send function type - " << ty);
+                ::std::stringstream ss;
+                ss << ty << " ";
+                DEBUG("STRING: " << ss.str());
+
+                parse_string(ss.str());
                 ),
             (Tuple,
                 m_pmi.send_symbol("(");
@@ -1076,7 +1080,12 @@ namespace {
             ss << " ";
             DEBUG("STRING: " << ss.str());
 
-            ::std::istringstream    iss { ss.str() };
+            //const_cast<::AST::ExprNode&>(e).visit(*this);
+            parse_string(ss.str());
+        }
+        void parse_string(const ::std::string& s)
+        {
+            ::std::istringstream    iss { s };
             Lexer   l { iss, AST::Edition::Rust2021, {} };
             for(;;) {
                 auto t = l.getToken();
@@ -1086,7 +1095,6 @@ namespace {
                 // TODO: If this is an ident, then get the comment after it that specifies the hygine info
                 visit_token(t);
             }
-            //const_cast<::AST::ExprNode&>(e).visit(*this);
         }
         void visit_nodes(const ::AST::Expr& e)
         {
