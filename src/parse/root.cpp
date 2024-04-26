@@ -784,13 +784,14 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
             Parse_TypeBound(lex, atype_params, TypeRef(lex.point_span(), "Self", 0xFFFF));
             GET_TOK(tok, lex);
         }
-        if( tok.type() == TOK_RWORD_WHERE ) {
-            throw ParseError::Todo(lex, "Where clause on associated type");
-        }
 
         TypeRef default_type = TypeRef( lex.point_span() );
         if( tok.type() == TOK_EQUAL ) {
             default_type = Parse_Type(lex);
+            GET_TOK(tok, lex);
+        }
+        if( tok.type() == TOK_RWORD_WHERE ) {
+            Parse_WhereClause(lex, atype_params);
             GET_TOK(tok, lex);
         }
 
@@ -1253,6 +1254,9 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         auto atype_params = Parse_GenericParamsOpt(lex);
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
         auto ty = Parse_Type(lex);
+        if( lex.getTokenIf(TOK_RWORD_WHERE) ) {
+            Parse_WhereClause(lex, atype_params);
+        }
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         impl.add_type(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, name, mv$(atype_params), mv$(ty));
         break; }
