@@ -348,7 +348,7 @@ namespace
             Type,
             Constant,
             PatternValue,
-            //PatternAny,
+            PatternType,
             Variable,
         };
         static const char* lookup_mode_msg(LookupMode mode) {
@@ -357,6 +357,7 @@ namespace
             case LookupMode::Namespace: return "path component";
             case LookupMode::Type:      return "type name";
             case LookupMode::PatternValue: return "pattern constant";
+            case LookupMode::PatternType: return "pattern type";
             case LookupMode::Constant:  return "constant name";
             case LookupMode::Variable:  return "variable name";
             }
@@ -370,6 +371,7 @@ namespace
                 case LookupMode::Namespace: ERROR(sp, E0000, "Couldn't find path component '" << name << "'");
                 case LookupMode::Type:      ERROR(sp, E0000, "Couldn't find type name '" << name << "'");
                 case LookupMode::PatternValue:   ERROR(sp, E0000, "Couldn't find pattern value '" << name << "'");
+                case LookupMode::PatternType :   ERROR(sp, E0000, "Couldn't find pattern type '" << name << "'");
                 case LookupMode::Constant:  ERROR(sp, E0000, "Couldn't find constant name '" << name << "'");
                 case LookupMode::Variable:  ERROR(sp, E0000, "Couldn't find variable name '" << name << "'");
                 }
@@ -399,6 +401,7 @@ namespace
                 break;
 
             case LookupMode::Type:
+            case LookupMode::PatternType:
                 {
                     auto v = mod.m_type_items.find(name);
                     if( v != mod.m_type_items.end() ) {
@@ -408,6 +411,7 @@ namespace
                     }
                 }
                 // HACK: For `Enum::Var { .. }` patterns matching value variants
+                if( mode == LookupMode::PatternType )
                 {
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
@@ -420,25 +424,6 @@ namespace
                     }
                 }
                 break;
-            //case LookupMode::PatternAny:
-            //    {
-            //        auto v = mod.m_type_items.find(name);
-            //        if( v != mod.m_type_items.end() ) {
-            //            DEBUG("- TY: Type " << v->second.path);
-            //            path = ::AST::Path( v->second.path );
-            //            return true;
-            //        }
-            //        auto v2 = mod.m_value_items.find(name);
-            //        if( v2 != mod.m_value_items.end() ) {
-            //            const auto& b = v2->second.path.m_bindings.value;
-            //            if( b.is_EnumVar() ) {
-            //                DEBUG("- TY: Enum variant " << v2->second.path);
-            //                path = ::AST::Path( v2->second.path );
-            //                return true;
-            //            }
-            //        }
-            //    }
-            //    break;
             case LookupMode::PatternValue:
                 {
                     auto v = mod.m_value_items.find(name);
@@ -546,6 +531,7 @@ namespace
                         }
                         } break;
                     case LookupMode::Namespace:
+                    case LookupMode::PatternType:
                     case LookupMode::Type: {
                         auto it = mod->m_mod_items.find(name);
                         if(it != mod->m_mod_items.end()) {
@@ -815,6 +801,7 @@ namespace
     case Context::LookupMode::Namespace:os << "Namespace";  break;
     case Context::LookupMode::Type:     os << "Type";       break;
     case Context::LookupMode::PatternValue:  os << "PatternValue";    break;
+    case Context::LookupMode::PatternType :  os << "PatternType" ;    break;
     case Context::LookupMode::Constant: os << "Constant";   break;
     case Context::LookupMode::Variable: os << "Variable";   break;
     }
@@ -942,6 +929,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
         switch(mode)
         {
         case Context::LookupMode::PatternValue:
+        case Context::LookupMode::PatternType:
             ERROR(sp, E0000, "Invalid use of UFCS in pattern");
             break;
         case Context::LookupMode::Namespace:
@@ -1276,6 +1264,7 @@ namespace {
                 {
                 case Context::LookupMode::Namespace:
                 case Context::LookupMode::Type:
+                case Context::LookupMode::PatternType:
                     found = (e.m_types.find( next_node.name() ) != e.m_types.end());
                 case Context::LookupMode::PatternValue:
                 case Context::LookupMode::Constant:
@@ -1360,6 +1349,7 @@ namespace {
         // TODO: Don't bind to a Module if LookupMode::Type
         case Context::LookupMode::Namespace:
         case Context::LookupMode::Type:
+        case Context::LookupMode::PatternType:
             {
                 auto v = hmod->m_mod_items.find(name);
                 if( v != hmod->m_mod_items.end() ) {
@@ -1604,6 +1594,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                         break;
                     case Context::LookupMode::Namespace:
                     case Context::LookupMode::Type:
+                    case Context::LookupMode::PatternType:
                         found = (e.hir->m_types.count(item_name) != 0);
                         break;
                     }
@@ -1771,6 +1762,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                         {
                         case Context::LookupMode::Namespace:
                         case Context::LookupMode::Type:
+                        case Context::LookupMode::PatternType:
                             // TODO: Restrict if ::Type
                             if( mod.m_mod_items.find(name) != mod.m_mod_items.end() ) {
                                 found = true;
@@ -1796,6 +1788,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                                 found = true;
                             }
                         case Context::LookupMode::Type:
+                        case Context::LookupMode::PatternType:
                             if( mod.m_namespace_items.find(name) != mod.m_namespace_items.end() ) {
                                 found = true;
                             }
@@ -2502,11 +2495,8 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         }
     TU_ARMA(Struct, e) {
-        // TODO: `Struct { .. }` patterns can match anything
-        //if( e.sub_patterns.empty() && !e.is_exhaustive ) {
-        //    auto rv = this->lookup_opt(name, src_context, mode);
-        //}
-        Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Type, e.path);
+        // `Struct { .. }` patterns can match anything, so switch lookup mode in that case
+        Resolve_Absolute_Path(context, pat.span(), e.sub_patterns.empty() ? Context::LookupMode::PatternType : Context::LookupMode::Type, e.path);
         for(auto& sp : e.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp.pat);
         }
