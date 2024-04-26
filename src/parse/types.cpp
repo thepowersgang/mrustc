@@ -346,9 +346,13 @@ TypeRef Parse_Type_TraitObject(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
         is_paren = true;
     }
 
-    traits.push_back(Type_TraitPath { mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
-    if( is_paren ) {
-        GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+    if( lex.lookahead(0) == TOK_LIFETIME ) {
+        // TODO: Disallow `for<> '_`
+        GET_TOK(tok, lex);
+        lifetimes.push_back(AST::LifetimeRef( /*lex.point_span(),*/ tok.ident() ));
+    }
+    else {
+        traits.push_back(Type_TraitPath { mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
     }
 
     while( lex.lookahead(0) == TOK_PLUS )
@@ -360,16 +364,22 @@ TypeRef Parse_Type_TraitObject(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
         }
         else
         {
-            if( lex.lookahead(0) == TOK_RWORD_FOR )
-            {
+            if( lex.getTokenIf(TOK_RWORD_FOR) ) {
                 hrbs = Parse_HRB(lex);
+            }
+            else {
             }
             traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
         }
     }
 
-    if( lifetimes.empty())
+    if( is_paren ) {
+        GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+    }
+
+    if( lifetimes.empty() ) {
         lifetimes.push_back(AST::LifetimeRef());
+    }
     return TypeRef(lex.end_span(ps), mv$(traits), mv$(lifetimes));
 }
 TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)

@@ -128,3 +128,4 @@
 - `r#type` in a derive/proc_macro
 - Multiple bindings in let-else
 - `where` on associated type definitions - had a long-standing parser TODO
+- `dyn '_ + for<..` - Lifetime first
