@@ -558,6 +558,8 @@ namespace {
                     {
                         for(auto& pat : arm.m_patterns)
                             upper_visitor.visit_pattern(pat);
+                        for(auto& g : arm.m_guards)
+                            upper_visitor.visit_pattern(g.pat);
                     }
                     ::HIR::ExprVisitorDef::visit(node);
                 }
