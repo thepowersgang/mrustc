@@ -1314,6 +1314,10 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
                     HIR::Publicity::new_none(), // Should really be private, but we're well after checking
                     HIR::ValueItem(::std::move(new_static))
                 }) ));
+
+                auto& s = crate.m_new_values.back().second->ent.as_Static();
+                s.m_value.m_state->m_impl_generics = nullptr;
+                s.m_value.m_state->m_item_generics = &s.m_params;
                 return path;
             }
         } nvs { crate };
@@ -1331,6 +1335,11 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
             ;
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), std::move(vi) } ));
         crate.m_new_values.push_back( ::std::make_pair(name, mv$(boxed)) );
+        {
+            auto& s = crate.m_new_values.back().second->ent.as_Static();
+            s.m_value.m_state->m_impl_generics = nullptr;
+            s.m_value.m_state->m_item_generics = &s.m_params;
+        }
         return path;
         }, exp);
     ev.visit_node_ptr( exp );

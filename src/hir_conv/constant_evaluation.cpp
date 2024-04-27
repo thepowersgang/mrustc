@@ -3291,7 +3291,8 @@ namespace {
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
         {
-            //m_item_params = &item.m_params;
+            TRACE_FUNCTION_F(p);
+            m_item_params = &item.m_params;
 
             m_recurse_types = true;
             ::HIR::Visitor::visit_static(p, item);
@@ -3314,7 +3315,7 @@ namespace {
                 DEBUG("static: " << item.m_type <<  " = " << item.m_value_res);
             }
 
-            //m_item_params = nullptr;
+            m_item_params = nullptr;
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             static Span sp;
