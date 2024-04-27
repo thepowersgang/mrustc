@@ -247,6 +247,8 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
     std::vector<PatternRuleset> arm_rules;
     std::vector<ArmCode>    arm_code;
 
+    auto pat_scope = builder.new_scope_split(sp);
+
     auto pat_builder = PatternRulesetBuilder { builder.resolve() };
     pat_builder.append_from(sp, pat, outer_ty);
     for(auto& sr : pat_builder.m_rulesets)
@@ -259,11 +261,12 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
         else
         {
             DEBUG("LET PAT #" << pat_idx << " " << pat << " ==> [" << sr.m_rules << "]");
-            arm_rules.push_back( PatternRuleset { 0, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
+            arm_rules.push_back( PatternRuleset { pat_idx, 0, mv$(sr.m_rules), mv$(sr.m_bindings) } );
 
             auto pat_node = builder.new_bb_unlinked();
             builder.set_cur_block( pat_node );
             conv.destructure_from_list(sp, outer_ty, val.clone(), arm_rules.back().m_bindings);
+            builder.end_split_arm( sp, pat_scope, /*reachable=*/true );
             builder.end_block(MIR::Terminator::make_Goto(success_node));
 
             ArmCode::Pattern    ap;
@@ -273,9 +276,11 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
             arm_code.push_back(ac);
         }
     }
+    builder.terminate_scope( sp, mv$(pat_scope) );
     if( else_node )
     {
         // Emit a check (similar to match)
+        // NOTE: This is handled by "HIR Lower" currently, seems to work well
         TODO(sp, "Handle let-else");
     }
 
@@ -3059,8 +3064,9 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
                 auto ai = arm_rules.arm_idx(idx);
                 ASSERT_BUG(sp, m_arms_code.size() > 0, "Bottom-level ruleset with no arm code information");
                 const auto& ac = m_arms_code[ai.arm];
+                ASSERT_BUG(sp, ai.arm_rule < ac.rules.size(), "Arm rule index (" << ai.arm_rule << ") out of bounds (" << ac.rules.size() << ")");
 
-                m_builder.end_block( ::MIR::Terminator::make_Goto(ac.rules[ai.arm_rule].entry) );
+                m_builder.end_block( ::MIR::Terminator::make_Goto(ac.rules.at(ai.arm_rule).entry) );
 
                 if( ac.has_condition )
                 {
