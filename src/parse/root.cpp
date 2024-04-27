@@ -2110,6 +2110,7 @@ namespace {
                 mp.crate = "";
                 mp.ents = mod_path.nodes;
                 mrp->m_hygiene.set_mod_path(::std::move(mp));
+                mrp->m_is_macro_item = true;
             }
 
             item_name = name;

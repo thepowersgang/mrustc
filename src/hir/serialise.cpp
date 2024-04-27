@@ -564,6 +564,7 @@
             m_out.write_string(mac.m_source_crate);
             m_out.write_tag(static_cast<unsigned int>(mac.m_edition));
             assert(mac.m_rules.size() > 0);
+            m_out.write_bool(mac.m_is_macro_item);
             serialise_vec(mac.m_rules);
             serialise(mac.m_hygiene);
         }

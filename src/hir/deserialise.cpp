@@ -365,6 +365,7 @@ namespace {
             ::MacroRules    rv( crate_name, edition );
             // NOTE: This is set after loading.
             //rv.m_exported = true;
+            rv.m_is_macro_item = m_in.read_bool();
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
             rv.m_hygiene = deserialise_hygine();
             return rv;

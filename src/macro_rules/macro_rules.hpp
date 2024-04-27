@@ -188,6 +188,8 @@ public:
     /// Marks if this macro should be exported from the defining crate
     bool m_exported = false;
 
+    bool m_is_macro_item = false;
+
     /// Crate that defined this macro
     /// - Populated on deserialise if not already set
     RcString   m_source_crate;

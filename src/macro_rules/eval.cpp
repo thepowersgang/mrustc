@@ -480,6 +480,7 @@ class MacroExpander:
     Token   m_next_token;   // used for inserting a single token into the stream
     ::std::unique_ptr<TTStreamO> m_ttstream;
     AST::Edition    m_source_edition;
+    bool m_is_macro_item;
     Ident::Hygiene  m_hygiene;
 
 public:
@@ -489,6 +490,7 @@ public:
         const ::std::string& macro_name,
         const Span& sp,
         AST::Edition edition,
+        bool is_macro_item,
         const Ident::Hygiene& parent_hygiene,
         const ::std::vector<MacroExpansionEnt>& contents,
         ParameterMappings mappings,
@@ -504,6 +506,7 @@ public:
         m_mappings( mv$(mappings) ),
         m_state( contents, m_mappings ),
         m_source_edition( source_edition ),
+        m_is_macro_item(is_macro_item),
         m_hygiene( Ident::Hygiene::new_scope_chained(parent_hygiene) )
     {
     }
@@ -627,7 +630,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
 
     TokenStream* ret_ptr = new MacroExpander(
-        name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate == "" ? crate.m_crate_name_real : rules.m_source_crate,
+        name, sp, crate.m_edition, rules.m_is_macro_item, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate == "" ? crate.m_crate_name_real : rules.m_source_crate,
         rules.m_edition
         );
 
@@ -2238,7 +2241,7 @@ Token MacroExpander::realGetToken()
                 // Rewrite the hygiene of an ident such that idents in the macro explicitly are unique for each expansion
                 // - Appears to be a valid option.
                 auto ident = e.ident();
-                if( ident.hygiene == m_hygiene.get_parent() )
+                if( ident.hygiene == m_hygiene.get_parent() || m_is_macro_item )
                 {
                     ident.hygiene = m_hygiene;
                 }
@@ -2249,7 +2252,7 @@ Token MacroExpander::realGetToken()
             case TOK_BYTESTRING:
             case TOK_STRING: {
                 auto h = e.str_hygiene();
-                if( h == m_hygiene.get_parent() )
+                if( h == m_hygiene.get_parent() || m_is_macro_item )
                 {
                     h = m_hygiene;
                 }
