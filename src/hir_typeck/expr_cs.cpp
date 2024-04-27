@@ -2679,7 +2679,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
 
                     // Visit all inner bindings and disable coercion fallbacks on them.
-                    MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern);
+                    MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern, /*is_top_level=*/true);
                     return false;
                 }
                 if( ty_p->data().is_Primitive() && ty_p->data().as_Primitive() == HIR::CoreType::Str ) {
@@ -2944,10 +2944,12 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 return rv;
             }
 
-            static void disable_possibilities_on_bindings(const Span& sp, Context& context, const ::HIR::Pattern& pat)
+            static void disable_possibilities_on_bindings(const Span& sp, Context& context, const ::HIR::Pattern& pat, bool is_top_level=false)
             {
-                for(const auto& pb : pat.m_bindings ) {
-                    context.possible_equate_type_unknown(sp, context.get_var(sp, pb.m_slot), Context::IvarUnknownType::Bound);
+                if( !is_top_level ) {
+                    for(const auto& pb : pat.m_bindings ) {
+                        context.possible_equate_type_unknown(sp, context.get_var(sp, pb.m_slot), Context::IvarUnknownType::Bound);
+                    }
                 }
                 TU_MATCH_HDRA( (pat.m_data), {)
                 TU_ARMA(Any, e) {
