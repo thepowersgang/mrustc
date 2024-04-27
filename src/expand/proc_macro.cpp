@@ -705,6 +705,21 @@ namespace {
                 }
             }
         }
+        void visit_lifetime(const AST::LifetimeRef& x)
+        {
+            if( x.binding() == AST::LifetimeRef::BINDING_STATIC ) {
+                m_pmi.send_lifetime("static");
+            }
+            else if( x.binding() == AST::LifetimeRef::BINDING_INFER ) {
+                m_pmi.send_lifetime("_");
+            }
+            else if( x.binding() == AST::LifetimeRef::BINDING_UNSPECIFIED ) {
+                // Nothing
+            }
+            else {
+                m_pmi.send_lifetime(x.name().name.c_str());
+            }
+        }
         void visit_type(const ::TypeRef& ty)
         {
             // TODO: Correct handling of visit_type
@@ -750,6 +765,7 @@ namespace {
                 ),
             (Borrow,
                 m_pmi.send_symbol("&");
+                this->visit_lifetime(te.lifetime);
                 if( te.is_mut )
                     m_pmi.send_rword("mut");
                 this->visit_type(*te.inner);
@@ -787,27 +803,39 @@ namespace {
                 this->visit_path(*te);
                 ),
             (TraitObject,
-                m_pmi.send_rword("dyn");
                 m_pmi.send_symbol("(");
+                m_pmi.send_rword("dyn");
+                bool needs_plus = false;
                 for(const auto& t : te.traits)
                 {
-                    if( &t != &te.traits.front() )
-                        m_pmi.send_symbol("+");
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
                     this->visit_hrbs(t.hrbs);
                     this->visit_path(*t.path);
                 }
-                // TODO: Lifetimes
+                for(const auto& lft : te.lifetimes) {
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
+                    this->visit_lifetime(lft);
+                }
                 m_pmi.send_symbol(")");
                 ),
             (ErasedType,
                 m_pmi.send_rword("impl");
+                bool needs_plus = false;
                 for(const auto& t : te.traits)
                 {
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
                     this->visit_hrbs(t.hrbs);
                     this->visit_path(*t.path);
-                    m_pmi.send_symbol("+");
                 }
-                // TODO: Lifetimes
+                for(const auto& lft : te.lifetimes) {
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
+                    m_pmi.send_symbol("+");
+                    this->visit_lifetime(lft);
+                }
                 )
             )
         }

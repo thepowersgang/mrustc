@@ -339,11 +339,17 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
         )
     _(TraitObject,
         os << "(";
+        bool needs_plus = false;
         for( const auto& it : ent.traits ) {
-            if( &it != &ent.traits.front() )
-                os << "+";
+            if(needs_plus)  os << "+";
+            needs_plus = true;
             os << it.hrbs;
             it.path->print_pretty(os, true, is_debug);
+        }
+        for( const auto& it : ent.lifetimes ) {
+            if(needs_plus)  os << "+";
+            needs_plus = true;
+            os << it;
         }
         os << ")";
         )
