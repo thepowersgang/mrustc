@@ -1189,8 +1189,14 @@ namespace MIR { namespace eval {
                             throw Defer();
                         MIR_ASSERT(state, sz < SIZE_MAX, "Unsized type on index output - " << *typ);
                         size_t  index = e;
-                        MIR_ASSERT(state, index < size, "LValue::Index index out of range - " << index << " >= " << size);
-                        val = val.slice(index * sz, sz);
+                        // HACK: Allow one-past-end for `[foo, ref bar @ ...]` support
+                        if( index == size ) {
+                            val = val.slice(index * sz, 0);
+                        }
+                        else {
+                            MIR_ASSERT(state, index < size, "LValue::Index index out of range - " << index << " >= " << size);
+                            val = val.slice(index * sz, sz);
+                        }
                         continue;
                     }
                     auto* repr = Target_GetTypeRepr(state.sp, this->root_resolve, *typ);

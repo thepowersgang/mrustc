@@ -316,6 +316,8 @@ namespace {
                     ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(src_len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
 
                     // 2. Obtain pointer to the first element
+                    // TODO: This currently emits a borrow to that element, but we need a raw pointer (to avoid being technically out-of-bounds)
+                    // - Should add a MIR op for `BorrowRaw`
                     ::HIR::BorrowType   bt = H::get_borrow_type(sp, *b.binding);
                     ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
                         ::HIR::TypeRef::new_borrow( bt, std::move(inner_type) ),
