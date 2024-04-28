@@ -117,6 +117,19 @@ HIR::ArraySize HIR::ArraySize::clone() const
     , type()
 {
 }
+bool ::HIR::TypeData_ErasedType_AliasInner::is_public_to(const HIR::SimplePath& p) const
+{
+    if( p.m_crate_name != this->path.m_crate_name )
+        return false;
+    if( p.m_components.size() < this->path.m_components.size() - 1)
+        return false;
+    for(size_t i = 0; i < this->path.m_components.size() - 1; i++) {
+        if( p.m_components[i] != this->path.m_components[i] ) {
+            return false;
+        }
+    }
+    return true;
+}
 
 void ::HIR::TypeRef::fmt(::std::ostream& os) const
 {

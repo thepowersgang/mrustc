@@ -188,7 +188,9 @@ class TraitResolution:
     const HIR::SimplePath&  m_lang_Deref;
     const HMTypeInferrence& m_ivars;
 
+public:
     const ::HIR::SimplePath&    m_vis_path;
+private:
     const ::HIR::GenericPath*   m_current_trait_path;
     const ::HIR::Trait* m_current_trait_ptr;
 

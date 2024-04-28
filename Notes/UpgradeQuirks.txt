@@ -64,6 +64,15 @@
   - WHY? WHY is Box::new so funky. INTRINSICS EXIST FOR A REASON!
 - `Drop for Box` is FINALLY a normal impl!
 - `type Foo = impl Trait`
+  - Not easy, as it has complexities and poor documentation
+  - `::std::backtrace::lazy_resolve` returns a named erased type, but other parts of that module use that type as an opaque
+    - The usage sites don't contribute any type information.
+  - `::rustc_middle::query::erase::{erase,restore}` return/take a named erased type, wrapping/unwrapping it
+    - Both usages here contribute type information.
+  - Solution 1: As committed here - do tricky things in type inference
+  - Solution 2:
+    - Tag all TAITs with the source function in "Resolve Type Aliases"
+    - Ensure typecheck of that function is completed during consteval (or even during typecheck)
 - `libstd` has a reference to `thread_local!` (well, `thread_local_inner!`) that is used before the `mod sys` that defines `thread_local_inner!`)
   - To solve this, need to loop on expand until nothing expands
   - That took ages to code.

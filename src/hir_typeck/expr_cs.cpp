@@ -1947,14 +1947,20 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         }
     }
 
-#if 0
-    // If the RHS is an erased type, then expand it
+#if 1
     if( const auto* et = r_t.data().opt_ErasedType() )
     {
         if( const auto* ee = et->m_inner.opt_Alias() )
         {
-            if( this->m_erased_type_aliases.count(ee->get()) > 0 ) {
-                equate_types_inner(sp, l_t, this->m_erased_type_aliases[ee->get()]);
+            // HACK: Only propagate type information backwards if this isn't an ivar
+            // - This logic seems to work, but isn't strictly speaking the right logic
+            if( !l_t.data().is_Infer() && (*ee)->is_public_to(m_resolve.m_vis_path) ) {
+                if( this->m_erased_type_aliases.count(ee->get()) == 0 ) {
+                    this->m_erased_type_aliases.insert(std::make_pair( ee->get(), l_t.clone() ));
+                }
+                else {
+                    equate_types_inner(sp, this->m_erased_type_aliases[ee->get()], l_t);
+                }
                 return ;
             }
         }
@@ -1964,13 +1970,15 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
     {
         if( const auto* ee = et->m_inner.opt_Alias() )
         {
-            if( this->m_erased_type_aliases.count(ee->get()) == 0 ) {
-                this->m_erased_type_aliases.insert(std::make_pair( ee->get(), r_t.clone() ));
+            if( (*ee)->is_public_to(m_resolve.m_vis_path) ) {
+                if( this->m_erased_type_aliases.count(ee->get()) == 0 ) {
+                    this->m_erased_type_aliases.insert(std::make_pair( ee->get(), r_t.clone() ));
+                }
+                else {
+                    equate_types_inner(sp, this->m_erased_type_aliases[ee->get()], r_t);
+                }
+                return ;
             }
-            else {
-                equate_types_inner(sp, this->m_erased_type_aliases[ee->get()], r_t);
-            }
-            return ;
         }
     }
 
