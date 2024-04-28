@@ -2332,14 +2332,25 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 }
                 if( cmp != ::HIR::Compare::Unequal )
                 {
-                    auto it = trait.m_type_bounds.find( pe.item );
-                    if( it == trait.m_type_bounds.end() ) {
-                        // TODO: Mark as opaque and return.
-                        // - Why opaque? It's not bounded, don't even bother
-                        TODO(sp, "Handle unconstrained associate type " << pe.item << " from " << pe.type);
+                    {
+                        auto it = trait.m_type_bounds.find( pe.item );
+                        if( it != trait.m_type_bounds.end() ) {
+                            input = it->second.type.clone();
+                            return ;
+                        }
                     }
-
-                    input = it->second.type.clone();
+                    // Mark as opaque and return, and ensure that the bounds are added to the bounds cache
+                    e.binding = ::HIR::TypePathBinding::make_Opaque({});
+                    {
+                        auto it = trait.m_trait_bounds.find(pe.item);
+                        if(it != trait.m_trait_bounds.end() )
+                        {
+                            for(const auto& bound : it->second.traits)
+                            {
+                                const_cast<TraitResolution&>(*this).prep_indexes__add_trait_bound(sp, nullptr, input.clone(), bound.clone());
+                            }
+                        }
+                    }
                     return ;
                 }
             }

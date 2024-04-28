@@ -457,6 +457,78 @@ bool StaticTraitResolve::find_impl(
                     return true;
             }
 
+            // Recurse into the type to find an inner `impl Foo`
+            //if( pe.type.data().is_Path() )
+            {
+                ::std::vector<const HIR::Path::Data::Data_UfcsKnown*> stack;
+                stack.push_back(&pe);
+                const auto* ity = &pe.type;
+                while(const auto* inner = ity->data().opt_Path())
+                {
+                    if( const auto* ufcs = inner->path.m_data.opt_UfcsKnown() ) {
+                        stack.push_back(ufcs);
+                        ity = &ufcs->type;
+                    }
+                    break;
+                }
+                if( const auto* inner_erased = ity->data().opt_ErasedType() )
+                {
+                    DEBUG("ErasedBounds: " << *ity);
+                    assert(!stack.empty());
+                    const auto* traits = &inner_erased->m_traits;
+
+                    for( ;; )
+                    {
+                        const auto* pe = stack.back();
+                        DEBUG("ErasedBounds: " << pe->trait << " :: " << pe->item);
+                        const HIR::TraitPath* tp = nullptr;
+                        for(const auto& t : *traits) {
+                            if( t.m_path == pe->trait ) {
+                                tp = &t;
+                                break;
+                            }
+                        }
+                        assert(tp != nullptr);
+                        traits = &tp->m_trait_bounds.at(pe->item).traits;
+
+                        stack.pop_back();
+                        if( stack.empty() ) {
+                            break ;
+                        }
+                    }
+
+                    // Found the final trait list
+                    // - This is for the top-level trait
+                    for(const auto& t : *traits) {
+                        if( check_bound(t) )
+                            return true;
+                    }
+                }
+            }
+            #if 0
+            if( const auto* inner_erased = pe.type.data().opt_ErasedType() )
+            {
+                for(const auto& erased_trait = inner_erased->m_traits)
+                {
+                    if( erased_trait.m_path != pe.trait ) {
+                        continue ;
+                    }
+                    if( erased_trait.m_path != pe.trait ) {
+                        continue ;
+                    }
+                    auto it = inner_erased->m_trait_bounds.find(pe.item);
+                    if(it != inner_erased->m_trait_bounds.end())
+                    {
+                        for(const auto& bound : it->traits)
+                        {
+                            if( check_bound(bound) )
+                                return true;
+                        }
+                    }
+                }
+            }
+            #endif
+
             DEBUG("- No bounds on trait/aty matched");
         }
         }
@@ -1465,6 +1537,12 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
         }
     }
 }
+namespace {
+    bool valid_for_opaque(const ::HIR::TypeRef& ty)
+    {
+        return monomorphise_type_needed(ty) || visit_ty_with(ty, [](const HIR::TypeRef& t){ return t.data().is_ErasedType(); });
+    }
+}
 bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse/*=true*/) const
 {
     TRACE_FUNCTION_FR(input, input);
@@ -1744,7 +1822,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             else {
                 DEBUG("Mark " << e.path << " as opaque");
                 e.binding = ::HIR::TypePathBinding::make_Opaque({});
-                ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
+                ASSERT_BUG(sp, valid_for_opaque(input), "Set opaque on a non-generic type: " << input);
                 replacement_happened = this->replace_equalities(input);
             }
             return true;
@@ -1757,7 +1835,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     }
     if( best_impl.is_valid() ) {
         e.binding = ::HIR::TypePathBinding::make_Opaque({});
-        ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
+        ASSERT_BUG(sp, valid_for_opaque(input), "Set opaque on a non-generic type: " << input);
         this->replace_equalities(input);
         DEBUG("- Couldn't find a non-specialised impl of " << trait_path << " for " << e2.type << " - treating as opaque");
         return false;
@@ -1765,7 +1843,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
 
     if( assume_opaque ) {
         input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
-        ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
+        ASSERT_BUG(sp, valid_for_opaque(input), "Set opaque on a non-generic type: " << input);
         DEBUG("Assuming that " << input << " is an opaque name");
 
         bool rv = this->replace_equalities(input);
