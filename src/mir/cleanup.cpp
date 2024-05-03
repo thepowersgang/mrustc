@@ -754,10 +754,24 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             out_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_ty));
 
             // If the data trait hasn't changed, return the vtable pointer
-            if( src_ty.data().is_TraitObject() )
+            if( const auto* se = src_ty.data().opt_TraitObject() )
             {
                 out_src_is_dst = true;
-                out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
+                if( se->m_trait.m_trait_ptr != de.m_trait.m_trait_ptr )
+                {
+                    const auto& trait = *se->m_trait.m_trait_ptr;
+                    auto vtable_ty = trait.get_vtable_type(state.sp, state.m_crate, *se);
+                    auto in_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_ty));
+
+                    auto parent_trait_field = trait.get_vtable_parent_index(state.sp, se->m_trait.m_path.m_params, de.m_trait.m_path);
+                    MIR_ASSERT(state, parent_trait_field != 0, "Unable to find parent trait for trait object upcast - " << se->m_trait.m_path << " in " << de.m_trait.m_path);
+                    auto in_meta_val = mutator.in_temporary( mv$(in_meta_ty), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
+                    out_meta_val = MIR::LValue::new_Field( MIR::LValue::new_Deref( mv$(in_meta_val) ), parent_trait_field );
+                }
+                else
+                {
+                    out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
+                }
             }
             else
             {

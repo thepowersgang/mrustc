@@ -1335,6 +1335,7 @@
             serialise_strmap( item.m_values );
             serialise_strmap( item.m_value_indexes );
             serialise_strmap( item.m_type_indexes );
+            m_out.write_count(item.m_vtable_parent_traits_start);
             serialise_vec( item.m_all_parent_traits );
             serialise( item.m_vtable_path );
         }

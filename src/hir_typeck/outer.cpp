@@ -905,12 +905,12 @@ namespace {
                 {
                     auto _ = m_resolve.set_item_generics(e.second.data.m_params);
 
-                    const auto& vi = trait.m_values.at(e.first);
-                    if(!vi.is_Function()) {
+                    const auto v_it = trait.m_values.find(e.first);
+                    if( v_it == trait.m_values.end() || !v_it->second.is_Function() ) {
                         ERROR(sp, E0000, "Trait " << trait_path << " doesn't have a method named " << e.first);
                     }
                     auto& impl_fcn = e.second.data;
-                    const auto& trait_fcn = vi.as_Function();
+                    const auto& trait_fcn = v_it->second.as_Function();
 
                     auto fcn_params = impl_fcn.m_params.make_nop_params(1);
                     MonomorphStatePtr   ms { &impl.m_type, &impl.m_trait_args, &fcn_params };

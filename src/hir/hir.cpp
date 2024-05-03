@@ -302,7 +302,7 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
 
     auto it = mod.m_mod_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
     if( it == mod.m_mod_items.end() ) {
-        BUG(sp, "Could not find type name in " << path);
+        BUG(sp, "Could not find type " << path);
     }
 
     return it->second->ent;

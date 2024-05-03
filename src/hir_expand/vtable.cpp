@@ -107,7 +107,7 @@ namespace {
                 ::HIR::Trait*   trait_ptr;
                 ::HIR::t_struct_fields fields;
 
-                bool add_ents_from_trait(const ::HIR::Trait& tr, const ::HIR::GenericPath& trait_path)
+                bool add_ents_from_trait(const ::HIR::Trait& tr, const ::HIR::GenericPath& trait_path, std::vector<bool>* supertrait_flags)
                 {
                     TRACE_FUNCTION_F(trait_path);
                     struct M: public Monomorphiser {
@@ -230,11 +230,14 @@ namespace {
                             }
                         }
                     }
-                    for(const auto& st : tr.m_all_parent_traits) {
-                        ::HIR::TypeRef  self("Self", 0xFFFF);
-                        auto st_gp = MonomorphStatePtr(&self, &trait_path.m_params, nullptr).monomorph_genericpath(sp, st.m_path, false);
-                        // NOTE: Doesn't trigger non-object-safe
-                        add_ents_from_trait(*st.m_trait_ptr, st_gp);
+                    if( supertrait_flags ) {
+                        supertrait_flags->reserve(tr.m_all_parent_traits.size());
+                        for(const auto& st : tr.m_all_parent_traits) {
+                            ::HIR::TypeRef  self("Self", 0xFFFF);
+                            auto st_gp = MonomorphStatePtr(&self, &trait_path.m_params, nullptr).monomorph_genericpath(sp, st.m_path, false);
+                            // NOTE: Doesn't trigger non-object-safe
+                            supertrait_flags->push_back( add_ents_from_trait(*st.m_trait_ptr, st_gp, nullptr) );
+                        }
                     }
                     return true;
                 }
@@ -253,11 +256,29 @@ namespace {
             // - Alignment of data
             vtc.fields.push_back(::std::make_pair( "#align", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize } ));
             // - Add methods
-            if( ! vtc.add_ents_from_trait(tr, trait_path) || has_conflicting_aty_name )
+            ::std::vector<bool> supertrait_flags;
+            if( ! vtc.add_ents_from_trait(tr, trait_path, &supertrait_flags) || has_conflicting_aty_name )
             {
                 tr.m_value_indexes.clear();
                 tr.m_type_indexes.clear();
                 return ;
+            }
+            tr.m_vtable_parent_traits_start = vtc.fields.size();
+            // Add parent vtables too.
+            for(size_t i = 0; i < tr.m_all_parent_traits.size(); i ++ )
+            {
+                const auto& pt = tr.m_all_parent_traits[i];
+                auto parent_vtable_spath = pt.m_path.m_path;
+                parent_vtable_spath.m_components.back() = RcString::new_interned(FMT( parent_vtable_spath.m_components.back().c_str() << "#vtable" ));
+                auto parent_vtable_path = ::HIR::GenericPath(mv$(parent_vtable_spath), pt.m_path.m_params.clone());
+                auto ty = true || supertrait_flags[i]
+                    ? ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_path(mv$(parent_vtable_path), {}) )
+                    : ::HIR::TypeRef::new_unit()
+                    ;
+                vtc.fields.push_back(::std::make_pair(
+                    RcString::new_interned(FMT("#parent_" << i)),
+                    ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty) }
+                    ));
             }
             auto fields = mv$(vtc.fields);
 
@@ -335,11 +356,99 @@ namespace {
             #endif
         }
     };
-}
+
+    class FixupVisitor:
+        public ::HIR::Visitor
+    {
+        const ::HIR::Crate& m_crate;
+    public:
+        FixupVisitor(const ::HIR::Crate& crate):
+            m_crate(crate)
+        {
+        }
+
+        void visit_struct(HIR::ItemPath ip, HIR::Struct& str)
+        {
+            static Span sp;
+            auto p = std::strchr(ip.name, '#');
+            if( p && std::strcmp(p, "#vtable") == 0 )
+            {
+                auto trait_path = ip.parent->get_simple_path();
+                trait_path.m_components.push_back( RcString::new_interned(ip.name, p - ip.name) );
+                const auto& trait = m_crate.get_trait_by_path(sp, trait_path);
+
+                auto& fields = str.m_data.as_Named();
+                for(size_t i = 0; i < trait.m_all_parent_traits.size(); i ++)
+                {
+                    const auto& pt = trait.m_all_parent_traits[i];
+                    const auto& parent_trait = *pt.m_trait_ptr;
+                    auto& fld_ty = fields[trait.m_vtable_parent_traits_start + i].second.ent;
+                    DEBUG(pt << " " << fld_ty);
+
+                    if( parent_trait.m_vtable_path == HIR::SimplePath() ) {
+                        // Not object safe, so clear this entry
+                        fld_ty = ::HIR::TypeRef::new_unit();
+                    }
+                    else {
+                        auto& te = fld_ty.data_mut().as_Borrow().inner.data_mut().as_Path();
+                        auto& vtable_gpath = te.path.m_data.as_Generic();
+                        te.binding = &m_crate.get_struct_by_path(sp, vtable_gpath.m_path);
+
+                        for(const auto& aty_idx : parent_trait.m_type_indexes)
+                        {
+                            if( vtable_gpath.m_params.m_types.size() <= aty_idx.second ) {
+                                vtable_gpath.m_params.m_types.resize( aty_idx.second+1 );
+                            }
+                            auto& slot = vtable_gpath.m_params.m_types[aty_idx.second];
+                            // If this associated type is in the trait path `pt`
+                            auto it = pt.m_type_bounds.find( aty_idx.first );
+                            if( it != pt.m_type_bounds.end() ) {
+                                slot = it->second.type.clone();
+                            }
+                            // If this type is not in the trait path, then check if it has a defined generic
+                            else if( trait.m_type_indexes.count(aty_idx.first) != 0 ) {
+                                slot = HIR::TypeRef(RcString(), trait.m_type_indexes.at(aty_idx.first));
+                            }
+                            else {
+                                // Otherwise, it has to have been defined in another parent trait
+                                const HIR::GenericPath* gp = nullptr;
+                                for( const auto& pptrait_path : parent_trait.m_all_parent_traits ) {
+                                    if( pptrait_path.m_trait_ptr->m_types.count(aty_idx.first) != 0 ) {
+                                        // Found the trait that defined this ATY
+                                        DEBUG("Found " << aty_idx.first << " in " << pptrait_path);
+                                        gp = &pptrait_path.m_path;
+                                    }
+                                }
+                                ASSERT_BUG(sp, gp, "Failed to a find trait that defined " << aty_idx.first << " in " << pt.m_path.m_path);
+
+                                // Monomorph into the top trait
+                                auto gp_mono = MonomorphStatePtr(nullptr, &pt.m_path.m_params, nullptr).monomorph_genericpath(sp, *gp);
+                                // Search the parent list
+                                const HIR::TraitPath* p = nullptr;
+                                for(const auto& pt : trait.m_all_parent_traits) {
+                                    if( pt.m_path == gp_mono ) {
+                                        p = &pt;
+                                    }
+                                }
+                                ASSERT_BUG(sp, p, "Failed to find " << gp_mono << " in parent trait list for " << trait_path);
+                                auto it = p->m_type_bounds.find( aty_idx.first );
+                                ASSERT_BUG(sp, it != p->m_type_bounds.end(), "Failed to find " << aty_idx.first << " in " << *p);
+                                slot = it->second.type.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+} // namespace
 
 void HIR_Expand_VTables(::HIR::Crate& crate)
 {
     OuterVisitor    ov(crate);
     ov.visit_crate( crate );
+
+    FixupVisitor fv(crate);
+    fv.visit_crate(crate);
 }
 

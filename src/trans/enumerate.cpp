@@ -1536,6 +1536,7 @@ void Trans_Enumerate_FillFrom_VTable(EnumState& state, ::HIR::Path vtable_path, 
     const auto& tr = state.crate.get_trait_by_path(Span(), trait_path.m_path);
 
     ASSERT_BUG(sp, !type.data().is_Slice(), "Getting vtable for unsized type - " << vtable_path);
+    ASSERT_BUG(sp, !type.data().is_TraitObject(), "Getting vtable for unsized type - " << vtable_path);
 
     auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
     for(const auto& m : tr.m_value_indexes)
@@ -1544,6 +1545,18 @@ void Trans_Enumerate_FillFrom_VTable(EnumState& state, ::HIR::Path vtable_path, 
         auto gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
         const auto& fcn = state.crate.get_trait_by_path(sp, gpath.m_path).m_values.at(m.first).as_Function();
         Trans_Enumerate_FillFrom_PathMono(state, ::HIR::Path(type.clone(), mv$(gpath), m.first, fcn.m_params.make_empty_params(true)));
+    }
+    for(const auto& pt_path : tr.m_all_parent_traits)
+    {
+        ASSERT_BUG(sp, pt_path.m_trait_ptr, "Unset trait pointer - " << pt_path);
+        const auto& pt = *pt_path.m_trait_ptr;
+        if( pt.m_vtable_path != HIR::SimplePath() )
+        {
+            auto pt_mono = MonomorphStatePtr(nullptr, &trait_path.m_params, nullptr).monomorph_genericpath(sp, pt_path.m_path);
+            auto pt_vtable_path = ::HIR::Path(type.clone(), mv$(pt_mono), vtable_path.m_data.as_UfcsKnown().item);
+            state.rv.add_vtable( mv$(pt_vtable_path), {} );
+            // No need to recurse.
+        }
     }
 }
 

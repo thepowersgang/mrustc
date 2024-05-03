@@ -591,41 +591,43 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     fcn_p.m_data.as_UfcsKnown().item = ent.fcn_name;
                     fcn_p.m_data.as_UfcsKnown().trait.m_path = ent.trait_path->clone();
 
-                    ::std::vector<HIR::TypeRef> arg_tys;
-                    for(const auto& ty : te->m_arg_types)
-                        arg_tys.push_back( ty.clone() );
-                    auto arg_ty = ::HIR::TypeRef(mv$(arg_tys));
-
-
-                    HIR::Function   fcn;
-                    fcn.m_return = te->m_rettype.clone();
-                    fcn.m_args.push_back(std::make_pair( HIR::Pattern(), !is_by_value ? HIR::TypeRef::new_borrow(ent.bt, type.clone()) : type.clone() ));
-                    fcn.m_args.push_back(std::make_pair( HIR::Pattern(), mv$(arg_ty) ));
-
-                    fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
-                    Builder builder(state, *fcn.m_code.m_mir);
-
-                    std::vector<MIR::Param> arg_params;
-                    for(size_t i = 0; i < te->m_arg_types.size(); i ++)
-                    {
-                        arg_params.push_back(MIR::LValue::new_Field(MIR::LValue::new_Argument(1), i));
-                    }
-                    builder.terminate_Call(MIR::LValue::new_Return(),
-                        !is_by_value ? MIR::LValue::new_Deref(MIR::LValue::new_Argument(0)) : MIR::LValue::new_Argument(0),
-                        mv$(arg_params),
-                        1, 2
-                        );
-                    // BB1: Return
-                    builder.ensure_open();
-                    builder.terminate_block(MIR::Terminator::make_Return({}));
-                    // BB1: Diverge
-                    builder.ensure_open();
-                    builder.terminate_block(MIR::Terminator::make_Diverge({}));
-
-                    MIR_Validate(state.resolve, HIR::ItemPath(path), *fcn.m_code.m_mir, fcn.m_args, fcn.m_return);
-                    trans_list.m_auto_functions.push_back(box$(fcn));
                     auto* e = trans_list.add_function(mv$(fcn_p));
-                    e->ptr = trans_list.m_auto_functions.back().get();
+                    if( e ) {
+                        ::std::vector<HIR::TypeRef> arg_tys;
+                        for(const auto& ty : te->m_arg_types)
+                            arg_tys.push_back( ty.clone() );
+                        auto arg_ty = ::HIR::TypeRef(mv$(arg_tys));
+
+
+                        HIR::Function   fcn;
+                        fcn.m_return = te->m_rettype.clone();
+                        fcn.m_args.push_back(std::make_pair( HIR::Pattern(), !is_by_value ? HIR::TypeRef::new_borrow(ent.bt, type.clone()) : type.clone() ));
+                        fcn.m_args.push_back(std::make_pair( HIR::Pattern(), mv$(arg_ty) ));
+
+                        fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
+                        Builder builder(state, *fcn.m_code.m_mir);
+
+                        std::vector<MIR::Param> arg_params;
+                        for(size_t i = 0; i < te->m_arg_types.size(); i ++)
+                        {
+                            arg_params.push_back(MIR::LValue::new_Field(MIR::LValue::new_Argument(1), i));
+                        }
+                        builder.terminate_Call(MIR::LValue::new_Return(),
+                            !is_by_value ? MIR::LValue::new_Deref(MIR::LValue::new_Argument(0)) : MIR::LValue::new_Argument(0),
+                            mv$(arg_params),
+                            1, 2
+                            );
+                        // BB1: Return
+                        builder.ensure_open();
+                        builder.terminate_block(MIR::Terminator::make_Return({}));
+                        // BB1: Diverge
+                        builder.ensure_open();
+                        builder.terminate_block(MIR::Terminator::make_Diverge({}));
+
+                        MIR_Validate(state.resolve, HIR::ItemPath(path), *fcn.m_code.m_mir, fcn.m_args, fcn.m_return);
+                        trans_list.m_auto_functions.push_back(box$(fcn));
+                        e->ptr = trans_list.m_auto_functions.back().get();
+                    }
                 }
             }
         }
@@ -650,18 +652,29 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             const auto& vtable_ref = crate.get_struct_by_path(sp, vtable_sp);
             auto vtable_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
 
+            // Ensure that the type is defined/populated
+            if( !std::any_of(trans_list.m_types.begin(), trans_list.m_types.end(), [&](const ::std::pair<HIR::TypeRef,bool>& v) {
+                return v.first == vtable_ty && v.second == false;
+                }) ) {
+                trans_list.m_types.push_back(std::make_pair( vtable_ty.clone(), false ));
+            }
+
+            // Look up the size of the VTable, so we can allocate the right buffer size
+            const auto* repr = Target_GetTypeRepr(sp, state.resolve, vtable_ty);
+            assert(repr);
+
             // Create vtable contents
             auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
-
 
             HIR::Linkage linkage;
             linkage.type = HIR::Linkage::Type::Weak;
             HIR::Static vtable_static( ::std::move(linkage), /*is_mut*/false, mv$(vtable_ty), {} );
             auto& vtable_data = vtable_static.m_value_res;
             const auto ptr_bytes = Target_GetPointerBits()/8;
-            vtable_data.bytes.resize( (3+trait.m_value_indexes.size()) * ptr_bytes );
+            vtable_data.bytes.resize( repr->size );
             size_t ofs = 0;
             auto push_ptr = [&vtable_data,&ofs,ptr_bytes](HIR::Path p) {
+                DEBUG("@" << ofs << " = " << p);
                 assert(ofs + ptr_bytes <= vtable_data.bytes.size());
                 vtable_data.relocations.push_back(Reloc::new_named( ofs, ptr_bytes, mv$(p) ));
                 vtable_data.write_uint(ofs, ptr_bytes, EncodedLiteral::PTR_BASE);
@@ -754,6 +767,19 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     }
                     //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
                     push_ptr(mv$(item_path));
+                }
+            }
+            // Parent trait vtables
+            for(size_t i = 0; i < trait.m_all_parent_traits.size(); i ++)
+            {
+                const auto& pt = trait.m_all_parent_traits[i];
+                const auto& fld = repr->fields.at(trait.m_vtable_parent_traits_start + i);
+                ASSERT_BUG(sp, fld.offset == ofs, "");
+                if( !fld.ty.data().is_Tuple() )
+                {
+                    auto pt_mono = MonomorphStatePtr(nullptr, &trait_path.m_params, nullptr).monomorph_genericpath(sp, pt.m_path);
+                    auto pt_vtable_path = ::HIR::Path(type.clone(), mv$(pt_mono), ent.first.m_data.as_UfcsKnown().item);
+                    push_ptr( mv$(pt_vtable_path) );
                 }
             }
             assert(ofs == vtable_data.bytes.size());

@@ -1609,6 +1609,7 @@ namespace {
                     }
                     }
                 TU_ARMA(TraitObject, e) {
+                    // NOTE: This pattern (an empty ItemAddr) is detected by cleanup, which populates the vtable properly
                     m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), ::MIR::Constant::make_ItemAddr({}) }) );
                     }
                 }

@@ -1255,6 +1255,19 @@ unsigned HIR::Trait::get_vtable_value_index(const HIR::GenericPath& trait_path, 
     }
     return 0;
 }
+unsigned HIR::Trait::get_vtable_parent_index(const Span& sp, const HIR::PathParams& this_params, const HIR::GenericPath& trait_path) const
+{
+    for(const auto& pt : this->m_all_parent_traits) {
+        if( pt.m_path.m_path == trait_path.m_path )
+        {
+            auto p = MonomorphStatePtr(nullptr, &this_params, nullptr).monomorph_genericpath(sp, pt.m_path);
+            if( p == trait_path ) {
+                return m_vtable_parent_traits_start + (&pt - this->m_all_parent_traits.data());
+            }
+        }
+    }
+    return 0;
+}
 
 /// Helper for getting the struct associated with a pattern path
 const ::HIR::Struct& HIR::pattern_get_struct(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding, bool is_tuple)

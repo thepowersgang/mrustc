@@ -450,6 +450,8 @@ public:
     ::std::unordered_multimap< RcString, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
     // Indexes in the vtable parameter list for each associated type
     ::std::unordered_map< RcString, unsigned int > m_type_indexes;
+    /// Index of the first vtable entry for parent traits
+    unsigned m_vtable_parent_traits_start;
 
     // Flattend set of parent traits (monomorphised and associated types fixed)
     ::std::vector< ::HIR::TraitPath >  m_all_parent_traits;
@@ -461,10 +463,12 @@ public:
         m_lifetime( mv$(lifetime) ),
         m_parent_traits( mv$(parents) ),
         m_is_marker( false )
+        , m_vtable_parent_traits_start(0)
     {}
 
     ::HIR::TypeRef get_vtable_type(const Span& sp, const ::HIR::Crate& crate, const ::HIR::TypeData::Data_TraitObject& te) const;
     unsigned get_vtable_value_index(const HIR::GenericPath& trait_path, const RcString& name) const;
+    unsigned get_vtable_parent_index(const Span& sp, const HIR::PathParams& this_params, const HIR::GenericPath& trait_path) const;
 };
 
 class ProcMacro

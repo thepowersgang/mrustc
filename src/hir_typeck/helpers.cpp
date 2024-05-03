@@ -1036,6 +1036,7 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty, bool only_u
             return type_contains_ivars(ee, only_unbound);
             }
         TU_ARMA(Alias, ee) {
+            return false;
             }
         }
         ),

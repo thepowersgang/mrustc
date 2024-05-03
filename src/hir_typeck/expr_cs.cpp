@@ -4286,6 +4286,9 @@ namespace {
                 if( dep->m_trait.m_path.m_path != sep->m_trait.m_path.m_path )
                 {
                     // Trait mismatch!
+                    #if 1   // 1.74: `trait_upcasting` feature
+                    return CoerceResult::Unsize;
+                    #endif
                     return CoerceResult::Equality;
                 }
                 const auto& tys_d = dep->m_trait.m_path.m_params.m_types;

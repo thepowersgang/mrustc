@@ -2391,11 +2391,32 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
         if( const auto* se = src_ty.data().opt_TraitObject() )
         {
             // 1. Data trait must be the same
-            if( de->m_trait != se->m_trait )
+            if( de->m_trait.m_path.m_path != se->m_trait.m_path.m_path )
             {
-                return false;
+                // Ensure that `de->m_trait` is a parent of `se->m_trait`
+                const auto& trait = *se->m_trait.m_trait_ptr;
+                bool found = false;
+                for(const auto& pt : trait.m_all_parent_traits) {
+                    if( pt.m_path.m_path == de->m_trait.m_path.m_path )
+                    {
+                        auto p = MonomorphStatePtr(nullptr, &se->m_trait.m_path.m_params, nullptr).monomorph_genericpath(sp, pt.m_path);
+                        if( p == de->m_trait.m_path ) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if( !found ) {
+                    DEBUG("Not a parent trait");
+                    return false;
+                }
             }
-
+            else {
+                if( de->m_trait.m_path != se->m_trait.m_path ) {
+                    DEBUG("Mismatched data trait params");
+                    return false;
+                }
+            }
             // 2. Destination markers must be a strict subset
             for(const auto& mt : de->m_markers)
             {

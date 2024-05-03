@@ -1366,11 +1366,12 @@ namespace {
         rv.m_values = deserialise_istrumap< ::HIR::TraitValueItem>();
         rv.m_value_indexes = deserialise_istrummap< ::std::pair<unsigned int, ::HIR::GenericPath> >();
         rv.m_type_indexes = deserialise_istrumap< unsigned int>();
+        rv.m_vtable_parent_traits_start = m_in.read_count();
         rv.m_all_parent_traits = deserialise_vec< ::HIR::TraitPath>();
         rv.m_vtable_path = deserialise_simplepath();
         return rv;
     }
-    
+
     ::HIR::ConstGeneric HirDeserialiser::deserialise_constgeneric()
     {
         switch( auto tag = m_in.read_tag() )
