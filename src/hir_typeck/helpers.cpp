@@ -1175,7 +1175,9 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
             return types_equal(l, r);
             }
         TU_ARMA(Alias, l,r) {
-            return l.get() == r.get();  // Pointer comparison
+            if( l.inner.get() != r.inner.get() )  // Pointer comparison
+                return false;
+            return pathparams_equal(l.params, r.params);
             }
         }
         ),

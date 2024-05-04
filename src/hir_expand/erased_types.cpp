@@ -32,10 +32,11 @@ namespace {
             m_resolve.expand_associated_types(sp, new_ty);
             }
         TU_ARMA(Alias, ee) {
-            if( ee->type == HIR::TypeRef() ) {
-                ERROR(Span(), E0000, "Erased type alias " << ee->path << " never set?");
+            if( ee.inner->type == HIR::TypeRef() ) {
+                ERROR(Span(), E0000, "Erased type alias " << ee.inner->type << " never set?");
             }
-            new_ty = ee->type.clone();
+            new_ty = MonomorphStatePtr(nullptr, &ee.params, nullptr).monomorph_type(sp, ee.inner->type);
+            m_resolve.expand_associated_types(sp, new_ty);
             }
         TU_ARMA(Known, ee) {
             new_ty = ee.clone();

@@ -586,13 +586,20 @@ namespace {
 #endif
 
             if( TU_TEST1(lhs.data(), ErasedType, .m_inner.is_Alias()) ) {
-                const auto* ee = lhs.data().as_ErasedType().m_inner.as_Alias().get();
-                if( TU_TEST2(rhs.data(), ErasedType, .m_inner, Alias, .get() == ee) ) {
+                const auto& le = lhs.data().as_ErasedType().m_inner.as_Alias();
+                const auto* ee = le.inner.get();
+                if( TU_TEST2(rhs.data(), ErasedType, .m_inner, Alias, .inner.get() == ee) ) {
                 }
                 else {
-                    equate_types(sp, ee->type, rhs);
+                    equate_types(sp, MonomorphStatePtr(nullptr, &le.params, nullptr).monomorph_type(sp, ee->type), rhs);
                     return;
                 }
+            }
+            if( TU_TEST1(rhs.data(), ErasedType, .m_inner.is_Alias()) ) {
+                const auto& re = rhs.data().as_ErasedType().m_inner.as_Alias();
+                const auto* ee = re.inner.get();
+                equate_types(sp, rhs, MonomorphStatePtr(nullptr, &re.params, nullptr).monomorph_type(sp, ee->type));
+                return;
             }
 
             ASSERT_BUG(sp, lhs.data().tag() == rhs.data().tag(), "Mismatched types: " << lhs << " != " << rhs);

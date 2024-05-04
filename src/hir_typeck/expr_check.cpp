@@ -1167,14 +1167,15 @@ namespace {
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
             struct Resolve: HIR::ResolvePlaceholders {
+                mutable ::HIR::TypeRef  tmp;
                 const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const override {
                     //ASSERT_BUG(sp, ty.data().is_Infer(), "Unexpected ivar");
                     if( const auto* e = ty.data().opt_ErasedType() )
                     {
                         if( const auto* ee = e->m_inner.opt_Alias() )
                         {
-                            if( (*ee)->type != HIR::TypeRef() ) {
-                                return (*ee)->type;
+                            if( ee->inner->type != HIR::TypeRef() ) {
+                                return tmp = MonomorphStatePtr(nullptr, &ee->params, nullptr).monomorph_type(sp, ee->inner->type);
                             }
                         }
                     }

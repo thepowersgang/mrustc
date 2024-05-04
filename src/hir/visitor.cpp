@@ -358,7 +358,9 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         TU_ARMA(Known, ee) {
             this->visit_type(ee);
             }
-        TU_ARMA(Alias, ee) {}
+        TU_ARMA(Alias, ee) {
+            this->visit_path_params(ee.params);
+            }
         TU_ARMA(Fcn, ee) {
             if( ee.m_origin != ::HIR::SimplePath() ) {
                 this->visit_path(ee.m_origin, ::HIR::Visitor::PathContext::VALUE);

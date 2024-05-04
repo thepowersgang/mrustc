@@ -1971,7 +1971,7 @@ void HIR_Expand_Closures(::HIR::Crate& crate)
                 {
                     if( const auto* ee = e->m_inner.opt_Alias() )
                     {
-                        fixup.visit_type((*ee)->type);
+                        fixup.visit_type(ee->inner->type);
                     }
                 }
                 return false;

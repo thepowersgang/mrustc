@@ -796,6 +796,7 @@ namespace {
 
 namespace {
     const ::HIR::ItemPath* g_impl_trait_source_type;
+    const ::HIR::GenericParams* g_impl_trait_source_params;
 }
 
 ::HIR::TypeRef LowerHIR_Type(const ::TypeRef& ty)
@@ -989,7 +990,10 @@ namespace {
             mv$(traits),
             mv$(lfts),
             g_impl_trait_source_type
-            ? ::HIR::TypeData_ErasedType_Inner( std::make_shared<HIR::TypeData_ErasedType_AliasInner>(*g_impl_trait_source_type) )
+            ? ::HIR::TypeData_ErasedType_Inner(::HIR::TypeData_ErasedType_Inner::Data_Alias {
+                g_impl_trait_source_params->make_nop_params(0),
+                std::make_shared<HIR::TypeData_ErasedType_AliasInner>(*g_impl_trait_source_type, *g_impl_trait_source_params)
+                })
             : ::HIR::TypeData_ErasedType_Inner::Data_Fcn { ::HIR::Path(::HIR::SimplePath()), 0 }    // Populated in bind, could be populated now?
             } );
         }
@@ -1022,17 +1026,16 @@ namespace {
 ::HIR::TypeAlias LowerHIR_TypeAlias(const HIR::ItemPath& p, const ::AST::TypeAlias& ta)
 {
     assert(!g_impl_trait_source_type);
+    auto params = LowerHIR_GenericParams(ta.params(), nullptr);
     g_impl_trait_source_type = &p;
+    g_impl_trait_source_params = &params;
     auto ty = LowerHIR_Type(ta.type());
     //if( auto* e = ty.data_mut().opt_ErasedType() ) {
     //    DEBUG("Flag type alias - " << &ty.data());
     //    e->m_inner = std::make_shared<HIR::TypeData_ErasedType_AliasInner>(p);
     //}
     g_impl_trait_source_type = nullptr;
-    return ::HIR::TypeAlias {
-        LowerHIR_GenericParams(ta.params(), nullptr),
-        ::std::move(ty)
-        };
+    return ::HIR::TypeAlias { std::move(params), ::std::move(ty) };
 }
 
 

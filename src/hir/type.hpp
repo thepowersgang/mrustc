@@ -147,10 +147,11 @@ struct TypeData_TraitObject
 };
 struct TypeData_ErasedType_AliasInner
 {
+    HIR::GenericParams  generics;
     HIR::SimplePath path;
     HIR::TypeRef    type;
 
-    TypeData_ErasedType_AliasInner(const HIR::ItemPath& p);
+    TypeData_ErasedType_AliasInner(const HIR::ItemPath& p, const HIR::GenericParams& params);
     bool is_public_to(const HIR::SimplePath& p) const;
 };
 TAGGED_UNION(TypeData_ErasedType_Inner, Alias,
@@ -159,7 +160,10 @@ TAGGED_UNION(TypeData_ErasedType_Inner, Alias,
         unsigned int m_index;
         }),
     (Known, HIR::TypeRef),
-    (Alias, ::std::shared_ptr<TypeData_ErasedType_AliasInner>)
+    (Alias, struct {
+        ::HIR::PathParams   params;
+        ::std::shared_ptr<TypeData_ErasedType_AliasInner>   inner;
+        })
 );
 
 } // namespace HIR

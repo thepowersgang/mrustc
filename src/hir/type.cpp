@@ -112,10 +112,12 @@ HIR::ArraySize HIR::ArraySize::clone() const
     throw "";
 }
 
-::HIR::TypeData_ErasedType_AliasInner::TypeData_ErasedType_AliasInner(const HIR::ItemPath& p)
+::HIR::TypeData_ErasedType_AliasInner::TypeData_ErasedType_AliasInner(const HIR::ItemPath& p, const HIR::GenericParams& params)
     : path(p.get_simple_path())
     , type()
 {
+    this->generics = params.clone();
+    this->generics.m_bounds.clear();;
 }
 bool ::HIR::TypeData_ErasedType_AliasInner::is_public_to(const HIR::SimplePath& p) const
 {
@@ -222,7 +224,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             os << "fn " << ee.m_origin << "#" << ee.m_index;
             }
         TU_ARMA(Alias, ee) {
-            os << "type " << ee.get();
+            os << "type" << ee.params << " " << ee.inner.get();
             }
         }
         os << "*/";
@@ -389,17 +391,15 @@ Ordering ord(const HIR::TypeData_ErasedType_Inner& l, const HIR::TypeData_Erased
         return le.ord(re);
         }
     TU_ARMA(Alias, le, re) {
-        if( le.get() != re.get() ) {
-            if( reinterpret_cast<uintptr_t>(le.get()) < reinterpret_cast<uintptr_t>(re.get()) ) {
+        if( le.inner.get() != re.inner.get() ) {
+            if( reinterpret_cast<uintptr_t>(le.inner.get()) < reinterpret_cast<uintptr_t>(re.inner.get()) ) {
                 return OrdLess;
             }
             else {
                 return OrdGreater;
             }
         }
-        else {
-            return OrdEqual;
-        }
+        ORD( le.params, re.params );
         }
     TU_ARMA(Fcn, le, re) {
         ORD( le.m_origin, re.m_origin );
@@ -1087,7 +1087,12 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
                 };
             }
         TU_ARMA(Known, ee) inner = ee.clone();
-        TU_ARMA(Alias, ee) inner = ee;
+        TU_ARMA(Alias, ee) {
+            inner = HIR::TypeData_ErasedType_Inner::Data_Alias {
+                ee.params.clone(),
+                ee.inner
+                };
+            }
         }
         return ::HIR::TypeRef( TypeData::make_ErasedType({
             e.m_is_sized,
@@ -1349,7 +1354,9 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
             return l.compare_with_placeholders(sp, r, resolve_placeholder);
             }
         TU_ARMA(Alias, l,r) {
-            return l == r ? Compare::Equal : Compare::Unequal;
+            if( l.inner != r.inner )
+                return Compare::Unequal;
+            return l.params.compare_with_placeholders(sp, r.params, resolve_placeholder);
             }
         TU_ARMA(Fcn, l,r) {
             if(l.m_index != r.m_index)

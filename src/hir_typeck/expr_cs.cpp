@@ -1281,19 +1281,34 @@ namespace {
 
             for(auto& ent : context.m_erased_type_aliases)
             {
-                auto t = ent.second.clone();
+                auto t = ent.second.our_type.clone();
                 check_type_resolved(node.span(), t, t);
                 // If the type is for the same type alias, then ignore
-                if( t.data().is_ErasedType() && t.data().as_ErasedType().m_inner.is_Alias() && t.data().as_ErasedType().m_inner.as_Alias().get() == ent.first ) {
+                if( t.data().is_ErasedType() && t.data().as_ErasedType().m_inner.is_Alias() && t.data().as_ErasedType().m_inner.as_Alias().inner.get() == ent.first ) {
                     continue;
                 }
+                // TODO: Enforce/validate that the parmas match this function's params, then convert method-level to type-level
+                // - Get the path params used to construct this path in the first place, and then do a `clone_ty_with`
+                auto ty = clone_ty_with(node.span(), t, [&](const HIR::TypeRef& tpl, HIR::TypeRef& out_ty)->bool  {
+                    for(size_t i = 0; i < ent.second.params.m_types.size(); i++ ) {
+                        if( tpl == ent.second.params.m_types[i] ) {
+                            out_ty = HIR::TypeRef(ent.first->generics.m_types.at(i).m_name, i);
+                            return true;
+                        }
+                    }
+                    return false;
+                    });
+                {
+                    auto p = ent.first->generics.make_nop_params(0);
+                    MonomorphStatePtr(nullptr, &p, nullptr).monomorph_type(node.span(), ty);
+                }
                 if( ent.first->type == HIR::TypeRef() ) {
-                    DEBUG("type " << ent.first->path << " = " << t);
-                    ent.first->type = std::move(t);
+                    DEBUG("type " << ent.first->path << " = " << ty);
+                    ent.first->type = std::move(ty);
                 }
                 else {
-                    if( ent.first->type != t ) {
-                        ERROR(node.span(), E0000, "Disagreement on type for " << ent.first->path << ": " << ent.first->type << " or " << t);
+                    if( ent.first->type != ty ) {
+                        ERROR(node.span(), E0000, "Disagreement on type for " << ent.first->path << ": " << ent.first->type << " or " << ty);
                     }
                 }
             }
@@ -1954,12 +1969,12 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         {
             // HACK: Only propagate type information backwards if this isn't an ivar
             // - This logic seems to work, but isn't strictly speaking the right logic
-            if( !l_t.data().is_Infer() && (*ee)->is_public_to(m_resolve.m_vis_path) ) {
-                if( this->m_erased_type_aliases.count(ee->get()) == 0 ) {
-                    this->m_erased_type_aliases.insert(std::make_pair( ee->get(), l_t.clone() ));
+            if( !l_t.data().is_Infer() && ee->inner->is_public_to(m_resolve.m_vis_path) ) {
+                if( this->m_erased_type_aliases.count(ee->inner.get()) == 0 ) {
+                    this->m_erased_type_aliases.insert(std::make_pair( ee->inner.get(), Context::TaitEntry { ee->params, l_t.clone() } ));
                 }
                 else {
-                    equate_types_inner(sp, this->m_erased_type_aliases[ee->get()], l_t);
+                    equate_types_inner(sp, l_t, this->m_erased_type_aliases.at(ee->inner.get()).our_type);
                 }
                 return ;
             }
@@ -1970,12 +1985,12 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
     {
         if( const auto* ee = et->m_inner.opt_Alias() )
         {
-            if( (*ee)->is_public_to(m_resolve.m_vis_path) ) {
-                if( this->m_erased_type_aliases.count(ee->get()) == 0 ) {
-                    this->m_erased_type_aliases.insert(std::make_pair( ee->get(), r_t.clone() ));
+            if( ee->inner->is_public_to(m_resolve.m_vis_path) ) {
+                if( this->m_erased_type_aliases.count(ee->inner.get()) == 0 ) {
+                    this->m_erased_type_aliases.insert(std::make_pair( ee->inner.get(), Context::TaitEntry { ee->params, r_t.clone() } ));
                 }
                 else {
-                    equate_types_inner(sp, this->m_erased_type_aliases[ee->get()], r_t);
+                    equate_types_inner(sp, this->m_erased_type_aliases.at(ee->inner.get()).our_type, r_t);
                 }
                 return ;
             }
@@ -2192,9 +2207,10 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                     }
                     }
                 TU_ARMA(Alias, lee, ree) {
-                    if( lee != ree ) {
+                    if( lee.inner != ree.inner ) {
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - different source");
                     }
+                    equality_typeparams(lee.params, ree.params);
                     }
                 TU_ARMA(Known, lee, ree) {
                     equate_types_inner(sp, lee, ree);

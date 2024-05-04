@@ -350,7 +350,10 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
                 };
             }
         TU_ARMA(Alias, ee) {
-            inner = ee;
+            inner = ::HIR::TypeData_ErasedType_Inner::Data_Alias {
+                this->monomorph_path_params(sp, ee.params, allow_infer),
+                ee.inner
+                };
             }
         TU_ARMA(Known, ee) {
             inner = this->monomorph_type(sp, ee, allow_infer);
