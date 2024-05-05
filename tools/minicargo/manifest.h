@@ -29,6 +29,15 @@ struct PackageVersion
     bool patch_set;
     std::string free_text;
 
+    explicit PackageVersion()
+        : major(0), minor(0), patch(0), patch_set(false) {}
+    PackageVersion(unsigned major)
+        : major(major), minor(0), patch(0), patch_set(false) {}
+    PackageVersion(unsigned major, unsigned minor)
+        : major(major), minor(minor), patch(0), patch_set(false) {}
+    PackageVersion(unsigned major, unsigned minor, unsigned patch)
+        : major(major), minor(minor), patch(patch), patch_set(true) {}
+
     static PackageVersion from_string(const ::std::string& s);
 
     PackageVersion next_minor() const {
@@ -36,15 +45,15 @@ struct PackageVersion
         //    return PackageVersion { 0, minor, patch+1 };
         //}
         //else {
-            return PackageVersion { major, minor+1, 0 };
+            return PackageVersion { major, minor+1 };
         //}
     }
     PackageVersion next_breaking() const {
         if(major == 0) {
-            return PackageVersion { 0, minor + 1, 0 };
+            return PackageVersion { 0, minor + 1 };
         }
         else {
-            return PackageVersion { major + 1, 0, 0 };
+            return PackageVersion { major + 1, 0 };
         }
     }
     PackageVersion prev_compat() const {
@@ -61,12 +70,10 @@ struct PackageVersion
     int cmp(const PackageVersion& x) const {
         if( major != x.major )  return (major < x.major) ? -1 : 1;
         if( minor != x.minor )  return (minor < x.minor) ? -1 : 1;
-        if( x.patch_set == patch_set ) {
-            return (patch < x.patch) ? -1 : 1;
+        if( patch_set && x.patch_set ) {
+            if( patch != x.patch )  return (patch < x.patch) ? -1 : 1;
         }
-        else {
-            return 0;
-        }
+        return 0;
     }
 
     bool operator==(const PackageVersion& x) const {

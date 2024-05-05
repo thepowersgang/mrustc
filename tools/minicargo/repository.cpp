@@ -139,7 +139,10 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
         if( version.accepts(i->second.version) )
         {
             DEBUG("Accept " << i->second.version);
-            if( !best || best->version < i->second.version )
+            // If multiple options are available, pick the OLDEST.
+            // - This is for rustc 1.54, where there's two compatible regex versions and rust references `regex = "1"`
+            // - The later version of regex references a version of aho-corasick that doesn't exsit (as an optional dep)
+            if( !best || best->version > i->second.version )
             {
                 best = &i->second;
             }

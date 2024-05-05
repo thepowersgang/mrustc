@@ -1281,6 +1281,7 @@ std::ostream& operator<<(std::ostream& os, const PackageRef& pr)
 PackageVersion PackageVersion::from_string(const ::std::string& s)
 {
     PackageVersion  rv;
+    rv.patch_set = false;
     ::std::istringstream    iss { s };
     iss >> rv.major;
     iss.get();
@@ -1385,8 +1386,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
         if( pos == s.size() )
             throw ::std::runtime_error("Bad version string - Expected version number");
 
-        PackageVersion  v;
-        v.major = H::parse_i(s, pos);
+        PackageVersion  v { H::parse_i(s, pos) };
         if( s[pos] == '.' )
         {
             pos ++;
@@ -1395,6 +1395,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             {
                 pos ++;
                 v.patch = H::parse_i(s, pos);
+                v.patch_set = true;
 
                 if( pos < s.size() && s[pos] == '-' )
                 {
@@ -1410,6 +1411,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             else
             {
                 v.patch = 0;
+                v.patch_set = false;
             }
         }
         else
@@ -1419,6 +1421,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
                 ty = PackageVersionSpec::Bound::Type::Compatible;
             v.minor = 0;
             v.patch = 0;
+            v.patch_set = false;
         }
 
         rv.m_bounds.push_back(PackageVersionSpec::Bound { ty, v });
@@ -1438,16 +1441,16 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
     {
         switch(b.ty)
         {
-        case Bound::Type::Compatible:
+        case Bound::Type::Compatible: {
             // ^ rules are >= specified, and < next major/breaking
-            if( !(v >= b.ver) )
+            if( !(v >= b.ver.prev_compat()) )
                 return false;
             if( !(v < b.ver.next_breaking()) )
                 return false;
-            break;
+            break; }
         case Bound::Type::MinorCompatible:
             // ~ rules are >= specified, and < next minor
-            if( !(v >= b.ver) )
+            if( !(v >= b.ver.prev_compat()) )
                 return false;
             if( !(v < b.ver.next_minor()) )
                 return false;
