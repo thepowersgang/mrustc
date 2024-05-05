@@ -309,7 +309,7 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
                     val = Parse_ExprBlock(lex);
                 }
                 else {
-                    val = Parse_Expr(lex);
+                    val = Parse_ExprVal(lex);
                 }
                 GET_TOK(tok, lex);
             }
@@ -630,12 +630,9 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
     if( tok.type() == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        if(GET_TOK(tok, lex) == TOK_RWORD_WHERE)
-        {
-            Parse_WhereClause(lex, params);
-            tok = lex.getToken();
-        }
+        tok = lex.getToken();
     }
+
     if(tok.type() == TOK_PAREN_OPEN)
     {
         // Tuple structs
@@ -665,7 +662,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
         //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Name();' ... ning-nong");
         return AST::Struct(mv$(params), mv$(refs));
     }
-    else if(tok.type() == TOK_RWORD_WHERE || tok.type() == TOK_SEMICOLON)
+    else
     {
         // Unit-like struct
         if(tok.type() == TOK_RWORD_WHERE)
@@ -673,38 +670,42 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
             Parse_WhereClause(lex, params);
             tok = lex.getToken();
         }
-        CHECK_TOK(tok, TOK_SEMICOLON);
-        return AST::Struct(mv$(params));
-    }
-    else if(tok.type() == TOK_BRACE_OPEN)
-    {
-        ::std::vector<AST::StructItem>  items;
-        while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+
+        if( tok.type() == TOK_SEMICOLON )
         {
-            PUTBACK(tok, lex);
-
-            auto item_attrs = Parse_ItemAttrs(lex);
-            SET_ATTRS(lex, item_attrs);
-
-            bool is_pub = Parse_Publicity(lex);
-
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.ident().name;
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            TypeRef type = Parse_Type(lex);
-
-            items.push_back( AST::StructItem( mv$(item_attrs), is_pub, mv$(name), mv$(type) ) );
-            if(GET_TOK(tok, lex) == TOK_BRACE_CLOSE)
-                break;
-            CHECK_TOK(tok, TOK_COMMA);
+            CHECK_TOK(tok, TOK_SEMICOLON);
+            return AST::Struct(mv$(params));
         }
-        //if( items.size() == 0 )
-        //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Nam { };' ... ning-nong");
-        return AST::Struct(mv$(params), mv$(items));
-    }
-    else
-    {
-        throw ParseError::Unexpected(lex, tok);
+        else if(tok.type() == TOK_BRACE_OPEN)
+        {
+            ::std::vector<AST::StructItem>  items;
+            while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+            {
+                PUTBACK(tok, lex);
+
+                auto item_attrs = Parse_ItemAttrs(lex);
+                SET_ATTRS(lex, item_attrs);
+
+                bool is_pub = Parse_Publicity(lex);
+
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                auto name = tok.ident().name;
+                GET_CHECK_TOK(tok, lex, TOK_COLON);
+                TypeRef type = Parse_Type(lex);
+
+                items.push_back( AST::StructItem( mv$(item_attrs), is_pub, mv$(name), mv$(type) ) );
+                if(GET_TOK(tok, lex) == TOK_BRACE_CLOSE)
+                    break;
+                CHECK_TOK(tok, TOK_COMMA);
+            }
+            //if( items.size() == 0 )
+            //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Nam { };' ... ning-nong");
+            return AST::Struct(mv$(params), mv$(items));
+        }
+        else
+        {
+            throw ParseError::Unexpected(lex, tok);
+        }
     }
 }
 
