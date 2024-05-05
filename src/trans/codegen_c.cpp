@@ -5635,6 +5635,17 @@ namespace {
                 switch(m_compiler)
                 {
                 case Compiler::Gcc:
+                    switch(o_fail)
+                    {
+                    case Ordering::Release:
+                        o_fail = Ordering::Relaxed;
+                        break;
+                    case Ordering::AcqRel:
+                        o_fail = Ordering::Acquire;
+                        break;
+                    default:
+                        break;
+                    }
                     emit_lvalue(e.ret_val); m_of << "._0 = "; emit_param(e.args.at(1)); m_of << ";\n\t";
                     emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_" << (is_weak ? "weak" : "strong") << "_explicit(";
                         emit_atomic_cast(); emit_param(e.args.at(0));
