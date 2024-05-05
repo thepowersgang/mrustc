@@ -814,9 +814,11 @@ namespace {
                     this->visit_path(*t.path);
                 }
                 for(const auto& lft : te.lifetimes) {
-                    if(needs_plus)  m_pmi.send_symbol("+");
-                    needs_plus = true;
-                    this->visit_lifetime(lft);
+                    if( lft != AST::LifetimeRef() ) {
+                        if(needs_plus)  m_pmi.send_symbol("+");
+                        needs_plus = true;
+                        this->visit_lifetime(lft);
+                    }
                 }
                 m_pmi.send_symbol(")");
                 ),
