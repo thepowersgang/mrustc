@@ -1201,7 +1201,10 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
     if( !this->get_version().m_bounds.empty() )
     {
         DEBUG("Load dependency " << this->name() << " from repo");
-        return repo.find(this->name(), this->get_version());
+        auto rv = repo.find(this->name(), this->get_version());
+        if( rv ) {
+            return rv;
+        }
     }
 
     // NOTE: kernel32-sys specifies both a path and a version for its `winapi` dep
@@ -1233,11 +1236,6 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
         //DEBUG("Load dependency " << this->name() << " from repo");
         //m_manifest = repo.find(this->name(), this->get_version());
         throw ::std::runtime_error(format("No source for ", this->name()));
-    }
-
-    if( !m_manifest )
-    {
-        throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));
     }
     return m_manifest;
 }
@@ -1400,6 +1398,18 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
         if( s[pos] == '.' )
         {
             pos ++;
+            if( s[pos] == '*' ) {
+                pos ++;
+                // `0.*` means anything from 0.x, encode that as `>=` and a `<`
+                rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::GreaterEqual, v });
+                rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::Less, PackageVersion { v.major + 1} });
+
+                while( pos < s.size() && isblank(s[pos]) )
+                    pos ++;
+                if(pos == s.size())
+                    break ;
+                continue ;
+            }
             v.minor = H::parse_i(s, pos);
             if(s[pos] == '.')
             {
