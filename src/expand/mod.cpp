@@ -111,6 +111,9 @@ ExpandProcMacro* Expand_FindProcMacro(const RcString& name)
 void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
     bool found = false;
+    if( a.name().elems.empty() ) {
+        return ;
+    }
     for( auto& d : g_decorators ) {
         if( a.name() == d.first ) {
             found = true;
