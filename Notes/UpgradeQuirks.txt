@@ -141,3 +141,5 @@
 - Trait-bounded impl-trait ATYS: `impl Iterator<Item: Iterator<Item=Bar>>`
 - Upcasting `&dyn Foo` to `&dyn Any` (or just any trait object downcast?)
   - I assume the way this would work is by each vtable having a list of other vtables.
+- Turns out that minicargo isn't doing dependencies correctly :(
+  - Ends up with multiple semver-compatible crates in the build, and leads to type errors

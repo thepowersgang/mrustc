@@ -1184,61 +1184,71 @@ void PackageManifest::load_build_script(const ::std::string& path)
     m_build_script_output = rv;
 }
 
+std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo, const ::helpers::path& base_path)
+{
+    if( m_manifest ) {
+        return m_manifest;
+    }
+    // If the path isn't set, check for:
+    // - Git (checkout and use)
+    // - Version and repository (check vendored, check cache, download into cache)
+    if( this->has_git() )
+    {
+        DEBUG("Load dependency " << this->name() << " from git");
+        throw "TODO: Git";
+    }
+
+    if( !this->get_version().m_bounds.empty() )
+    {
+        DEBUG("Load dependency " << this->name() << " from repo");
+        return repo.find(this->name(), this->get_version());
+    }
+
+    // NOTE: kernel32-sys specifies both a path and a version for its `winapi` dep
+    // - Ideally, path would be processed first BUT the path in this case points at the workspace (which isn't handled well)
+    if( !m_manifest && this->has_path() )
+    {
+        DEBUG("Load dependency " << m_name << " from path " << m_path);
+        // Search for a copy of this already loaded
+        auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
+        if( ::std::ifstream(path.str()).good() )
+        {
+            try
+            {
+                m_manifest = repo.from_path(path);
+            }
+            catch(const ::std::exception& e)
+            {
+                throw ::std::runtime_error( format("Error loading manifest '", path, "' - ", e.what()) );
+            }
+        }
+        else
+        {
+            throw ::std::runtime_error(format("Cannot open manifest ", path, " for ", this->name()));
+        }
+    }
+
+    if( !(this->has_git() || !this->get_version().m_bounds.empty() || this->has_path()) )
+    {
+        //DEBUG("Load dependency " << this->name() << " from repo");
+        //m_manifest = repo.find(this->name(), this->get_version());
+        throw ::std::runtime_error(format("No source for ", this->name()));
+    }
+
+    if( !m_manifest )
+    {
+        throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));
+    }
+    return m_manifest;
+}
 void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps)
 {
     TRACE_FUNCTION_F(this->m_name);
-    if( !m_manifest )
-    {
-        // If the path isn't set, check for:
-        // - Git (checkout and use)
-        // - Version and repository (check vendored, check cache, download into cache)
-        if( this->has_git() )
-        {
-            DEBUG("Load dependency " << this->name() << " from git");
-            throw "TODO: Git";
-        }
-
-        if( !this->get_version().m_bounds.empty() )
-        {
-            DEBUG("Load dependency " << this->name() << " from repo");
-            m_manifest = repo.find(this->name(), this->get_version());
-        }
-
-        // NOTE: kernel32-sys specifies both a path and a version for its `winapi` dep
-        // - Ideally, path would be processed first BUT the path in this case points at the workspace (which isn't handled well)
-        if( !m_manifest && this->has_path() )
-        {
-            DEBUG("Load dependency " << m_name << " from path " << m_path);
-            // Search for a copy of this already loaded
-            auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
-            if( ::std::ifstream(path.str()).good() )
-            {
-                try
-                {
-                    m_manifest = repo.from_path(path);
-                }
-                catch(const ::std::exception& e)
-                {
-                    throw ::std::runtime_error( format("Error loading manifest '", path, "' - ", e.what()) );
-                }
-            }
-            else
-            {
-                throw ::std::runtime_error(format("Cannot open manifest ", path, " for ", this->name()));
-            }
-        }
-
-        if( !(this->has_git() || !this->get_version().m_bounds.empty() || this->has_path()) )
-        {
-            //DEBUG("Load dependency " << this->name() << " from repo");
-            //m_manifest = repo.find(this->name(), this->get_version());
-            throw ::std::runtime_error(format("No source for ", this->name()));
-        }
-
-        if( !m_manifest )
-        {
-            throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));
-        }
+    if( !m_manifest ) {
+        m_manifest = load_manifest_raw(repo, base_path);
+    }
+    if( !m_manifest ) {
+        throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));
     }
 
     m_manifest->set_features(this->m_features, this->m_use_default_features);

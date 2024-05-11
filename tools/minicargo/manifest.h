@@ -197,6 +197,7 @@ public:
         return *m_manifest;
     }
 
+    std::shared_ptr<PackageManifest> load_manifest_raw(Repository& repo, const ::helpers::path& base_path);
     void load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps);
 
     friend std::ostream& operator<<(std::ostream& os, const PackageRef& pr);

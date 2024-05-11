@@ -22,6 +22,10 @@ class Repository
         PackageVersion  version;
         /// (Cached) loaded manifest
         ::std::shared_ptr<PackageManifest>  loaded_manifest;
+        /// Indicates that the package shouldn't be considered by `find`
+        bool blacklisted;
+
+        Entry(): blacklisted(false) {}
     };
 
     ::std::multimap<::std::string, Entry>    m_cache;
@@ -32,6 +36,8 @@ public:
     void load_vendored(const ::helpers::path& path);
 
     void add_patch_path(const std::string& package_name, ::helpers::path path);
+    /// Mark a dependency to be excluded from calls to `find`
+    void blacklist_dependency(const PackageManifest* dep_ptr);
 
     ::std::shared_ptr<PackageManifest> from_path(::helpers::path path);
     ::std::shared_ptr<PackageManifest> find(const ::std::string& name, const PackageVersionSpec& version);
