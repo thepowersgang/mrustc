@@ -86,11 +86,11 @@ pub mod token_stream {
             {
                 write!(f, "{}", v)?;
                 // Put a space after every token that isn't punctuation
-                //if let &crate::TokenTree::Punct(_) = v {
-                //}
-                //else {
+                if let &crate::TokenTree::Punct(_) = v {
+                }
+                else {
                     write!(f, " ")?;
-                //}
+                }
             }
             Ok(())
         }
