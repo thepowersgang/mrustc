@@ -1359,7 +1359,12 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
             ::HIR::TraitPath::assoc_list_t   assoc;
             assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait.clone(), ty_e->node->m_yield_ty.clone() }));
             assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait.clone(), ty_e->node->m_return.clone() }));
-            return callback( ImplRef(type.clone(), HIR::PathParams(), mv$(assoc)), ::HIR::Compare::Equal );
+            HIR::PathParams params;
+            if( TARGETVER_LEAST_1_74 )
+            {
+                params.m_types.push_back(ty_e->node->m_resume_ty.clone());
+            }
+            return callback( ImplRef(type.clone(), mv$(params), mv$(assoc)), ::HIR::Compare::Equal );
         }
     }
 

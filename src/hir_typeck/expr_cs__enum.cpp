@@ -548,10 +548,12 @@ namespace typecheck
         const ::HIR::TypeRef&   ret_type;
         struct RetTarget {
             const ::HIR::TypeRef*   ret_type;
+            const ::HIR::TypeRef*   resume_type;
             const ::HIR::TypeRef*   yield_type;
 
-            RetTarget(const ::HIR::TypeRef& ret_type): ret_type(&ret_type), yield_type(nullptr) {}
-            RetTarget(const ::HIR::TypeRef& ret_type, const ::HIR::TypeRef& yield_type): ret_type(&ret_type), yield_type(&yield_type) {}
+            RetTarget(const ::HIR::TypeRef& ret_type): ret_type(&ret_type), resume_type(nullptr), yield_type(nullptr) {}
+            RetTarget(const ::HIR::TypeRef& ret_type, const ::HIR::TypeRef& resume_type, const ::HIR::TypeRef& yield_type)
+                : ret_type(&ret_type), resume_type(&resume_type), yield_type(&yield_type) {}
         };
         ::std::vector<RetTarget>   closure_ret_types;
 
@@ -778,12 +780,18 @@ namespace typecheck
             if( this->closure_ret_types.empty() || this->closure_ret_types.back().yield_type == nullptr )
                 ERROR(node.span(), E0000, "`yield` outside a generator closure");
             const auto& ret_ty = *this->closure_ret_types.back().yield_type;
+            const auto& resume_ty = *this->closure_ret_types.back().resume_type;
             this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
 
             this->push_inner_coerce( true );
             node.m_value->visit( *this );
             this->pop_inner_coerce();
-            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+            if( TARGETVER_LEAST_1_74 ) {
+                this->context.equate_types(node.span(), node.m_res_type, resume_ty);
+            }
+            else {
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+            }
         }
 
         void visit(::HIR::ExprNode_Loop& node) override
@@ -1273,7 +1281,10 @@ namespace typecheck
                 const auto& var_name = node.m_path.m_path.m_components.back();
                 const auto& enm = *e;
                 size_t idx = enm.find_variant(var_name);
+                ASSERT_BUG(sp, idx < enm.m_data.as_Data().size(), "Unknown variant - " << node.m_path);
                 const auto& var_ty = enm.m_data.as_Data()[idx].type;
+                ASSERT_BUG(sp, var_ty.data().as_Path().binding.is_Struct(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
+                ASSERT_BUG(sp, var_ty.data().as_Path().binding.as_Struct() != nullptr, "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
                 const auto& str = *var_ty.data().as_Path().binding.as_Struct();
                 ASSERT_BUG(sp, str.m_data.is_Tuple(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
                 fields_ptr = &str.m_data.as_Tuple();
@@ -2056,7 +2067,7 @@ namespace typecheck
 
             // TODO: Save/clear/restore loop labels
             auto _ = this->push_inner_coerce_scoped(true);
-            this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
+            this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_resume_ty, node.m_yield_ty) );
             node.m_code->visit( *this );
             this->closure_ret_types.pop_back( );
         }

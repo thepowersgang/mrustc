@@ -888,6 +888,7 @@ struct ExprNode_Generator:
 {
     //ExprNode_Closure::args_t    m_args;
     ::HIR::TypeRef  m_return;
+    ::HIR::TypeRef  m_resume_ty;
     ::HIR::TypeRef  m_yield_ty;
     ::HIR::ExprNodeP    m_code;
     bool    m_is_move;

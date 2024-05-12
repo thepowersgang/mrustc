@@ -283,6 +283,7 @@ DEF_VISIT_H(ExprNode_Generator, node) {
     //}
     visit_type(node.m_return);
     visit_type(node.m_yield_ty);
+    visit_type(node.m_resume_ty);
     if(node.m_code)
     {
         visit_node_ptr(node.m_code);
