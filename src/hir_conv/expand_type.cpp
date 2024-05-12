@@ -283,11 +283,8 @@ public:
             if(!TU_TEST1(m_impl_type->data(), Path, .path.m_data.is_Generic()) ) {
                 ERROR(sp, E0000, "Use of `Self` pattern in non-struct impl block - " << *m_impl_type);
             }
-            const auto& p = m_impl_type->data().as_Path().path.m_data.as_Generic();
-            const auto& str = m_crate.get_struct_by_path(sp, p.m_path);
-
-            path = p.clone();
-            return ::HIR::Pattern::PathBinding::make_Struct(&str);
+            path = m_impl_type->data().as_Path().path.m_data.as_Generic().clone();
+            // Fall through for the resizing below
         }
 
         ASSERT_BUG(sp, path.m_data.is_Generic(), path);
