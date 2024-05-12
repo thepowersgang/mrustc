@@ -1903,6 +1903,15 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                 ERROR(sp, E0000, "Unable to find external crate for path " << path);
             e.crate = ec_it->second;
         }
+        // HACK: If this is `crate::foo::bar`, and `foo` doesn't exist in the root, but it is an implicit crate, then resolve to that
+        // - This handles when a 2015 macro resolves to `::cratename::Bar` in a 2018+ crate
+        else if( e.crate == "" && e.nodes.size() > 1 && context.m_crate.m_root_module.m_namespace_items.count( e.nodes.front().name() ) == 0 ) {
+            auto ec_it = AST::g_implicit_crates.find( e.nodes.front().name().c_str() );
+            if(ec_it != AST::g_implicit_crates.end()) {
+                e.crate = ec_it->second;
+                e.nodes.erase( e.nodes.begin() );
+            }
+        }
         // Nothing to do (TODO: Bind?)
         Resolve_Absolute_PathNodes(context, sp,  e.nodes);
         }
