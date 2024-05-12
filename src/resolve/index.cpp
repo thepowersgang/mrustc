@@ -418,9 +418,10 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                 const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
                 for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
                     const auto& hit = hmod->m_mod_items.at( spath.m_components[i] );
-                    if(hit->ent.is_Enum()) {
-                        ASSERT_BUG(sp, i + 1 == spath.m_components.size() - 1, "Found enum not at penultimate component of HIR import path");
-                        pb.binding = ::AST::PathBinding_Value::make_EnumVar({nullptr, 0});  // TODO: What's the index?
+                    if( i == spath.m_components.size()-2 && hit->ent.is_Enum() ) {
+                        auto idx = hit->ent.as_Enum().find_variant(spath.m_components.back());
+                        ASSERT_BUG(sp, idx != SIZE_MAX, spath);
+                        pb.binding = ::AST::PathBinding_Value::make_EnumVar({nullptr, idx});  // TODO: What's the index?
                         _add_item_value( sp, dst_mod, it.first, is_pub, mv$(pb), false );
                         hmod = nullptr;
                         break ;

@@ -319,21 +319,6 @@ void Path::bind_variable(unsigned int slot)
 {
     m_bindings.value.set(AST::AbsolutePath(), PathBinding_Value::make_Variable({slot}));
 }
-#if 0
-void Path::bind_enum_var(const Enum& ent, const RcString& name)
-{
-    auto it = ::std::find_if(ent.variants().begin(), ent.variants().end(), [&](const auto& x) { return x.m_name == name; });
-    if( it == ent.variants().end() )
-    {
-        throw ParseError::Generic("Enum variant not found");
-    }
-    unsigned int idx = it - ent.variants().begin();
-
-    DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
-    m_bindings.type = PathBinding_Type::make_EnumVar({ &ent, idx });
-    m_bindings.value = PathBinding_Value::make_EnumVar({ &ent, idx });
-}
-#endif
 
 Path& Path::operator+=(const Path& other)
 {

@@ -271,7 +271,7 @@ namespace resolve_ufcs {
                         if( gp.m_path.m_components.size() > 1 )
                         {
                             const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
-                            if( ent.is_Enum() )
+                            if( ent.is_Enum() && ent.as_Enum().find_variant(gp.m_path.m_components.back()) != SIZE_MAX )
                             {
                                 // Rewrite!
                                 m_replacement.reset(new ::HIR::ExprNode_TupleVariant(sp, mv$(gp), /*is_struct*/false, mv$(node.m_args)));
@@ -824,8 +824,7 @@ namespace resolve_ufcs {
                 {
                     const auto& enm = *e.type.data().as_Path().binding.as_Enum();
                     auto idx = enm.find_variant(e.item);
-                    DEBUG(idx);
-                    if( idx != ~0u )
+                    if( idx != SIZE_MAX )
                     {
                         DEBUG("Found variant " << e.type << " #" << idx);
                         if( enm.m_data.is_Value() || !enm.m_data.as_Data()[idx].is_struct ) {
