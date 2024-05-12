@@ -1681,7 +1681,7 @@ namespace {
             HIR::ExprVisitorDef::visit(node);
             // Nothing to do?
         }
-        
+
         void visit(::HIR::ExprNode_Emplace& node) override {
             HIR::ExprVisitorDef::visit(node);
             if(TARGETVER_MOST_1_19)
@@ -1704,10 +1704,19 @@ namespace {
                     const auto& box_path = box_ty.data().as_Path().path.m_data.as_Generic();
                     this->equate_types(node.span(), box_path.m_params.m_types.at(0), data_ty);
                     } break;
-                case ::HIR::ExprNode_Emplace::Type::Placer:
-                    TODO(node.span(), "Emplace - Placer");
-                    // TODO: Check trait
-                    break;
+                case ::HIR::ExprNode_Emplace::Type::Placer: {
+                    const auto& data_ty = node.m_value->m_res_type;
+                    const auto& placer_ty = node.m_place->m_res_type;
+                    // Where P = `placer_ty` and D = `data_ty`
+                    // Result type is <<P as Placer<D>>::Place as InPlace<D>>::Owner
+                    const auto& lang_Placer = m_resolve.m_crate.get_lang_item_path(node.span(), "placer_trait");
+                    const auto& lang_InPlace = m_resolve.m_crate.get_lang_item_path(node.span(), "in_place_trait");
+                    // - 
+                    auto place_ty = ::HIR::TypeRef::new_path( ::HIR::Path(placer_ty.clone(), ::HIR::GenericPath(lang_Placer, ::HIR::PathParams(data_ty.clone())), "Place"), {} );
+                    auto owner_ty = ::HIR::TypeRef::new_path( ::HIR::Path(std::move(place_ty), ::HIR::GenericPath(lang_InPlace, ::HIR::PathParams(data_ty.clone())), "Owner"), {} );
+                    m_resolve.expand_associated_types(node.span(), owner_ty);
+                    this->equate_types(node.span(), node.m_res_type, owner_ty);
+                    } break;
                 }
             }
             else
