@@ -162,6 +162,17 @@ bool StaticTraitResolve::find_impl(
     }
     struct H
     {
+        static const HIR::TypeRef& get_root_ty(const HIR::TypeRef& t) {
+            if( const auto* e = t.data().opt_Path() ) {
+                TU_MATCH_HDRA( (e->path.m_data), {)
+                TU_ARMA(Generic, ee) {}
+                TU_ARMA(UfcsKnown, ee) return get_root_ty(ee.type);
+                TU_ARMA(UfcsUnknown, ee) return get_root_ty(ee.type);
+                TU_ARMA(UfcsInherent, ee) return get_root_ty(ee.type);
+                }
+            }
+            return t;
+        }
         static bool check_params(const Span& sp, const HIR::PathParams& target_params, const HIR::PathParams* trait_params)
         {
             if(!trait_params)
@@ -170,6 +181,10 @@ bool StaticTraitResolve::find_impl(
             return target_params.compare_with_placeholders(sp, *trait_params, HIR::ResolvePlaceholdersNop()) != HIR::Compare::Unequal;
         }
     };
+    if( type != HIR::TypeRef() && H::get_root_ty(type) == HIR::TypeRef() )
+    {
+        return found_cb( ImplRef(&null_hrls, &type, trait_params, &null_assoc), false );
+    }
 
     // --- MAGIC IMPLS ---
     // TODO: There should be quite a few more here, but laziness
@@ -616,6 +631,10 @@ bool StaticTraitResolve::find_impl(
     {
         DEBUG("Success");
         return true;
+    }
+
+    if( type.data().is_Path() )
+    {
     }
 
     return false;
