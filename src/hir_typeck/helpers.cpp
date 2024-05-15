@@ -2619,13 +2619,25 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             // Fuzzy match with multiple choices - can't know yet
         }
         else if( is_specialisable ) {
-            e.binding = ::HIR::TypePathBinding::make_Opaque({});
+            if( !this->m_ivars.type_contains_ivars(input, false) ) {
+                DEBUG("Assuming opaque - specialisable impl");
+                e.binding = ::HIR::TypePathBinding::make_Opaque({});
+            }
+            else {
+                DEBUG("Derferring - specialisable impl (ivars present)");
+            }
             return ;
         }
         else {
             auto ty = best_impl.get_type( pe.item.c_str(), pe.params );
             if( ty == ::HIR::TypeRef() ) {
-                input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
+                if( !this->m_ivars.type_contains_ivars(input, false) ) {
+                    DEBUG("Assuming opaque - best impl didn't have ATY");
+                    input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
+                }
+                else {
+                    DEBUG("Derferring - best impl didn't have ATY (ivars present)");
+                }
                 return ;
                 //ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
             }
@@ -2653,7 +2665,8 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         case ResultType::Opaque: {
             DEBUG("Assuming that " << input << " is an opaque name");
             input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
-            ASSERT_BUG(sp, visit_ty_with(input, [](const HIR::TypeRef& ty){ return ty.data().is_Generic() || ty.data().is_ErasedType() || ty.data().is_Infer(); }), "Set opaque on a non-generic type: " << input);
+            ASSERT_BUG(sp, visit_ty_with(input, [](const HIR::TypeRef& ty){ return ty.data().is_Generic() || ty.data().is_ErasedType() || ty.data().is_Infer(); }),
+                "Set opaque on a non-generic type: " << input);
 
             DEBUG("- " << m_type_equalities.size() << " replacements");
             for( const auto& v : m_type_equalities )
