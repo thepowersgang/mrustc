@@ -144,3 +144,8 @@
 - Turns out that minicargo isn't doing dependencies correctly :(
   - Ends up with multiple semver-compatible crates in the build, and leads to type errors
 - Generators having a resume type (this will likely impact async)
+- `::"rustc_middle-0_0_0"::ty::list::List<T>` has a `fn iter` with `T: Copy`, ...
+  - but `impl<'tcx, T: TypeVisitable<TyCtxt<'tcx>>> TypeVisitable<TyCtxt<'tcx>> for &'tcx ty::List<T>` calls `self.iter()`
+  - `TypeVisitable` only implies `Clone`, not `Copy`
+  - So, rustc is skipping the `fn iter` and using the `Deref<Target=[T]>` impl and ending up at slice's `iter`
+  - mrustc picks the top level one, becuase impl bounds don't restrict method resolution.

@@ -4588,7 +4588,9 @@ bool TraitResolution::find_method(const Span& sp,
             // Ignore method: Not visibile
             return ;
         }
-        if( impl.matches_type(self_ty, m_ivars.callback_resolve_infer()) )
+        ::HIR::PathParams   impl_params;
+        auto cmp = ftic_check_params(sp, ::HIR::SimplePath(), nullptr, self_ty, impl.m_params, {}, impl.m_type, impl_params);
+        if( cmp != HIR::Compare::Unequal )
         {
             DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
             possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty.clone(), method_name, {}) ));
