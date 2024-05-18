@@ -1384,6 +1384,7 @@ namespace {
             //    this->check_type_resolved_top(node.span(), arg.second);
             this->check_type_resolved_top(node.span(), node.m_return);
             this->check_type_resolved_top(node.span(), node.m_yield_ty);
+            this->check_type_resolved_top(node.span(), node.m_resume_ty);
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override {

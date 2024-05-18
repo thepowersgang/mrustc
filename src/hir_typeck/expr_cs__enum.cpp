@@ -2058,12 +2058,16 @@ namespace typecheck
             //}
             this->context.add_ivars( node.m_return );
             this->context.add_ivars( node.m_yield_ty );
+            this->context.add_ivars( node.m_resume_ty );
             this->context.add_ivars( node.m_code->m_res_type );
 
             // Generator result type
             this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_generator(&node) );
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
+            if( TARGETVER_MOST_1_54 ) {
+                this->context.equate_types( node.span(), node.m_resume_ty, ::HIR::TypeRef::new_unit() );
+            }
 
             // TODO: Save/clear/restore loop labels
             auto _ = this->push_inner_coerce_scoped(true);
