@@ -2205,8 +2205,10 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 has_impl_placeholders = true;
         if( has_impl_placeholders )
         {
+            DEBUG("Has placeholder, skip");
             // TODO: Why opaque? Like ivars, these could resolve in the future.
-            e.binding = ::HIR::TypePathBinding::make_Opaque({});
+            //DEBUG("Has placeholder, mark opaque.");
+            //e.binding = ::HIR::TypePathBinding::make_Opaque({});
             return ;
         }
     }
