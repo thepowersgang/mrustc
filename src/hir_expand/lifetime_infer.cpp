@@ -503,6 +503,32 @@ namespace {
             return m_binding_types_ptr->at(binding);
         }
 
+
+        void visit_tait_inner(const HIR::TypeData_ErasedType_AliasInner& inner_c) {
+            const Span  sp;
+            auto& inner = const_cast<HIR::TypeData_ErasedType_AliasInner&>(inner_c);
+            if( inner_c.generics.m_lifetimes.empty() ) {
+            }
+            else if( inner_c.generics.m_lifetimes.size() == 1 ) {
+                auto params = inner_c.generics.make_nop_params(0);
+                struct M: MonomorphStatePtr {
+                    M(const HIR::PathParams& pp): MonomorphStatePtr(nullptr, &pp, nullptr) {
+                    }
+
+                    HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& l) const {
+                        if( l == HIR::LifetimeRef() ) {
+                            return HIR::LifetimeRef(0);
+                        }
+                        return MonomorphStatePtr::monomorph_lifetime(sp, l);
+                    }
+                } m { params };
+                inner.type = m.monomorph_type(sp, inner.type);
+            }
+            else {
+                TODO(sp, "TAIT " << inner_c.path << " has multiple lifetimes - how to handle?");
+            }
+        }
+
         void equate_lifetimes(const Span& sp, const HIR::LifetimeRef& lhs, const HIR::LifetimeRef& rhs) {
             DEBUG(lhs << " := " << rhs);
             ASSERT_BUG(sp, lhs != HIR::LifetimeRef() && lhs.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << lhs);
@@ -588,16 +614,24 @@ namespace {
             if( TU_TEST1(lhs.data(), ErasedType, .m_inner.is_Alias()) ) {
                 const auto& le = lhs.data().as_ErasedType().m_inner.as_Alias();
                 const auto* ee = le.inner.get();
+                // TODO: Ensure that the alias has been visited
+                this->visit_tait_inner(*ee);
                 if( TU_TEST2(rhs.data(), ErasedType, .m_inner, Alias, .inner.get() == ee) ) {
                 }
+                else if( TU_TEST1(rhs.data(), ErasedType, .m_inner.is_Alias()) ) {
+                }
                 else {
+                    DEBUG("LHS is TAIT");
+                    // TODO: Only expand if valid module?
                     equate_types(sp, MonomorphStatePtr(nullptr, &le.params, nullptr).monomorph_type(sp, ee->type), rhs);
                     return;
                 }
             }
-            if( TU_TEST1(rhs.data(), ErasedType, .m_inner.is_Alias()) ) {
+            else if( TU_TEST1(rhs.data(), ErasedType, .m_inner.is_Alias()) ) {
                 const auto& re = rhs.data().as_ErasedType().m_inner.as_Alias();
                 const auto* ee = re.inner.get();
+                this->visit_tait_inner(*ee);
+                DEBUG("RHS is TAIT");
                 equate_types(sp, rhs, MonomorphStatePtr(nullptr, &re.params, nullptr).monomorph_type(sp, ee->type));
                 return;
             }
