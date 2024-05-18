@@ -421,7 +421,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                     if( i == spath.m_components.size()-2 && hit->ent.is_Enum() ) {
                         auto idx = hit->ent.as_Enum().find_variant(spath.m_components.back());
                         ASSERT_BUG(sp, idx != SIZE_MAX, spath);
-                        pb.binding = ::AST::PathBinding_Value::make_EnumVar({nullptr, idx});  // TODO: What's the index?
+                        pb.binding = ::AST::PathBinding_Value::make_EnumVar({nullptr, static_cast<unsigned>(idx)});
                         _add_item_value( sp, dst_mod, it.first, is_pub, mv$(pb), false );
                         hmod = nullptr;
                         break ;
