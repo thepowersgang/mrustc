@@ -664,7 +664,7 @@ namespace {
 
                 DEBUG(name << " : " << des_ty_r);
                 if( monomorphise_type_needed(des_ty_r) ) {
-                    ASSERT_BUG( node.span(), des_ty_cache != ::HIR::TypeRef(), name );
+                    ASSERT_BUG( node.span(), des_ty_cache != ::HIR::TypeRef(), "Type " << des_ty_r << " needs monomorph, but isn't in cache: Field " << name );
                     des_ty_cache = ms.monomorph_type(node.span(), des_ty_r);
                     m_resolve.expand_associated_types(node.span(), des_ty_cache);
                     des_ty = &des_ty_cache;

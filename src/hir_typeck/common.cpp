@@ -268,6 +268,12 @@ struct TyVisitorMonomorphNeeded: TyVisitor<WConst>
                 return true;
             if( ty.data().is_TraitObject() && is_generic_lft(ty.data().as_TraitObject().m_lifetime) )
                 return true;
+            if( ty.data().is_ErasedType() ) {
+                for( const auto& l : ty.data().as_ErasedType().m_lifetimes ) {
+                    if( is_generic_lft(l) )
+                        return true;
+                }
+            }
         }
         return TyVisitor::visit_type(ty);
     }
