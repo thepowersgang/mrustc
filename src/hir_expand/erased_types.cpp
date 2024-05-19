@@ -53,6 +53,55 @@ namespace {
         ty = mv$(new_ty);
     }
 
+    void visit_type(const Span& sp, const StaticTraitResolve& resolve, ::HIR::TypeRef& ty) {
+        TRACE_FUNCTION_FR(ty, ty);
+        class V:
+            public ::HIR::Visitor
+        {
+            const Span& sp;
+            const StaticTraitResolve&  m_resolve;
+            bool clear_opaque;
+        public:
+            V(const Span& sp, const StaticTraitResolve& resolve)
+                : sp(sp)
+                , m_resolve(resolve)
+                , clear_opaque(false)
+            {}
+
+            void visit_type(::HIR::TypeRef& ty) override
+            {
+                static const Span   sp;
+                auto saved_clear_opaque = this->clear_opaque;
+                this->clear_opaque = false;
+                if( ty.data().is_ErasedType() )
+                {
+                    TRACE_FUNCTION_FR(ty, ty);
+
+                    expand_erased_type(sp, m_resolve, ty);
+
+                    // Recurse (TODO: Cleanly prevent infinite recursion - TRACE_FUNCTION does crude prevention)
+                    this->visit_type(ty);
+                    this->clear_opaque = true;
+                }
+                else
+                {
+                    ::HIR::Visitor::visit_type(ty);
+                    // If there was an erased type anywhere within this type, then clear an Opaque binding so EAT runs again
+                    if( auto* p = ty.data_mut().opt_Path() ) {
+                        // NOTE: This is both an optimisation, and avoids issues (if all types are cleared, the alias list in
+                        // `StaticTraitResolve` ends up with un-expanded ATYs which leads to expansion not happening when it shoud.
+                        if( this->clear_opaque && p->binding.is_Opaque() ) {
+                            p->binding = HIR::TypePathBinding::make_Unbound({});
+                        }
+                    }
+                }
+                this->clear_opaque |= saved_clear_opaque;
+            }
+        } v(sp, resolve);
+        v.visit_type(ty);
+        resolve.expand_associated_types(sp, ty);
+    }
+
     class ExprVisitor_Extract:
         public ::HIR::ExprVisitorDef
     {
@@ -83,20 +132,7 @@ namespace {
         void visit_type(::HIR::TypeRef& ty) override
         {
             static Span sp;
-
-            if( ty.data().is_ErasedType() )
-            {
-                TRACE_FUNCTION_FR(ty, ty);
-
-                expand_erased_type(sp, m_resolve, ty);
-
-                // Recurse (TODO: Cleanly prevent infinite recursion - TRACE_FUNCTION does crude prevention)
-                visit_type(ty);
-            }
-            else
-            {
-                ::HIR::ExprVisitorDef::visit_type(ty);
-            }
+            ::visit_type(sp, m_resolve, ty);
         }
     };
 
@@ -104,10 +140,10 @@ namespace {
         public ::HIR::Visitor
     {
         StaticTraitResolve  m_resolve;
-        const ::HIR::ItemPath* m_fcn_path = nullptr;
     public:
-        OuterVisitor(const ::HIR::Crate& crate):
-            m_resolve(crate)
+        OuterVisitor(const ::HIR::Crate& crate)
+            : ::HIR::Visitor(&m_resolve)
+            , m_resolve(crate)
         {}
 
         void visit_expr(::HIR::ExprPtr& exp) override
@@ -118,39 +154,21 @@ namespace {
                 ev.visit_root( exp );
             }
         }
-
-        void visit_function(::HIR::ItemPath p, ::HIR::Function& fcn) override
-        {
-            m_fcn_path = &p;
-            ::HIR::Visitor::visit_function(p, fcn);
-            m_fcn_path = nullptr;
-        }
     };
     class OuterVisitor_Fixup:
         public ::HIR::Visitor
     {
         StaticTraitResolve  m_resolve;
     public:
-        OuterVisitor_Fixup(const ::HIR::Crate& crate):
-            m_resolve(crate)
+        OuterVisitor_Fixup(const ::HIR::Crate& crate)
+            : ::HIR::Visitor(&m_resolve)
+            , m_resolve(crate)
         {}
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            static const Span   sp;
-            if( ty.data().is_ErasedType() )
-            {
-                TRACE_FUNCTION_FR(ty, ty);
-
-                expand_erased_type(sp, m_resolve, ty);
-
-                // Recurse (TODO: Cleanly prevent infinite recursion - TRACE_FUNCTION does crude prevention)
-                visit_type(ty);
-            }
-            else
-            {
-                ::HIR::Visitor::visit_type(ty);
-            }
+            static Span sp;
+            ::visit_type(sp, m_resolve, ty);
         }
     };
 }
