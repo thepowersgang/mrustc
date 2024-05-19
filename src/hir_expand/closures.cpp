@@ -1645,6 +1645,10 @@ namespace {
             // -- Create impl
             ::HIR::TraitImpl    impl;
             impl.m_params = std::move(params);
+            if( TARGETVER_LEAST_1_74 )
+            {
+                impl.m_trait_args.m_types.push_back( monomorph_cb.monomorph_type(sp, node.m_resume_ty) );
+            }
             impl.m_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, impl.m_params.make_nop_params(0)), &gen_struct_ref );
             impl.m_types.insert(std::make_pair( RcString::new_interned("Yield" ), ::HIR::TraitImpl::ImplEnt<HIR::TypeRef> { false, monomorph_cb.monomorph_type(sp, node.m_yield_ty) } ));
             impl.m_types.insert(std::make_pair( RcString::new_interned("Return"), ::HIR::TraitImpl::ImplEnt<HIR::TypeRef> { false, monomorph_cb.monomorph_type(sp, node.m_return) } ));

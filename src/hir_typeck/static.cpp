@@ -277,7 +277,12 @@ bool StaticTraitResolve::find_impl(
             ::HIR::TraitPath::assoc_list_t   assoc;
             assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait_path.clone(), e.node->m_yield_ty.clone() }));
             assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait_path.clone(), e.node->m_return.clone() }));
-            return found_cb( ImplRef(type.clone(), HIR::PathParams(), mv$(assoc)), ::HIR::Compare::Equal );
+            HIR::PathParams params;
+            if( TARGETVER_LEAST_1_74 )
+            {
+                params.m_types.push_back(e.node->m_resume_ty.clone());
+            }
+            return found_cb( ImplRef(type.clone(), mv$(params), mv$(assoc)), ::HIR::Compare::Equal );
         }
         }
     // ----

@@ -1144,7 +1144,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override
         {
-            TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
+            TRACE_FUNCTION_F(&node << " /*gen w*/ |...| ...");
 
             if( node.m_code )
             {
