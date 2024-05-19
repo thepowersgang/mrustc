@@ -6,6 +6,6 @@ make -f minicargo.mk RUSTCSRC
 make -f minicargo.mk LIBS
 make -f minicargo.mk test
 make -f minicargo.mk output-1.19.0/stdtest/rustc_data_structures-test_out.txt
-make -f minicargo.mk output-1.19.0/rustc
-make -f minicargo.mk output-1.19.0/cargo
+make -f minicargo.mk output-1.19.0/rustc -j ${PARLEVEL:-1}
+make -f minicargo.mk output-1.19.0/cargo -j ${PARLEVEL:-1}
 ./output-1.19.0/cargo --version
