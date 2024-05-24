@@ -38,6 +38,7 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime);
 ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime);
 ExprNodeP Parse_Expr_Match(TokenStream& lex);
 ExprNodeP Parse_Expr1(TokenStream& lex);
+ExprNodeP Parse_ExprFC(TokenStream& lex);
 ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path tok);
 
 AST::Expr Parse_Expr(TokenStream& lex)
@@ -56,6 +57,7 @@ AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
 ExprNodeP Parse_ExprBlockNode(TokenStream& lex, AST::ExprNode_Block::Type ty/*=Bare*/, Ident label/*=RcString()*/)
 {
     TRACE_FUNCTION;
+    CLEAR_PARSE_FLAGS_EXPR(lex);
     Token   tok;
 
     ::std::vector<ExprNodeP> nodes;
@@ -226,6 +228,10 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
 {
     Token tok;
     ExprNodeP   ret;
+    bool add_silence_ignored = false;
+    if( !add_silence ) {
+        add_silence = &add_silence_ignored;
+    }
 
     if( GET_TOK(tok, lex) == TOK_LIFETIME )
     {
@@ -494,6 +500,7 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime)
 /// For loop (either as a statement, or as part of an expression)
 ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime)
 {
+    CLEAR_PARSE_FLAGS_EXPR(lex);
     Token   tok;
 
     // Irrefutable pattern
@@ -565,7 +572,7 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
     TRACE_FUNCTION;
     Token tok;
 
-    CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
+    CLEAR_PARSE_FLAGS_EXPR(lex);
     // 1. Get expression
     ExprNodeP   switch_val;
     {
@@ -682,6 +689,15 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     case TOK_BRACE_OPEN:
         PUTBACK(tok, lex);
         return Parse_ExprBlockNode(lex);
+    case TOK_RWORD_IF:
+    case TOK_RWORD_WHILE:
+    case TOK_RWORD_FOR:
+    case TOK_RWORD_LOOP:
+    case TOK_RWORD_MATCH: {
+        PUTBACK(tok, lex);
+        SET_PARSE_FLAG(lex, disallow_call_or_index);
+        return Parse_ExprFC(lex);
+        }
     //case TOK_RWORD_DO:
     //    if( lex.lookahead(0) == "yeet" ) {
     //        return Parse_FlowControl(lex, AST::ExprNode_Flow::YEET);
@@ -721,7 +737,7 @@ ExprNodeP Parse_Stmt_Let(TokenStream& lex)
     TRACE_FUNCTION;
     Token   tok;
 
-    CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
+    CLEAR_PARSE_FLAGS_EXPR(lex);
 
     ::std::vector<ExprNodeP> rv;
     GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
@@ -1022,7 +1038,6 @@ ExprNodeP Parse_Expr12(TokenStream& lex)
     return rv;
 }
 // 13: Unaries
-ExprNodeP Parse_ExprFC(TokenStream& lex);
 ExprNodeP Parse_Expr13(TokenStream& lex)
 {
     Token   tok;
@@ -1087,19 +1102,28 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
         Token   tok;
         switch(GET_TOK(tok, lex))
         {
-        case TOK_QMARK:
-            val = NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::QMARK, mv$(val) );
-            break;
-
+        // Expression method call
         case TOK_PAREN_OPEN:
-            // Expression method call
+            if( CHECK_PARSE_FLAG(lex, disallow_call_or_index) ) {
+                PUTBACK(tok, lex);
+                return val;
+            }
             PUTBACK(tok, lex);
             val = NEWNODE( AST::ExprNode_CallObject, ::std::move(val), Parse_ParenList(lex) );
             break;
         case TOK_SQUARE_OPEN:
+            if( CHECK_PARSE_FLAG(lex, disallow_call_or_index) ) {
+                PUTBACK(tok, lex);
+                return val;
+            }
             val = NEWNODE( AST::ExprNode_Index, ::std::move(val), Parse_Expr0(lex) );
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
             break;
+
+        case TOK_QMARK:
+            val = NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::QMARK, mv$(val) );
+            break;
+
         case TOK_DOT:
             // Field access / method call / tuple index
             switch(GET_TOK(tok, lex))
@@ -1470,7 +1494,7 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
         }
         else
         {
-            CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
+            CLEAR_PARSE_FLAGS_EXPR(lex);
             PUTBACK(tok, lex);
 
             ExprNodeP rv = Parse_Expr0(lex);
@@ -1496,7 +1520,7 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
         }
         else
         {
-            CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
+            CLEAR_PARSE_FLAGS_EXPR(lex);
             PUTBACK(tok, lex);
             auto first = Parse_Expr0(lex);
             if( GET_TOK(tok, lex) == TOK_SEMICOLON )
