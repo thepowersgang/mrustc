@@ -1929,7 +1929,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
     // Some explicit handling of mac
     for(auto& mac : const_cast<AST::Module&>(ast_mod).macros() )
     {
-        if( mac.is_pub )
+        if( mac.data || mac.is_pub )
         {
             ASSERT_BUG(mac.span, mac.data, "Null macro - " << mac.name);
             ASSERT_BUG(mac.span, mac.data->m_rules.size() > 0, "Empty macro - " << mac.name);
@@ -2253,7 +2253,7 @@ public:
         {
             auto& mod = *mods.back();
             mods.pop_back();
-            
+
             for( /*const*/ auto& mac : mod.macros() ) {
                 if( mac.data->m_exported ) {
                     HIR::MacroItem  mi;

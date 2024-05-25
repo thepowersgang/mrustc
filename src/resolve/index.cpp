@@ -332,6 +332,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
     AST::AbsolutePath mod_ap
     )
 {
+    TRACE_FUNCTION_F(dst_mod.path() << " <= " << mod_ap);
     for(const auto& it : hmod.m_mod_items) {
         const auto& ve = *it.second;
         if( ve.publicity.is_global() ) {
@@ -493,7 +494,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
 void Resolve_Index_Module_Wildcard__submod(AST::Crate& crate, AST::Module& dst_mod, const AST::Module& src_mod, bool import_as_pub)
 {
     static Span sp;
-    TRACE_FUNCTION_F(src_mod.path());
+    TRACE_FUNCTION_F(dst_mod.path() << " <= " << src_mod.path());
     static ::std::set<const AST::Module*>   stack;
     if( ! stack.insert( &src_mod ).second )
     {
@@ -518,6 +519,11 @@ void Resolve_Index_Module_Wildcard__submod(AST::Crate& crate, AST::Module& dst_m
     for(const auto& vi : src_mod.m_value_items) {
         if( vi.second.is_pub || import_all ) {
             _add_item( sp, dst_mod, IndexName::Value    , vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+        }
+    }
+    for(const auto& vi : src_mod.m_macro_items) {
+        if( vi.second.is_pub || import_all ) {
+            _add_item( sp, dst_mod, IndexName::Macro    , vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
         }
     }
 
