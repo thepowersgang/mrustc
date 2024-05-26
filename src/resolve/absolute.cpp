@@ -507,6 +507,7 @@ namespace
                                 const auto& imp = item->as_Import();
                                 // Set the true path (so the returned path is canonical)
                                 true_path = &imp.path;
+
                                 auto item_path = AST::AbsolutePath(imp.path.m_crate_name, imp.path.m_components) + name;
                                 if(imp.is_variant) {
                                     const auto& enm = m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir
@@ -519,14 +520,14 @@ namespace
                                 }
                             }
                             TU_MATCH_HDRA( (*item), {)
+                            default:
+                                TODO(sp, "Bind value '" << name << "' for module path " << mp << " : " << item->tag_str());
                             TU_ARMA(Function, e) {
                                 bindings.value.set( item_path, AST::PathBinding_Value::make_Function({nullptr}) );
                                 }
                             TU_ARMA(Static, e) {
                                 bindings.value.set( item_path, AST::PathBinding_Value::make_Static({nullptr}) );
                                 }
-                            default:
-                                TODO(sp, "Found value '" << name << "' for module path " << mp << " : " << it->second->ent.tag_str());
                             }
                         }
                         } break;
@@ -535,7 +536,37 @@ namespace
                     case LookupMode::Type: {
                         auto it = mod->m_mod_items.find(name);
                         if(it != mod->m_mod_items.end()) {
-                            TODO(sp, "Found type/mod '" << name << "' for module path " << mp);
+                            const auto* item = &it->second->ent;
+                            auto item_path = AST::AbsolutePath(mp.crate, mp.ents) + name;
+                            if( item->is_Import() ) {
+                                const auto& imp = item->as_Import();
+                                // Set the true path (so the returned path is canonical)
+                                true_path = &imp.path;
+
+                                auto item_path = AST::AbsolutePath(imp.path.m_crate_name, imp.path.m_components) + name;
+                                if(imp.is_variant) {
+                                    const auto& enm = m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir
+                                        ->get_enum_by_path(sp, imp.path, /*ignore_crate_name*/true, /*ignore_last*/true);
+                                    bindings.type.set( item_path, AST::PathBinding_Type::make_EnumVar({nullptr, imp.idx, &enm}) );
+                                    break;  // Break out of the switch
+                                }
+                                else {
+                                    item = &m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir->get_typeitem_by_path(sp, imp.path, true);
+                                }
+                            }
+                            TU_MATCH_HDRA( (*item), {)
+                            default:
+                                TODO(sp, "Bind type/mod '" << name << "' for module path " << mp << " : " << item->tag_str());
+                            TU_ARMA(Struct, e) {
+                                bindings.type.set( item_path, AST::PathBinding_Type::make_Struct({nullptr}) );
+                                }
+                            TU_ARMA(Enum, e) {
+                                bindings.type.set( item_path, AST::PathBinding_Type::make_Enum({nullptr}) );
+                                }
+                            TU_ARMA(Union, e) {
+                                bindings.type.set( item_path, AST::PathBinding_Type::make_Union({nullptr}) );
+                                }
+                            }
                         }
                         } break;
                     }
@@ -552,6 +583,7 @@ namespace
                             for(const auto& e : mp.ents) {
                                 rv.nodes().push_back( e );
                             }
+                            rv.nodes().push_back(name);
                         }
                         rv.m_bindings = std::move(bindings);
                         return rv;
