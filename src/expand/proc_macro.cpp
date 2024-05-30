@@ -670,7 +670,13 @@ namespace {
                     m_pmi.send_rword("mut");
                     break;
                 }
-                m_pmi.send_ident(b.m_name);
+                if( b.m_name == "self" ) {
+                    m_pmi.send_rword("self");
+                    return;
+                }
+                else {
+                    m_pmi.send_ident(b.m_name);
+                }
                 m_pmi.send_symbol("@");
             }
             TU_MATCH_HDRA( (pat.data()), { )
@@ -680,7 +686,12 @@ namespace {
                 m_pmi.send_symbol("_");
                 }
             TU_ARMA(MaybeBind, e) {
-                m_pmi.send_ident(e.name);
+                if( e.name == "self" ) {
+                    m_pmi.send_rword("self");
+                }
+                else {
+                    m_pmi.send_ident(e.name);
+                }
                 }
             TU_ARMA(Tuple, e) {
                 m_pmi.send_symbol("(");
