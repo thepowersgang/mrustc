@@ -308,6 +308,7 @@ public:
         for(size_t i = 0; i < conds.size(); i ++) {
             if(i != 0) m_os << " && ";
             if(conds[i].opt_pat) {
+                if( i > 0 ) m_os << "let ";
                 print_pattern(*conds[i].opt_pat, true);
                 m_os << " = ";
             }
