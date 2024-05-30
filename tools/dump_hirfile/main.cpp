@@ -219,7 +219,7 @@ void Dumper::dump_mod_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, co
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << pub << "use[type] " << ip << " = " << imp.path;
+    ::std::cout << indent << pub << " use[type] " << ip << " = " << imp.path;
     if(imp.is_variant)
     {
         ::std::cout << "#" << imp.idx;
@@ -330,7 +330,7 @@ void Dumper::dump_value_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, 
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << pub << "use[value] " << ip << " = " << imp.path;
+    ::std::cout << indent << pub << " use[value] " << ip << " = " << imp.path;
     if(imp.is_variant)
     {
         ::std::cout << "#" << imp.idx;
