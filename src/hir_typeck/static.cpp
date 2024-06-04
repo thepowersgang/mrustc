@@ -1680,11 +1680,8 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     bool assume_opaque = true;
     if(!rv)
     {
-        auto it = m_type_equalities.find(input);
-        if( it != m_type_equalities.end() )
+        if( replace_equalities(input) )
         {
-            DEBUG("Equality " << input << " -> " << it->second);
-            input = it->second.clone();
             rv = true;
             assume_opaque = false;
         }
