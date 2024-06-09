@@ -762,6 +762,8 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
     //TRACE_FUNCTION;
     Token tok;
 
+    CLEAR_PARSE_FLAG(lex, disallow_call_or_index);
+
     auto expr_attrs = Parse_ItemAttrs(lex);
 
     ExprNodeP rv = Parse_Expr1(lex);
