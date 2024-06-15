@@ -1,5 +1,13 @@
+== References ==
+- Syntax definition and basic usage: https://doc.rust-lang.org/reference/trait-bounds.html#higher-ranked-trait-bounds
+- Usage in function pointers: https://doc.rust-lang.org/reference/types/function-pointer.html
+- Usage in trait bounds: https://doc.rust-lang.org/reference/trait-bounds.html#trait-and-lifetime-bounds
+  > The `TraitBound` syntax fragment is used in `impl Trait` and `dyn Trait`
+
 == Current Design ==
 - `HIR::GenericPath` has a HRL blob attached
+- Alternative:
+  - Return the HRLs to `TraitPath`, but also put them in `TypeData::Data_Path`
 
 
 
@@ -9,6 +17,11 @@ mrustc vtable types and paths with HRTBs/HRLs.
 `dyn Fn(&T)->&U` becomes `dyn for<'a> Fn<(&'a T,),Output=&'a U>`
 - Lifetime must be kept generic until method invoke.
 - OR, just ignore those lifetime params completely - the params end up in the vtable's `for<'a> fn(self: &Self, arg: (&'a T,)) -> &'a U`
+  > (Jun 2024) What's the issue here? Just design quirks?
+  > ISSUE: What would the vtable type be? `Fn#vtable<(&'a T,),&'a U>` needs the lifetime to have been defined.
+  > And ignoring those entirely may require hacks downstream of vtable generation?
+  > ... could they just be set to `'static`, and ignored during MIR borrowcheck?
+  > But what about the issues with the design of the vtable itself? The `Fn` vtable has a pointer that has no idea about the HRLs.
 
 
 VTable type needs the HRL present? Maybe it can just be an unused lifetime

@@ -149,3 +149,4 @@
   - `TypeVisitable` only implies `Clone`, not `Copy`
   - So, rustc is skipping the `fn iter` and using the `Deref<Target=[T]>` impl and ending up at slice's `iter`
   - mrustc picks the top level one, becuase impl bounds don't restrict method resolution.
+
