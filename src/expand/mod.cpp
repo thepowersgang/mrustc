@@ -174,10 +174,42 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                             }
                         }
                     }
+                    // Disabled due to lack of module to pass to parse.
+                    // - Maybe modules shouldn't be linked in until after expand?
+                    // - Because otherwise anon mods won't be #[cfg]'d out properly?
+                    #if 0
+                    void handle(
+                        const Span& sp,
+                        const AST::Attribute& attr,
+                        AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i
+                        ) const override
+                    {
+                        if( !i.is_None() )
+                        {
+                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, is_pub, name.c_str(), i);
+                            if( lex ) {
+                                i = AST::Item::make_None({});
+                                //lex->parse_state().module = &mod;
+                                while( lex->lookahead(0) != TOK_EOF )
+                                {
+                                    Parse_Impl_Item(*lex, impl);
+                                }
+                            }
+                            else {
+                                ERROR(sp, E0000, "proc_macro derive failed");
+                            }
+                        }
+                    }
+                    #endif
                 } d;
                 d.mac_path.push_back(proc_mac->path.m_crate_name);
                 d.mac_path.insert(d.mac_path.end(), proc_mac->path.m_components.begin(), proc_mac->path.m_components.end());
-                f(sp, d, a);
+                // HACK: tracing's #[instrument] is very slow (with mrustc), so just ignore it (this is the rustc-1.74 version)
+                if( d.mac_path.front() == "tracing_attributes-0_1_26" && d.mac_path.back() == "instrument" ) {
+                }
+                else {
+                    f(sp, d, a);
+                }
                 found = true;
             }
         }
@@ -1741,7 +1773,7 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
     DEBUG("> Items");
     for( unsigned int idx = 0; idx < impl.items().size(); idx ++ )
     {
-        auto& i = impl.items()[idx];
+        auto i = std::move(impl.items()[idx]);
         DEBUG("  - " << i.name << " :: " << i.attrs);
 
         // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
@@ -1776,12 +1808,13 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
                         Parse_Impl_Item(*ttl, impl);
                     }
                     // - Any new macro invocations ends up at the end of the list and handled
+                    ASSERT_BUG(mi_owned.span(), impl.items().size() > idx, "");
 
-                    *impl.items()[idx].data = AST::Item::make_None({});
+                    *i.data = AST::Item::make_None({});
                 }
                 else {
                     // Move back in (using the index, as the old pointr may be invalid)
-                    impl.items()[idx].data->as_MacroInv() = mv$(mi_owned);
+                    i.data->as_MacroInv() = mv$(mi_owned);
                 }
             }
             }
@@ -1799,6 +1832,7 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
             Expand_Type(es, mod,  e.type());
             }
         }
+        impl.items()[idx] = std::move(i);
 
         // Run post-expansion decorators and restore attributes
         {
