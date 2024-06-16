@@ -13,6 +13,12 @@
 
 namespace HIR {
 
+enum GenericGroup {
+    GENERIC_Impl,
+    GENERIC_Item,
+    GENERIC_Placeholder,
+    GENERIC_Hrtb,
+};
 
 struct GenericRef
 {

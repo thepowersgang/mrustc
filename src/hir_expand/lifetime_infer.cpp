@@ -2649,12 +2649,46 @@ namespace {
                 DEBUG("To " << a->second.ty);
                 // Then equate, matching lifetimes through
                 if( !a->second.hrbs.is_empty() ) {
-                    //struct Matcher: public HIR::MatchGenerics {
-                    //} m;
-                    //HIR::ResolvePlaceholdersNop  resolve_placeholders;
-                    //input.match_test_generics(sp, a->first, resolve_placeholders, m);
+                    // Match the HRLs, so they can propagate through to the output
+                    struct Matcher: public HIR::MatchGenerics {
+                        const Span& sp;
+                        HIR::PathParams pp;
+                        Matcher(const Span& sp, const HIR::GenericParams& def)
+                            : sp(sp)
+                        {
+                            pp.m_lifetimes.resize( def.m_lifetimes.size() );
+                        }
+                        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, HIR::t_cb_resolve_type resolve_cb) override {
+                            assert(ty.data().is_Generic());
+                            assert(ty.data().as_Generic().binding == g.binding);
+                            return ::HIR::Compare::Equal;
+                        }
+                        HIR::Compare match_val(const HIR::GenericRef&, const HIR::ConstGeneric&) override {
+                            return ::HIR::Compare::Equal;
+                        }
+                        HIR::Compare match_lft(const HIR::GenericRef& g, const HIR::LifetimeRef& lft) override {
+                            if( g.group() != 3 ) {
+                                if(g.binding != lft.binding) {
+                                    DEBUG("TODO: Test " << g << " == " << lft);
+                                }
+                                return ::HIR::Compare::Equal;
+                            }
+                            else {
+                                auto& slot = pp.m_lifetimes.at(g.idx());
+                                if( slot != HIR::LifetimeRef() ) {
+                                    TODO(sp, g << " = " << lft << " currently " << slot);
+                                }
+                                else {
+                                    slot = lft;
+                                }
+                                return ::HIR::Compare::Equal;
+                            }
+                        }
+                    } m { sp, a->second.hrbs };
+                    HIR::ResolvePlaceholdersNop  resolve_placeholders;
+                    a->first.match_test_generics(sp, input, resolve_placeholders, m);
                     //TODO(sp, "Handle HRL match: for" << a->second.hrbs.fmt_args() << " " << input << " (" << a->first << ") => " << a->second.ty);
-                    input = a->second.ty.clone();
+                    input = MonomorphHrlsOnly(m.pp).monomorph_type(sp, a->second.ty);
                 }
                 else {
                     input = a->second.ty.clone();
