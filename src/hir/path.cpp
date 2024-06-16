@@ -63,16 +63,13 @@ namespace HIR {
     }
     ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x)
     {
-        if( x.m_hrls ) {
-            os << "for" << x.m_hrls->fmt_args() << " ";
-        }
         os << x.m_path << x.m_params;
         return os;
     }
     ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x)
     {
-        if( x.m_path.m_hrls ) {
-            os << "for" << x.m_path.m_hrls->fmt_args() << " ";
+        if( x.m_hrtbs ) {
+            os << "for" << x.m_hrtbs->fmt_args() << " ";
         }
         os << x.m_path.m_path;
         bool has_args = ( x.m_path.m_params.m_lifetimes.size() > 0 || x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
@@ -160,17 +157,13 @@ HIR::PathParams::PathParams(::HIR::LifetimeRef lft)
 {
 }
 ::HIR::GenericPath::GenericPath(::HIR::GenericParams hrls, ::HIR::SimplePath sp, ::HIR::PathParams params):
-    m_hrls( box$(hrls) ),
     m_path( mv$(sp) ),
     m_params( mv$(params) )
 {
 }
 ::HIR::GenericPath HIR::GenericPath::clone() const
 {
-    if(m_hrls)
-        return GenericPath(m_hrls->clone(), m_path.clone(), m_params.clone());
-    else
-        return GenericPath(m_path.clone(), m_params.clone());
+    return GenericPath(m_path.clone(), m_params.clone());
 }
 Ordering HIR::GenericPath::ord(const HIR::GenericPath& x) const
 {
@@ -178,27 +171,13 @@ Ordering HIR::GenericPath::ord(const HIR::GenericPath& x) const
     //DEBUG("\n  " << *this << "\n  " << x);
     ORD(m_params, x.m_params);
 
-    // HACK! if either of the HRLs are tagged as not having been un-elided, then assume they're equal
-    // - Mostly a workaround for `lifetime_elision.cpp` fixing TraitPath ATY origins
-    auto is_elision = [](const HIR::GenericPath& gp){ return gp.m_hrls && gp.m_hrls->m_lifetimes.size() >= 1 && gp.m_hrls->m_lifetimes.back().m_name == "#apply_elision"; };
-    if( is_elision(*this) || is_elision(x) )
-        return OrdEqual;
-
-    // NOTE: An empty set is treated as the same as none
-    if( g_compare_hrls )
-    {
-        ORD(m_hrls.get() && !m_hrls->is_empty(), x.m_hrls.get() && !x.m_hrls->is_empty());
-        if( m_hrls && x.m_hrls ) {
-            ORD(m_hrls->m_lifetimes.size(), x.m_hrls->m_lifetimes.size());
-            ORD(m_hrls->m_bounds, x.m_hrls->m_bounds);
-        }
-    }
     return OrdEqual;
 }
 
 ::HIR::TraitPath HIR::TraitPath::clone() const
 {
     ::HIR::TraitPath    rv {
+        m_hrtbs ? box$(m_hrtbs->clone()) : nullptr,
         m_path.clone(),
         {},
         {},
@@ -214,6 +193,23 @@ Ordering HIR::GenericPath::ord(const HIR::GenericPath& x) const
 }
 Ordering HIR::TraitPath::ord(const TraitPath& x) const
 {
+
+    // HACK! if either of the HRLs are tagged as not having been un-elided, then assume they're equal
+    // - Mostly a workaround for `lifetime_elision.cpp` fixing TraitPath ATY origins
+    auto is_elision = [](const HIR::TraitPath& gp){ return gp.m_hrtbs && gp.m_hrtbs->m_lifetimes.size() >= 1 && gp.m_hrtbs->m_lifetimes.back().m_name == "#apply_elision"; };
+    if( is_elision(*this) || is_elision(x) )
+        return OrdEqual;
+
+    // NOTE: An empty set is treated as the same as none
+    if( g_compare_hrls )
+    {
+        ORD(m_hrtbs.get() && !m_hrtbs->is_empty(), x.m_hrtbs.get() && !x.m_hrtbs->is_empty());
+        if( m_hrtbs && x.m_hrtbs ) {
+            ORD(m_hrtbs->m_lifetimes.size(), x.m_hrtbs->m_lifetimes.size());
+            ORD(m_hrtbs->m_bounds, x.m_hrtbs->m_bounds);
+        }
+    }
+
     ORD(m_path, x.m_path);
     ORD(m_trait_bounds, x.m_trait_bounds);
     ORD(m_type_bounds , x.m_type_bounds);
@@ -356,19 +352,6 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
 {
     using ::HIR::Compare;
 
-#if 1
-    if( g_compare_hrls )
-    {
-        if( (this->m_hrls && !this->m_hrls->is_empty()) != (x.m_hrls && !x.m_hrls->is_empty()) )
-            return Compare::Unequal;
-        if( this->m_hrls && x.m_hrls )
-        {
-            if( this->m_hrls->m_lifetimes.size() != x.m_hrls->m_lifetimes.size() )
-                return Compare::Unequal;
-        }
-    }
-#endif
-
     if( this->m_path.m_crate_name != x.m_path.m_crate_name )
         return Compare::Unequal;
     if( this->m_path.m_components.size() != x.m_path.m_components.size() )
@@ -416,6 +399,19 @@ namespace {
         return rv;
 
     // TODO: HRLs
+
+#if 1
+    if( g_compare_hrls )
+    {
+        if( (this->m_hrtbs && !this->m_hrtbs->is_empty()) != (x.m_hrtbs && !x.m_hrtbs->is_empty()) )
+            return Compare::Unequal;
+        if( this->m_hrtbs && x.m_hrtbs )
+        {
+            if( this->m_hrtbs->m_lifetimes.size() != x.m_hrtbs->m_lifetimes.size() )
+                return Compare::Unequal;
+        }
+    }
+#endif
 
     auto it_l = m_type_bounds.begin();
     auto it_r = x.m_type_bounds.begin();

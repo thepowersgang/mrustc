@@ -293,7 +293,7 @@ bool StaticTraitResolve::find_impl(
         {
             if( H::check_params(sp, e.m_trait.m_path.m_params, trait_params) )
             {
-                return found_cb( ImplRef(e.m_trait.m_path.m_hrls.get(), &type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), false );
+                return found_cb( ImplRef(e.m_trait.m_hrtbs.get(), &type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), false );
             }
         }
         // Markers too
@@ -319,7 +319,7 @@ bool StaticTraitResolve::find_impl(
                 // HACK! Just add all the associated type bounds (only inserted if not already present)
                 for(const auto& e2 : e.m_trait.m_type_bounds)
                     assoc_clone.insert( ::std::make_pair(e2.first, e2.second.clone()) );
-                auto ir = ImplRef(e.m_trait.m_path.m_hrls ? e.m_trait.m_path.m_hrls->clone() : HIR::GenericParams(), type.clone(), i_params.clone(), mv$(assoc_clone));
+                ImplRef ir { e.m_trait.m_hrtbs ? e.m_trait.m_hrtbs->clone() : HIR::GenericParams(), type.clone(), i_params.clone(), mv$(assoc_clone) };
                 DEBUG("[TraitObject] - ir = " << ir);
                 rv = found_cb( mv$(ir), false );
                 return true;
@@ -335,7 +335,7 @@ bool StaticTraitResolve::find_impl(
         {
             if( trait_path == trait.m_path.m_path && H::check_params(sp, trait.m_path.m_params, trait_params) )
             {
-                return found_cb( ImplRef(trait.m_path.m_hrls.get(), &type, &trait.m_path.m_params, &trait.m_type_bounds), false );
+                return found_cb( ImplRef(trait.m_hrtbs.get(), &type, &trait.m_path.m_params, &trait.m_type_bounds), false );
             }
 
             bool rv = false;
@@ -1883,7 +1883,7 @@ bool StaticTraitResolve::replace_equalities(::HIR::TypeRef& input) const
     // - Check if there's an alias for this opaque name
     auto a = m_type_equalities.find(input);
     if( a != m_type_equalities.end() ) {
-        input = a->second.clone();
+        input = a->second.ty.clone();
         DEBUG("- Replace with " << input);
         return true;
     }

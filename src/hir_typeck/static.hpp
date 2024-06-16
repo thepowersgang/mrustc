@@ -204,7 +204,8 @@ private:
     void expand_associated_types_params(const Span& sp, ::HIR::PathParams& input) const;
     void expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const;
     bool expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse=true) const;
-    bool replace_equalities(::HIR::TypeRef& input) const;
+protected:
+    virtual bool replace_equalities(::HIR::TypeRef& input) const;
 
 public:
     /// \}

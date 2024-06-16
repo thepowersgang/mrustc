@@ -209,6 +209,7 @@
                 }
             TU_ARMA(Path, e) {
                 serialise_path(e.path);
+                serialise_generics(e.hrtbs);
                 }
             TU_ARMA(Generic, e) {
                 serialise(e);
@@ -277,10 +278,6 @@
         void serialise_genericpath(const ::HIR::GenericPath& path)
         {
             TRACE_FUNCTION_F(path);
-            m_out.write_bool( static_cast<bool>(path.m_hrls) );
-            if(path.m_hrls) {
-                serialise_generics(*path.m_hrls);
-            }
             serialise_simplepath(path.m_path);
             serialise_pathparams(path.m_params);
         }
@@ -288,6 +285,10 @@
         void serialise_traitpath(const ::HIR::TraitPath& path)
         {
             auto _ = m_out.open_object("HIR::TraitPath");
+            m_out.write_bool( static_cast<bool>(path.m_hrtbs) );
+            if(path.m_hrtbs) {
+                serialise_generics(*path.m_hrtbs);
+            }
             serialise_genericpath(path.m_path);
             serialise_strmap(path.m_type_bounds);
             serialise_strmap(path.m_trait_bounds);

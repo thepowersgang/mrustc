@@ -330,10 +330,17 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         }
     TU_ARMA(TraitObject, e) {
         ::HIR::TypeData::Data_TraitObject  to;
+        if( e.m_trait.m_hrtbs ) {
+            to.m_trait.m_hrtbs = box$(e.m_trait.m_hrtbs->clone());
+            m_hrb_stack.push_back(e.m_trait.m_hrtbs.get());
+        }
         to.m_trait = this->monomorph_traitpath(sp, e.m_trait, allow_infer, false);
         for(const auto& trait : e.m_markers)
         {
             to.m_markers.push_back( this->monomorph_genericpath(sp, trait, allow_infer, false) );
+        }
+        if( e.m_trait.m_hrtbs ) {
+            m_hrb_stack.pop_back();
         }
         to.m_lifetime = monomorph_lifetime(sp, e.m_lifetime);
         return ::HIR::TypeRef( mv$(to) );
@@ -473,11 +480,12 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
 }
 ::HIR::TraitPath Monomorphiser::monomorph_traitpath(const Span& sp, const ::HIR::TraitPath& tpl, bool allow_infer, bool ignore_hrls) const
 {
-    if( tpl.m_path.m_hrls && !ignore_hrls ) {
-        m_hrb_stack.push_back(tpl.m_path.m_hrls.get());
+    if( tpl.m_hrtbs && !ignore_hrls ) {
+        m_hrb_stack.push_back(tpl.m_hrtbs.get());
     }
 
     ::HIR::TraitPath    rv {
+        tpl.m_hrtbs ? box$(tpl.m_hrtbs->clone()) : nullptr,
         this->monomorph_genericpath(sp, tpl.m_path, allow_infer, true),
         {},
         {},
@@ -500,7 +508,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         rv.m_trait_bounds.insert(::std::make_pair( assoc.first, std::move(v) ));
     }
 
-    if( tpl.m_path.m_hrls && !ignore_hrls ) {
+    if( tpl.m_hrtbs && !ignore_hrls ) {
         m_hrb_stack.pop_back();
     }
 
@@ -536,21 +544,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
 }
 ::HIR::GenericPath Monomorphiser::monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer, bool ignore_hrls) const
 {
-    if( tpl.m_hrls && !ignore_hrls )
-    {
-        m_hrb_stack.push_back(tpl.m_hrls.get());
-        auto rv = ::HIR::GenericPath( tpl.m_hrls->clone(), tpl.m_path, this->monomorph_path_params(sp, tpl.m_params, allow_infer) );
-        m_hrb_stack.pop_back();
-        return rv;
-    }
-    else if( tpl.m_hrls )
-    {
-        return ::HIR::GenericPath( tpl.m_hrls->clone(), tpl.m_path, this->monomorph_path_params(sp, tpl.m_params, allow_infer) );
-    }
-    else
-    {
-        return ::HIR::GenericPath( tpl.m_path, this->monomorph_path_params(sp, tpl.m_params, allow_infer) );
-    }
+    return ::HIR::GenericPath( tpl.m_path, this->monomorph_path_params(sp, tpl.m_params, allow_infer) );
 }
 
 ::HIR::ArraySize Monomorphiser::monomorph_arraysize(const Span& sp, const ::HIR::ArraySize& tpl) const

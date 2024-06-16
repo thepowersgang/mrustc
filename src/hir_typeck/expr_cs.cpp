@@ -4347,7 +4347,7 @@ namespace {
                     // Just call equate_types_assoc to add the required bounds.
                     if( context_mut )
                     {
-                        auto pp = dep->m_trait.m_path.m_hrls ? dep->m_trait.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
+                        auto pp = dep->m_trait.m_hrtbs ? dep->m_trait.m_hrtbs->make_empty_params(true) : HIR::PathParams();
                         MonomorphHrlsOnly   ms(pp);
                         for(const auto& tyb : dep->m_trait.m_type_bounds)
                         {
@@ -5605,13 +5605,13 @@ namespace {
                         auto b_ty_mono = ms.monomorph_type(sp, be.type);
                         auto b_tp_mono = ms.monomorph_traitpath(sp, be.trait, true);
                         DEBUG("- " << b_ty_mono << " : " << b_tp_mono);
-                        ASSERT_BUG(sp, !outer_present || !static_cast<bool>(b_tp_mono.m_path.m_hrls), "Two layers of HRTBs not allowed (should have been disallowed in HIR lower)");
+                        ASSERT_BUG(sp, !outer_present || !static_cast<bool>(b_tp_mono.m_hrtbs), "Two layers of HRTBs not allowed (should have been disallowed in HIR lower)");
                         auto pp_hrl = outer_present ? be.hrtbs->make_empty_params(true)
-                            : (b_tp_mono.m_path.m_hrls ? b_tp_mono.m_path.m_hrls->make_empty_params(true) : HIR::PathParams());
+                            : (b_tp_mono.m_hrtbs ? b_tp_mono.m_hrtbs->make_empty_params(true) : HIR::PathParams());
                         if(outer_present)
                             DEBUG("be.hrtbs = " << be.hrtbs->fmt_args());
-                        if(b_tp_mono.m_path.m_hrls)
-                            DEBUG("b_tp_mono.m_path.m_hrls = " << b_tp_mono.m_path.m_hrls->fmt_args());
+                        if(b_tp_mono.m_hrtbs)
+                            DEBUG("b_tp_mono.m_hrtbs = " << b_tp_mono.m_hrtbs->fmt_args());
                         DEBUG("pp_hrl = " << pp_hrl);
                         auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
                         if( b_tp_mono.m_type_bounds.size() > 0 )

@@ -234,9 +234,9 @@ namespace {
                         supertrait_flags->reserve(tr.m_all_parent_traits.size());
                         for(const auto& st : tr.m_all_parent_traits) {
                             ::HIR::TypeRef  self("Self", 0xFFFF);
-                            auto st_gp = MonomorphStatePtr(&self, &trait_path.m_params, nullptr).monomorph_genericpath(sp, st.m_path, false);
+                            auto st_mono = MonomorphStatePtr(&self, &trait_path.m_params, nullptr).monomorph_traitpath(sp, st, false);
                             // NOTE: Doesn't trigger non-object-safe
-                            supertrait_flags->push_back( add_ents_from_trait(*st.m_trait_ptr, st_gp, nullptr) );
+                            supertrait_flags->push_back( add_ents_from_trait(*st.m_trait_ptr, st.m_path, nullptr) );
                         }
                     }
                     return true;

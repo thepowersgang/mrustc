@@ -190,7 +190,7 @@ namespace resolve_ufcs {
             // - But `m_type_equalities` can end up with non-resolved UFCS paths
             for(auto& e : m_resolve.m_type_equalities)
             {
-                visit_type(e.second);
+                visit_type(e.second.ty);
             }
 
             // TODO: Push a bound that `Self: ThisTrait`

@@ -606,27 +606,24 @@ namespace {
 {
     DEBUG(hrbs << " " << path);
     ::HIR::TraitPath    rv {
+        hrbs.empty() ? nullptr : box$(LowerHIR_HigherRankedBounds(hrbs)), // m_hrtbs
         LowerHIR_GenericPath(sp, path, FromAST_PathClass::Type, /*allow_assoc=*/true),
         {},
         {},
         nullptr
         };
-    if( !hrbs.empty() )
-    {
-        rv.m_path.m_hrls = box$(LowerHIR_HigherRankedBounds(hrbs));
-    }
     // HACK: If the path is from `Fn(Foo)` flag it for lifetime elision.
     // - Matching hack in `lifetime_elision.cpp` `visit_traitpath`
-    if( !rv.m_path.m_hrls && path.nodes().back().args().m_is_paren ) {
+    if( !rv.m_hrtbs && path.nodes().back().args().m_is_paren ) {
         HIR::GenericParams  params;
-        rv.m_path.m_hrls = box$(params);
+        rv.m_hrtbs = box$(params);
     }
-    if( rv.m_path.m_hrls && path.nodes().back().args().m_is_paren ) {
-        rv.m_path.m_hrls->m_lifetimes.push_back(HIR::LifetimeDef { "#apply_elision" });
+    if( rv.m_hrtbs && path.nodes().back().args().m_is_paren ) {
+        rv.m_hrtbs->m_lifetimes.push_back(HIR::LifetimeDef { "#apply_elision" });
     }
 
-    if(rv.m_path.m_hrls) {
-        DEBUG("HRLS = " << rv.m_path.m_hrls->fmt_args());
+    if(rv.m_hrtbs) {
+        DEBUG("HRLS = " << rv.m_hrtbs->fmt_args());
     }
     else {
         DEBUG("No HRLS");
@@ -1429,7 +1426,7 @@ namespace {
         for(const auto& arg : rv.m_params.m_values) {
             this_trait.m_params.m_values.push_back( ::HIR::GenericRef(arg.m_name, this_trait.m_params.m_values.size()) );
         }
-        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ {}, ::HIR::TypeRef("Self",0xFFFF), { mv$(this_trait) } }) );
+        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ {}, ::HIR::TypeRef("Self",0xFFFF), { {}, mv$(this_trait) } }) );
     }
 
     for(const auto& item : f.items())

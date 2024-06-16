@@ -170,7 +170,6 @@ struct PathParams
 class GenericPath
 {
 public:
-    std::unique_ptr<GenericParams>  m_hrls;
     SimplePath  m_path;
     PathParams  m_params;
 
@@ -240,6 +239,7 @@ public:
 
     typedef ::std::map< RcString, AtyEqual> assoc_list_t;
 
+    ::std::unique_ptr<GenericParams>    m_hrtbs;
     GenericPath m_path;
     assoc_list_t    m_type_bounds;
     ::std::map< RcString, AtyBound>  m_trait_bounds;

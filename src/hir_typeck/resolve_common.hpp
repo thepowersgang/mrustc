@@ -22,7 +22,11 @@ struct TraitResolveCommon
     const ::HIR::GenericParams*   m_impl_generics;
     const ::HIR::GenericParams*   m_item_generics;
 
-    ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
+    struct CachedEquality {
+        ::HIR::GenericParams    hrbs;
+        ::HIR::TypeRef  ty;
+    };
+    ::std::map< ::HIR::TypeRef, CachedEquality> m_type_equalities;
     // A pre-calculated list of trait bounds
     struct CachedBound {
         HIR::GenericParams    hrbs;
@@ -123,7 +127,7 @@ struct TraitResolveCommon
     void prep_indexes(const Span& sp);
 
 protected:
-    void prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
+    void prep_indexes__add_equality(const Span& sp, const ::HIR::GenericParams* hrtbs, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
     void prep_indexes__add_trait_bound(const Span& sp, const ::HIR::GenericParams* hrtbs, ::HIR::TypeRef type, ::HIR::TraitPath trait_path, bool add_parents=true);
 
 
@@ -138,3 +142,4 @@ protected:
         return false;
     }
 };
+extern ::std::ostream& operator<<(::std::ostream& s, const TraitResolveCommon::CachedEquality& x);

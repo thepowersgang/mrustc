@@ -177,7 +177,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             this->dump_struct(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(Union, e) {
-            //this->dump_trait(sub_ip, e);
+            //this->dump_union(sub_ip, e);
             }
         TU_ARMA(Trait, e) {
             this->dump_trait(sub_ip, i.second->publicity, e);
@@ -284,6 +284,15 @@ void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const :
         return ;
     }
     ::std::cout << indent << "trait " << ip << trait.m_params.fmt_args() << "\n";
+    for( size_t i = 0; i < trait.m_all_parent_traits.size(); i ++ ) {
+        if( i == 0 ) {
+            ::std::cout << indent << ": ";
+        }
+        else {
+            ::std::cout << indent << "+ ";
+        }
+        ::std::cout << trait.m_all_parent_traits[i] << "\n";
+    }
     ::std::cout << indent << "{\n";
     auto indent2 = RepeatLitStr { "   ", nindent+1 };
     for(const auto& t : trait.m_types)

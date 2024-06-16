@@ -378,7 +378,7 @@ namespace {
                         ),
                     (Trait,
                         // TODO: Should this reassign instead?
-                        ty.data_mut() = ::HIR::TypeData::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
+                        ty.data_mut() = ::HIR::TypeData::make_TraitObject({ ::HIR::TraitPath { {}, mv$(pe), {}, {} }, {}, {} });
                         )
                     )
                     }
@@ -746,14 +746,15 @@ namespace {
                     auto monomorph_cb = MonomorphStatePtr(&ty_self, &params, nullptr);
                     auto monomorph_tp = [&](const HIR::TraitPath& tp)->HIR::TraitPath {
                         // TODO: if `path.m_path` has HRLs, then this needs HRLs (only if the HRLs get used?)
-                        if( tp.m_path.m_hrls && path.m_path.m_hrls ) {
+                        if( (tp.m_hrtbs && !tp.m_hrtbs->is_empty()) && (path.m_hrtbs && !path.m_hrtbs->is_empty()) ) {
+                            TODO(sp, "");
                             // TODO: How to determine which to use?
                             // - May need to combine them.
                             return monomorph_cb.monomorph_traitpath(sp, tp, false);
                         }
-                        else if (path.m_path.m_hrls) {
+                        else if( path.m_hrtbs && !path.m_hrtbs->is_empty() ) {
                             auto rv = monomorph_cb.monomorph_traitpath(sp, tp, false);
-                            rv.m_path.m_hrls = box$(path.m_path.m_hrls->clone());
+                            rv.m_hrtbs = box$(path.m_hrtbs->clone());
                             return rv;
                         }
                         else {
@@ -794,6 +795,7 @@ namespace {
 
                     // Build output path.
                     ::HIR::TraitPath    out_path;
+                    out_path.m_hrtbs = mv$(path.m_hrtbs);
                     out_path.m_path = mv$(path.m_path);
                     out_path.m_trait_ptr = &tr;
                     // - Locate associated types for this trait

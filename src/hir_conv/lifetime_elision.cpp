@@ -319,10 +319,10 @@ namespace
             }
             if(auto* e = ty.data_mut().opt_TraitObject()) {
                 // TODO: Create? but what if it's not used?
-                if( e->m_trait.m_path.m_hrls )
+                if( e->m_trait.m_hrtbs )
                 {
                     m_current_lifetime.push_back(nullptr);
-                    set_params(&*e->m_trait.m_path.m_hrls, 3);
+                    set_params(&*e->m_trait.m_hrtbs, 3);
                 }
 
 
@@ -637,17 +637,17 @@ namespace
             const Span  sp;
             TRACE_FUNCTION_FR(tp, tp);
 
-            auto has_apply_elision = [](::HIR::GenericPath& gp, bool& created_hrls)->bool {
-                bool was_paren_trait_object = gp.m_hrls && gp.m_hrls->m_lifetimes.size() >= 1 && gp.m_hrls->m_lifetimes.back().m_name == "#apply_elision";
+            auto has_apply_elision = [](::HIR::TraitPath& tp, bool& created_hrls)->bool {
+                bool was_paren_trait_object = tp.m_hrtbs && tp.m_hrtbs->m_lifetimes.size() >= 1 && tp.m_hrtbs->m_lifetimes.back().m_name == "#apply_elision";
                 created_hrls = false;
                 if( was_paren_trait_object )
                 {
-                    if(!gp.m_hrls) {
-                        gp.m_hrls = std::make_unique<HIR::GenericParams>();
+                    if(!tp.m_hrtbs) {
+                        tp.m_hrtbs = std::make_unique<HIR::GenericParams>();
                         created_hrls = true;
                     }
                     if(was_paren_trait_object) {
-                        gp.m_hrls->m_lifetimes.pop_back();
+                        tp.m_hrtbs->m_lifetimes.pop_back();
                     }
                     return true;
                 }
@@ -658,21 +658,21 @@ namespace
 
             // Handle a hack from lowering pass added when the path is `Foo()`
             bool created_hrls = false;
-            if( has_apply_elision(tp.m_path, created_hrls) )
+            if( has_apply_elision(tp, created_hrls) )
             {
                 m_current_lifetime.push_back(nullptr);
 
                 // Visit the trait args (as inputs)
-                auto saved_params = push_params(tp.m_path.m_hrls.get(), 3);
+                auto saved_params = push_params(tp.m_hrtbs.get(), 3);
 
                 this->visit_generic_path(tp.m_path, ::HIR::Visitor::PathContext::TYPE);
                 DEBUG(tp.m_path);
 
                 // TODO: Also visit ATY bounds
                 #if 1
-                if( tp.m_path.m_hrls && tp.m_path.m_hrls->m_lifetimes.size() == 1 )
+                if( tp.m_hrtbs && tp.m_hrtbs->m_lifetimes.size() == 1 )
                 {
-                    HIR::LifetimeRef    lft { /*tp.m_path.m_hrls->m_lifetimes[0].m_name,*/ 3*256+0 };
+                    HIR::LifetimeRef    lft { /*tp.m_hrtbs->m_lifetimes[0].m_name,*/ 3*256+0 };
                     m_current_lifetime.push_back( &lft );
                     for(auto& assoc : tp.m_type_bounds)
                     {
@@ -772,7 +772,7 @@ namespace
 
                 // Set the output lifetime (if present)
                 auto output_lifetime = HIR::LifetimeRef(3*256 + 0);
-                if( tp.m_path.m_hrls->m_lifetimes.size() == 1 ) {
+                if( tp.m_hrtbs->m_lifetimes.size() == 1 ) {
                     m_current_lifetime.pop_back();
                     m_current_lifetime.push_back(&output_lifetime);
                 }
@@ -785,8 +785,8 @@ namespace
 
                 m_current_lifetime.pop_back();
 
-                if(created_hrls && tp.m_path.m_hrls->is_empty()) {
-                    tp.m_path.m_hrls.reset();
+                if(created_hrls && tp.m_hrtbs->is_empty()) {
+                    tp.m_hrtbs.reset();
                 }
             }
             else

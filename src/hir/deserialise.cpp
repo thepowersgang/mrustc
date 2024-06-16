@@ -1076,7 +1076,8 @@ namespace {
             )
         _(Path, {
             deserialise_path(),
-            {}
+            {},
+            deserialise_genericparams()
             })
         _(Generic, deserialise_genericref())
         _(TraitObject, {
@@ -1155,7 +1156,6 @@ namespace {
     {
         ::HIR::GenericPath  rv;
         TRACE_FUNCTION_FR("", rv);
-        rv.m_hrls = m_in.read_bool() ? box$(deserialise_genericparams()) : std::unique_ptr<HIR::GenericParams>();
         rv.m_path = deserialise_simplepath();
         rv.m_params = deserialise_pathparams();
         return rv;
@@ -1164,10 +1164,11 @@ namespace {
     ::HIR::TraitPath HirDeserialiser::deserialise_traitpath()
     {
         auto _ = m_in.open_object("HIR::TraitPath");
+        auto hrls = m_in.read_bool() ? box$(deserialise_genericparams()) : std::unique_ptr<HIR::GenericParams>();
         auto gpath = deserialise_genericpath();
         auto tys = deserialise_istrmap< ::HIR::TraitPath::AtyEqual>();
         auto bounds = deserialise_istrmap< ::HIR::TraitPath::AtyBound>();
-        return ::HIR::TraitPath { mv$(gpath), mv$(tys), mv$(bounds) };
+        return ::HIR::TraitPath { std::move(hrls), mv$(gpath), mv$(tys), mv$(bounds) };
     }
     ::HIR::Path HirDeserialiser::deserialise_path()
     {

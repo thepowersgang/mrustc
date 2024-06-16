@@ -267,6 +267,9 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
     auto stack = LList<const ::HIR::TypeRef*>(&outer_stack, &ty);
 
     auto print_traitpath = [&](const HIR::TraitPath& tp) {
+        if(tp.m_hrtbs && !tp.m_hrtbs->is_empty()) {
+            os << "for" << tp.m_hrtbs->fmt_args() << " ";
+        }
         this->print_genericpath(os, tp.m_path, stack);
         // TODO: ATYs?
     };
@@ -413,9 +416,6 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
 }
 void HMTypeInferrence::print_genericpath(::std::ostream& os, const ::HIR::GenericPath& gp, LList<const ::HIR::TypeRef*> stack) const
 {
-    if(gp.m_hrls && !gp.m_hrls->is_empty()) {
-        os << "for" << gp.m_hrls->fmt_args() << " ";
-    }
     os << gp.m_path;
     this->print_pathparams(os, gp.m_params, stack);
 }
@@ -1706,7 +1706,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             auto cmp = compare_pp(sp, e.m_trait.m_path.m_params, params);
             if( cmp != ::HIR::Compare::Unequal ) {
                 DEBUG("TraitObject impl params" << e.m_trait.m_path.m_params);
-                return callback( ImplRef(e.m_trait.m_path.m_hrls.get(), &type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
+                return callback( ImplRef(e.m_trait.m_hrtbs.get(), &type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
             }
         }
         // Markers too
@@ -1715,7 +1715,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             if( trait == mt.m_path ) {
                 auto cmp = compare_pp(sp, mt.m_params, params);
                 if( cmp != ::HIR::Compare::Unequal ) {
-                    return callback( ImplRef(e.m_trait.m_path.m_hrls.get(), &type, &mt.m_params, &null_assoc), cmp );
+                    return callback( ImplRef(e.m_trait.m_hrtbs.get(), &type, &mt.m_params, &null_assoc), cmp );
                 }
             }
         }
@@ -1734,7 +1734,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         ::HIR::TraitPath::assoc_list_t assoc_clone;
                         for(const auto& e : i_assoc)
                             assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
-                        auto ir = ImplRef(e.m_trait.m_path.m_hrls ? e.m_trait.m_path.m_hrls->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
+                        auto ir = ImplRef(e.m_trait.m_hrtbs ? e.m_trait.m_hrtbs->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
                         DEBUG("- ir = " << ir);
                         rv = callback(mv$(ir), cmp);
                         return true;
@@ -1754,7 +1754,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 auto cmp = compare_pp(sp, trait_path.m_path.m_params, params);
                 if( cmp != ::HIR::Compare::Unequal ) {
                     DEBUG("TraitObject impl params" << trait_path.m_path.m_params);
-                    return callback( ImplRef(trait_path.m_path.m_hrls.get(), &type, &trait_path.m_path.m_params, &trait_path.m_type_bounds), cmp );
+                    return callback( ImplRef(trait_path.m_hrtbs.get(), &type, &trait_path.m_path.m_params, &trait_path.m_type_bounds), cmp );
                 }
             }
 
@@ -1770,7 +1770,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         ::HIR::TraitPath::assoc_list_t assoc_clone;
                         for(const auto& e : i_assoc)
                             assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
-                        auto ir = ImplRef(trait_path.m_path.m_hrls ? trait_path.m_path.m_hrls->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
+                        auto ir = ImplRef(trait_path.m_hrtbs ? trait_path.m_hrtbs->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
                         DEBUG("- ir = " << ir);
                         rv = callback(mv$(ir), cmp);
                         return true;
@@ -1805,7 +1805,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             auto rv = this->iterate_aty_bounds(sp, pe, [&](const HIR::TraitPath& bound) {
                 DEBUG("Bound on ATY: " << bound);
                 static const HIR::GenericParams empty_params;
-                const auto& hrls_def = (bound.m_path.m_hrls && !bound.m_path.m_hrls->is_empty()) ? *bound.m_path.m_hrls : empty_params;
+                const auto& hrls_def = (bound.m_hrtbs && !bound.m_hrtbs->is_empty()) ? *bound.m_hrtbs : empty_params;
                 auto pp_hrb = hrls_def.make_empty_params(true);
                 monomorph_cb.pp_hrb = &pp_hrb;
                 const auto& b_params = bound.m_path.m_params;
@@ -1835,7 +1835,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         }
                         else
                         {
-                            if( callback( ImplRef(bound.m_path.m_hrls.get(), &type, &bound.m_path.m_params, &null_assoc), cmp ) )
+                            if( callback( ImplRef(bound.m_hrtbs.get(), &type, &bound.m_path.m_params, &null_assoc), cmp ) )
                                 return true;
                         }
                     }
@@ -2417,7 +2417,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         {
             result_type = ResultType::Recurse;
             DEBUG("Equality");
-            input = it->second.clone();
+            input = it->second.ty.clone();
             rv = true;
         }
     }
@@ -2677,7 +2677,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             auto a = m_type_equalities.find(input);
             if( a != m_type_equalities.end() ) {
                 DEBUG("- Replace to " << a->second << " from " << input);
-                input = a->second.clone();
+                input = a->second.ty.clone();
             }
             this->expand_associated_types_inplace(sp, input, stack);
             } break;

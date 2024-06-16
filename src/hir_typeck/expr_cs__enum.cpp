@@ -156,7 +156,7 @@ namespace typecheck
                 static const HIR::GenericParams empty_hrtb;
                 const auto& outer_hrtb = be.hrtbs ? *be.hrtbs : empty_hrtb;
                 DEBUG("Bound for" << outer_hrtb.fmt_args() << " " << be.type << ":  " << be.trait);
-                ASSERT_BUG(sp, int(!outer_hrtb.is_empty()) + int(!(be.trait.m_path.m_hrls ? *be.trait.m_path.m_hrls : empty_hrtb).is_empty()) < 2,
+                ASSERT_BUG(sp, int(!outer_hrtb.is_empty()) + int(!(be.trait.m_hrtbs ? *be.trait.m_hrtbs : empty_hrtb).is_empty()) < 2,
                     "Unexpected nested HRTBs: for" << outer_hrtb.fmt_args() << " " << be.type << ":  " << be.trait);
 
                 auto _ = ms.push_hrb(outer_hrtb);
@@ -164,7 +164,7 @@ namespace typecheck
                 auto real_trait = ms.monomorph_traitpath(sp, be.trait, false);
                 DEBUG("= (" << real_type << ": " << real_trait << ")");
                 // Replace any HRLs with unbound/empty lifetimes
-                auto pp_hrl = (real_trait.m_path.m_hrls && !real_trait.m_path.m_hrls->is_empty()) ? real_trait.m_path.m_hrls->make_empty_params(true) : outer_hrtb.make_empty_params(true);
+                auto pp_hrl = (real_trait.m_hrtbs && !real_trait.m_hrtbs->is_empty()) ? real_trait.m_hrtbs->make_empty_params(true) : outer_hrtb.make_empty_params(true);
                 DEBUG("outer_hrb = " << outer_hrtb.fmt_args() << ", pp_hrl = " << pp_hrl);
                 auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
                 const auto& trait_path = real_trait.m_path.m_path;
@@ -340,13 +340,14 @@ namespace typecheck
             cache.m_top_params = &trait.m_params;
 
             // Add a bound requiring the Self type impl the trait
-            auto pp_hrl = e.trait.m_hrls ? e.trait.m_hrls->make_empty_params(true) : HIR::PathParams();
-            auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
-            context.add_trait_bound(sp, e.type,  e.trait.m_path, ms_hrl.monomorph_path_params(sp, e.trait.m_params, true));
+            //auto pp_hrl = e.trait.m_hrls ? e.trait.m_hrls->make_empty_params(true) : HIR::PathParams();
+            //auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
+            //context.add_trait_bound(sp, e.type,  e.trait.m_path, ms_hrl.monomorph_path_params(sp, e.trait.m_params, true));
+            context.add_trait_bound(sp, e.type,  e.trait.m_path, e.trait.m_params.clone());
 
             fcn_ptr = &fcn;
 
-            cache.m_monomorph.reset(new Monomorph(context, &e.type, &e.trait.m_params, e.params, std::move(pp_hrl)));
+            cache.m_monomorph.reset(new Monomorph(context, &e.type, &e.trait.m_params, e.params, {}));
         }
         TU_ARMA(UfcsUnknown, e) {
             // TODO: Eventually, the HIR `Resolve UFCS` pass will be removed, leaving this code responsible for locating the item.
@@ -2228,7 +2229,7 @@ void Typecheck_Code_CS__EnumerateRules(
                     auto prev_hrls = this->hrls;
                     for(const auto& trait : e->m_traits)
                     {
-                        auto pp_hrl = trait.m_path.m_hrls ? trait.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
+                        auto pp_hrl = trait.m_hrtbs ? trait.m_hrtbs->make_empty_params(true) : HIR::PathParams();
                         this->hrls = &pp_hrl;
                         if( trait.m_type_bounds.size() == 0 )
                         {

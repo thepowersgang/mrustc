@@ -124,6 +124,7 @@ struct TypeData_Path
 {
     ::HIR::Path path;
     TypePathBinding binding;
+    ::HIR::GenericParams    hrtbs;   // HRTBs for vtable paths ONLY
 
     bool is_closure() const {
         return path.m_data.is_Generic()
