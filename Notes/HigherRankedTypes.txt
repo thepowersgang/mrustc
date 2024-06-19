@@ -8,6 +8,7 @@
 - `HIR::GenericPath` has a HRL blob attached
 - Alternative:
   - Return the HRLs to `TraitPath`, but also put them in `TypeData::Data_Path`
+  - VTable _value_ paths need `<T as Trait>::vtable#` - that also needs the HRLs
 
 
 

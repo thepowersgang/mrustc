@@ -106,7 +106,12 @@ namespace HIR {
             return os << "<" << e.type << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
             ),
         (UfcsKnown,
-            return os << "<" << e.type << " as " << e.trait << ">::" << e.item << e.params;
+            os << "<" << e.type << " as ";
+            if( e.hrtbs ) {
+                os << "for" << e.hrtbs->fmt_args() << " ";
+            }
+            os << e.trait << ">::" << e.item << e.params;
+            return os;
             ),
         (UfcsUnknown,
             return os << "<" << e.type << " as _>::" << e.item << e.params;
@@ -232,6 +237,10 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
     m_data( Data::make_UfcsKnown({ mv$(ty), mv$(trait), mv$(item), mv$(item_params) }) )
 {
 }
+::HIR::Path::Path(TypeRef ty, GenericParams hrtbs, GenericPath trait, RcString item, PathParams item_params):
+    m_data( Data::make_UfcsKnown({ mv$(ty), mv$(trait), mv$(item), mv$(item_params), box$(hrtbs) }) )
+{
+}
 ::HIR::Path HIR::Path::clone() const
 {
     TU_MATCH_HDRA((m_data), {)
@@ -251,7 +260,8 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
             e.type.clone(),
             e.trait.clone(),
             e.item,
-            e.params.clone()
+            e.params.clone(),
+            e.hrtbs ? box$(e.hrtbs->clone()) : nullptr,
             }));
         }
     TU_ARMA(UfcsUnknown, e) {

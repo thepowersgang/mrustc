@@ -277,6 +277,7 @@ public:
         GenericPath trait;
         RcString   item;
         PathParams  params;
+        std::unique_ptr<GenericParams>  hrtbs;
         }),
     (UfcsUnknown, struct {
         TypeRef type;
@@ -296,6 +297,7 @@ public:
 
     Path(TypeRef ty, RcString item, PathParams item_params=PathParams());
     Path(TypeRef ty, GenericPath trait, RcString item, PathParams item_params=PathParams());
+    Path(TypeRef ty, GenericParams hrtbs, GenericPath trait, RcString item, PathParams item_params=PathParams());
 
     Path clone() const;
     Compare compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;

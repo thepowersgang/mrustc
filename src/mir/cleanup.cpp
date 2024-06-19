@@ -159,6 +159,15 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     }
 }
 
+namespace {
+    ::MIR::Constant create_vtable(HIR::TypeRef ty, const HIR::TraitPath& trait) {
+        auto vtable_path = trait.m_hrtbs
+            ? ::HIR::Path(mv$(ty), trait.m_hrtbs->clone(), trait.m_path.clone(), "vtable#")
+            : ::HIR::Path(mv$(ty), trait.m_path.clone(), "vtable#");
+        return ::MIR::Constant::make_ItemAddr(box$(vtable_path));
+    }
+}
+
 ::MIR::RValue MIR_Cleanup_LiteralToRValue(const ::MIR::TypeResolve& state, MirMutator& mutator, EncodedLiteralSlice lit, ::HIR::TypeRef ty, const MonomorphState& params, ::HIR::Path path)
 {
     struct M: Monomorphiser {
@@ -455,9 +464,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 const auto* tep = te.inner.data().opt_TraitObject();
                 if(!tep) MIR_TODO(state, "Hidden vtable");
 
-                auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : src_ty.clone(), tep->m_trait.m_path.clone(), "vtable#");
-
-                auto vtable_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(box$(vtable_path)) );
+                auto vtable_val = ::MIR::Param( create_vtable(&ty == &tmp ? mv$(tmp) : src_ty.clone(), tep->m_trait) );
 
                 return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(vtable_val) });
                 break; }
@@ -776,8 +783,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             else
             {
                 MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
-                auto vtable = ::HIR::Path( HIR::Path::Data::make_UfcsKnown({ src_ty.clone(), trait_path.m_path.clone(), "vtable#" }) );
-                out_meta_val = ::MIR::Constant::make_ItemAddr(box$(vtable));
+                out_meta_val = create_vtable(src_ty.clone(), trait_path);
             }
         }
         return true;

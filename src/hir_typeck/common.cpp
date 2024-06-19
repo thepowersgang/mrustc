@@ -453,12 +453,20 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         return ::HIR::Path( this->monomorph_genericpath(sp, e2, allow_infer, false) );
         }
     TU_ARMA(UfcsKnown, e2) {
-        return ::HIR::Path::Data::make_UfcsKnown({
+        if( e2.hrtbs /*&& !ignore_hrls*/ ) {
+            m_hrb_stack.push_back(e2.hrtbs.get());
+        }
+        auto rv = ::HIR::Path::Data::make_UfcsKnown({
             this->monomorph_type(sp, e2.type, allow_infer),
             this->monomorph_genericpath(sp, e2.trait, allow_infer, false),
             e2.item,
-            this->monomorph_path_params(sp, e2.params, allow_infer)
+            this->monomorph_path_params(sp, e2.params, allow_infer),
+            e2.hrtbs ? box$(e2.hrtbs->clone()) : nullptr
             });
+        if( e2.hrtbs /*&& !ignore_hrls*/ ) {
+            m_hrb_stack.pop_back();
+        }
+        return rv;
         }
     TU_ARMA(UfcsUnknown, e2) {
         return ::HIR::Path::Data::make_UfcsUnknown({
