@@ -1531,6 +1531,17 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
         }
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break;
+    case TOK_INTERPOLATED_TYPE: {
+        if( !tok.frag_type().is_path() ) {
+            throw ParseError::Unexpected(lex, tok);
+        }
+        auto& p = tok.frag_type().path();
+        if( p.m_class.is_UFCS() ) {
+            throw ParseError::Unexpected(lex, tok);
+        }
+        path = std::move(tok.frag_type().path());
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        } break;
     case TOK_INTERPOLATED_PATH:
         path = mv$(tok.frag_path());
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
