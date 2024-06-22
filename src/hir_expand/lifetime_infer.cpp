@@ -2676,7 +2676,11 @@ namespace {
                             else {
                                 auto& slot = pp.m_lifetimes.at(g.idx());
                                 if( slot != HIR::LifetimeRef() ) {
-                                    TODO(sp, g << " = " << lft << " currently " << slot);
+                                    // TODO: If already bound, then may want to do equalities
+                                    // - OR, define new ivars for each entry in `hrbs` and do equalities there
+                                    // - BUT, this function is called as part of trait lookup, and may not be a final decision.
+
+                                    // For now, just assume equality - until that causes a lifetime infer error
                                 }
                                 else {
                                     slot = lft;
