@@ -451,7 +451,7 @@ namespace {
             const auto& val_ty = this->context.get_type(node.m_value->m_res_type);
             //const auto& idx_ty = this->context.get_type(node.m_index->m_res_type);
             const auto& idx_ty = this->context.get_type(node.m_cache.index_ty);
-            TRACE_FUNCTION_F("Index: val=" << val_ty << ", idx=" << idx_ty << "");
+            TRACE_FUNCTION_F(&node << " Index: val=" << val_ty << ", idx=" << idx_ty << "");
 
             this->context.possible_equate_type_unknown(node.span(), node.m_res_type, Context::IvarUnknownType::From);
 
@@ -5864,8 +5864,9 @@ namespace
                 DEBUG("Check <" << t << ">::" << node.m_method);
                 ::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
                 unsigned int deref_count = context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, t, node.m_method.c_str(),  possible_methods);
-                DEBUG("> deref_count = " << deref_count << ", " << possible_methods);
-                if( !t.data().is_Infer() && possible_methods.empty() )
+                DEBUG("> deref_count = " << deref_count << ", possible_methods={" << possible_methods << "}");
+                // TODO: Detect the above hitting an ivar, and use that instead of this hacky check of if it's `_` or `&_`
+                if( !(t.data().is_Infer() || TU_TEST1(t.data(), Borrow, .inner.data().is_Infer())) && possible_methods.empty() )
                 {
                     // No method found, which would be an error
                     DEBUG("Remove possibility " << new_ty << " because it didn't have a method");
