@@ -778,11 +778,12 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
     case TOK_RWORD_TYPE: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         name = tok.ident().name;
-        auto atype_params = Parse_GenericParamsOpt(lex);
+        auto type_params = Parse_GenericParamsOpt(lex);
+        AST::GenericParams  bounds;
         if( GET_TOK(tok, lex) == TOK_COLON )
         {
             // Bounded associated type
-            Parse_TypeBound(lex, atype_params, TypeRef(lex.point_span(), "Self", 0xFFFF));
+            Parse_TypeBound(lex, bounds, TypeRef(lex.point_span(), "Self", 0xFFFF));
             GET_TOK(tok, lex);
         }
 
@@ -792,12 +793,12 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
             GET_TOK(tok, lex);
         }
         if( tok.type() == TOK_RWORD_WHERE ) {
-            Parse_WhereClause(lex, atype_params);
+            Parse_WhereClause(lex, type_params);
             GET_TOK(tok, lex);
         }
 
         CHECK_TOK(tok, TOK_SEMICOLON);
-        rv = ::AST::TypeAlias( mv$(atype_params), mv$(default_type) );
+        rv = ::AST::TypeAlias::new_associated_type( mv$(type_params), mv$(bounds), mv$(default_type) );
         break; }
 
     // Functions (possibly unsafe)

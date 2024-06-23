@@ -2596,7 +2596,8 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
             DEBUG("Type - " << i.name);
             //ASSERT_BUG( i.span, e.params().m_params.size() == 0, "TODO: Generic Associated Types (Trait)" );
             item_context.push( e.params(), GenericSlot::Level::Method, true );
-            Resolve_Absolute_Generic(item_context,  e.params());
+            Resolve_Absolute_Generic(item_context, e.m_params);
+            Resolve_Absolute_Generic(item_context, e.m_self_bounds);
 
             Resolve_Absolute_Type( item_context, e.type() );
 

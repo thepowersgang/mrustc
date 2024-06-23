@@ -493,6 +493,17 @@ namespace
                         m_trait_object_rule.push_back(std::make_pair(m_current_depth, nullptr));
                     }
                 }
+                else if( auto* p = e->path.m_data.opt_UfcsKnown() )
+                {
+                    // Get trait, check if the type has ATCs
+                    const auto& trait = m_resolve.m_crate.get_trait_by_path(sp, p->trait.m_path);
+                    const auto& aty = trait.m_types.at(p->item);
+
+                    if( p->params.m_lifetimes.size() < aty.m_generics.m_lifetimes.size() )//&& m_current_lifetime.size() && m_current_lifetime.back() )
+                    {
+                        p->params.m_lifetimes.resize( aty.m_generics.m_lifetimes.size() );
+                    }
+                }
             }
 
             ::HIR::Visitor::visit_type(ty);

@@ -360,7 +360,7 @@ namespace resolve_ufcs {
             }
             return false;
         }
-        static ::HIR::Path::Data get_ufcs_known(::HIR::Path::Data::Data_UfcsUnknown e,  ::HIR::GenericPath trait_path_real, const ::HIR::Trait& trait)
+        static ::HIR::Path::Data get_ufcs_known(::HIR::Visitor::PathContext pc, ::HIR::Path::Data::Data_UfcsUnknown e,  ::HIR::GenericPath trait_path_real, const ::HIR::Trait& trait)
         {
             struct MonomorphEraseHrls: public Monomorphiser {
                 ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
@@ -378,6 +378,16 @@ namespace resolve_ufcs {
                 }
             };
             auto trait_path = MonomorphEraseHrls().monomorph_genericpath(Span(), trait_path_real);
+            if( pc == HIR::Visitor::PathContext::TYPE )
+            {
+                // If the trait has missing type argumenst, replace them with the defaults
+                // Get trait, check if the type has ATCs
+                const auto& aty = trait.m_types.at(e.item);
+                if( e.params.m_lifetimes.size() < aty.m_generics.m_lifetimes.size() )
+                {
+                    e.params.m_lifetimes.resize( aty.m_generics.m_lifetimes.size() );
+                }
+            }
             return ::HIR::Path::Data::make_UfcsKnown({ mv$(e.type), mv$(trait_path), mv$(e.item), mv$(e.params)} );
         }
         static bool locate_item_in_trait(::HIR::Visitor::PathContext pc, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
@@ -409,7 +419,7 @@ namespace resolve_ufcs {
             static Span _sp;
             const auto& sp = _sp;
             if( locate_item_in_trait(pc, trait,  pd) ) {
-                pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), trait_path.clone(), trait);
+                pd = get_ufcs_known(pc, mv$(pd.as_UfcsUnknown()), trait_path.clone(), trait);
                 return true;
             }
 
@@ -458,14 +468,14 @@ namespace resolve_ufcs {
                 DEBUG("- Check (all) " << par_trait_path);
                 if( locate_item_in_trait(pc, *pt.m_trait_ptr,  pd) ) {
                     // TODO: Don't clone if this is from the temp.
-                    pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), par_trait_path.clone(), *pt.m_trait_ptr);
+                    pd = get_ufcs_known(pc, mv$(pd.as_UfcsUnknown()), par_trait_path.clone(), *pt.m_trait_ptr);
                     return true;
                 }
             }
             return false;
         }
 
-        bool set_from_trait_impl(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait, ::HIR::Path::Data& pd)
+        bool set_from_trait_impl(const Span& sp, ::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait, ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
             const auto& type = e.type;
@@ -518,7 +528,7 @@ namespace resolve_ufcs {
                 else {
                     DEBUG("pp = " << pp);
                     // Otherwise, set to the current result.
-                    pd = get_ufcs_known(mv$(e), ::HIR::GenericPath(trait_path.m_path, mv$(pp)), trait);
+                    pd = get_ufcs_known(pc, mv$(e), ::HIR::GenericPath(trait_path.m_path, mv$(pp)), trait);
                 }
                 return false;
                 });
@@ -528,7 +538,7 @@ namespace resolve_ufcs {
         bool locate_in_trait_impl_and_set(const Span& sp, ::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
         {
             if( this->locate_item_in_trait(pc, trait,  pd) ) {
-                return set_from_trait_impl(sp, trait_path, trait, pd);
+                return set_from_trait_impl(sp, pc, trait_path, trait, pd);
             }
             else {
                 DEBUG("- Item " << pd.as_UfcsUnknown().item << " not in trait " << trait_path.m_path);
@@ -548,7 +558,7 @@ namespace resolve_ufcs {
             {
                 if( this->locate_item_in_trait(pc, *pt.m_trait_ptr,  pd) ) {
                     // TODO: Modify path parameters based on the current trait's params
-                    return set_from_trait_impl(sp, pt.m_path, *pt.m_trait_ptr, pd);
+                    return set_from_trait_impl(sp, pc, pt.m_path, *pt.m_trait_ptr, pd);
                 }
                 else {
                     DEBUG("- Item " << pd.as_UfcsUnknown().item << " not in trait " << trait_path.m_path);

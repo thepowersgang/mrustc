@@ -422,6 +422,7 @@ public:
 
 struct AssociatedType
 {
+    ::HIR::GenericParams    m_generics;
     bool    is_sized;
     LifetimeRef m_lifetime_bound;
     ::std::vector< ::HIR::TraitPath>    m_trait_bounds;

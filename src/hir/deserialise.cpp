@@ -911,6 +911,7 @@ namespace {
         ::HIR::AssociatedType deserialise_associatedtype()
         {
             return ::HIR::AssociatedType {
+                deserialise_genericparams(),
                 m_in.read_bool(),
                 deserialise_lifetimeref(),
                 deserialise_vec< ::HIR::TraitPath>(),

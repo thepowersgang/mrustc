@@ -1360,6 +1360,7 @@
         }
         void serialise(const ::HIR::AssociatedType& at)
         {
+            serialise_generics(at.m_generics);
             m_out.write_bool(at.is_sized);
             serialise(at.m_lifetime_bound);
             serialise_vec(at.m_trait_bounds);

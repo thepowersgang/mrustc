@@ -360,7 +360,7 @@ namespace {
 
         // No sub-patterns, no `..`, and the VALUE binding points to an enum variant
         if( e.sub_patterns.empty() /*&& !e.is_exhaustive*/ ) {
-            if( const auto* pbp = e.path.m_bindings.value.binding.opt_EnumVar() ) {
+            if( /*const auto* pbp =*/ e.path.m_bindings.value.binding.opt_EnumVar() ) {
                 return ::HIR::Pattern {
                     mv$(bindings),
                     ::HIR::Pattern::Data::make_PathNamed({
@@ -1449,13 +1449,16 @@ namespace {
             ::HIR::LifetimeRef  lifetime_bound;
             auto gps = LowerHIR_GenericParams(i.params(), &is_sized);
 
-            for(auto& b : gps.m_bounds)
+            auto self_bounds = LowerHIR_GenericParams(i.m_self_bounds, &is_sized);
+            for(auto& b : self_bounds.m_bounds)
             {
                 TU_MATCH_HDRA( (b), {)
                 TU_ARMA(TypeLifetime, be) {
+                    ASSERT_BUG(item.span, be.type.data().as_Generic().binding == GENERIC_Self, be.type);
                     lifetime_bound = mv$(be.valid_for);
                     }
                 TU_ARMA(TraitBound, be) {
+                    ASSERT_BUG(item.span, be.type.data().as_Generic().binding == GENERIC_Self, be.type);
                     trait_bounds.push_back( mv$(be.trait) );
                     }
                 TU_ARMA(Lifetime, be) {
@@ -1467,6 +1470,7 @@ namespace {
                 }
             }
             rv.m_types.insert( ::std::make_pair(item.name, ::HIR::AssociatedType {
+                mv$(gps),
                 is_sized,
                 mv$(lifetime_bound),
                 mv$(trait_bounds),
@@ -2326,14 +2330,19 @@ public:
     {
         for(const auto& ent : crate.m_proc_macros)
         {
-            // Register under an invalid simplepath
-            ::HIR::ProcMacro::Ty    ty;
-            switch(ent.ty)
-            {
-            case ::AST::ProcMacroTy::Function:  ty = ::HIR::ProcMacro::Ty::Function;    break;
-            case ::AST::ProcMacroTy::Derive:    ty = ::HIR::ProcMacro::Ty::Derive;  break;
-            case ::AST::ProcMacroTy::Attribute: ty = ::HIR::ProcMacro::Ty::Attribute;   break;
-            }
+            struct H {
+                static ::HIR::ProcMacro::Ty cvt_macro_ty(::AST::ProcMacroTy ast) {
+                    switch(ast)
+                    {
+                    case ::AST::ProcMacroTy::Function:  return ::HIR::ProcMacro::Ty::Function;
+                    case ::AST::ProcMacroTy::Derive:    return ::HIR::ProcMacro::Ty::Derive;
+                    case ::AST::ProcMacroTy::Attribute: return ::HIR::ProcMacro::Ty::Attribute;
+                    }
+                    throw "Invalid AST macro type";
+                }
+            };
+            // Register under an invalid SimplePath
+            ::HIR::ProcMacro::Ty    ty = H::cvt_macro_ty(ent.ty);
             macros.insert( std::make_pair(ent.name, ::HIR::ProcMacro { ty, ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes }) );
             rv.m_exported_macro_names.push_back(ent.name);
             DEBUG("Export proc_macro " << ent.name);

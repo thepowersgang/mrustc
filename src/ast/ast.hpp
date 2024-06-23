@@ -94,20 +94,28 @@ struct TupleItem
 
 class TypeAlias
 {
-    GenericParams  m_params;
-    TypeRef m_type;
 public:
+    /// Normal generic parameter definitions
+    GenericParams  m_params;
+    /// Holds bounds on this type, all bounds encoded as `Self: ...`
+    GenericParams   m_self_bounds;
+    TypeRef m_type;
+
     //TypeAlias() {}
     TypeAlias(GenericParams params, TypeRef type):
         m_params( move(params) ),
         m_type( move(type) )
     {}
+    static TypeAlias new_associated_type(GenericParams params, GenericParams type_bounds, TypeRef default_type) {
+        TypeAlias rv { std::move(params), std::move(default_type) };
+        rv.m_self_bounds = std::move(type_bounds);
+        return rv;
+    }
 
     const GenericParams& params() const { return m_params; }
+          GenericParams& params()       { return m_params; }
     const TypeRef& type() const { return m_type; }
-
-    GenericParams& params() { return m_params; }
-    TypeRef& type() { return m_type; }
+          TypeRef& type()       { return m_type; }
 
     TypeAlias clone() const;
 };
