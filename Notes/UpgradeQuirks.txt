@@ -151,3 +151,4 @@
   - mrustc picks the top level one, becuase impl bounds don't restrict method resolution.
 - `use $ty::*;` - where `$ty:ty` in a `macro_rules`
 - Did I mention ATYs/GATs? Because they exist, and needed fixes
+

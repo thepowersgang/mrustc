@@ -157,8 +157,9 @@ namespace {
         void generator_make_drop(const Span& sp, MirBuilder& out_builder, size_t n_captures, const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper>>& mappings) const
         {
             ::MIR::LValue   self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
-            auto get_lv = [&self,&mappings](unsigned idx) {
+            auto get_lv = [&sp,&self,&mappings](unsigned idx)->::MIR::LValue {
                 ::MIR::LValue rv = self.clone();
+                ASSERT_BUG(sp, mappings.count(idx), "No LValue for index " << idx);
                 rv.m_wrappers.insert(rv.m_wrappers.end(), mappings.at(idx).begin(), mappings.at(idx).end());
                 return rv;
                 };
@@ -170,9 +171,10 @@ namespace {
             // if state is 0, then drop captures (this is the pre-run state)
             arms.push_back(out_builder.new_bb_unlinked());
             out_builder.set_cur_block(arms.back());
+            size_t arg_count = 1 + (TARGETVER_LEAST_1_74 ? 1 : 0);
             for(size_t i = 0; i < n_captures; i ++)
             {
-                out_builder.push_stmt_drop(sp, get_lv(1+i));
+                out_builder.push_stmt_drop(sp, get_lv(arg_count+i));
             }
             out_builder.end_block(::MIR::Terminator::make_Return({}));
 

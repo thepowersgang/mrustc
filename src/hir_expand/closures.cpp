@@ -1432,6 +1432,9 @@ namespace {
             ::std::vector<HIR::ExprNodeP>   capture_nodes; capture_nodes.reserve(n_caps);
             // First new local is always the invocation `self`
             new_locals.push_back(HIR::TypeRef());  // `self: &mut NewStruct`
+            if( TARGETVER_LEAST_1_74 ) {
+                new_locals.push_back(HIR::TypeRef());  // `resume: Resume`
+            }
             // First ent is the runtime state (first is zeroed, the second is set to uninit)
 
             const auto& lang_MaybeUninit = m_resolve.m_crate.get_lang_item_path(node.span(), "maybe_uninit");
@@ -1581,6 +1584,9 @@ namespace {
             self_arg_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, params.make_nop_params(0)), &gen_struct_ref );
             // `&mut Self`
             self_arg_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, std::move(self_arg_ty));
+            if( TARGETVER_LEAST_1_74 ) {
+                new_locals[1] = node.m_resume_ty.clone();
+            }
             auto lang_Pin = m_resolve.m_crate.get_lang_item_path(sp, "pin");
             auto lang_GeneratorState = m_resolve.m_crate.get_lang_item_path(sp, "generator_state");
             // `Pin<&mut Self>`
@@ -1619,6 +1625,9 @@ namespace {
             ::HIR::Function fcn_resume;
             // - `self: Pin<&mut {Self}>`
             fcn_resume.m_args.push_back(std::make_pair( HIR::Pattern(), self_arg_ty.clone() ));
+            if( TARGETVER_LEAST_1_74 ) {
+                fcn_resume.m_args.push_back(std::make_pair( HIR::Pattern(), monomorph_cb.monomorph_type(sp, node.m_resume_ty) ));
+            }
             // - `-> GeneratorState<{Yield},{Return}>`
             ::HIR::PathParams   ret_params;
             ret_params.m_types.push_back( monomorph_cb.monomorph_type(sp, node.m_yield_ty) );
