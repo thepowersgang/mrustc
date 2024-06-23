@@ -456,13 +456,13 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         if( e2.hrtbs /*&& !ignore_hrls*/ ) {
             m_hrb_stack.push_back(e2.hrtbs.get());
         }
-        auto rv = ::HIR::Path::Data::make_UfcsKnown({
+        auto rv = ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
             this->monomorph_type(sp, e2.type, allow_infer),
             this->monomorph_genericpath(sp, e2.trait, allow_infer, false),
             e2.item,
             this->monomorph_path_params(sp, e2.params, allow_infer),
             e2.hrtbs ? box$(e2.hrtbs->clone()) : nullptr
-            });
+            }));
         if( e2.hrtbs /*&& !ignore_hrls*/ ) {
             m_hrb_stack.pop_back();
         }
