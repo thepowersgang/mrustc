@@ -190,19 +190,33 @@ struct LowerHIR_ExprNode_Visitor:
                 void visit_pattern(::HIR::Pattern& pat) override {
                     HIR::Visitor::visit_pattern(pat);
                     for(size_t i = 0; i < pat.m_bindings.size(); i ++) {
-
-                        auto it = mapping.find(pat.m_bindings[i].m_slot);
-                        if( it == mapping.end() ) {
-                            ASSERT_BUG(Span(), bindings.size() < this->count, "Miscount of variables in `let-else` - only allocated " << this->count);
-                            auto new_idx = base + bindings.size();
-
-                            bindings.push_back( HIR::PatternBinding(pat.m_bindings[i]) );
-                            bindings.back().m_type = HIR::PatternBinding::Type::Move;
-                            it = mapping.insert(std::make_pair(pat.m_bindings[i].m_slot, new_idx)).first;
-                        }
-                        pat.m_bindings[i].m_mutable = false;
-                        pat.m_bindings[i].m_slot = it->second;
+                        this->handle_binding(pat.m_bindings[i]);
                     }
+                    // SplitSlice also defines bindings
+                    if(auto* e = pat.m_data.opt_SplitSlice() ) {
+                        if( e->extra_bind.is_valid() ) {
+                            this->handle_binding(e->extra_bind);
+                        }
+                    }
+                    // - SplitTuple doesn't?
+                    //if(auto* e = pat.m_data.opt_SplitTuple() ) {
+                    //    if( e->extra_bind.is_valid() ) {
+                    //        this->handle_binding(e->extra_bind);
+                    //    }
+                    //}
+                }
+                void handle_binding(::HIR::PatternBinding& pb) {
+                    auto it = mapping.find(pb.m_slot);
+                    if( it == mapping.end() ) {
+                        ASSERT_BUG(Span(), bindings.size() < this->count, "Miscount of variables in `let-else` - only allocated " << this->count);
+                        auto new_idx = base + bindings.size();
+
+                        bindings.push_back( HIR::PatternBinding(pb) );
+                        bindings.back().m_type = HIR::PatternBinding::Type::Move;
+                        it = mapping.insert(std::make_pair(pb.m_slot, new_idx)).first;
+                    }
+                    pb.m_mutable = false;
+                    pb.m_slot = it->second;
                 }
             } visitor(base, count);
             visitor.visit_pattern(pat);
