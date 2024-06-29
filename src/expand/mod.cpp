@@ -695,6 +695,7 @@ struct CExpandExpr:
     unsigned m_try_index = 0;
 
     AST::ExprNode_Block*    current_block = nullptr;
+    bool in_assign_lhs = false;
 
     CExpandExpr(const ExpandState& es)
         : crate(es.crate)
@@ -1020,7 +1021,9 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_else);
     }
     void visit(::AST::ExprNode_Assign& node) override {
+        in_assign_lhs = true;
         this->visit_nodelete(node, node.m_slot);
+        in_assign_lhs = false;
         this->visit_nodelete(node, node.m_value);
 
         // Desugar destructuring assignment
@@ -1130,11 +1133,26 @@ struct CExpandExpr:
                     }
                 }
                 void visit(::AST::ExprNode_Tuple& v) override {
+                    bool is_split = false;
+                    std::vector<AST::Pattern>   subpats_start;
                     std::vector<AST::Pattern>   subpats;
                     for(auto& m : v.m_values) {
+                        if( const auto* e = dynamic_cast<AST::ExprNode_BinOp*>(m.get()) ) {
+                            if( e->m_type == ::AST::ExprNode_BinOp::RANGE && !e->m_left && !e->m_right ) {
+                                ASSERT_BUG(v.span(), !is_split, "Multiple `..` in tuple pattern?");
+                                is_split = true;
+                                subpats_start = std::move(subpats);
+                                continue ;
+                            }
+                        }
                         subpats.push_back(lower(m));
                     }
-                    pat(AST::Pattern(AST::Pattern::TagTuple(), v.span(), std::move(subpats)));
+                    if( is_split ) {
+                        pat(AST::Pattern(AST::Pattern::TagTuple(), v.span(), AST::Pattern::TuplePat { std::move(subpats_start), true, std::move(subpats) }));
+                    }
+                    else {
+                        pat(AST::Pattern(AST::Pattern::TagTuple(), v.span(), std::move(subpats)));
+                    }
                 }
 
                 // Just emit as if it's a slot, `UnitStruct = Foo` isn't valid
@@ -1470,6 +1488,9 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_left);
         this->visit_nodelete(node, node.m_right);
 
+        if( this->in_assign_lhs ) {
+            return;
+        }
         switch(node.m_type)
         {
         case ::AST::ExprNode_BinOp::RANGE: {
