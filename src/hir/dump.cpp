@@ -113,6 +113,13 @@ namespace {
             {
                 m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
             }
+            if( !item.m_all_parent_traits.empty() ) {
+                m_os << indent() << "/* All parent traits:\n";
+                for(const auto& t : item.m_all_parent_traits) {
+                    m_os << indent() << t << "\n";
+                }
+                m_os << indent() << "*/\n";
+            }
             m_os << indent() << "{\n";
             inc_indent();
 

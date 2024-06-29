@@ -1232,6 +1232,10 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
     ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
     // - Include associated types on bound
     for(const auto& ty_b : te.m_trait.m_type_bounds) {
+        if( this->m_type_indexes.count(ty_b.first) == 0 ) {
+            WARNING(sp, W0000, "Trait object path " << te.m_trait << " references a type with no vtable type index");
+            continue ;
+        }
         auto idx = this->m_type_indexes.at(ty_b.first);
         if(vtable_params.m_types.size() <= idx)
             vtable_params.m_types.resize(idx+1);

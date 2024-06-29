@@ -704,20 +704,9 @@ namespace
                     {
                         // Ensure that the data trait's vtable is present
                         const auto& trait = *te.m_trait.m_trait_ptr;
+                        auto vtable_ty = trait.get_vtable_type(sp, m_crate, te);
 
-                        const auto& vtable_ty_spath = trait.m_vtable_path;
-                        const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
-                        // Copy the param set from the trait in the trait object
-                        ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-                        // - Include associated types on bound
-                        for(const auto& ty_b : te.m_trait.m_type_bounds) {
-                            auto idx = trait.m_type_indexes.at(ty_b.first);
-                            if(vtable_params.m_types.size() <= idx)
-                                vtable_params.m_types.resize(idx+1);
-                            vtable_params.m_types[idx] = ty_b.second.type.clone();
-                        }
-
-                        visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
+                        visit_type(vtable_ty);
                     }
                     else {
                         // Wait, what vtable should be used then?

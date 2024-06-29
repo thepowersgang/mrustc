@@ -766,6 +766,7 @@ namespace {
                         for(const auto& pt : tr.m_all_parent_traits)
                         {
                             supertraits.push_back( monomorph_tp(pt) );
+                            fill_type_aliases( supertraits.back() );
                         }
                     }
                     else
@@ -798,9 +799,19 @@ namespace {
                     out_path.m_hrtbs = mv$(path.m_hrtbs);
                     out_path.m_path = mv$(path.m_path);
                     out_path.m_trait_ptr = &tr;
+                    fill_type_aliases(out_path);
+                    // TODO: HRLs?
+                    supertraits.push_back( mv$(out_path) );
+                    tp_stack.pop_back();
+                }
+
+                void fill_type_aliases(HIR::TraitPath& out_path) const
+                {
+                    const HIR::Trait& tr = *out_path.m_trait_ptr;
                     // - Locate associated types for this trait
                     for(const auto& ty : tr.m_types)
                     {
+                        if( out_path.m_type_bounds.count(ty.first) == 0 )
                         {
                             HIR::TypeRef    v;
 
@@ -814,6 +825,7 @@ namespace {
                                 }
                             }
                             // TODO: What if there's multiple?
+                            DEBUG(ty.first << " = " << v);
 
                             if( v != ::HIR::TypeRef() )
                             {
@@ -821,6 +833,7 @@ namespace {
                             }
                         }
 
+                        if( out_path.m_trait_bounds.count(ty.first) == 0 )
                         {
                             std::vector<HIR::TraitPath> traits;
                             for(auto oit = tp_stack.rbegin(); oit != tp_stack.rend(); ++oit)
@@ -833,15 +846,13 @@ namespace {
                                         traits.push_back(t.clone());
                                 }
                             }
+                            DEBUG(ty.first << ": " << traits);
                             if( !traits.empty() )
                             {
                                 out_path.m_trait_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyBound { out_path.m_path.clone(), mv$(traits) }) );
                             }
                         }
                     }
-                    // TODO: HRLs?
-                    supertraits.push_back( mv$(out_path) );
-                    tp_stack.pop_back();
                 }
             };
 
