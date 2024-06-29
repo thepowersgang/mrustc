@@ -313,6 +313,33 @@ namespace resolve_ufcs {
                         // TODO: Struct?
                     }
                 }
+                #if 1
+                void visit(::HIR::ExprNode_StructLiteral& node) override
+                {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    const Span& sp = node.span();
+                    if(node.m_type.data().is_Path() && node.m_type.data().as_Path().path.m_data.is_Generic())
+                    {
+                        // If it points to an enum, set binding
+                        auto& p = node.m_type.data_mut().as_Path().path;
+                        auto& gp = p.m_data.as_Generic();
+                        if( gp.m_path.m_components.size() > 1 )
+                        {
+                            const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
+                            if( ent.is_Enum() )
+                            {
+                                DEBUG(&node << ": Tagging as an enum");
+                                node.m_is_struct = false;
+                                auto enum_path = std::move(gp);
+                                auto var_name = enum_path.m_path.m_components.back();
+                                enum_path.m_path.m_components.pop_back();
+                                auto enum_ty = HIR::TypeRef::new_path(std::move(enum_path), &ent.as_Enum());
+                                p = ::HIR::Path(std::move(enum_ty), std::move(var_name));
+                            }
+                        }
+                    }
+                }
+                #endif
 
                 // NOTE: Custom needed for trait scoping
                 void visit(::HIR::ExprNode_Block& node) override
