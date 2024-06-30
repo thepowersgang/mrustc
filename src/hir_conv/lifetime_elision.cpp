@@ -403,6 +403,15 @@ namespace
                         }
                     }
                 }
+                if( (e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN /*|| e->m_lifetime.binding == HIR::LifetimeRef::INFER*/)
+                    && !m_in_expr   // Not in expression
+                    )
+                {
+                    // HACK: If the trait has a lifeime param, use that
+                    if( !e->m_trait.m_path.m_params.m_lifetimes.empty() ) {
+                        e->m_lifetime = e->m_trait.m_path.m_params.m_lifetimes[0];
+                    }
+                }
                 // If there is no available rule (i.e. not in a borrow), and the lifetime was omitted (not just '_), then fill in 'static
                 if( false && m_trait_object_rule.empty() && e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN && !m_in_expr && !(m_create_elided && m_cur_params) )
                 {
