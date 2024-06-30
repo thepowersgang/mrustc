@@ -33,3 +33,21 @@
  rustc_data_structures::static_assert_size!(PResult<'_, bool>, 16);
  
  #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Encodable, Decodable)]
+--- compiler/rustc_const_eval/src/interpret/operand.rs
++++ compiler/rustc_const_eval/src/interpret/operand.rs
+@@ -755,5 +755,5 @@
+ 
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ mod size_asserts {
+     use super::*;
+--- compiler/rustc_const_eval/src/interpret/place.rs
++++ compiler/rustc_const_eval/src/interpret/place.rs
+@@ -1091,5 +1091,5 @@a
+ 
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ mod size_asserts {
+     use super::*;
