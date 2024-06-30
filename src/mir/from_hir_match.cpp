@@ -1556,6 +1556,17 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                         m_field_path.back() ++;
                     }
                     }
+                TU_ARMA(PathNamed, pe) {
+                    // Only allow with an empty tuple (assuming that the pattern is also empty)... or if the pattern is a wildcard
+                    if( sd.size() != 0 && !pe.is_wildcard() ) {
+                        BUG(sp, "Match not allowed, " << ty <<  " with " << pat);
+                    }
+                    for(const auto& fld : sd)
+                    {
+                        this->append_from(sp, empty_pattern, maybe_monomorph(fld.ent));
+                        m_field_path.back() ++;
+                    }
+                    }
                 TU_ARMA(PathTuple, pe) {
                     assert( pe.binding.is_Struct() );
                     PH::push_pattern_tuple(*this, sp, pe, maybe_monomorph);
