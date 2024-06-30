@@ -98,6 +98,9 @@ namespace {
         std::vector<LifetimeBound>  m_bounds;
         std::vector<LocalLifetime>  m_locals;
         std::vector<IvarLifetime>   m_ivars;
+        /// Assignment values to Type-Alias Impl-Trait, so they can be assigned after all is done
+        /// - The `PathParams` is used to map between this context and the TAIT
+        std::map<const HIR::TypeData_ErasedType_AliasInner*,std::pair<HIR::PathParams,HIR::TypeRef>>  m_tait_values;
 
         LifetimeInferState(const StaticTraitResolve& resolve)
             : m_resolve(resolve)
@@ -513,31 +516,6 @@ namespace {
         }
 
 
-        void visit_tait_inner(const HIR::TypeData_ErasedType_AliasInner& inner_c) {
-            const Span  sp;
-            auto& inner = const_cast<HIR::TypeData_ErasedType_AliasInner&>(inner_c);
-            if( inner_c.generics.m_lifetimes.empty() ) {
-            }
-            else if( inner_c.generics.m_lifetimes.size() == 1 ) {
-                auto params = inner_c.generics.make_nop_params(0);
-                struct M: MonomorphStatePtr {
-                    M(const HIR::PathParams& pp): MonomorphStatePtr(nullptr, &pp, nullptr) {
-                    }
-
-                    HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& l) const {
-                        if( l == HIR::LifetimeRef() ) {
-                            return HIR::LifetimeRef(0);
-                        }
-                        return MonomorphStatePtr::monomorph_lifetime(sp, l);
-                    }
-                } m { params };
-                inner.type = m.monomorph_type(sp, inner.type);
-            }
-            else {
-                TODO(sp, "TAIT " << inner_c.path << " has multiple lifetimes - how to handle?");
-            }
-        }
-
         void equate_lifetimes(const Span& sp, const HIR::LifetimeRef& lhs, const HIR::LifetimeRef& rhs) {
             DEBUG(lhs << " := " << rhs);
             ASSERT_BUG(sp, lhs != HIR::LifetimeRef() && lhs.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << lhs);
@@ -628,8 +606,6 @@ namespace {
             if( TU_TEST1(lhs.data(), ErasedType, .m_inner.is_Alias()) ) {
                 const auto& le = lhs.data().as_ErasedType().m_inner.as_Alias();
                 const auto* ee = le.inner.get();
-                // TODO: Ensure that the alias has been visited
-                this->visit_tait_inner(*ee);
                 if( TU_TEST2(rhs.data(), ErasedType, .m_inner, Alias, .inner.get() == ee) ) {
                 }
                 else if( TU_TEST1(rhs.data(), ErasedType, .m_inner.is_Alias()) ) {
@@ -637,16 +613,21 @@ namespace {
                 else {
                     DEBUG("LHS is TAIT");
                     // TODO: Only expand if valid module?
-                    equate_types(sp, MonomorphStatePtr(nullptr, &le.params, nullptr).monomorph_type(sp, ee->type), rhs);
+                    auto it = m_state.m_tait_values.insert(std::make_pair(ee, std::make_pair(
+                        le.params.clone(), rhs.clone()
+                        )));
+                    equate_types(sp, it.first->second.second, rhs);
                     return;
                 }
             }
             else if( TU_TEST1(rhs.data(), ErasedType, .m_inner.is_Alias()) ) {
                 const auto& re = rhs.data().as_ErasedType().m_inner.as_Alias();
                 const auto* ee = re.inner.get();
-                this->visit_tait_inner(*ee);
-                DEBUG("RHS is TAIT");
-                equate_types(sp, rhs, MonomorphStatePtr(nullptr, &re.params, nullptr).monomorph_type(sp, ee->type));
+                // TODO: Only expand if valid module?
+                auto it = m_state.m_tait_values.insert(std::make_pair(ee, std::make_pair(
+                    re.params.clone(), lhs.clone()
+                    )));
+                equate_types(sp, lhs, it.first->second.second);
                 return;
             }
 
@@ -2524,6 +2505,74 @@ namespace {
                 }
             } visitor(ms);
             visitor.visit_root(ep);
+        }
+        // Commit lifetimes in TAITs
+        {
+            for(auto& ent : state.m_tait_values)
+            {
+                const Span& sp = ep->span();    // TODO: Get a better liftime (first usage?)
+                auto& tait_inner = *const_cast<HIR::TypeData_ErasedType_AliasInner*>(ent.first);
+                HIR::PathParams& pp = ent.second.first;
+                HIR::TypeRef& ty = ent.second.second;
+
+                // Commit lifetimes
+                pp = ms.monomorph_path_params(Span(), pp, false);
+                ty = ms.monomorph_type(Span(), ty, false);
+
+                // Do a reverse monomorph of `ty` to convert from local context into alias context
+                if( !pp.m_values.empty() ) {
+                    TODO(sp, "Handle const-generics in TAIT");
+                }
+                struct ReverseMonomorph
+                    : public Monomorphiser
+                {
+                    /// Definition of the generics (on the TAIT inner)
+                    const HIR::GenericParams& m_generics;
+                    /// Local path params (input to the TAIT)
+                    const HIR::PathParams& m_params;
+                    ReverseMonomorph(const HIR::GenericParams& generics, const HIR::PathParams& params)
+                        : m_generics(generics)
+                        , m_params(params)
+                    {}
+
+                    // No generics should be reached, as all of them should have been covered by the params.
+                    ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+                        TODO(sp, "Should this see any generics? Probably not");
+                    }
+                    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+                        TODO(sp, "Should this see any generics? Probably not");
+                    }
+                    ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+                        TODO(sp, "Should this see any generics? Probably not");
+                    }
+
+                    HIR::TypeRef monomorph_type(const Span& sp, const HIR::TypeRef& tpl, bool allow_infer) const override {
+                        for(size_t i = 0; i < m_params.m_types.size(); i++ ) {
+                            if( tpl == m_params.m_types[i] ) {
+                                return HIR::TypeRef(m_generics.m_types.at(i).m_name, i);
+                            }
+                        }
+                        return Monomorphiser::monomorph_type(sp, tpl, allow_infer);
+                    }
+                    HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& tpl) const override {
+                        for(size_t i = 0; i < m_params.m_lifetimes.size(); i++ ) {
+                            if( tpl == m_params.m_lifetimes[i] ) {
+                                return HIR::LifetimeRef(i);
+                            }
+                        }
+                        return Monomorphiser::monomorph_lifetime(sp, tpl);
+                    }
+                } rm { tait_inner.generics, pp };
+
+                HIR::TypeRef transformed_type = rm.monomorph_type(sp, ty, /*allow_infer=*/false);
+                // Ensure that these types are compatible, by checking equality (which ignores liftimes)
+                ASSERT_BUG(sp, tait_inner.type == transformed_type, "Lifetime expanded TAIT type did not match existing!:\n"
+                    << "- Was: " << tait_inner.type
+                    << "- Now: " << transformed_type
+                    );
+                DEBUG("Set TAIT " << tait_inner.path << " = " << transformed_type);
+                tait_inner.type = std::move(transformed_type);
+            }
         }
 
         // Run type de-duplication over the tree again
