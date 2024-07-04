@@ -2567,7 +2567,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             if( can_fuzz )
             {
                 count += 1;
-                if( count == 1 ) {
+                if( count == 1 && impl.get_impl_type().data().tag() == pe.type.data().tag() ) {
                     best_impl = mv$(impl);
                 }
             }
