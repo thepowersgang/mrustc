@@ -3017,6 +3017,14 @@ HIR::TypeRef StaticTraitResolve::get_field_type(const Span& sp, const ::HIR::Typ
     TU_MATCH_HDRA((ty.data()), {)
     default:
         TODO(sp, "" << ty << " " << name);
+    TU_ARMA(Tuple, te) {
+        ::std::stringstream ss { name.c_str() };
+        int idx = -1;
+        ss >> idx;
+        ASSERT_BUG(sp, idx >= 0, "Malformed tuple index field name - `" << name << "`");
+        ASSERT_BUG(sp, size_t(idx) < te.size(), "Tuple index out of bounds");
+        return te.at(idx).clone();
+        }
     TU_ARMA(Path, te) {
         TU_MATCH_HDRA( (te.binding), {)
         default:
