@@ -483,7 +483,7 @@ std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
 /// While loop (either as a statement, or as part of an expression)
 ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime)
 {
-    if( lex.lookahead(0) == TOK_RWORD_LET ) {
+    if( TARGETVER_LEAST_1_74 || lex.lookahead(0) == TOK_RWORD_LET ) {
         // TODO: Pattern list (same as match)?
         auto conditions = Parse_IfLetChain(lex);
         return NEWNODE( AST::ExprNode_WhileLet, lifetime, ::std::move(conditions), Parse_ExprBlockNode(lex) );
