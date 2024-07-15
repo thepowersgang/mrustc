@@ -5730,13 +5730,13 @@ namespace
             auto t_l = clone_ty_with(sp, bound->left_ty, cb);
             auto t_r = clone_ty_with(sp, (*bound->right_node_ptr)->m_res_type, cb);
             if(!used_ty) {
-                DEBUG("[" << ty_l << "] Skip R" << bound->rule_idx << " - " << bound->left_ty << " := " << (*bound->right_node_ptr)->m_res_type);
+                //DEBUG("[" << ty_l << "] Skip Corerce R" << bound->rule_idx << " - " << bound->left_ty << " := " << (*bound->right_node_ptr)->m_res_type);
                 continue ;
             }
             t_l = context.m_resolve.expand_associated_types( sp, mv$(t_l) );
             t_r = context.m_resolve.expand_associated_types( sp, mv$(t_r) );
-            DEBUG("[" << ty_l << "] Check R" << bound->rule_idx << " - " << bound->left_ty << " := " << (*bound->right_node_ptr)->m_res_type);
-            DEBUG("Mutated " << t_l << " := " << t_r);
+            DEBUG("Check Coerce R" << bound->rule_idx << " - " << bound->left_ty << " := " << (*bound->right_node_ptr)->m_res_type);
+            DEBUG("Testing " << t_l << " := " << t_r);
 
             switch(check_coerce_tys(context, sp, t_l, t_r, nullptr, bound->right_node_ptr))
             {
@@ -5746,7 +5746,7 @@ namespace
                 break;
             case CoerceResult::Equality:
                 // NOTE: looking for strict inequality (fuzzy is allowed)
-                DEBUG("Check " << t_l << " == " << t_r);
+                DEBUG("Equality requested, checking " << t_l << " == " << t_r);
                 if( t_l.compare_with_placeholders(sp, t_r, context.m_ivars.callback_resolve_infer()) == HIR::Compare::Unequal )
                 {
                     DEBUG("- Bound failed");
@@ -5803,14 +5803,14 @@ namespace
             auto t = clone_ty_with(sp, bound.impl_ty, cb);
             auto p = clone_path_params_with(sp, bound.params, cb);
             if(!used_ty) {
-                DEBUG("[" << ty_l << "] Skip R" << bound.rule_idx << " - " << bound.impl_ty << " : " << bound.trait << bound.params);
+                //DEBUG("[" << ty_l << "] Skip Assoc R" << bound.rule_idx << " - " << bound.impl_ty << " : " << bound.trait << bound.params);
                 continue;
             }
             // - Run EAT on t and p
             t = context.m_resolve.expand_associated_types( sp, mv$(t) );
-            // TODO: EAT on `p`
-            DEBUG("Check " << t << " : " << bound.trait << p);
-            DEBUG("- From " << bound.impl_ty << " : " << bound.trait << bound.params);
+            // TODO: Run EAT on `p`?
+            DEBUG("Check Assoc R" << bound.rule_idx << " - " << bound.impl_ty << " : " << bound.trait << bound.params);
+            DEBUG("-> " << t << " : " << bound.trait << p);
 
             // Search for any trait impl that could match this,
             bool bound_failed = true;
@@ -5846,6 +5846,7 @@ namespace
             }
 
             // TODO: Check for the resultant associated type
+            DEBUG("Acceptable (Assoc R" << bound.rule_idx << ")");
         }
 
         // Handle methods
@@ -5886,6 +5887,8 @@ namespace
     enum class IvarPossFallbackType {
         // No fallback, only make safe/definitive decisions
         None,
+        // Can propagate backwards
+        Backwards,
         // Picks an option, even if there's ivars present?
         Assume,
         // Ignores the weaker disable flags (`force_no_to` and `force_no_from`)
@@ -5897,6 +5900,7 @@ namespace
         switch(t)
         {
         case IvarPossFallbackType::None:    os << "";   break;
+        case IvarPossFallbackType::Backwards:   os << " backwards";   break;
         case IvarPossFallbackType::Assume:  os << " weak";   break;
         case IvarPossFallbackType::IgnoreWeakDisable:  os << " unblock";   break;
         case IvarPossFallbackType::FinalOption:  os << " final";   break;
@@ -6825,7 +6829,7 @@ namespace
                         num_distinct += 1;
                     }
                 }
-                DEBUG("- " << num_distinct << " distinct sources");
+                DEBUG("- " << num_distinct << " distinct destinations");
                 // 2. Find the most restrictive destination type
                 // - Borrows are more restrictive than pointers
                 // - Borrows of Sized types are more restrictive than any other
@@ -7249,6 +7253,7 @@ namespace
                 switch(fallback_ty)
                 {
                 case IvarPossFallbackType::None:
+                case IvarPossFallbackType::Backwards:
                     active = (n_ivars == 0 && ivar_ent.bounded.size() == 0);
                     break;
                 case IvarPossFallbackType::Assume:
@@ -7269,7 +7274,7 @@ namespace
             }
             // -- Single source/destination --
             // Try if in first level fallback, or the bounded list is empty
-            if(  (!honour_disable || !ivar_ent.has_bounded) )
+            if( (!honour_disable || !ivar_ent.has_bounded) )
             {
                 // If there's only one non-deref in the list OR there's only one deref in the list
                 if( n_src_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s) == 1 )
@@ -7280,7 +7285,7 @@ namespace
                     context.equate_types(sp, ty_l, new_ty);
                     return true;
                 }
-                if( n_dst_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )
+                if( fallback_ty != IvarPossFallbackType::None && n_dst_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )
                 {
                     auto it = ::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s);
                     const auto& new_ty = *it->ty;
@@ -7602,6 +7607,19 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 }
             }
         } // `if peek_changed` (ivar possibilities)
+
+        // If nothing has changed, 
+        if( !context.m_ivars.peek_changed() )
+        {
+            // Check the possible equations
+            DEBUG("--- IVar possibilities (fallback 0)");
+            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            {
+                if( check_ivar_poss(context, i, context.possible_ivar_vals[i], IvarPossFallbackType::Backwards) ) {
+                    break;
+                }
+            }
+        }
 
         // If nothing has changed, run check_ivar_poss again but allow it to assume is has all the options
         if( !context.m_ivars.peek_changed() )
