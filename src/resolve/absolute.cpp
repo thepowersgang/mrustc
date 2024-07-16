@@ -2280,12 +2280,12 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
                 this->context.end_patbind();
 
                 for(auto& cond : arm.m_guard) {
+                    cond.value->visit(*this);
                     if( cond.opt_pat ) {
                         this->context.start_patbind();
                         Resolve_Absolute_Pattern(this->context, true,  *cond.opt_pat);
                         this->context.end_patbind();
                     }
-                    cond.value->visit(*this);
                 }
                 assert( arm.m_code );
                 arm.m_code->visit( *this );
