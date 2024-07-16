@@ -1022,6 +1022,54 @@ namespace
                     DEBUG("Elided 'single");
                 }
             }
+            // TODO: Search for an explicit lifetime in the input, and use that if there was only one?
+            if( elided_output_lifetime == HIR::LifetimeRef() ) {
+                struct V: public HIR::Visitor {
+                    HIR::LifetimeRef out;
+                    unsigned n_found = 0;
+                    void add_lifetime(const HIR::LifetimeRef& lft) {
+                        if( lft.is_hrl() ) {
+                            // HRL - ignore
+                            return;
+                        }
+                        n_found += 1;
+                        out = lft;
+                    }
+                    void visit_path_params(HIR::PathParams& pp) override {
+                        for(auto& lft : pp.m_lifetimes) {
+                            add_lifetime(lft);
+                        }
+
+                        HIR::Visitor::visit_path_params(pp);
+                    }
+                    void visit_type(HIR::TypeRef& ty) override {
+                        if(const auto* tep = ty.data().opt_Borrow()) {
+                            add_lifetime(tep->lifetime);
+                        }
+                        if(const auto* tep = ty.data().opt_Function()) {
+                            // Push HRLs?
+                            (void)tep;
+                        }
+                        if(const auto* tep = ty.data().opt_TraitObject()) {
+                            add_lifetime(tep->m_lifetime);
+                            // Push HRLs?
+                        }
+                        if(const auto* tep = ty.data().opt_ErasedType()) {
+                            for(const auto& lft : tep->m_lifetimes) {
+                                add_lifetime(lft);
+                            }
+                        }
+                        HIR::Visitor::visit_type(ty);
+                    }
+                } v;
+                for(auto& a : item.m_args) {
+                    v.visit_type(a.second);
+                }
+                if( v.n_found == 1 ) {
+                    elided_output_lifetime = v.out;
+                    DEBUG("Explicit 'single (recurse)");
+                }
+            }
             if( elided_output_lifetime == HIR::LifetimeRef() ) {
                 // TODO: If the only argument is a `'static`, use that? (or if there's only one borrow in the arguments, use that)
                 if( item.m_args.size() == 1 && item.m_args.front().second.data().is_Borrow() ) {
