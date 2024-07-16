@@ -7057,6 +7057,10 @@ namespace {
                     MIR_BUG(mir_res, "Unknown atomic intrinsic '" << name << "'");
                 }
             }
+            else if( name == "option_payload_ptr" ) {   // 1.74 only, removed later
+                // Converts `*const Option<T>` to `*const T`, even if `None`
+                emit_lvalue(e.ret_val); m_of << " = &("; emit_param(e.args.at(0)); m_of << ")->DATA.var_1. _0";
+            }
             // -- stdarg --
             else if( name == "va_copy" ) {
                 m_of << "va_copy( *(va_list*)&"; emit_param(e.args.at(0)); m_of << ", *(va_list*)&"; emit_param(e.args.at(1)); m_of << ")";
