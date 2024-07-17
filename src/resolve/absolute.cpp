@@ -480,6 +480,10 @@ namespace
                 DEBUG(mp);
                 if(mp.crate != "")
                 {
+                    HIR::SimplePath vis_path;
+                    vis_path.m_crate_name = mp.crate;
+                    vis_path.m_components = mp.ents;
+
                     static Span sp;
                     // External crate path
                     ASSERT_BUG(sp, m_crate.m_extern_crates.count(mp.crate), "Crate not loaded for " << mp);
@@ -535,7 +539,7 @@ namespace
                     case LookupMode::PatternType:
                     case LookupMode::Type: {
                         auto it = mod->m_mod_items.find(name);
-                        if(it != mod->m_mod_items.end()) {
+                        if( it != mod->m_mod_items.end() ) {
                             const auto* item = &it->second->ent;
                             auto item_path = AST::AbsolutePath(mp.crate, mp.ents) + name;
                             if( item->is_Import() ) {
@@ -557,6 +561,15 @@ namespace
                             TU_MATCH_HDRA( (*item), {)
                             default:
                                 TODO(sp, "Bind type/mod '" << name << "' for module path " << mp << " : " << item->tag_str());
+                            TU_ARMA(Module, e) {
+                                bindings.type.set( item_path, AST::PathBinding_Type::make_Module({nullptr, { &crate, &e }}) );
+                                }
+                            TU_ARMA(Trait, e) {
+                                bindings.type.set( item_path, AST::PathBinding_Type::make_Trait({nullptr}) );
+                                }
+                            TU_ARMA(TypeAlias, e) {
+                                bindings.type.set( item_path, AST::PathBinding_Type::make_TypeAlias({nullptr}) );
+                                }
                             TU_ARMA(Struct, e) {
                                 bindings.type.set( item_path, AST::PathBinding_Type::make_Struct({nullptr}) );
                                 }

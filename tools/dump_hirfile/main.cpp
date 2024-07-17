@@ -355,7 +355,7 @@ void Dumper::dump_constant(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << pub << "const " << ip << ": " << c.m_type << " = " << c.m_value_res << "\n";
+    ::std::cout << indent << pub << " const " << ip << ": " << c.m_type << " = " << c.m_value_res << "\n";
 }
 void Dumper::dump_static(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Static& c, int nindent/*=0*/) const
 {
@@ -366,7 +366,7 @@ void Dumper::dump_static(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << pub << "static " << ip << ": " << c.m_type << " = " << c.m_value_res << "\n";
+    ::std::cout << indent << pub << " static " << ip << ": " << c.m_type << " = " << c.m_value_res << "\n";
 }
 void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent/*=0*/) const
 {
@@ -377,7 +377,7 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << "fn " << ip << fcn.m_params.fmt_args() << "(";
+    ::std::cout << indent << pub << " fn " << ip << fcn.m_params.fmt_args() << "(";
     for(const auto& a : fcn.m_args) {
         ::std::cout << "\n" << indent << indent.s << a.first << " : " << a.second;
         ::std::cout << ",";

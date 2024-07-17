@@ -117,10 +117,14 @@
             for(const auto& i : s)
                 serialise(i);
         }
+        void serialise(const ::HIR::Publicity& pub)
+        {
+            m_out.write_bool(pub.is_global());
+        }
         template<typename T>
         void serialise(const ::HIR::VisEnt<T>& e)
         {
-            m_out.write_bool(e.publicity.is_global());  // At this stage, we only care if the item is visible outside the crate or not
+            serialise(e.publicity);
             serialise(e.ent);
         }
         template<typename T>

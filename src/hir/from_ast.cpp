@@ -1945,7 +1945,9 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         const auto& sp = mod_span;
         if( ie.first.c_str()[0] == ' ' )
             continue;
-        if( ie.second.is_import && ie.second.is_pub ) {
+        // TODO: Only transfer private imports if this module contains a `macro`?
+        // - Well... sub-modules that contain a `macro` would also lead to the same import
+        if( ie.second.is_import ) { //&& ie.second.is_pub ) {
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Type );
             assert(hir_path.m_components.empty() || hir_path.m_components.back() != "");
             ::HIR::TypeItem ti;
@@ -1965,7 +1967,8 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         const auto& sp = mod_span;
         if( ie.first.c_str()[0] == ' ' )
             continue;
-        if( ie.second.is_import && ie.second.is_pub ) {
+        // TODO: See code for `m_namespace_items` above
+        if( ie.second.is_import ) {//&& ie.second.is_pub ) {
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Value );
             assert(!hir_path.m_components.empty());
             assert(hir_path.m_components.back() != "");
