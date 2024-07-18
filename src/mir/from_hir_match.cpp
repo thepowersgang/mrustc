@@ -336,6 +336,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             size_t first_rule = arm_rules.size();
             for(auto& sr : pat_builder.m_rulesets)
             {
+                ::std::sort(sr.m_bindings.begin(), sr.m_bindings.end(),
+                    [](const PatternBinding& a, const PatternBinding& b){ return a.binding->m_slot < b.binding->m_slot; });
                 size_t i = &sr - &pat_builder.m_rulesets.front();
                 if( sr.m_is_impossible )
                 {
