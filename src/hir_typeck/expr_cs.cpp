@@ -4030,6 +4030,7 @@ namespace {
     enum CoerceResult {
         Unknown,    // Coercion still unknown.
         Equality,   // Types should be equated
+        Fail,   // Equality would fail
         Custom, // An op was emitted, and rule is complete
         Unsize, // Emits an _Unsize op
     };
@@ -4055,7 +4056,12 @@ namespace {
         {
             // [T] can't unsize to anything
             DEBUG("Slice can't unsize");
-            return CoerceResult::Equality;
+            if( dst.data().is_Slice() || dst.data().is_Infer() ) {
+                return CoerceResult::Equality;
+            }
+            else {
+                return CoerceResult::Fail;
+            }
         }
 
         // Handle ivars specially
@@ -4824,6 +4830,8 @@ namespace {
                         // Continue on with coercion (now that node_ptr is updated)
                         switch( check_unsize_tys(context, sp, dep->inner, se.inner, context_mut, &node_ptr) )
                         {
+                        case CoerceResult::Fail:
+                            return CoerceResult::Fail;
                         case CoerceResult::Unknown:
                             // Add new coercion at the new inner point
                             if( &node_ptr != node_ptr_ptr )
@@ -4909,6 +4917,8 @@ namespace {
                 // Add downcast
                 switch( check_unsize_tys(context, sp, dep->inner, se.inner, context_mut, node_ptr_ptr) )
                 {
+                case CoerceResult::Fail:
+                    return CoerceResult::Fail;
                 case CoerceResult::Unknown:
                     return CoerceResult::Unknown;
                 case CoerceResult::Custom:
@@ -5014,6 +5024,8 @@ namespace {
                         // Continue on with coercion (now that node_ptr is updated)
                         switch( check_unsize_tys(context, sp, dep->inner, se.inner, context_mut, &node_ptr) )
                         {
+                        case CoerceResult::Fail:
+                            return CoerceResult::Fail;
                         case CoerceResult::Unknown:
                             // Add new coercion at the new inner point
                             if( &node_ptr != node_ptr_ptr )
@@ -5192,6 +5204,8 @@ namespace {
 
         switch( check_coerce_tys(context, sp, ty_dst, ty_src, &context, &node_ptr) )
         {
+        case CoerceResult::Fail:
+            return false;
         case CoerceResult::Unknown:
             DEBUG("Unknown - keep");
             return false;
@@ -5740,9 +5754,17 @@ namespace
 
             switch(check_coerce_tys(context, sp, t_l, t_r, nullptr, bound->right_node_ptr))
             {
+            case CoerceResult::Fail:
+                DEBUG("Fail - Invalid");
+                return true;
             case CoerceResult::Unsize:
+                DEBUG("Unsize - Valid");
+                break;
             case CoerceResult::Unknown:
+                DEBUG("Unknown?");
+                break;
             case CoerceResult::Custom:
+                DEBUG("Custom");
                 break;
             case CoerceResult::Equality:
                 // NOTE: looking for strict inequality (fuzzy is allowed)
@@ -5785,6 +5807,8 @@ namespace
             case CoerceResult::Unknown:
             case CoerceResult::Custom:
                 break;
+            case CoerceResult::Fail:
+                return true;
             case CoerceResult::Equality:
                 // NOTE: looking for strict inequality (fuzzy is allowed)
                 DEBUG("Check " << pty.ty << " == " << new_ty);
