@@ -383,6 +383,7 @@ namespace
                 // - If there is a unique bound from the containing type then that is the default
                 // - If there is more than one bound from the containing type then an explicit bound must be specified
 
+                bool was_static_rule = false;
                 // If the lifetime is omitted, or '_
                 // ... AND this is within prototype (not in an expression)
                 if( (e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN /*|| e->m_lifetime.binding == HIR::LifetimeRef::INFER*/)
@@ -398,18 +399,20 @@ namespace
                             if( m_trait_object_rule.back().second ) {
                                 const auto& lft = *m_trait_object_rule.back().second;
                                 e->m_lifetime = lft;
+                                was_static_rule = (lft.binding == HIR::LifetimeRef::STATIC);
                                 DEBUG("TraitObject: Set lifetime " << e->m_lifetime << " - trait object rule");
                             }
                         }
                     }
                 }
-                if( (e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN /*|| e->m_lifetime.binding == HIR::LifetimeRef::INFER*/)
+                if( (was_static_rule || e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN /*|| e->m_lifetime.binding == HIR::LifetimeRef::INFER*/)
                     && !m_in_expr   // Not in expression
                     )
                 {
                     // HACK: If the trait has a lifeime param, use that
-                    if( !e->m_trait.m_path.m_params.m_lifetimes.empty() ) {
+                    if( !e->m_trait.m_hrtbs && e->m_trait.m_path.m_params.m_lifetimes.size() == 1 ) {
                         e->m_lifetime = e->m_trait.m_path.m_params.m_lifetimes[0];
+                        DEBUG("TraitObject: Set to first/only lifetime param of data trait: " << e->m_lifetime);
                     }
                 }
                 // If there is no available rule (i.e. not in a borrow), and the lifetime was omitted (not just '_), then fill in 'static
