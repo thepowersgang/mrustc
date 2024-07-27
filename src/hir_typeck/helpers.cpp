@@ -3872,6 +3872,9 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             return ::HIR::Compare::Fuzzy;
         }
         else {
+            if( type.data().is_Path() && type.data().as_Path().binding.is_Unbound() ) {
+                return ::HIR::Compare::Fuzzy;
+            }
             return ::HIR::Compare::Unequal;
         }
         }
