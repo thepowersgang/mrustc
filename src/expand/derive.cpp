@@ -2018,14 +2018,16 @@ namespace {
             {
                 if( mac_import.name == mac_name )
                 {
-                    if( mac_import.macro_ptr ) {
-                        // macro_rules! based derive?
-                        TODO(sp, "Custom derive using macro_rules?");
+                    TU_MATCH_HDRA( (mac_import.ref), {)
+                    default:
+                        break;
+                    TU_ARMA(ExternalProcMacro, pm) {
+                        DEBUG("proc_macro " << pm->path);
+                        mac_path.push_back(pm->path.m_crate_name);
+                        mac_path.insert(mac_path.end(), pm->path.m_components.begin(), pm->path.m_components.end());
+                        }
                     }
-                    else {
-                        // proc_macro - Invoke the handler.
-                        DEBUG("proc_macro " << mac_import.path);
-                        mac_path = mac_import.path;
+                    if( !mac_path.empty() ) {
                         break;
                     }
                 }

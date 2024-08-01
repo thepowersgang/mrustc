@@ -152,3 +152,4 @@
 - `use $ty::*;` - where `$ty:ty` in a `macro_rules`
 - Did I mention ATCs/GATs? Because they exist, and needed fixes
 - Complex interactions with nested associated-type bounds in supertraits
+- `use info;` where `info` was `#[macro_use]`'d from an extern in crate root, seen in librustc_interface `utils.rs`

@@ -2306,9 +2306,9 @@ public:
 
         for( const auto& mac : crate.m_root_module.m_macro_imports )
         {
-            if( mac.is_pub || (mac.macro_ptr && mac.macro_ptr->m_exported) ) {
+            if( mac.is_pub || (mac.ref.is_MacroRules() && mac.ref.as_MacroRules()->m_exported) ) {
                 // Add to the re-export list
-                auto path = ::HIR::SimplePath(mac.path.front(), ::std::vector<RcString>(mac.path.begin()+1, mac.path.end()));
+                auto path = ::HIR::SimplePath(mac.path.crate, mac.path.nodes);
                 auto res = macros.insert( std::make_pair(mac.name, HIR::MacroItem::make_Import({path})) );
                 if( !res.second ) {
                     DEBUG("Conflict in imported vs local macros: " << mac.name);
@@ -2626,6 +2626,13 @@ public:
                         for(auto& rule : mr.m_rules)
                         {
                             fix_macro_contents(rule.m_contents);
+                        }
+                    }
+                    if( const auto* i = mi.second->ent.opt_Import() ) {
+                        if( i->path.m_crate_name == CRATE_BUILTINS ) {
+                        }
+                        else if( const auto* i2 = g_crate_ptr->get_macroitem_by_path(Span(), i->path).opt_Import() ) {
+                            BUG(Span(), "Attempted recusive import - " << i->path << " points at " << i2->path);
                         }
                     }
                 }

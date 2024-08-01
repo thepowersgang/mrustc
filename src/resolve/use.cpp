@@ -472,12 +472,70 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             }
         }
     }
-    // TODO: macros
     for(const auto& mac : mod.macros())
     {
         if( mac.name == des_item_name ) {
             rv.macro.set( mod.path() + mac.name, ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*mac.data }) );
+            DEBUG("Macro definition: " << rv.macro.path);
             break;
+        }
+    }
+    // NOTE: `use macroname;` can refer to a macro already in-scope via a parent `#[macro_use]`
+    // - So, need to look upwards
+    // - Can't use `parent_modules`, as that's only for anon.
+    if( rv.macro.is_Unbound() )
+    {
+        ::std::vector<const AST::Module*>   mods;
+        mods.push_back(&crate.root_module());
+        for(size_t i = 0; i < mod.path().nodes.size(); i++)
+        {
+            const auto& n = mod.path().nodes[i];
+            const AST::Module*  nm = nullptr;
+            if( n.c_str()[0] == '#' ) {
+                // Lazy option: just enumerate and check, instead of parsing the index
+                for(const auto& e : mods.back()->anon_mods()) {
+                    if( e && e->path().nodes.back() == n ) {
+                        nm = &*e;
+                        break;
+                    }
+                }
+            }
+            else {
+                for(const auto& e : mods.back()->m_items)
+                {
+                    if( e->data.is_Module() ) {
+                        if( e->name == mod.path().nodes[i] ) {
+                            nm = &e->data.as_Module();
+                        }
+                    }
+                }
+            }
+            ASSERT_BUG(span, nm, "Failed to find `" << n << " in " << mod.path());
+            mods.push_back( nm );
+        }
+        for(size_t i = mods.size(); i --; )
+        {
+            const auto& check_mod = *mods[i];
+            for(const auto& mac : check_mod.m_macro_imports)
+            {
+                if( mac.name == des_item_name ) {
+                    DEBUG("Macro Import - " << mac.path);
+                    TU_MATCH_HDRA( (mac.ref), { )
+                    TU_ARMA(None, e) {}
+                    TU_ARMA(MacroRules, e) {
+                        rv.macro.set( mac.path, ::AST::PathBinding_Macro::make_MacroRules({ nullptr, e }) );
+                        }
+                    TU_ARMA(BuiltinProcMacro, e) {}
+                    TU_ARMA(ExternalProcMacro, e) {}
+                    }
+                    if( ! rv.macro.is_Unbound() ) {
+                        break;
+                    }
+                }
+            }
+            if( ! rv.macro.is_Unbound() ) {
+                break;
+            }
         }
     }
     // TODO: If target is the crate root AND the crate exports macros with `macro_export`
@@ -487,6 +545,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if(it != crate.m_exported_macros.end())
         {
             rv.macro.set( mod.path() + des_item_name, ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*it->second }) );
+            DEBUG("Crate-exported macro - " << rv.macro.path);
         }
     }
 

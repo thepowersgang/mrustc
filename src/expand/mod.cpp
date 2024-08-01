@@ -347,14 +347,13 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
 
             // Find the last macro of this name (allows later #[macro_use] definitions to override)
             MacroRef    rv;
-            for( const auto& mri : mac_mod.macro_imports_res() )
+            for( const auto& mri : mac_mod.m_macro_imports )
             {
                 //DEBUG("- " << mri.name);
                 if( mri.name == name )
                 {
                     DEBUG("?::" << mri.name << " - Imported");
-
-                    rv = mri.data.clone();
+                    rv = mri.ref.clone();
                 }
             }
             if( !rv.is_None() )
@@ -1893,18 +1892,14 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
 
     if( es.mode == ExpandMode::FirstPass )
     {
-        for( const auto& mi: mod.macro_imports_res() )
-            DEBUG("- Imports '" << mi.name << "'");
         // Import all macros from parent module.
         if( first_item == 0 )
         {
-            for( const auto& mi: mod.macro_imports_res() )
-                DEBUG("- Imports '" << mi.name << "'");
             if( es.modstack.m_prev )
             {
                 for(const auto& mac : es.modstack.m_prev->m_item->m_macro_imports)
                 {
-                    mod.m_macro_imports.push_back(mac);
+                    mod.m_macro_imports.push_back(mac.clone());
                 }
             }
             for( const auto& mi: mod.m_macro_imports )
@@ -2096,7 +2091,9 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 {
                     DEBUG("Use " << ue.path);
 
-                    auto m = Resolve_Lookup_Macro(ue.sp, es.crate, mod.path(), ue.path, /*out_path=*/nullptr);
+                    AST::AbsolutePath   ref_path;
+                    auto m = Resolve_Lookup_Macro(ue.sp, es.crate, mod.path(), ue.path, /*out_path=*/&ref_path);
+                    MacroRef   ref;
                     TU_MATCH_HDRA( (m), { )
                     TU_ARMA(None, e) {
                         // Not found? Ignore.
@@ -2105,15 +2102,15 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                         // Ignore builtins, they're always available.
                         }
                     TU_ARMA(ProcMacro, pm) {
-                        auto mi = AST::Module::MacroImport{ false, ue.name, pm->path.m_components, nullptr };
-                        mi.path.insert(mi.path.begin(), pm->path.m_crate_name);
-                        mod.m_macro_imports.push_back(mv$(mi));
-
-                        mod.add_macro_import(ue.sp, ue.name, pm);
+                        ref = pm;
                         }
                     TU_ARMA(MacroRules, mr) {
-                        mod.add_macro_import(ue.sp, ue.name, mr);
+                        ref = mr;
                         }
+                    }
+                    if( ! ref.is_None() ) {
+                        DEBUG("+ Macro Import: " << ref_path);
+                        mod.m_macro_imports.push_back(AST::Module::MacroImport { false, ue.name, std::move(ref_path), std::move(ref) });
                     }
                 }
             }
@@ -2645,34 +2642,15 @@ void Expand(::AST::Crate& crate)
         } while( mods.size() > 0 );
 
         // - Exported macros imported by the root (is this needed?)
-        for( auto& mac : crate.m_root_module.macro_imports_res() )
-        {
-            if( mac.data.is_MacroRules() && mac.data.as_MacroRules()->m_exported && mac.name != "" ) {
-                auto v = ::std::make_pair( mac.name, mac.data.as_MacroRules() );
-                auto it = exported_macros.find(mac.name);
-                if( it == exported_macros.end() )
-                {
-                    auto res = exported_macros.insert( mv$(v) );
-                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
-                }
-                else if( v.second->m_rules.empty() ) {
-                    // Skip
-                }
-                else {
-                    DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
-                    it->second = mv$( v.second );
-                }
-            }
-        }
         // - Re-exported macros (ignore proc macros for now?)
         for( const auto& mac : crate.m_root_module.m_macro_imports )
         {
             if( mac.is_pub )
             {
-                if( !mac.macro_ptr ) {
+                if( !mac.ref.is_MacroRules() ) {
                     continue ;
                 }
-                auto v = ::std::make_pair( mac.name, mac.macro_ptr );
+                auto v = ::std::make_pair( mac.name, mac.ref.as_MacroRules() );
 
                 auto it = exported_macros.find(mac.name);
                 if( it == exported_macros.end() )
