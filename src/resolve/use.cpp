@@ -791,8 +791,8 @@ namespace {
     const auto& nodes = path.nodes();
     const ::HIR::Module* hmod = &hmodr;
 
-    for(unsigned int i = start; i < nodes.size(); i ++)
-        ap.nodes.push_back( nodes[i].name() );
+    //for(unsigned int i = start; i < nodes.size(); i ++)
+    //    ap.nodes.push_back( nodes[i].name() );
 
     if(nodes.size() == start) {
         rv.type.set( ap, ::AST::PathBinding_Type::make_Module({nullptr, { &hcrate, hmod } }) );
@@ -800,6 +800,7 @@ namespace {
     }
     for(unsigned int i = start; i < nodes.size() - 1; i ++)
     {
+        ap.nodes.push_back( nodes[i].name() );
         DEBUG("m_mod_items = {" << FMT_CB(ss, for(const auto& e : hmod->m_mod_items) ss << e.first << ", ";) << "}");
         auto it = hmod->m_mod_items.find(nodes[i].name());
         if( it == hmod->m_mod_items.end() ) {
@@ -840,6 +841,8 @@ namespace {
                 return rv;
             }
             else {
+                ap.crate = e.path.m_crate_name;
+                ap.nodes = e.path.m_components;
                 hmod = reinterpret_cast<const ::HIR::Module*>(ptr);
             }
             }
@@ -852,6 +855,7 @@ namespace {
                 ERROR(span, E0000, "Encountered enum at unexpected location in import");
             }
             const auto& name = nodes[i].name();
+            ap.nodes.push_back(name);
 
             auto idx = e.find_variant(name);
             if(idx == SIZE_MAX) {
@@ -868,7 +872,8 @@ namespace {
         }
     }
     // > Found the target module
-    
+    ap.nodes.push_back( nodes.back().name() );
+
     // - namespace/type items
     {
         auto it = hmod->m_mod_items.find(nodes.back().name());
