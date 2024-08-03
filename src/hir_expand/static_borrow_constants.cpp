@@ -40,7 +40,9 @@ namespace static_borrow_constants {
 
         HIR::SimplePath m_lang_RangeFull;
 
+        // Output from a node visit
         bool    m_is_constant;
+        // Running state: Cleared if `m_is_constant` is false after a node visit
         bool    m_all_constant;
     public:
         ExprVisitor_Mark(const StaticTraitResolve& resolve, const ::HIR::TypeRef* self_type, const ::HIR::ExprPtr& expr_ptr)
@@ -98,6 +100,20 @@ namespace static_borrow_constants {
             m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
 
+            if( const auto* inode = dynamic_cast<::HIR::ExprNode_PathValue*>(node.m_value.get())
+                //&& node.m_value->m_usage == HIR::ValueUsage::Borrow
+                )
+            {
+                MonomorphState  ms;
+                auto v = m_resolve.get_value(node.span(), inode->m_path, ms, /*signature_only*/true);
+                if(v.is_Static())
+                {
+                    m_all_constant = saved_all_constant;
+                    m_is_constant = true;
+                    return ;
+                }
+            }
+
             // If the inner is constant (Array, Struct, Literal, const)
             if( m_all_constant )
             {
@@ -121,6 +137,7 @@ namespace static_borrow_constants {
                 auto& value_ptr = *value_ptr_ptr;
                 if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(value_ptr_ptr->get()))
                 {
+                    (void)inner_node;
                     m_all_constant = saved_all_constant;
                     m_is_constant = true;
                     return ;
@@ -374,6 +391,24 @@ namespace static_borrow_constants {
                 break;
             case StaticTraitResolve::ValuePtr::TAG_Function:
                 m_is_constant = true;
+                break;
+            case StaticTraitResolve::ValuePtr::TAG_Static:
+                if( v.as_Static()->m_is_mut ) {
+                    DEBUG("Static mut, can't use in consteval");
+                }
+                else if( monomorphise_path_needed(node.m_path) ) {
+                    DEBUG("Static path is still generic, can't transform into a `static`");
+                }
+                else if( !v.as_Static()->m_value_generated && !v.as_Static()->m_value ) {
+                    DEBUG("Static isn't known, cannot use in consteval");
+                }
+                else if( !m_resolve.type_is_copy(node.span(), node.m_res_type) ) {
+                    DEBUG("Static isn't copy, cannot use in consteval");
+                }
+                else {
+                    m_is_constant = !is_maybe_interior_mut(node);
+                    DEBUG(node.m_path << " m_is_constant=" << m_is_constant);
+                }
                 break;
             default:
                 break;
@@ -907,6 +942,7 @@ namespace static_borrow_constants {
                 auto& value_ptr = *value_ptr_ptr;
                 if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(value_ptr_ptr->get()))
                 {
+                    (void)inner_node;
                     BUG(node.span(), "Unexpected inner being deref?");
                     return ;
                 }
@@ -1205,6 +1241,14 @@ namespace static_borrow_constants {
             {
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
+
+
+                if( !item.m_is_mut
+                    && m_resolve.type_is_copy(item.m_value->span(), item.m_type)
+                    && m_resolve.type_is_interior_mutable(item.m_value->span(), item.m_type) == HIR::Compare::Unequal
+                    ) {
+                    item.m_save_literal = true;
+                }
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {

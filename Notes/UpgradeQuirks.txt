@@ -153,3 +153,6 @@
 - Did I mention ATCs/GATs? Because they exist, and needed fixes
 - Complex interactions with nested associated-type bounds in supertraits
 - `use info;` where `info` was `#[macro_use]`'d from an extern in crate root, seen in librustc_interface `utils.rs`
+- Reading `static`s in `const` (or another `static`), breaks some of the logic (librustc_driver_impl `DEFAULT_LOCALE_RESOURCES`)
+  - Even if it is allowed, those statics haven't had their values saved in the metadata.
+
