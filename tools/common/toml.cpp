@@ -495,7 +495,7 @@ Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
         }
         return Token { Type::String, str };
     default:
-        if(isalpha(c) || c == '_')
+        if(isalnum(c) || c == '_')
         {
             // Identifier
             while(isalnum(c) || c == '-' || c == '_')
@@ -504,67 +504,65 @@ Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                 c = is.get();
             }
             is.putback(c);
-            return Token { Type::Ident, str };
-        }
-        else if( c == '0' )
-        {
-            c = is.get();
-            if( c == 'x' )
-            {
-                c = is.get();
-                int64_t val = 0;
-                while(isxdigit(c))
-                {
-                    val *= 16;
-                    val += (c <= '9' ? c - '0' : (c & ~0x20) - 'A' + 10);
-                    c = is.get();
-                }
-                is.putback(c);
-                return Token { Type::Integer, val };
-            }
-            else if( c == 'o' )
-            {
-                c = is.get();
-                int64_t val = 0;
-                while(isdigit(c))
-                {
-                    val *= 8;
-                    val += c - '0';
-                    c = is.get();
-                }
-                is.putback(c);
-                return Token { Type::Integer, val };
-            }
-            else if( c == 'b' )
-            {
-                c = is.get();
-                int64_t val = 0;
-                while(isdigit(c))
-                {
-                    val *= 2;
-                    val += c - '0';
-                    c = is.get();
-                }
-                is.putback(c);
-                return Token { Type::Integer, val };
-            }
-            else
-            {
-                is.putback(c);
-                return Token { Type::Integer, 0 };
-            }
-        }
-        else if( isdigit(c) )
-        {
+
             int64_t val = 0;
-            while(isdigit(c))
-            {
-                val *= 10;
-                val += c - '0';
-                c = is.get();
+            bool is_all_digit;
+            if( str.size() > 2 && str[0] == '0' ) {
+                if(str[1] == 'x') {
+                    is_all_digit = true;
+                    for(size_t i = 2; i < str.size(); i ++) {
+                        c = str[i];
+                        if( !isxdigit(c) ) {
+                            is_all_digit = false;
+                            break;
+                        }
+                        val *= 16;
+                        val += (c <= '9' ? c - '0' : (c & ~0x20) - 'A' + 10);
+                    }
+                }
+                else if(str[1] == 'o') {
+                    is_all_digit = true;
+                    for(size_t i = 2; i < str.size(); i ++) {
+                        c = str[i];
+                        if( !('0' <= c && c <= '7') ) {
+                            is_all_digit = false;
+                            break;
+                        }
+                        val *= 8;
+                        val += c - '0';
+                    }
+                }
+                else if(str[1] == 'b') {
+                    is_all_digit = true;
+                    for(size_t i = 2; i < str.size(); i ++) {
+                        c = str[i];
+                        if( !('0' <= c && c <= '1') ) {
+                            is_all_digit = false;
+                            break;
+                        }
+                        val *= 2;
+                        val += c - '0';
+                    }
+                }
+                else {
+                    // Literal `0` is handled below
+                }
             }
-            is.putback(c);
-            return Token { Type::Integer, val };
+            else {
+                is_all_digit = true;
+                for(char c : str) {
+                    if( !isdigit(c) ) {
+                        is_all_digit = false;
+                        break;
+                    }
+                    val *= 10;
+                    val += c - '0';
+                }
+            }
+            if( is_all_digit ) {
+                return Token { Type::Integer, val };
+            }
+            return Token { Type::Ident, str };
         }
         else
         {
