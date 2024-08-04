@@ -312,7 +312,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     }
 
     b.sort_list();
-    
+
     // Move the contents of the above list to this class's list
     m_list.reserve(b.m_list.size());
     for(const auto& e : b.m_list)
@@ -360,9 +360,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 DEBUG("Clean " << job->name());
                 // Add as not-built
                 items_notbuilt.insert(std::make_pair(job->name(), ts));
-                #if 1
                 joblist.add_job(std::move(job));
-                #endif
             }
         }
 
@@ -455,10 +453,14 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
             }
         }
     } convert_state(runner);
-    
+
     for(const auto& e : m_list)
     {
         const auto& p = *e.package;
+        if( p.is_std_magic() ) {
+            convert_state.items_notbuilt.insert(std::make_pair( run_state.get_key(p, false, e.is_host), Timestamp::infinite_past() ));
+            continue ;
+        }
 
         auto job = ::std::make_unique<Job_BuildTarget>(run_state, p, p.get_library(), e.is_host);
         DEBUG("> Considering " << job->name());
@@ -530,7 +532,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
         break;
     //case BuildOptions::Mode::Examples:
     }
-    
+
     return runner.run_all(num_jobs, dry_run);
 }
 

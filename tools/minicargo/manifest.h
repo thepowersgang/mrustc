@@ -351,11 +351,15 @@ class PackageManifest
 
 public:
     static PackageManifest load_from_toml(const ::std::string& path, const WorkspaceManifest* wm);
+    static PackageManifest magic_manifest(const char* name);
 private:
     void fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm, const TomlKeyValue& kv);
 
 public:
     const PackageVersion& version() const { return m_version; }
+    bool is_std_magic() const {
+        return m_manifest_dir == ::helpers::path();
+    }
     bool has_library() const;
     const PackageTarget& get_library() const;
 

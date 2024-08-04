@@ -431,6 +431,12 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
     return rv;
 }
 
+PackageManifest PackageManifest::magic_manifest(const char* name)
+{
+    PackageManifest rv;
+    rv.m_name = std::string("rustc-std-workspace-") + name;
+    return rv;
+}
 
 void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm, const TomlKeyValue& key_val)
 {
@@ -1396,6 +1402,16 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
         //m_manifest = repo.find(this->name(), this->get_version());
         throw ::std::runtime_error(format("No source for ", this->name()));
     }
+
+    if( !m_manifest )
+    {
+        if( m_name == "rustc-std-workspace-alloc" )
+        {
+            static std::shared_ptr<PackageManifest> s_manifest_alloc = std::make_shared<PackageManifest>(PackageManifest::magic_manifest("alloc"));
+            m_manifest = s_manifest_alloc;
+        }
+    }
+
     return m_manifest;
 }
 void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps)
