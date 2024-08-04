@@ -102,6 +102,7 @@ int main(int argc, const char* argv[])
         }
 
         auto bs_override_dir = opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path();
+        auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
 
         Cfg_SetTarget(opts.target);
 
@@ -111,23 +112,11 @@ int main(int argc, const char* argv[])
             Manifest_LoadOverrides(opts.manifest_overrides);
         }
 
-        // 1. Load the Cargo.toml file from the passed directory
-        Debug_SetPhase("Load Root");
-        auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
-        auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
-        m.set_features(opts.features, !opts.no_default_features);
-
-        if(false)
-        {
-            m.dump(std::cout);
-        }
-
         Debug_SetPhase("Load Workspace");
-        auto workspace_manifest_path = m.workspace_path();
-        if( !workspace_manifest_path.is_valid() )
+        WorkspaceManifest   workspace_manifest;
+        ::helpers::path workspace_manifest_path;
         {
-            auto p = helpers::path( m.manifest_path() );
-            p.pop_component();  // remove `Cargo.toml`
+            auto p = dir / ".";
             // Search parent dir and up (pop current dir and then start checking)
             while( p.pop_component() )
             {
@@ -145,6 +134,15 @@ int main(int argc, const char* argv[])
                         if( key_val.path[0] == "workspace" )
                         {
                             is_workspace = true;
+                            workspace_manifest_path = pp;
+                            break;
+                        }
+                        if( key_val.path[0] == "package" && key_val.path[1] == "workspace" )
+                        {
+                            // TODO: Is this only valid when `p == dir`?
+                            is_workspace = true;
+                            workspace_manifest_path = key_val.value.as_string();
+                            workspace_manifest_path /= "Cargo.toml";
                             break;
                         }
                     }
@@ -152,7 +150,6 @@ int main(int argc, const char* argv[])
 
                 if( is_workspace )
                 {
-                    workspace_manifest_path = pp;
                     break;
                 }
             }
@@ -164,60 +161,23 @@ int main(int argc, const char* argv[])
         else
         {
             DEBUG("Workspace manifest " << workspace_manifest_path);
-            TomlFile    toml_file(workspace_manifest_path);
-
-            for(auto key_val : toml_file)
-            {
-                if( key_val.path[0] == "patch" )
-                {
-                    if( key_val.path.size() < 4 ) {
-                        DEBUG("Too-short path " << key_val.path);
-                        continue ;
-                    }
-                    const auto& repo_name = key_val.path[1];
-                    const auto& package_name = key_val.path[2];
-                    // This is a dependency section
-                    if( key_val.path[3] == "path" )
-                    {
-                        if( key_val.path.size() != 4 ) {
-                            DEBUG("Wrong-length path " << key_val.path);
-                            continue ;
-                        }
-                        if( key_val.value.m_type != TomlValue::Type::String ) {
-                            DEBUG("Incorrect type " << key_val.value);
-                            continue ;
-                        }
-                        if( repo_name == "crates-io" )
-                        {
-                            // Kinda hacky to do overrides in the repository, but it works
-                            auto p = workspace_manifest_path.parent() / key_val.value.as_string();
-                            DEBUG("Override " << package_name << " = path " << p);
-                            repo.add_patch_path(package_name, p);
-                        }
-                        else
-                        {
-                            DEBUG("TODO: Handle patching other types of dependencies");
-                        }
-                    }
-                    else
-                    {
-                        TODO("Handle workspace patch dependency frag '" << key_val.path[3] << "'");
-                    }
-                }
-                else if( key_val.path[0] == "replace" )
-                {
-                    TODO(toml_file.lexer() << ": Handle [replace]");
-                }
-                else if( key_val.path[0] == "profile" )
-                {
-                    // Igonore for now
-                }
-                else
-                {
-                }
+            workspace_manifest = WorkspaceManifest::load_from_toml(workspace_manifest_path);
+            DEBUG("- Applying patches");
+            for(const auto& p : workspace_manifest.patches()) {
+                repo.add_patch_path(p.first, p.second);
             }
+            repo.set_workspace(workspace_manifest);
         }
 
+        // 1. Load the Cargo.toml file from the passed directory
+        Debug_SetPhase("Load Root");
+        auto m = PackageManifest::load_from_toml( dir / "Cargo.toml", &workspace_manifest );
+        m.set_features(opts.features, !opts.no_default_features);
+
+        if(false)
+        {
+            m.dump(std::cout);
+        }
 
         // Resolve dependencies to ensure only one version of each semver line exists
         {

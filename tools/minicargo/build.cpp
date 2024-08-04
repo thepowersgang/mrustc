@@ -877,7 +877,7 @@ RunnableJob Job_BuildTarget::start()
     auto depfile = outfile + ".d";
 
     StringList  args;
-    args.push_back(::helpers::path(m_manifest.manifest_path()).parent() / ::helpers::path(m_target.m_path));
+    args.push_back(m_manifest.directory() / ::helpers::path(m_target.m_path));
     push_args_common(args, outfile, m_is_for_host);
     args.push_back("--crate-name"); args.push_back(m_target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back(crate_type);
@@ -986,7 +986,7 @@ RunnableJob Job_BuildScript::start()
     auto outfile = get_outfile();
 
     StringList  args;
-    args.push_back( ::helpers::path(m_manifest.manifest_path()).parent() / ::helpers::path(m_manifest.build_script()) );
+    args.push_back( m_manifest.directory() / ::helpers::path(m_manifest.build_script()) );
     push_args_common(args, outfile, /*is_for_host=*/true);
     args.push_back("--crate-name"); args.push_back("build");
     args.push_back("--crate-type"); args.push_back("bin");

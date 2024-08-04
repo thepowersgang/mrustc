@@ -104,7 +104,7 @@ void Repository::load_vendored(const ::helpers::path& path)
     auto it = m_path_cache.find(path);
     if(it == m_path_cache.end())
     {
-        ::std::shared_ptr<PackageManifest> rv ( new PackageManifest(PackageManifest::load_from_toml(path)) );
+        ::std::shared_ptr<PackageManifest> rv ( new PackageManifest(PackageManifest::load_from_toml(path, m_workspace_manifest)) );
 
         m_path_cache.insert( ::std::make_pair(::std::move(path), rv) );
 
@@ -119,7 +119,7 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
 {
     auto manifest_path = path / "Cargo.toml";
 
-    auto loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(manifest_path)) );
+    auto loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(manifest_path, m_workspace_manifest)) );
 
     Entry   cache_ent;
     cache_ent.manifest_path = manifest_path;
@@ -180,7 +180,7 @@ void Repository::blacklist_dependency(const PackageManifest* dep_ptr)
             }
             try
             {
-                best->loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(best->manifest_path)) );
+                best->loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(best->manifest_path, m_workspace_manifest)) );
             }
             catch(const ::std::exception& e)
             {

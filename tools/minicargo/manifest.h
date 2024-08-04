@@ -14,6 +14,7 @@
 #include <functional>
 #include <path.h>
 
+class WorkspaceManifest;
 class PackageManifest;
 class Repository;
 struct TomlKeyValue;
@@ -157,6 +158,7 @@ struct PackageVersionSpec
 class PackageRef
 {
     friend class PackageManifest;
+    friend class WorkspaceManifest;
     ::std::string   m_key;
     ::std::string   m_name;
     PackageVersionSpec  m_version;
@@ -178,7 +180,11 @@ class PackageRef
     {
     }
 
-    void fill_from_kv(ErrorHandler& eh, bool was_created, const TomlKeyValue& kv, size_t ofs);
+    void fill_from_kv(
+        ErrorHandler& eh,
+        bool was_created, const TomlKeyValue& kv, size_t ofs,
+        const WorkspaceManifest* wm, const ::helpers::path& base_dir
+        );
 
 public:
     const ::std::string& key() const { return m_key; }
@@ -283,10 +289,34 @@ public:
     ::std::vector<::std::pair<::std::string, ::std::string>>    downstream_env;
 };
 
+class WorkspaceManifest
+{
+    ::std::map< ::std::string, ::helpers::path> m_patches;
+
+    Edition m_edition = Edition::Unspec;
+    struct Dependencies {
+        ::std::vector<PackageRef>   main;
+        ::std::vector<PackageRef>   build;
+        ::std::vector<PackageRef>   dev;
+    };
+    Dependencies    m_dependencies;
+
+public:
+    WorkspaceManifest();
+    static WorkspaceManifest load_from_toml(const ::helpers::path& workspace_manifest_path);
+
+    Edition edition() const { return m_edition; }
+    const ::std::map< ::std::string, ::helpers::path>& patches() const { return m_patches; }
+    const ::std::vector<PackageRef>& dependencies() const { return m_dependencies.main; }
+    const ::std::vector<PackageRef>& build_dependencies() const { return m_dependencies.build; }
+    const ::std::vector<PackageRef>& dev_dependencies() const { return m_dependencies.dev; }
+private:
+    void fill_from_kv(ErrorHandler& eh, const TomlKeyValue& kv);
+};
+
 class PackageManifest
 {
-    ::std::string   m_manifest_path;
-    helpers::path   m_workspace_manifest;
+    ::helpers::path m_manifest_dir;
 
     ::std::string   m_name;
     PackageVersion  m_version;
@@ -320,9 +350,9 @@ class PackageManifest
     PackageManifest();
 
 public:
-    static PackageManifest load_from_toml(const ::std::string& path);
+    static PackageManifest load_from_toml(const ::std::string& path, const WorkspaceManifest* wm);
 private:
-    void fill_from_kv(ErrorHandler& eh, const TomlKeyValue& kv);
+    void fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm, const TomlKeyValue& kv);
 
 public:
     const PackageVersion& version() const { return m_version; }
@@ -345,13 +375,7 @@ public:
     }
 
     const ::helpers::path directory() const {
-        return ::helpers::path(m_manifest_path).parent();
-    }
-    const ::std::string& manifest_path() const {
-        return m_manifest_path;
-    }
-    const ::helpers::path& workspace_path() const {
-        return m_workspace_manifest;
+        return m_manifest_dir;
     }
     const ::std::string& name() const {
         return m_name;
@@ -396,3 +420,4 @@ public:
 
     void load_build_script(const ::std::string& path);
 };
+

@@ -115,15 +115,140 @@ void Manifest_LoadOverrides(const ::std::string& s)
     s_overrides.load_from_toml(s);
 }
 
+WorkspaceManifest::WorkspaceManifest()
+{
+}
+WorkspaceManifest WorkspaceManifest::load_from_toml(const ::helpers::path& workspace_manifest_path)
+{
+    WorkspaceManifest   rv;
+    TomlFile    toml_file(workspace_manifest_path);
+    ErrorHandlerLex eh(toml_file.lexer());
+
+    auto dir = workspace_manifest_path.parent();
+
+    for(auto key_val : toml_file)
+    {
+        if( key_val.path[0] == "patch" )
+        {
+            DEBUG(key_val.path << " = " << key_val.value);
+            if( key_val.path.size() < 4 ) {
+                eh.error("Too-short path ", key_val.path);
+                continue ;
+            }
+            const auto& repo_name = key_val.path[1];
+            const auto& package_name = key_val.path[2];
+            // This is a dependency section
+            if( key_val.path[3] == "path" )
+            {
+                if( key_val.path.size() != 4 ) {
+                    eh.error(key_val.path, ": Wrong-length path ", key_val.path);
+                    continue ;
+                }
+                if( key_val.value.m_type != TomlValue::Type::String ) {
+                    eh.error(key_val.path, ": Incorrect type ", key_val.value);
+                    continue ;
+                }
+                if( repo_name == "crates-io" )
+                {
+                    // Kinda hacky to do overrides in the repository, but it works
+                    auto p = workspace_manifest_path.parent() / key_val.value.as_string();
+                    DEBUG("Override " << package_name << " = path " << p);
+                    rv.m_patches.emplace( package_name, std::move(p) );
+                }
+                else
+                {
+                    DEBUG("TODO: Handle patching other types of dependencies");
+                }
+            }
+            else
+            {
+                TODO("Handle workspace patch dependency frag '" << key_val.path[3] << "'");
+            }
+        }
+        else if( key_val.path[0] == "replace" )
+        {
+            DEBUG(key_val.path << " = " << key_val.value);
+            TODO(toml_file.lexer() << ": Handle [replace]");
+        }
+        else if( key_val.path[0] == "profile" )
+        {
+            // Igonore for now
+            DEBUG(key_val.path << " = " << key_val.value);
+        }
+        else if( key_val.path[0] == "workspace" )
+        {
+            DEBUG(key_val.path << " = " << key_val.value);
+            assert(key_val.path.size() > 1);
+            const auto& key = key_val.path[1];
+            if( key == "resolver" )
+            {
+                // Resolver version, doesn't really matter for minicargo?
+            }
+            else if( key == "members" || key == "exclude" )
+            {
+                // Ignore members list, for now.
+            }
+            else if( key == "package" )
+            {
+                // Default values for packages
+                assert(key_val.path.size() > 2);
+                const auto& key = key_val.path[2];
+                if( key == "edition" ) {
+                    parse_edition(rv.m_edition, eh, key_val.value);
+                }
+                else if( key == "rust-version" ) {
+                    // Ignore, that's future-me's problem
+                }
+                else if( key == "license" ) {
+                    // Documentation metdata
+                }
+                else {
+                    eh.error("Unknown item in [workspace.package] : `", key, "`");
+                }
+            }
+            else if( key == "dependencies" ) {
+                auto& dep_group = rv.m_dependencies;
+                ::std::vector<PackageRef>& dep_list =
+                    key == "dependencies" ? dep_group.main :
+                    key == "build-dependencies" ? dep_group.build :
+                    /*key == "dev-dependencies" ? */ dep_group.dev /*:
+                                                                               throw ""*/
+                    ;
+
+                assert(key_val.path.size() > 2);
+                const auto& depname = key_val.path[2];
+
+                // Find/create dependency descriptor
+                auto it = ::std::find_if(dep_list.begin(), dep_list.end(), [&](const auto& x) { return x.m_key == depname; });
+                bool was_added = (it == dep_list.end());
+                if( was_added )
+                {
+                    it = dep_list.insert(it, PackageRef{ depname });
+                }
+
+                it->fill_from_kv(eh, was_added, key_val, 3, nullptr, dir);
+            }
+            else {
+                eh.error("Unknown item in [workspace] `", key, "`");
+            }
+        }
+        else
+        {
+        }
+    }
+
+    return rv;
+}
+
 PackageManifest::PackageManifest()
 {
 }
 
-PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
+PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const WorkspaceManifest* wm/*=nullptr*/)
 {
     PackageManifest rv;
-    rv.m_manifest_path = path;
     auto package_dir = ::helpers::path(path).parent();
+    rv.m_manifest_dir = package_dir;
 
     TomlFile    toml_file(path);
     ErrorHandlerLex error_handler(toml_file.lexer());
@@ -143,7 +268,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
         DEBUG(key_val.path << " = " << key_val.value);
 
-        rv.fill_from_kv(error_handler, key_val);
+        rv.fill_from_kv(error_handler, wm, key_val);
     }
     if(overrides)
     {
@@ -152,7 +277,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             assert(key_val.path.size() > 0);
             DEBUG("ADD " << key_val.path << " = " << key_val.value);
 
-            rv.fill_from_kv(error_handler, key_val);
+            rv.fill_from_kv(error_handler, wm, key_val);
         }
     }
 
@@ -307,7 +432,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
 }
 
 
-void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val)
+void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm, const TomlKeyValue& key_val)
 {
     auto& rv = *this;
 
@@ -412,18 +537,22 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             }
             else if( key == "workspace" )
             {
-                if( rv.m_workspace_manifest.is_valid() )
-                {
-                    eh.warning("Duplicate workspace specification");
-                }
-                else
-                {
-                    rv.m_workspace_manifest = key_val.value.as_string();
-                }
+                // Handled in `main.cpp`
             }
             else if( key == "edition" )
             {
-                if( key_val.path.size() != 2 ) {
+                if( key_val.path.size() == 3 && key_val.path[2] == "workspace" ) {
+                    if( !wm ) {
+                        eh.error("Using edition.workspace with no workspace");
+                    }
+                    else if( key_val.value.as_bool() ) {
+                        if( wm->edition() == Edition::Unspec ) {
+                            eh.error("Using edition.workspace with workspace-specified edition");
+                        }
+                        rv.m_edition = wm->edition();
+                    }
+                }
+                else if( key_val.path.size() != 2 ) {
                     // Can be `edition.workspace = true`
                     eh.error("Malformed `edition`?");
                 }
@@ -498,7 +627,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                 section == "dependencies" ? dep_group.main :
                 section == "build-dependencies" ? dep_group.build :
                 /*section == "dev-dependencies" ? */ dep_group.dev /*:
-                                                                           throw ""*/
+                throw ""*/
                 ;
             assert(key_val.path.size() > 1);
 
@@ -512,7 +641,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                 it = dep_list.insert(it, PackageRef{ depname });
             }
 
-            it->fill_from_kv(eh, was_added, key_val, 2);
+            it->fill_from_kv(eh, was_added, key_val, 2, wm, m_manifest_dir);
         }
         else if( section == "patch" )
         {
@@ -573,7 +702,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                         it = dep_list.insert(it, PackageRef{ depname });
                     }
 
-                    it->fill_from_kv(eh, was_added, key_val, 4);
+                    it->fill_from_kv(eh, was_added, key_val, 4, wm, m_manifest_dir);
                 }
                 else
                 {
@@ -604,12 +733,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
         }
         else if( section == "workspace" )
         {
-            // NOTE: This will be parsed in full by other code?
-            if( ! rv.m_workspace_manifest.is_valid() )
-            {
-                // TODO: if the workspace was specified via `[package] workspace` then error
-                rv.m_workspace_manifest = rv.m_manifest_path;
-            }
+            // NOTE: This is parsed in WorkspaceManifest::load_from_toml
         }
         // crates.io metadata
         else if( section == "badges" )
@@ -741,8 +865,39 @@ namespace
     }
 }
 
-void PackageRef::fill_from_kv(ErrorHandler& eh, bool was_added, const TomlKeyValue& key_val, size_t base_idx)
+void PackageRef::fill_from_kv(
+    ErrorHandler& eh, bool was_added, const TomlKeyValue& key_val, size_t base_idx,
+    const WorkspaceManifest* wm, const ::helpers::path& base_dir
+    )
 {
+
+    if( key_val.path.size() >= base_idx+1 && key_val.path[base_idx] == "workspace" ) {
+        assert(base_idx >= 2);
+        //const auto& section = key_val.path[base_idx-2];
+        const auto& depname = key_val.path[base_idx-1];
+        if( key_val.value.as_bool() ) {
+            if( !wm ) {
+                eh.error("Using workspace depdency with no loaded workspace");
+            }
+            if( !was_added ) {
+                eh.warning("Workspace dependency already added?");
+            }
+            const auto& src_deps = wm->dependencies();
+            //const auto& src_deps =
+            //    section == "dependencies" ? wm->dependencies() :
+            //    section == "build-dependencies" ? wm->build_dependencies() :
+            //    /*section == "dev-dependencies" ? */ wm->dev_dependencies() /*:
+            //    throw ""*/
+            //    ;
+            auto s_it = ::std::find_if(src_deps.begin(), src_deps.end(), [&](const auto& x) { return x.m_key == depname; });
+            if( s_it == src_deps.end() ) {
+                eh.error("Unable to find dependency `", depname, "` in workspace");
+            }
+            *this = *s_it;
+        }
+        return ;
+    }
+
     if( key_val.path.size() == base_idx )
     {
         // Shorthand, picks a version from the package repository
@@ -770,7 +925,12 @@ void PackageRef::fill_from_kv(ErrorHandler& eh, bool was_added, const TomlKeyVal
         {
             assert(key_val.path.size() == base_idx+1);
             // Set path specification of the named depenency
-            this->m_path = key_val.value.as_string();
+            if( key_val.value.as_string() == "" ) {
+                this->m_path = base_dir;
+            }
+            else {
+                this->m_path = base_dir / key_val.value.as_string();
+            }
         }
         else if( attr == "git" )
         {
@@ -825,7 +985,7 @@ void PackageRef::fill_from_kv(ErrorHandler& eh, bool was_added, const TomlKeyVal
         else
         {
             // TODO: Error
-            eh.error("ERROR: Unkown dependency attribute `", attr, "` on dependency `", this->m_name, "`");
+            eh.error("ERROR: Unknown dependency attribute `", attr, "` on dependency `", this->m_name, "`");
         }
     }
 }
@@ -835,8 +995,7 @@ void PackageManifest::dump(std::ostream& os) const
     os
         << "PackageManifest {\n"
         << "  '" << m_name << "' v" << m_version << (m_links != "" ? " links=" : "") << m_links << "\n"
-        << "  m_manifest_path = " << m_manifest_path << "\n"
-        << "  m_workspace_manifest = " << m_workspace_manifest << "\n"
+        << "  m_manifest_dir = " << m_manifest_dir << "\n"
         << "  m_edition = " << (int)m_edition << "\n"
         << "  m_dependencies = [\n";
     this->iter_main_dependencies([&](const PackageRef& dep) {
@@ -1004,7 +1163,6 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build, bo
     }
     m_dependencies_loaded = true;
     DEBUG("Loading depencencies for " << m_name);
-    auto base_path = ::helpers::path(m_manifest_path).parent();
 
     // 2. Recursively load dependency manifests
     iter_main_dependencies([&](const PackageRef& dep_c) {
@@ -1014,11 +1172,11 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build, bo
             return ;
         }
         try {
-            dep.load_manifest(repo, base_path, include_build);
+            dep.load_manifest(repo, m_manifest_dir, include_build);
         }
         catch(const std::exception& )
         {
-            std::cerr << "While processing " << this->manifest_path() << std::endl;
+            std::cerr << "While processing " << this->m_manifest_dir << std::endl;
             throw ;
         }
     });
@@ -1034,11 +1192,11 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build, bo
                 return ;
             }
             try {
-                dep.load_manifest(repo, base_path, include_build);
+                dep.load_manifest(repo, m_manifest_dir, include_build);
             }
             catch(const std::exception& )
             {
-                std::cerr << "While processing build deps " << this->manifest_path() << std::endl;
+                std::cerr << "While processing build deps " << this->m_manifest_dir << std::endl;
                 throw ;
             }
         });
@@ -1054,11 +1212,11 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build, bo
                 return ;
             }
             try {
-                dep.load_manifest(repo, base_path, include_build);
+                dep.load_manifest(repo, m_manifest_dir, include_build);
             }
             catch(const std::exception& )
             {
-                std::cerr << "While processing dev deps " << this->manifest_path() << std::endl;
+                std::cerr << "While processing dev deps " << m_manifest_dir << std::endl;
                 throw ;
             }
         });
@@ -1069,7 +1227,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
 {
     ::std::ifstream is( path );
     if( !is.good() )
-        throw ::std::runtime_error(format("Unable to open build script file '" + path + "' for ", this->m_manifest_path));
+        throw ::std::runtime_error(format("Unable to open build script file '" + path + "' for ", this->m_manifest_dir));
 
     BuildScriptOutput   rv;
 
@@ -1213,7 +1371,8 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
     {
         DEBUG("Load dependency " << m_name << " from path " << m_path);
         // Search for a copy of this already loaded
-        auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
+        //auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
+        auto path = ::helpers::path(m_path) / "Cargo.toml";
         if( ::std::ifstream(path.str()).good() )
         {
             try
