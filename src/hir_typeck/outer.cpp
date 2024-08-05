@@ -717,7 +717,7 @@ namespace {
             (UfcsKnown,
                 this->visit_type(e.type);
                 m_self_types.push_back(&e.type);
-                this->visit_generic_path(e.trait, pc);
+                this->visit_generic_path(e.trait, ::HIR::Visitor::PathContext::TRAIT);
                 m_self_types.pop_back();
                 // TODO: Locate impl block and check parameters
                 ),
