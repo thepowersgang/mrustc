@@ -792,8 +792,18 @@ namespace {
 }
 
 namespace {
-    const ::HIR::ItemPath* g_impl_trait_source_type;
-    const ::HIR::GenericParams* g_impl_trait_source_params;
+    struct ImplTraitSource {
+        const ::HIR::ItemPath*  path;
+        const ::HIR::GenericParams* params_outer;
+        const ::HIR::GenericParams* params_inner = nullptr;
+
+        ImplTraitSource(const ::HIR::ItemPath* path, const ::HIR::GenericParams* params_outer, const ::HIR::GenericParams* params_inner=nullptr)
+            : path(path)
+            , params_outer(params_outer)
+            , params_inner(params_inner)
+        {}
+        ImplTraitSource(): path(nullptr), params_outer(nullptr) {}
+    } g_impl_trait_source;
 }
 
 ::HIR::TypeRef LowerHIR_Type(const ::TypeRef& ty)
@@ -982,16 +992,24 @@ namespace {
         {
             TODO(ty.span(), "Handle multiple lifetime parameters - " << ty);
         }
+        ::HIR::TypeData_ErasedType_Inner    inner;
+        if( g_impl_trait_source.path ) {
+            if( g_impl_trait_source.params_inner && g_impl_trait_source.params_inner->is_generic() ) {
+                TODO(ty.span(), "Handle multi-layered generic erased type (used in a GAT)");
+            }
+            inner = ::HIR::TypeData_ErasedType_Inner(::HIR::TypeData_ErasedType_Inner::Data_Alias {
+                g_impl_trait_source.params_outer->make_nop_params(0),
+                std::make_shared<HIR::TypeData_ErasedType_AliasInner>(*g_impl_trait_source.path, *g_impl_trait_source.params_outer)
+                });
+        }
+        else {
+            inner = ::HIR::TypeData_ErasedType_Inner::Data_Fcn { ::HIR::Path(::HIR::SimplePath()), 0 };  // Populated in bind, could be populated now?
+        }
         return ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
             is_sized,
             mv$(traits),
             mv$(lfts),
-            g_impl_trait_source_type
-            ? ::HIR::TypeData_ErasedType_Inner(::HIR::TypeData_ErasedType_Inner::Data_Alias {
-                g_impl_trait_source_params->make_nop_params(0),
-                std::make_shared<HIR::TypeData_ErasedType_AliasInner>(*g_impl_trait_source_type, *g_impl_trait_source_params)
-                })
-            : ::HIR::TypeData_ErasedType_Inner::Data_Fcn { ::HIR::Path(::HIR::SimplePath()), 0 }    // Populated in bind, could be populated now?
+            mv$(inner)
             } );
         }
     TU_ARMA(Function, e) {
@@ -1022,16 +1040,15 @@ namespace {
 
 ::HIR::TypeAlias LowerHIR_TypeAlias(const HIR::ItemPath& p, const ::AST::TypeAlias& ta)
 {
-    assert(!g_impl_trait_source_type);
+    assert(!g_impl_trait_source.path);
     auto params = LowerHIR_GenericParams(ta.params(), nullptr);
-    g_impl_trait_source_type = &p;
-    g_impl_trait_source_params = &params;
+    g_impl_trait_source = ImplTraitSource(&p, &params);
     auto ty = LowerHIR_Type(ta.type());
     //if( auto* e = ty.data_mut().opt_ErasedType() ) {
     //    DEBUG("Flag type alias - " << &ty.data());
     //    e->m_inner = std::make_shared<HIR::TypeData_ErasedType_AliasInner>(p);
     //}
-    g_impl_trait_source_type = nullptr;
+    g_impl_trait_source = ImplTraitSource();
     return ::HIR::TypeAlias { std::move(params), ::std::move(ty) };
 }
 
@@ -2086,7 +2103,18 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         }
                     TU_ARMA(Type, e) {
                         DEBUG("- type " << item.name);
+                        auto aty_params = LowerHIR_GenericParams(e.params(), nullptr);
+                        //ASSERT_BUG(Span(), aty_params.is_empty(), "TODO: GATs");
+
+                        assert(!g_impl_trait_source.path);
+                        HIR::ItemPath   ip1(mod_path);
+                        ::std::string name2 = ::std::string("#impl_") + ::std::to_string((uintptr_t)&impl) + "_" + item.name.c_str();
+                        HIR::ItemPath   ip2(ip1, name2.c_str());
+                        g_impl_trait_source = ImplTraitSource(&ip2, &params, &aty_params);
+
                         types.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { item.is_specialisable, LowerHIR_Type(e.type()) }) );
+
+                        g_impl_trait_source = ImplTraitSource();
                         }
                     TU_ARMA(Function, e) {
                         DEBUG("- method " << item.name);

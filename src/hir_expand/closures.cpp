@@ -1974,12 +1974,10 @@ void HIR_Expand_Closures(::HIR::Crate& crate)
         OuterVisitorPass2(const ::HIR::Crate& crate)
             : m_resolve(crate)
         {}
-        void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override {
-            HIR::Visitor::visit_type_alias(p, item);
-
+        void fix_type(HIR::TypeRef& ty) const {
             MonomorphiserNop    mm;
             ExprVisitor_Fixup   fixup(m_resolve.m_crate, nullptr, mm);
-            visit_ty_with(item.m_type, [&fixup](const HIR::TypeRef& ty)->bool {
+            visit_ty_with(ty, [&fixup](const HIR::TypeRef& ty)->bool {
                 if( const auto* e = ty.data().opt_ErasedType() )
                 {
                     if( const auto* ee = e->m_inner.opt_Alias() )
@@ -1989,6 +1987,16 @@ void HIR_Expand_Closures(::HIR::Crate& crate)
                 }
                 return false;
                 });
+        }
+        void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override {
+            HIR::Visitor::visit_type_alias(p, item);
+            fix_type(item.m_type);
+        }
+        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override {
+            HIR::Visitor::visit_trait_impl(trait_path, impl);
+            for(auto& t : impl.m_types) {
+                fix_type(t.second.data);
+            }
         }
     };
     OuterVisitorPass2(crate).visit_crate(crate);

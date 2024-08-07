@@ -157,3 +157,4 @@
   - Even if it is allowed, those statics haven't had their values saved in the metadata.
 - `rustc-std-workspace-*` handling required
   - When not building the standard library, those crates should be pointed at the standard library (or just removed?)
+- `impl Trait` in ATYs
