@@ -1283,6 +1283,7 @@ namespace {
                 {
                     args.push_back("-g");
                 }
+                // TODO: Why?
                 args.push_back("-fPIC");
                 args.push_back("-o");
                 switch(out_ty)
@@ -1578,7 +1579,7 @@ namespace {
         {
             m_of << "__asm__ (\"";
             if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
-                m_of << ".intel_syntax; ";
+                m_of << ".intel_syntax noprefix; ";
             for(const auto& l : se.m_lines)
             {
                 for(const auto& f : l.frags)
@@ -4643,8 +4644,8 @@ namespace {
 
             m_of << indent << "__asm__ ";
             if (is_volatile) m_of << "__volatile__";
-            m_of << "(\"" << (is_intel ? ".intel_syntax; " : "");
-            // TODO: Use a more powerful parser
+            m_of << "(\"" << (is_intel ? ".intel_syntax noprefix; " : "");
+            // TODO: Use a more powerful parser that can properly handle the differences between rustc/llvm and GCC
             for (auto it = e.tpl.begin(); it != e.tpl.end(); ++it)
             {
                 if (*it == '\n')
@@ -4671,8 +4672,9 @@ namespace {
                     while(it != e.tpl.end() && *it != '}')
                         it ++;
                 }
-                else
+                else {
                     m_of << *it;
+                }
             }
             m_of << (is_intel ? ".att_syntax; " : "") << "\"";
             m_of << ": ";
@@ -5256,7 +5258,7 @@ namespace {
                 m_of << "__volatile__"; // Default everything to volatile
                 m_of << "(\"";
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
-                    m_of << ".intel_syntax; ";
+                    m_of << ".intel_syntax noprefix; ";
                 for(const auto& l : se.lines)
                 {
                     for(const auto& f : l.frags)
