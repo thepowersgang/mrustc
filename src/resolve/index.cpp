@@ -77,11 +77,7 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcStr
     if( list.count(name) > 0 )
     {
         auto& e = list.at(name);
-        if( error_on_collision )
-        {
-            ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ") " << ir << ", and " << e.path);
-        }
-        else if( e.path == ir )
+        if( e.path == ir )
         {
             // Ignore, re-import of the same thing
             if(!e.is_pub && is_pub)
@@ -89,6 +85,10 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcStr
                 e.is_pub = is_pub;
                 DEBUG("### Import " << location << " item " << mod.path() << " :: " << name << " = " << ir << " (update to pub)");
             }
+        }
+        else if( error_on_collision )
+        {
+            ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ") " << ir << ", and " << e.path);
         }
         else
         {
