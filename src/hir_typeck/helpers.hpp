@@ -209,6 +209,9 @@ public:
         prep_indexes(Span());
     }
 
+    const ::HIR::GenericPath* current_trait_path() const {
+        return m_current_trait_path;
+    }
     ::HIR::Compare compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const;
 
     void compact_ivars(HMTypeInferrence& m_ivars);

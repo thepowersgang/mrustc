@@ -1007,6 +1007,25 @@ namespace {
                         }
                     }
 
+                    // If tjhis is fallback mode, and we're in a trait impl - grab the trait
+                    if( possible_methods.size() > 1 && this->context.m_resolve.current_trait_path() )
+                    {
+                        const auto& tp = *this->context.m_resolve.current_trait_path();
+                        auto found = possible_methods.end();
+                        bool had_inherent = false;
+                        for(auto it = possible_methods.begin(); it != possible_methods.end(); ++it) {
+                            had_inherent |= it->second.m_data.is_UfcsInherent();
+                            if( it->second.m_data.is_UfcsKnown() && it->second.m_data.as_UfcsKnown().trait.m_path == tp.m_path ) {
+                                found = it;
+                            }
+                        }
+                        if( !had_inherent && found != possible_methods.end() ) {
+                            DEBUG("Multiple options - Restricted to just current trait");
+                            possible_methods.erase(found+1, possible_methods.end());
+                            possible_methods.erase(possible_methods.begin(), found);
+                        }
+                    }
+
                     DEBUG("possible_methods = " << possible_methods);
                 }
                 assert( !possible_methods.empty() );
