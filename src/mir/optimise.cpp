@@ -5815,6 +5815,15 @@ bool MIR_Optimise_GotoAssign(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     break;
                 }
             }
+            for(const auto& w : lv.m_wrappers)
+            {
+                if(w.is_Index())
+                {
+                    if( ::MIR::LValue::new_Local(w.as_Index()) == src ) {
+                        n_read ++;
+                    }
+                }
+            }
             return true;
             });
         state.set_cur_stmt(bb_idx, 0);
