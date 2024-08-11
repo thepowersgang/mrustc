@@ -2893,9 +2893,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     // NOTE: Allow 1 level of recursion (EAT being run)
     if( std::count(s_recurse_stack.begin(), s_recurse_stack.end(), se) > 1 ) {
         DEBUG("Recursion detected in `find_trait_impls_crate`");
-        //return false;
         throw TraitResolution::RecursionDetected();
-        //BUG(sp, "Recursion detected in `find_trait_impls_crate`");
     }
     s_recurse_stack.push_back(se);
     StackHandle sh { s_recurse_stack };
@@ -3516,131 +3514,137 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 ::HIR::PathParams fuzzy_ph;
                 unsigned num_fuzzy = 0;     //!< Number of detected fuzzy impls
                 bool fuzzy_compatible = true;   //!< Indicates that the `fuzzy_ph` applies to all detected fuzzy impls
-                auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
-                    // TODO: Save and restore placeholders if this isn't a full match
-                    DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", impl = " << impl);
-                    auto cmp = impl_cmp;
-                    if( cmp == ::HIR::Compare::Fuzzy )
-                    {
-                        // If the match was fuzzy, try again filling in with `cb_match`
-                        auto i_ty = impl.get_impl_type();
-                        this->expand_associated_types_inplace( sp, i_ty, {} );
-                        auto i_tp = impl.get_trait_params();
-                        for(auto& t : i_tp.m_types)
-                            this->expand_associated_types_inplace( sp, t, {} );
-                        DEBUG("[ftic_check_params] " << real_type << " ?= " << i_ty);
-                        cmp &= real_type .match_test_generics_fuzz(sp, i_ty, cb_infer, matcher);
-                        DEBUG("[ftic_check_params] " << real_trait_path.m_params << " ?= " << i_tp);
-                        cmp &= real_trait_path.m_params .match_test_generics_fuzz(sp, i_tp, cb_infer, matcher);
-                        DEBUG("[ftic_check_params] - Re-check result: " << cmp);
-                    }
-                    for(const auto& assoc_bound : real_trait.m_type_bounds) {
-                        ::HIR::TypeRef  tmp;
-                        const ::HIR::TypeRef*   ty_p;
-
-                        tmp = impl.get_type(assoc_bound.first.c_str(), {});
-                        if( tmp == ::HIR::TypeRef() ) {
-                            // This bound isn't from this particular trait, go the slow way of using expand_associated_types
-                            tmp = this->expand_associated_types(sp, ::HIR::TypeRef::new_path(
-                                ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { real_type.clone(), real_trait_path.clone(), assoc_bound.first, {} }),
-                                {}
-                                ));
-                            ty_p = &tmp;
-                        }
-                        else {
-                            // Expand after extraction, just to make sure.
-                            this->expand_associated_types_inplace(sp, tmp, {});
-                            ty_p = &this->m_ivars.get_type(tmp);
-                        }
-                        const auto& ty = *ty_p;
-                        DEBUG("[ftic_check_params] - Compare " << ty << " and " << assoc_bound.second.type << ", matching generics");
-                        // `ty` = Monomorphised actual type (< `be.type` as `be.trait` >::`assoc_bound.first`)
-                        // `assoc_bound.second` = Desired type (monomorphised too)
-                        auto cmp_i = assoc_bound.second.type .match_test_generics_fuzz(sp, ty, cb_infer, matcher);
-                        switch(cmp_i)
+                try {
+                    auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
+                        // TODO: Save and restore placeholders if this isn't a full match
+                        DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", impl = " << impl);
+                        auto cmp = impl_cmp;
+                        if( cmp == ::HIR::Compare::Fuzzy )
                         {
-                        case ::HIR::Compare::Equal:
-                            DEBUG("Equal");
-                            break;
-                        case ::HIR::Compare::Unequal:
-                            DEBUG("Assoc `" << assoc_bound.first << "` didn't match - " << ty << " != " << assoc_bound.second.type);
-                            cmp = ::HIR::Compare::Unequal;
-                            break;
-                        case ::HIR::Compare::Fuzzy:
-                            // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
-                            // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
-                            DEBUG("[ftic_check_params] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second.type);
-                            cmp = ::HIR::Compare::Fuzzy;
-                            break ;
+                            // If the match was fuzzy, try again filling in with `cb_match`
+                            auto i_ty = impl.get_impl_type();
+                            this->expand_associated_types_inplace( sp, i_ty, {} );
+                            auto i_tp = impl.get_trait_params();
+                            for(auto& t : i_tp.m_types)
+                                this->expand_associated_types_inplace( sp, t, {} );
+                            DEBUG("[ftic_check_params] " << real_type << " ?= " << i_ty);
+                            cmp &= real_type .match_test_generics_fuzz(sp, i_ty, cb_infer, matcher);
+                            DEBUG("[ftic_check_params] " << real_trait_path.m_params << " ?= " << i_tp);
+                            cmp &= real_trait_path.m_params .match_test_generics_fuzz(sp, i_tp, cb_infer, matcher);
+                            DEBUG("[ftic_check_params] - Re-check result: " << cmp);
                         }
-                        if( cmp == ::HIR::Compare::Unequal )
-                            break;
-                    }
+                        for(const auto& assoc_bound : real_trait.m_type_bounds) {
+                            ::HIR::TypeRef  tmp;
+                            const ::HIR::TypeRef*   ty_p;
 
-                    DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", cmp = " << cmp);
-                    if( cmp == ::HIR::Compare::Fuzzy )
-                    {
-                        found_fuzzy_match |= true;
-                        // `fuzzy_ph` is set (num_fuzzy > 0) then check if the PH set is equal, if not then flag not equal
-                        if( num_fuzzy > 0 && fuzzy_ph != placeholders ) {
-                            DEBUG("Multiple fuzzy matches, placeholders mismatch: " << fuzzy_ph << " != " << placeholders);
-                            fuzzy_compatible = false;
+                            tmp = impl.get_type(assoc_bound.first.c_str(), {});
+                            if( tmp == ::HIR::TypeRef() ) {
+                                // This bound isn't from this particular trait, go the slow way of using expand_associated_types
+                                tmp = this->expand_associated_types(sp, ::HIR::TypeRef::new_path(
+                                    ::HIR::Path(::HIR::Path::Data::Data_UfcsKnown { real_type.clone(), real_trait_path.clone(), assoc_bound.first, {} }),
+                                    {}
+                                    ));
+                                ty_p = &tmp;
+                            }
+                            else {
+                                // Expand after extraction, just to make sure.
+                                this->expand_associated_types_inplace(sp, tmp, {});
+                                ty_p = &this->m_ivars.get_type(tmp);
+                            }
+                            const auto& ty = *ty_p;
+                            DEBUG("[ftic_check_params] - Compare " << ty << " and " << assoc_bound.second.type << ", matching generics");
+                            // `ty` = Monomorphised actual type (< `be.type` as `be.trait` >::`assoc_bound.first`)
+                            // `assoc_bound.second` = Desired type (monomorphised too)
+                            auto cmp_i = assoc_bound.second.type .match_test_generics_fuzz(sp, ty, cb_infer, matcher);
+                            switch(cmp_i)
+                            {
+                            case ::HIR::Compare::Equal:
+                                DEBUG("Equal");
+                                break;
+                            case ::HIR::Compare::Unequal:
+                                DEBUG("Assoc `" << assoc_bound.first << "` didn't match - " << ty << " != " << assoc_bound.second.type);
+                                cmp = ::HIR::Compare::Unequal;
+                                break;
+                            case ::HIR::Compare::Fuzzy:
+                                // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
+                                // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
+                                DEBUG("[ftic_check_params] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second.type);
+                                cmp = ::HIR::Compare::Fuzzy;
+                                break ;
+                            }
+                            if( cmp == ::HIR::Compare::Unequal )
+                                break;
                         }
-                        num_fuzzy += 1;
 
-                        fuzzy_ph = ::std::move(placeholders);
-                        // TODO: Should this do some form of reset?
-                        placeholders.m_types.resize(fuzzy_ph.m_types.size());
-                        placeholders.m_values.resize(fuzzy_ph.m_values.size());
+                        DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", cmp = " << cmp);
+                        if( cmp == ::HIR::Compare::Fuzzy )
+                        {
+                            found_fuzzy_match |= true;
+                            // `fuzzy_ph` is set (num_fuzzy > 0) then check if the PH set is equal, if not then flag not equal
+                            if( num_fuzzy > 0 && fuzzy_ph != placeholders ) {
+                                DEBUG("Multiple fuzzy matches, placeholders mismatch: " << fuzzy_ph << " != " << placeholders);
+                                fuzzy_compatible = false;
+                            }
+                            num_fuzzy += 1;
+
+                            fuzzy_ph = ::std::move(placeholders);
+                            // TODO: Should this do some form of reset?
+                            placeholders.m_types.resize(fuzzy_ph.m_types.size());
+                            placeholders.m_values.resize(fuzzy_ph.m_values.size());
+                        }
+                        if( cmp != ::HIR::Compare::Equal )
+                        {
+                            // Restore placeholders
+                            // - Maybe save the results for later?
+                            DEBUG("[ftic_check_params] Restore placeholders: " << saved_ph);
+                            DEBUG("[ftic_check_params] OVERWRITTEN placeholders: " << placeholders);
+                            placeholders = saved_ph.clone();
+                        }
+                        // If the match isn't a concrete equal, return false (to keep searching)
+                        return (cmp == ::HIR::Compare::Equal);
+                        });
+                    if( rv ) {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " matched");
                     }
-                    if( cmp != ::HIR::Compare::Equal )
-                    {
-                        // Restore placeholders
-                        // - Maybe save the results for later?
-                        DEBUG("[ftic_check_params] Restore placeholders: " << saved_ph);
-                        DEBUG("[ftic_check_params] OVERWRITTEN placeholders: " << placeholders);
-                        placeholders = saved_ph.clone();
+                    else if( found_fuzzy_match ) {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " fuzzed");
+                        if( num_fuzzy == 0 )
+                        {
+                            DEBUG("No placeholders");   // `real_type` was infer
+                        }
+                        else if( num_fuzzy == 1 )
+                        {
+                            DEBUG("Use placeholders " << fuzzy_ph);
+                            placeholders = ::std::move(fuzzy_ph);
+                        }
+                        else if( fuzzy_compatible )
+                        {
+                            DEBUG("Multiple placeholders (" << num_fuzzy << "), but all equal " << fuzzy_ph);
+                            placeholders = ::std::move(fuzzy_ph);
+                        }
+                        else
+                        {
+                            // 
+                            DEBUG("TODO: Multiple fuzzy matches, which placeholder set to use?");
+                        }
+                        match = ::HIR::Compare::Fuzzy;
                     }
-                    // If the match isn't a concrete equal, return false (to keep searching)
-                    return (cmp == ::HIR::Compare::Equal);
-                    });
-                if( rv ) {
-                    DEBUG("- Bound " << real_type << " : " << real_trait_path << " matched");
+                    else if( TU_TEST1(real_type.data(), Infer, .ty_class == ::HIR::InferClass::None) ) {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " full infer type - make result fuzzy");
+                        match = ::HIR::Compare::Fuzzy;
+                    }
+                    else if( TU_TEST1(real_type.data(), Generic, .is_placeholder()) ) {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " placeholder - make result fuzzy");
+                        match = ::HIR::Compare::Fuzzy;
+                    }
+                    else {
+                        DEBUG("- Bound " << real_type << " : " << real_trait_path << " failed");
+                        return ::HIR::Compare::Unequal;
+                    }
                 }
-                else if( found_fuzzy_match ) {
-                    DEBUG("- Bound " << real_type << " : " << real_trait_path << " fuzzed");
-                    if( num_fuzzy == 0 )
-                    {
-                        DEBUG("No placeholders");   // `real_type` was infer
-                    }
-                    else if( num_fuzzy == 1 )
-                    {
-                        DEBUG("Use placeholders " << fuzzy_ph);
-                        placeholders = ::std::move(fuzzy_ph);
-                    }
-                    else if( fuzzy_compatible )
-                    {
-                        DEBUG("Multiple placeholders (" << num_fuzzy << "), but all equal " << fuzzy_ph);
-                        placeholders = ::std::move(fuzzy_ph);
-                    }
-                    else
-                    {
-                        // 
-                        DEBUG("TODO: Multiple fuzzy matches, which placeholder set to use?");
-                    }
+                catch(const TraitResolution::RecursionDetected& /*x*/) {
+                    DEBUG("- Bound " << real_type << " : " << real_trait_path << " resulted in recursion - make result fuzzy");
                     match = ::HIR::Compare::Fuzzy;
-                }
-                else if( TU_TEST1(real_type.data(), Infer, .ty_class == ::HIR::InferClass::None) ) {
-                    DEBUG("- Bound " << real_type << " : " << real_trait_path << " full infer type - make result fuzzy");
-                    match = ::HIR::Compare::Fuzzy;
-                }
-                else if( TU_TEST1(real_type.data(), Generic, .is_placeholder()) ) {
-                    DEBUG("- Bound " << real_type << " : " << real_trait_path << " placeholder - make result fuzzy");
-                    match = ::HIR::Compare::Fuzzy;
-                }
-                else {
-                    DEBUG("- Bound " << real_type << " : " << real_trait_path << " failed");
-                    return ::HIR::Compare::Unequal;
                 }
 
                 //if( !rv ) {
