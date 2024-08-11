@@ -1064,12 +1064,12 @@ namespace MIR { namespace eval {
             return this->resolve.monomorph_expand(this->state.sp, ty, this->ms);
         }
 
-        StaticRefPtr get_staticref_mono(const ::HIR::Path& p) const
+        StaticRefPtr get_staticref_mono(const ::HIR::Path& p, HIR::TypeRef* out_ty=nullptr) const
         {
             // NOTE: Value won't need to be monomorphed, as it shouldn't be generic
-            return get_staticref( ms.monomorph_path(state.sp, p) );
+            return get_staticref( ms.monomorph_path(state.sp, p), out_ty );
         }
-        StaticRefPtr get_staticref(::HIR::Path p) const
+        StaticRefPtr get_staticref(::HIR::Path p, HIR::TypeRef* out_ty=nullptr) const
         {
             // If there's any mention of generics in this path, then return Literal::Defer
             if( visit_path_tys_with(p, [&](const auto& ty)->bool { return ty.data().is_Generic(); }) )
@@ -1127,17 +1127,25 @@ namespace MIR { namespace eval {
                     }
                     DEBUG(p << " = " << item.m_value_res);
                 }
+                if(out_ty) {
+                    // Does this need monomorph? No, becuase the value is known and thus not generic?
+                    *out_ty = s.m_type.clone();
+                }
                 return StaticRefPtr::allocate(std::move(p), &s.m_value_res);
             }
             else
             {
                 DEBUG(ent.tag_str() << " " << p);
+                if( out_ty ) {
+                    MIR_TODO(state, "Get type for " << ent.tag_str() << " (" << p << ")");
+                }
                 return StaticRefPtr::allocate(std::move(p), nullptr);
             }
         }
 
         ValueRef get_lval(const ::MIR::LValue& lv, ValueRef* meta=nullptr)
         {
+            ::HIR::TypeRef  tmp_ty;
             const ::HIR::TypeRef*   typ = nullptr;
             ValueRef metadata;
             ValueRef val;
@@ -1158,13 +1166,17 @@ namespace MIR { namespace eval {
                 val = ValueRef(args[e]);
                 }
             TU_ARMA(Static, e) {
-                val = ValueRef(get_staticref_mono(e));
+                val = ValueRef(get_staticref_mono(e, lv.m_wrappers.empty() ? nullptr : &tmp_ty));
+                if( !lv.m_wrappers.empty() ) {
+                    MIR_ASSERT(state, tmp_ty != HIR::TypeRef(), "Type not set?");
+                }
+                typ = &tmp_ty;
                 }
             }
 
             for(const auto& w : lv.m_wrappers)
             {
-                assert(typ);
+                MIR_ASSERT(state, typ, "Type not set when unwrapping - " << lv);
                 DEBUG(w << " " << val << ": " << *typ);
                 TU_MATCH_HDRA( (w), {)
                 TU_ARMA(Field, e) {
