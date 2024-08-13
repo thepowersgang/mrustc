@@ -2470,8 +2470,8 @@ namespace {
                             MIR_ASSERT(*m_mir_res, reloc_it->ofs == i, "Relocation not aligned to a pointer - " << reloc_it->ofs << " != " << i);
                             MIR_ASSERT(*m_mir_res, reloc_it->len == ptr_size, "Relocation size not pointer size - " << reloc_it->len << " != " << ptr_size);
                             v -= EncodedLiteral::PTR_BASE;
+                            //MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Reloc=" << *reloc_it << " Literal=" << encoded);
 
-                            MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Literal=" << encoded << " Reloc=" << *reloc_it);
                             m_of << "(uintptr_t)";
                             if( reloc_it->p ) {
                                 if( reloc_it->p->m_data.is_UfcsInherent() && reloc_it->p->m_data.as_UfcsInherent().item == "#type_id") {
@@ -2484,6 +2484,9 @@ namespace {
                             }
                             else {
                                 this->print_escaped_string(reloc_it->bytes);
+                            }
+                            if( v > 0 ) {
+                                m_of << "+" << v;
                             }
 
                             ++ reloc_it;
