@@ -31,6 +31,12 @@ struct GenericRef
         , binding(binding)
     {
     }
+    GenericRef(RcString name, GenericGroup group, uint16_t idx)
+        : name(::std::move(name))
+        , binding(group * 256 + idx)
+    {
+        assert(idx < 256);
+    }
     static GenericRef new_self() {
         return GenericRef("Self", GENERIC_Self);
     }
@@ -46,7 +52,7 @@ struct GenericRef
     }
 
     bool is_placeholder() const {
-        return (binding >> 8) == 2;
+        return (binding >> 8) == GENERIC_Placeholder;
     }
 
 
