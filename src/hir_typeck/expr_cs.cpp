@@ -4276,6 +4276,11 @@ namespace {
                             context_mut->equate_types(sp, dst, out_ty);
                         }
                     }
+                    else if( dst.data().is_Borrow() )
+                    {
+                        DEBUG("Borrow, continue");
+                        continue ;
+                    }
                     else
                     {
                         if( dst .compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal ) {
