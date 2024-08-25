@@ -45,8 +45,8 @@ typedef const ResolvePlaceholders& t_cb_resolve_type;
 class MatchGenerics
 {
 public:
-    //virtual const HIR::TypeRef& resolve_infer(const HIR::TypeRef& ty) const { return ty; }
-    //virtual const HIR::TypeRef& resolve_generic(const HIR::TypeRef& ty) const { return ty; }
+    virtual ::HIR::Compare cmp_type(const Span& sp, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, t_cb_resolve_type resolve_cb);
+
     virtual ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) = 0;
     virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) = 0;
     virtual ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& sz) { return HIR::Compare::Equal; }

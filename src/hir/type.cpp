@@ -607,7 +607,7 @@ namespace {
         TU_ARMA(Evaluated, te, xe)
             return *te == *xe ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
         }
-	throw "Unreachable";
+        throw "Unreachable";
     }
 }
 
@@ -617,12 +617,16 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
 }
 ::HIR::Compare HIR::TypeRef::match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback) const
 {
-    if( const auto* e = data().opt_Generic() ) {
-        return callback.match_ty(*e, x_in, resolve_placeholder);
+    return callback.cmp_type(sp, *this, x_in, resolve_placeholder);
+}
+::HIR::Compare HIR::MatchGenerics::cmp_type(const Span& sp, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, t_cb_resolve_type resolve_placeholder)
+{
+    if( const auto* e = ty_l.data().opt_Generic() ) {
+        return this->match_ty(*e, ty_r, resolve_placeholder);
     }
-    const auto& v = (this->data().is_Infer() ? resolve_placeholder.get_type(sp, *this) : *this);
-    const auto& x = (x_in.data().is_Infer() || x_in.data().is_Generic() ? resolve_placeholder.get_type(sp, x_in) : x_in);
-    TRACE_FUNCTION_F(*this << ", " << x_in << " -- " << v << ", " << x);
+    const auto& v = (ty_l.data().is_Infer()                             ? resolve_placeholder.get_type(sp, ty_l) : ty_l);
+    const auto& x = (ty_r.data().is_Infer() || ty_r.data().is_Generic() ? resolve_placeholder.get_type(sp, ty_r) : ty_r);
+    TRACE_FUNCTION_F(ty_l << ", " << ty_r << " -- " << v << ", " << x);
     // If `x` is an ivar - This can be a fuzzy match.
     if(const auto* xep = x.data().opt_Infer())
     {
@@ -723,22 +727,22 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
     }
 #if 1
-    thread_local static std::vector<const HIR::TypeInner*>  s_recurse_stack;
+    thread_local static std::vector<const HIR::TypeData*>  s_recurse_stack;
     for(const auto* p : s_recurse_stack) {
-        if( p == m_ptr ) {
+        if( p == &ty_l.data() ) {
             DEBUG("Recursion");
             ASSERT_BUG(sp, &v == &x, "Recursion with unequal type pointers");
             return HIR::Compare::Equal;
         }
     }
     struct _ {
-        _(const HIR::TypeInner* ptr) {
+        _(const HIR::TypeData* ptr) {
             s_recurse_stack.push_back(ptr);
         }
         ~_() {
             s_recurse_stack.pop_back();
         }
-    } h(m_ptr);
+    } h(&ty_l.data());
 #else
     // NOTE: This doesn't allow matching identical types (which can be desirable)
     if( &v == &x ) {
@@ -809,29 +813,29 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                     rv = Compare::Unequal;
                 }
                 else {
-                    rv = match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, callback);
+                    rv = match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, *this);
                 }
                 }
             TU_ARMA(UfcsKnown, tpe, xpe) {
-                rv = tpe.type.match_test_generics_fuzz( sp, xpe.type, resolve_placeholder, callback );
+                rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
                 if( tpe.trait.m_path != xpe.trait.m_path )
                     rv = Compare::Unequal;
-                rv &= match_generics_pp(sp, tpe.trait.m_params, xpe.trait.m_params, resolve_placeholder, callback);
+                rv &= match_generics_pp(sp, tpe.trait.m_params, xpe.trait.m_params, resolve_placeholder, *this);
                 if( tpe.item != xpe.item )
                     rv = Compare::Unequal;
-                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
                 }
             TU_ARMA(UfcsUnknown, tpe, xpe) {
-                rv = tpe.type.match_test_generics_fuzz( sp, xpe.type, resolve_placeholder, callback );
+                rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
                 if( tpe.item != xpe.item )
                     rv = Compare::Unequal;
-                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
                 }
             TU_ARMA(UfcsInherent, tpe, xpe) {
-                rv = tpe.type.match_test_generics_fuzz( sp, xpe.type, resolve_placeholder, callback );
+                rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
                 if( tpe.item != xpe.item )
                     rv = Compare::Unequal;
-                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, callback);
+                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
                 }
             }
         }
@@ -854,13 +858,13 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         if( te.m_markers.size() != xe.m_markers.size() ) {
             return Compare::Unequal;
         }
-        auto cmp = match_generics_pp(sp, te.m_trait.m_path.m_params, xe.m_trait.m_path.m_params, resolve_placeholder, callback);
+        auto cmp = match_generics_pp(sp, te.m_trait.m_path.m_params, xe.m_trait.m_path.m_params, resolve_placeholder, *this);
         for(unsigned int i = 0; i < te.m_markers.size(); i ++)
         {
             if( te.m_markers[i].m_path != xe.m_markers[i].m_path ) {
                 return Compare::Unequal;
             }
-            cmp &= match_generics_pp(sp, te.m_markers[i].m_params, xe.m_markers[i].m_params, resolve_placeholder, callback);
+            cmp &= match_generics_pp(sp, te.m_markers[i].m_params, xe.m_markers[i].m_params, resolve_placeholder, *this);
         }
 
         auto it_l = te.m_trait.m_type_bounds.begin();
@@ -870,7 +874,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             if( it_l->first != it_r->first ) {
                 return Compare::Unequal;
             }
-            cmp &= it_l->second.type .match_test_generics_fuzz( sp, it_r->second.type, resolve_placeholder, callback );
+            cmp &= it_l->second.type .match_test_generics_fuzz( sp, it_r->second.type, resolve_placeholder, *this );
             ++ it_l;
             ++ it_r;
         }
@@ -880,7 +884,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
 
         if(te.m_lifetime.is_param()) {
-            /*cmp &= */callback.match_lft(HIR::GenericRef("", te.m_lifetime.binding), xe.m_lifetime);
+            /*cmp &= */this->match_lft(HIR::GenericRef("", te.m_lifetime.binding), xe.m_lifetime);
         }
 
         return cmp;
@@ -896,10 +900,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         {
             HIR::ConstGeneric   v;
             if( xe.size.opt_Known() ) {
-                rv &= match_values(sp, *tse, EncodedLiteralPtr( EncodedLiteral::make_usize(xe.size.as_Known()) ), callback);
+                rv &= match_values(sp, *tse, EncodedLiteralPtr( EncodedLiteral::make_usize(xe.size.as_Known()) ), *this);
             }
             else {
-                rv &= match_values(sp, *tse, xe.size.as_Unevaluated(), callback );
+                rv &= match_values(sp, *tse, xe.size.as_Unevaluated(), *this );
             }
         }
         else if( const auto* xse = xe.size.opt_Unevaluated() )
@@ -919,10 +923,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         else if( te.size != xe.size ) {
             return Compare::Unequal;
         }
-        return te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
+        return this->cmp_type(sp, te.inner, xe.inner, resolve_placeholder);
         }
     TU_ARMA(Slice, te, xe) {
-        return te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
+        return this->cmp_type(sp, te.inner, xe.inner, resolve_placeholder);
         }
     TU_ARMA(Tuple, te, xe) {
         if( te.size() != xe.size() ) {
@@ -930,7 +934,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
         auto rv = Compare::Equal;
         for(unsigned int i = 0; i < te.size(); i ++ ) {
-            rv &= te[i].match_test_generics_fuzz( sp, xe[i], resolve_placeholder, callback );
+            rv &= this->cmp_type(sp, te[i], xe[i], resolve_placeholder);
             if(rv == Compare::Unequal)
                 return Compare::Unequal;
         }
@@ -939,20 +943,20 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     TU_ARMA(Pointer, te, xe) {
         if( te.type != xe.type )
             return Compare::Unequal;
-        return te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
+        return this->cmp_type(sp, te.inner, xe.inner, resolve_placeholder);
         }
     TU_ARMA(Borrow, te, xe) {
         if( te.type != xe.type )
             return Compare::Unequal;
         auto rv = Compare::Equal;
         if( te.lifetime.is_param() ) {
-            /*rv &=*/ callback.match_lft(te.lifetime.as_param(), xe.lifetime);
+            /*rv &=*/ this->match_lft(te.lifetime.as_param(), xe.lifetime);
         }
         else {
             //if( te.lifetime != xe.lifetime )
             //    return Compare::Unequal;
         }
-        rv &= te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
+        rv &= this->cmp_type(sp, te.inner, xe.inner, resolve_placeholder);
         return rv;
         }
     TU_ARMA(Function, te, xe) {
@@ -964,11 +968,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             return Compare::Unequal;
         auto rv = Compare::Equal;
         for( unsigned int i = 0; i < te.m_arg_types.size(); i ++ ) {
-            rv &= te.m_arg_types[i] .match_test_generics_fuzz( sp, xe.m_arg_types[i], resolve_placeholder, callback );
+            rv &= this->cmp_type(sp, te.m_arg_types[i], xe.m_arg_types[i], resolve_placeholder);
             if( rv == Compare::Unequal )
                 return rv;
         }
-        rv &= te.m_rettype.match_test_generics_fuzz( sp, xe.m_rettype, resolve_placeholder, callback );
+        rv &= this->cmp_type(sp, te.m_rettype, xe.m_rettype, resolve_placeholder);
         return rv;
         }
     TU_ARMA(Closure, te, xe) {
