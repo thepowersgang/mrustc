@@ -5577,7 +5577,85 @@ namespace {
             //  > Ideally, there should be a match_test_generics to resolve the magic impls.
             DEBUG("> best_impl=" << best_impl);
             if( best_impl.has_magic_params() ) {
-                // TODO: Pick this impl, and evaluate it (expanding the magic params out)
+                // Pick this impl, and evaluate it (expanding the magic params out)
+                // - Equate `v.impl_ty` and `best_impl`'s type...
+                //   - We expect an ivar from `v.impl_ty` to be matched against some sort of known type (struct, tuple, array, ...)
+                //   - When that happens, allocate new ivars for the magic params in that type and assign.
+                struct Matcher
+                    : public HIR::MatchGenerics
+                    , public Monomorphiser
+                {
+                    Context& m_context;
+                    mutable ::std::map<HIR::GenericRef, HIR::TypeRef>    m_types;
+                    mutable ::std::map<HIR::GenericRef, HIR::ConstGeneric>   m_values;
+
+                    Matcher(Context& context): m_context(context) {}
+
+                    ::HIR::Compare cmp_type(const Span& sp, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, HIR::t_cb_resolve_type resolve_cb) override {
+                        const auto& l = (ty_l.data().is_Infer() ? resolve_cb.get_type(sp, ty_l) : ty_l);
+                        const auto& r = (ty_r.data().is_Infer() ? resolve_cb.get_type(sp, ty_r) : ty_r);
+                        if( ty_r.data().is_Generic() && ty_r.data().as_Generic().group() == HIR::GENERIC_Placeholder ) {
+                            BUG(sp, "Assigning into a placeholder? should have been known");
+                        }
+                        if( l.data().is_Infer() && !r.data().is_Infer() ) {
+                            // Monomorph the RHS, assigning new ivars to each impl param
+                            auto new_ty = this->monomorph_type(sp, r, true);
+                            m_context.equate_types(sp, l, new_ty);
+                            return ::HIR::Compare::Equal;
+                        }
+                        return HIR::MatchGenerics::cmp_type(sp, ty_l, ty_r, resolve_cb);
+                    }
+
+                    ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, HIR::t_cb_resolve_type resolve_cb) override {
+                        if( ty.data().is_Generic() && ty.data().as_Generic() == g ) {
+                            return ::HIR::Compare::Equal;
+                        }
+                        TODO(Span(), "match_ty - " << g << " = " << ty);
+                    }
+                    ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& v) override {
+                        if( v.is_Generic() && v.as_Generic() == g ) {
+                            return ::HIR::Compare::Equal;
+                        }
+                        TODO(Span(), "match_val - " << g << " = " << v);
+                    }
+
+                    ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+                        if(g.group() == ::HIR::GENERIC_Placeholder ) {
+                            auto it = m_types.find(g);
+                            if( it == m_types.end() ) {
+                                it = m_types.insert(std::make_pair( g, m_context.m_ivars.new_ivar_tr() )).first;
+                            }
+                            return it->second.clone();
+                        }
+                        else {
+                            return HIR::TypeRef(g);
+                        }
+                    }
+                    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+                        if(g.group() == ::HIR::GENERIC_Placeholder ) {
+                            auto it = m_values.find(g);
+                            if( it == m_values.end() ) {
+                                it = m_values.insert(std::make_pair( g, ::HIR::ConstGeneric::make_Infer({ m_context.m_ivars.new_ivar_val() }) )).first;
+                            }
+                            return it->second.clone();
+                        }
+                        else {
+                            return g;
+                        }
+                    }
+                    ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+                        if(g.group() == ::HIR::GENERIC_Placeholder ) {
+                            TODO(sp, "get_lifetime");
+                        }
+                        else {
+                            return HIR::LifetimeRef(g.binding);
+                        }
+                    }
+                } m { context };
+                m.cmp_type(sp, v.impl_ty, possible_impl_ty, context.m_ivars.callback_resolve_infer());
+                for(size_t i = 0; i < possible_params.m_types.size(); i ++) {
+                    m.cmp_type(sp, v.params.m_types[i], possible_params.m_types[i], context.m_ivars.callback_resolve_infer());
+                }
                 DEBUG("> Magic params present, wait");
                 return false;
             }

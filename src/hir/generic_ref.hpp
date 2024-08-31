@@ -61,6 +61,7 @@ struct GenericRef
     }
     bool operator==(const GenericRef& x) const { return this->ord(x) == OrdEqual; }
     bool operator!=(const GenericRef& x) const { return this->ord(x) != OrdEqual; }
+    bool operator<(const GenericRef& x) const { return this->ord(x) == OrdLess; }
 
     void fmt(::std::ostream& os) const;
 
