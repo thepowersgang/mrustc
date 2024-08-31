@@ -4763,7 +4763,7 @@ namespace {
                 context_mut->possible_equate_type_unknown(sp, dst, Context::IvarUnknownType::From);
             }
 
-            // If the other side isn't a pointer, equate
+            // If the other side is a pointer
             if( dst.data().is_Pointer() || dst.data().is_Borrow() )
             {
                 if(context_mut)
@@ -4771,6 +4771,14 @@ namespace {
                     context_mut->possible_equate_ivar(sp, se.index, dst, Context::PossibleTypeSource::CoerceTo);
                 }
                 return CoerceResult::Unknown;
+            }
+            // Not a pointer (handled just above), and not a CoerceUnsized struct (handled farther above)
+            // - Could be a generic with CoerceUnsized
+            // HACK: Composite types may hit issues with `!` within them, primtives don't have this issue?
+            // - Unsure why, but if the below is unconditional then there's a type error with `Result<!,...>` and `Try`
+            else if( dst.data().is_Primitive() )
+            {
+                return CoerceResult::Equality;
             }
             else
             {
@@ -5318,7 +5326,13 @@ namespace {
                         // NOTE: This only holds if not a shift
                         context.equate_types(sp, left, right);
                     }
+                    if( context.get_type(left).data().is_Infer() && context.get_type(right).data().is_Infer() && context.get_type(res).data().is_Infer() ) {
+                        context.possible_equate_type_unknown(sp, right, Context::IvarUnknownType::To);
+                        DEBUG("> All are infer, skip");
+                        return false;
+                    }
                 }
+
                 context.possible_equate_type_unknown(sp, right, Context::IvarUnknownType::To);
             }
             else
