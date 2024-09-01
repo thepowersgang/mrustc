@@ -19,8 +19,9 @@ extern int g_debug_indent_level;
 #endif
 
 #ifndef DISABLE_DEBUG
+# define MAX_INDENT_LEVEL   400
 # define DEBUG_ENABLED  (debug_enabled() DEBUG_EXTRA_ENABLE)
-# define INDENT()    do { g_debug_indent_level += 1; assert(g_debug_indent_level<350); } while(0)
+# define INDENT()    do { g_debug_indent_level += 1; assert(g_debug_indent_level<MAX_INDENT_LEVEL); } while(0)
 # define UNINDENT()    do { g_debug_indent_level -= 1; } while(0)
 # define DEBUG(ss)   do{ if(DEBUG_ENABLED) { debug_output(g_debug_indent_level, __FUNCTION__) << ss << std::dec << ::std::endl; } } while(0)
 # define TRACE_FUNCTION  TraceLog _tf_( DEBUG_ENABLED ? __func__ : nullptr)
