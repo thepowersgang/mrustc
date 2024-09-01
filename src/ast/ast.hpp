@@ -663,6 +663,8 @@ public:
     ::std::unordered_map< RcString, IndexEnt >    m_type_items;
     ::std::unordered_map< RcString, IndexEnt >    m_value_items;
     ::std::unordered_map< RcString, IndexEnt >    m_macro_items;
+    // Imported traits are in a different list, because collisions still apply for method lookup
+    ::std::vector<::AST::AbsolutePath> m_traits;
 
     // List of macros imported from other modules (via #[macro_use], includes proc macros)
     // - First value is an absolute path to the macro (including crate name)

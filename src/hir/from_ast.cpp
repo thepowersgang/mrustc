@@ -1824,13 +1824,11 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
     auto get_pub = [&](bool is_pub)->::HIR::Publicity{ return (is_pub ? ::HIR::Publicity::new_global() : priv_path); };
 
     // Populate trait list
-    for(const auto& item : ast_mod.m_type_items)
+    for(const auto& trait_path : ast_mod.m_traits )
     {
-        if( item.second.path.m_bindings.type.binding.is_Trait() ) {
-            auto sp = LowerHIR_SimplePath(Span(), item.second.path, FromAST_PathClass::Type);
-            if( ::std::find(mod.m_traits.begin(), mod.m_traits.end(), sp) == mod.m_traits.end() )
-                mod.m_traits.push_back( mv$(sp) );
-        }
+        auto sp = HIR::SimplePath((trait_path.crate == "" ? g_crate_name : trait_path.crate), trait_path.nodes);
+        if( ::std::find(mod.m_traits.begin(), mod.m_traits.end(), sp) == mod.m_traits.end() )
+            mod.m_traits.push_back( mv$(sp) );
     }
 
     for( unsigned int i = 0; i < ast_mod.anon_mods().size(); i ++ )

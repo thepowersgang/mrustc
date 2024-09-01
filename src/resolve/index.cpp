@@ -73,6 +73,14 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcStr
         ASSERT_BUG(sp, ir.m_class.as_Absolute().nodes.size() > 0, "Non-namespace path must have nodes - " << location << " " << name << " = " << ir);
     }
 
+    // Add traits to a separate list
+    if( ir.m_bindings.type.binding.is_Trait() ) {
+        auto it = std::find(mod.m_traits.begin(), mod.m_traits.end(), ir.m_bindings.type.path);
+        if(it == mod.m_traits.end() ) {
+            mod.m_traits.push_back( ir.m_bindings.type.path );
+        }
+    }
+
     bool was_import = (ir != mod.path() + name);
     if( list.count(name) > 0 )
     {

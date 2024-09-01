@@ -158,3 +158,5 @@
 - `rustc-std-workspace-*` handling required
   - When not building the standard library, those crates should be pointed at the standard library (or just removed?)
 - `impl Trait` in ATYs
+- Types shadowing prelude (or imported) traits prevent the trait from being included for method resolution.
+  - See rustc-1.74.0-src/vendor/nom/src/internal.rs:451 - where `Into::into` is not available due to the struct `Into` existing.
