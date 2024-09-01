@@ -3304,32 +3304,56 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 
     DEBUG("Matched params: " << out_impl_params);
 
-    // TODO: Some impl blocks have type params used as part of type bounds.
+    // Some impl blocks have type params used as part of type bounds.
     // - A rough idea is to have monomorph return a third class of generic for params that are not yet bound.
     //  - compare_with_placeholders gets called on both ivars and generics, so that can be used to replace it once known.
     ::HIR::PathParams   placeholders;
-    auto placeholder_name = RcString::new_interned(FMT("impl_?_" << &impl_params_def));
-    for(unsigned int i = 0; i < out_impl_params.m_types.size(); i ++ )
-    {
-        if( out_impl_params.m_types[i] == HIR::TypeRef() )
-        {
-            if( placeholders.m_types.size() == 0 )
-                placeholders.m_types.resize(out_impl_params.m_types.size());
-            placeholders.m_types[i] = ::HIR::TypeRef(placeholder_name, 2*256 + i);
-            DEBUG("Create placeholder type for " << i << " = " << placeholders.m_types[i]);
+    RcString    placeholder_name;
+    bool placeholders_needed = false; {
+        for(const auto& ty : out_impl_params.m_types ) {
+            if( ty == HIR::TypeRef() ) {
+                placeholders_needed = true;
+            }
+        }
+        for(const auto& val : out_impl_params.m_values ) {
+            if( val == HIR::ConstGeneric() ) {
+                placeholders_needed = true;
+            }
         }
     }
-    for(unsigned int i = 0; i < out_impl_params.m_values.size(); i ++ )
+    if( placeholders_needed )
     {
-        if( out_impl_params.m_values[i] == HIR::ConstGeneric() )
+        static uint64_t s_ph_counter = 0;
+        // NOTE: Not using interning, because these are short-lived
+        // - Also, adding an interned string is quite expensive
+        placeholder_name = RcString(FMT("ph_" << &impl_params_def << "_" << s_ph_counter));
+        s_ph_counter += 1;
+        for(unsigned int i = 0; i < out_impl_params.m_types.size(); i ++ )
         {
-            if( placeholders.m_values.size() == 0 )
-                placeholders.m_values.resize(out_impl_params.m_values.size());
-            placeholders.m_values[i] = ::HIR::GenericRef(placeholder_name, 2*256 + i);
-            DEBUG("Create placeholder value for " << i << " = " << placeholders.m_values[i]);
+            if( out_impl_params.m_types[i] == HIR::TypeRef() )
+            {
+                if( placeholders.m_types.size() == 0 )
+                    placeholders.m_types.resize(out_impl_params.m_types.size());
+                placeholders.m_types[i] = ::HIR::TypeRef(placeholder_name, 2*256 + i);
+                DEBUG("Create placeholder type for " << i << " = " << placeholders.m_types[i]);
+            }
         }
+        for(unsigned int i = 0; i < out_impl_params.m_values.size(); i ++ )
+        {
+            if( out_impl_params.m_values[i] == HIR::ConstGeneric() )
+            {
+                if( placeholders.m_values.size() == 0 )
+                    placeholders.m_values.resize(out_impl_params.m_values.size());
+                placeholders.m_values[i] = ::HIR::GenericRef(placeholder_name, 2*256 + i);
+                DEBUG("Create placeholder value for " << i << " = " << placeholders.m_values[i]);
+            }
+        }
+        DEBUG("Placeholders (" << placeholder_name << "): " << placeholders);
     }
-    DEBUG("Placeholders: " << placeholders);
+    else
+    {
+        DEBUG("Placeholders not needed");
+    }
     auto cb_infer = m_ivars.callback_resolve_infer();
     struct Matcher:
         public ::HIR::MatchGenerics,
@@ -3624,7 +3648,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     else
                     {
                         // 
-                        DEBUG("TODO: Multiple fuzzy matches, which placeholder set to use?");
+                        DEBUG("TODO: Multiple fuzzy matches (" << num_fuzzy << "), which placeholder set to use?");
                     }
                     match = ::HIR::Compare::Fuzzy;
                 }
