@@ -4522,9 +4522,33 @@ namespace {
                             const auto& sm = sbe->m_struct_markings;
                             if( sm.dst_type == ::HIR::StructMarkings::DstType::Possible )
                             {
-                                const auto& isrc = se.path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
-                                const auto& idst = de.path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
-                                return check_unsize_tys(context, sp, idst, isrc, context_mut, nullptr);
+                                DEBUG("Possible DST");
+                                const auto& p_src = se.path.m_data.as_Generic().m_params;
+                                const auto& p_dst = de.path.m_data.as_Generic().m_params;
+                                const auto& isrc = p_src.m_types.at(sm.unsized_param);
+                                const auto& idst = p_dst.m_types.at(sm.unsized_param);
+                                auto rv = check_unsize_tys(context, sp, idst, isrc, context_mut, nullptr);
+                                switch(rv)
+                                {
+                                case CoerceResult::Fail:
+                                case CoerceResult::Unknown:
+                                    break;
+                                default:
+                                    if(context_mut) {
+                                        for(size_t i = 0; i < p_src.m_types.size(); i++) {
+                                            if( i != sm.unsized_param ) {
+                                                context_mut->equate_types(sp, p_dst.m_types.at(i), p_src.m_types[i]);
+                                            }
+                                        }
+                                        for(size_t i = 0; i < p_src.m_values.size(); i++) {
+                                            if( i != sm.unsized_param ) {
+                                                context_mut->equate_values(sp, p_dst.m_values.at(i), p_src.m_values[i]);
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                                return rv;
                             }
                             else
                             {
