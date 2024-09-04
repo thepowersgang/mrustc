@@ -2177,17 +2177,39 @@ namespace HIR {
                     }
                     }
                 TU_ARMA(Borrow, te) {
+                    const auto* dynamic_type_d = &te.inner;
+                    const auto* dynamic_type_s = &src_ty.data().as_Borrow().inner;
+                    for(;;)
+                    {
+                        if( const auto* tep = dynamic_type_d->data().opt_Path() )
+                        {
+                            MIR_ASSERT(state, tep->binding.is_Struct(), "RValue::MakeDst to " << *dynamic_type_d);
+                            const auto& sm = tep->binding.as_Struct()->m_struct_markings;
+                            dynamic_type_d = &tep->path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
+                            dynamic_type_s = &dynamic_type_s->data().as_Path().path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
                     // TODO: What can cast TO a borrow? - Non-converted dyn unsizes .. but they require vtables,
                     // which aren't available yet!
-                    if( const auto* tep = te.inner.data().opt_TraitObject() )
+                    if( const auto* tep = dynamic_type_d->data().opt_TraitObject() )
                     {
-                        auto vtable_path = ::HIR::Path(src_ty.data().as_Borrow().inner.clone(), tep->m_trait.m_path.clone(), "vtable#");
+                        auto vtable_path = ::HIR::Path(dynamic_type_s->clone(), tep->m_trait.m_path.clone(), "vtable#");
                         dst.copy_from( state, inval );
                         dst.slice(Target_GetPointerBits()/8).write_ptr(state, EncodedLiteral::PTR_BASE, local_state.get_staticref(std::move(vtable_path)));
                     }
+                    else if( /*const auto* tep =*/ dynamic_type_d->data().opt_Slice() )
+                    {
+                        auto size = dynamic_type_s->data().as_Array().size.as_Known();
+                        dst.copy_from( state, inval );
+                        dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), size);
+                    }
                     else
                     {
-                        MIR_BUG(state, "Cast to " << dst_ty << " from " << src_ty);
+                        MIR_BUG(state, "RValue::MakeDst to " << dst_ty << " from " << src_ty << " - " << *dynamic_type_d << " from " << *dynamic_type_s);
                     }
                     }
                 }

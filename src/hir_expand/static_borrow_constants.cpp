@@ -144,6 +144,7 @@ namespace static_borrow_constants {
                 }
                 auto usage = value_ptr->m_usage;
 
+                bool is_unsized = false;
                 bool is_zst = ([&]()->bool{
                     // HACK: `Target_GetSizeOf` calls `Target_GetSizeAndAlignOf` which doesn't work on generic arrays (needs alignment)
                     if( const auto* te = value_ptr->m_res_type.data().opt_Array() ) {
@@ -151,8 +152,9 @@ namespace static_borrow_constants {
                             return true;
                         }
                     }
-                    size_t v = 1;
-                    Target_GetSizeOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v);
+                    size_t v = 1, unused_align=0;
+                    Target_GetSizeAndAlignOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v, unused_align);
+                    is_unsized = (v == SIZE_MAX);
                     return v == 0;
                     })();
 
@@ -160,6 +162,10 @@ namespace static_borrow_constants {
                 if( !is_zst && monomorphise_type_needed(value_ptr->m_res_type) )
                 {
                     DEBUG("-- " << value_ptr->m_res_type << " is generic");
+                }
+                else if( is_unsized )
+                {
+                    DEBUG("-- " << value_ptr->m_res_type << " is unsized");
                 }
                 // Not mutable (... or at least, not a non-shared non-zst)
                 else if( !is_zst && node.m_type != HIR::BorrowType::Shared )
