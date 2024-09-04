@@ -5673,7 +5673,8 @@ namespace {
                         if(g.group() == ::HIR::GENERIC_Placeholder ) {
                             auto it = m_values.find(g);
                             if( it == m_values.end() ) {
-                                it = m_values.insert(std::make_pair( g, ::HIR::ConstGeneric::make_Infer({ m_context.m_ivars.new_ivar_val() }) )).first;
+                                auto v = ::HIR::ConstGeneric::make_Infer( ::HIR::ConstGeneric::Data_Infer { m_context.m_ivars.new_ivar_val() });
+                                it = m_values.insert(std::make_pair( g, std::move(v) )).first;
                             }
                             return it->second.clone();
                         }
