@@ -941,6 +941,9 @@ RunnableJob Job_BuildTarget::start()
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
+            if( !m.has_library() ) {
+                return ;
+            }
             auto path = parent.get_crate_path(m, m.get_library(), m_is_for_host || (m.has_library() && m.get_library().m_is_proc_macro), nullptr, nullptr);
             args.push_back("--extern");
             if( dep.key() != m.name() ) {
@@ -957,6 +960,9 @@ RunnableJob Job_BuildTarget::start()
             if( ! dep.is_disabled() )
             {
                 const auto& m = dep.get_package();
+                if( !m.has_library() ) {
+                    return ;
+                }
                 auto path = parent.get_crate_path(m, m.get_library(), m_is_for_host, nullptr, nullptr);
                 args.push_back("--extern");
                 args.push_back(::format(escape_dashes(dep.key()), "=", path));
@@ -998,6 +1004,9 @@ RunnableJob Job_BuildScript::start()
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
+            if( !m.has_library() ) {
+                return ;
+            }
             auto path = parent.get_crate_path(m, m.get_library(), true, nullptr, nullptr);   // Dependencies for build scripts are always for the host (because it is)
             args.push_back("--extern"); args.push_back(::format(m.get_library().m_name, "=", path));
         }
