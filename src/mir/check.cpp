@@ -1048,7 +1048,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             MIR_BUG(state, "DstPtr requires a &-ptr as input, got " << ty);
                         }
                         const auto& ity = *ity_p;
-                        if( ity.data().is_Slice() )
+                        if( ity.data().is_Slice() || (ity.data().is_Primitive() && ity.data().as_Primitive() == HIR::CoreType::Str) )
                             ;
                         else if( ity.data().is_TraitObject() )
                             ;
