@@ -218,6 +218,8 @@ namespace {
     {
         if(Target_GetCurSpec().m_arch.m_name == "x86_64")
             return get_reg_class_x8664(sp, str);
+        if(Target_GetCurSpec().m_arch.m_name == "x86")
+            return get_reg_class_x8664(sp, str);
         ERROR(sp, E0000, "Unknown architecture for asm!");
     }
 }
