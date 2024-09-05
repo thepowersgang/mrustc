@@ -198,6 +198,16 @@ impl Punct {
         self.span = span;
     }
 }
+impl ::std::cmp::PartialEq<char> for Punct {
+    fn eq(&self, rhs: &char) -> bool {
+        self.ch == *rhs
+    }
+}
+impl ::std::cmp::PartialEq<Punct> for char {
+    fn eq(&self, rhs: &Punct) -> bool {
+        *self == rhs.ch
+    }
+}
 #[derive(Copy,Clone,Debug,PartialEq,Eq)]
 pub enum Spacing {
     Alone,
