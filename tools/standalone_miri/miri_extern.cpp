@@ -945,14 +945,18 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "free" )
     {
-        auto ptr = args.at(0).read_pointer_valref_mut(0, 0);
-        LOG_ASSERT(ptr.m_offset == 0, "`free` with pointer not to beginning of block");
-        LOG_DEBUG("free(ptr=" << ptr.m_alloc << ")");
+        // If `ptr` is NULL, no operation is performed
+        if( args.at(0).read_usize(0) != 0 )
+        {
+            auto ptr = args.at(0).read_pointer_valref_mut(0, 0);
+            LOG_ASSERT(ptr.m_offset == 0, "`free` with pointer not to beginning of block");
+            LOG_DEBUG("free(ptr=" << ptr.m_alloc << ")");
 
-        LOG_ASSERT(ptr.m_alloc, "`free` with no backing allocation attached to pointer");
-        LOG_ASSERT(ptr.m_alloc.is_alloc(), "`free` with no backing allocation attached to pointer");
-        auto& alloc = ptr.m_alloc.alloc();
-        alloc.mark_as_freed();
+            LOG_ASSERT(ptr.m_alloc, "`free` with no backing allocation attached to pointer");
+            LOG_ASSERT(ptr.m_alloc.is_alloc(), "`free` with no backing allocation attached to pointer");
+            auto& alloc = ptr.m_alloc.alloc();
+            alloc.mark_as_freed();
+        }
 
         rv = Value();
     }
