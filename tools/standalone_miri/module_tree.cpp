@@ -168,14 +168,14 @@ bool Parser::parse_one()
         }
         auto p2 = p;
         if( tree.functions.count(p) == 0 ) {
-            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, ::std::move(ext), ::std::move(body) }) );
+            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), ::std::move(rv_ty), ::std::move(ext), ::std::move(body) }) );
         }
         else {
             auto& exist = tree.functions[p];
 
             // Signature check
             if( exist.args != arg_tys || exist.ret_ty != rv_ty ) {
-                LOG_ERROR(lex << "Non-matching redefinition of " << p << "\n"
+                LOG_NOTICE(lex << "Non-matching redefinition of " << p << "\n"
                     << exist.args << " " << exist.ret_ty << "\n"
                     << arg_tys << " " << rv_ty
                     );
@@ -204,55 +204,76 @@ bool Parser::parse_one()
     }
     else if( lex.consume_if("static") )
     {
+        Static s;
         auto p = RcString::new_interned(lex.check_consume(TokenClass::Ident).strval.c_str());
         //LOG_TRACE(lex << "static " << p);
         lex.check_consume(':');
-        auto ty = parse_type();
-        // TODO: externs?
+        s.ty = parse_type();
         lex.check_consume('=');
-        lex.check(TokenClass::String);
-        auto data = ::std::move(lex.consume().strval);
+        if( lex.consume_if('@') ) {
+            lex.check(TokenClass::String);
+            auto extern_name = ::std::move(lex.consume().strval);
+        }
+        else {
+            // TODO: externs?
+            lex.check(TokenClass::String);
+            auto data = ::std::move(lex.consume().strval);
 
-        Static s;
-        s.ty = ty;
-        s.init.bytes.insert(s.init.bytes.begin(), data.begin(), data.end());
+            s.init.bytes.insert(s.init.bytes.begin(), data.begin(), data.end());
 
-        if( lex.consume_if('{') )
-        {
-            while( !lex.consume_if('}') )
+            if( lex.consume_if('{') )
             {
-                lex.check_consume('@');
-                lex.check(TokenClass::Integer);
-                auto ofs = lex.consume().integer_64(lex);
-                lex.check_consume('+');
-                lex.check(TokenClass::Integer);
-                auto size = lex.consume().integer_64(lex);
-                lex.check_consume('=');
-                if( lex.next() == TokenClass::String )
+                while( !lex.consume_if('}') )
                 {
-                    auto reloc_str = ::std::move(lex.consume().strval);
-                    s.init.relocs.push_back( Static::InitValue::Relocation::new_string(ofs, size, std::move(reloc_str)) );
-                }
-                else if( lex.next() == TokenClass::Ident )
-                {
-                    auto reloc_path = HIR::Path { RcString(lex.check_consume(TokenClass::Ident).strval.c_str()) };
-                    s.init.relocs.push_back( Static::InitValue::Relocation::new_item(ofs, size, std::move(reloc_path)) );
-                }
-                else
-                {
-                    LOG_FATAL(lex << "Unexepcted token " << lex.next() << " in relocation value");
-                    throw "ERROR";
-                }
-                if( ! lex.consume_if(',') ) {
-                    lex.check_consume('}');
-                    break ;
+                    lex.check_consume('@');
+                    lex.check(TokenClass::Integer);
+                    auto ofs = lex.consume().integer_64(lex);
+                    lex.check_consume('+');
+                    lex.check(TokenClass::Integer);
+                    auto size = lex.consume().integer_64(lex);
+                    lex.check_consume('=');
+                    if( lex.next() == TokenClass::String )
+                    {
+                        auto reloc_str = ::std::move(lex.consume().strval);
+                        s.init.relocs.push_back( Static::InitValue::Relocation::new_string(ofs, size, std::move(reloc_str)) );
+                    }
+                    else if( lex.next() == TokenClass::Ident )
+                    {
+                        auto reloc_path = HIR::Path { RcString(lex.check_consume(TokenClass::Ident).strval.c_str()) };
+                        s.init.relocs.push_back( Static::InitValue::Relocation::new_item(ofs, size, std::move(reloc_path)) );
+                    }
+                    else
+                    {
+                        LOG_FATAL(lex << "Unexepcted token " << lex.next() << " in relocation value");
+                        throw "ERROR";
+                    }
+                    if( ! lex.consume_if(',') ) {
+                        lex.check_consume('}');
+                        break ;
+                    }
                 }
             }
         }
         lex.check_consume(';');
 
         LOG_DEBUG(lex << "static " << p);
-        tree.statics.insert(::std::make_pair( ::std::move(p), ::std::move(s) ));
+        if( tree.statics.count(p) != 0 ) {
+            auto& e = tree.statics.at(p);
+            if( e.ty != s.ty ) {
+                LOG_ERROR("Redefinition of " << p << " with different types");
+            }
+            if( e.init.bytes.empty() ) {
+                e.init = std::move(s.init);
+            }
+            else if( s.init.bytes.empty() ) {
+            }
+            else {
+                // TODO: Compare
+            }
+        }
+        else {
+            tree.statics.insert(::std::make_pair( ::std::move(p), ::std::move(s) ));
+        }
     }
     else if( lex.consume_if("type") )
     {
