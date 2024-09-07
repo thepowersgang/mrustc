@@ -1490,6 +1490,12 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break; }
     case TOK_RWORD_CRATE:
+        if( lex.lookahead(0) == TOK_RWORD_AS ) {
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+            auto name = get_optional_ident(lex);
+            entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
+            return;
+        }
         // 1.29 absolute path
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break;
