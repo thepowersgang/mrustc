@@ -2213,6 +2213,12 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
     }
 
+    // Search for the actual trait containing this associated type
+    ::HIR::GenericPath  trait_path;
+    if( !this->trait_contains_type(sp, pe.trait, this->m_crate.get_trait_by_path(sp, pe.trait.m_path), pe.item.c_str(), trait_path) )
+        BUG(sp, "Cannot find associated type " << pe.item << " anywhere in trait " << pe.trait);
+    //pe.trait = mv$(trait_path);
+
     // Special type-specific rules
     TU_MATCH_HDRA( (pe.type.data()), {)
     default:
@@ -2322,20 +2328,21 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
     // If it's a ErasedType, then maybe we're asking for a bound
     TU_ARMA(ErasedType, te) {
+        DEBUG("- ErasedType");
         for( const auto& trait : te.m_traits )
         {
             const auto& trait_gp = trait.m_path;
-            if( pe.trait.m_path == trait_gp.m_path ) {
+            if( trait_path.m_path == trait_gp.m_path ) {
                 auto cmp = ::HIR::Compare::Equal;
-                if( pe.trait.m_params.m_types.size() != trait_gp.m_params.m_types.size() )
+                if( trait_path.m_params.m_types.size() != trait_gp.m_params.m_types.size() )
                 {
                     cmp = ::HIR::Compare::Unequal;
                 }
                 else
                 {
-                    for(unsigned int i = 0; i < pe.trait.m_params.m_types.size(); i ++)
+                    for(unsigned int i = 0; i < trait_path.m_params.m_types.size(); i ++)
                     {
-                        const auto& l = pe.trait.m_params.m_types[i];
+                        const auto& l = trait_path.m_params.m_types[i];
                         const auto& r = trait_gp.m_params.m_types[i];
                         cmp &= l.compare_with_placeholders(sp, r, m_ivars.callback_resolve_infer());
                     }
@@ -2367,7 +2374,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
 
             // - Check if the desired trait is a supertrait of this.
             // NOTE: `params` (aka des_params) is not used (TODO)
-            bool is_supertrait = this->find_named_trait_in_trait(sp, pe.trait.m_path,pe.trait.m_params, *trait.m_trait_ptr, trait_gp.m_path,trait_gp.m_params, pe.type,
+            bool is_supertrait = this->find_named_trait_in_trait(sp, trait_path.m_path, trait_path.m_params, *trait.m_trait_ptr, trait_gp.m_path,trait_gp.m_params, pe.type,
                 [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
                     // The above is just the monomorphised params and associated set. Comparison is still needed.
                     auto cmp = this->compare_pp(sp, i_params, pe.trait.m_params);
@@ -2394,12 +2401,6 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
         }
     }
-
-    // Search for the actual trait containing this associated type
-    ::HIR::GenericPath  trait_path;
-    if( !this->trait_contains_type(sp, pe.trait, this->m_crate.get_trait_by_path(sp, pe.trait.m_path), pe.item.c_str(), trait_path) )
-        BUG(sp, "Cannot find associated type " << pe.item << " anywhere in trait " << pe.trait);
-    //pe.trait = mv$(trait_path);
 
     // 1. Bounds
     bool rv = false;
