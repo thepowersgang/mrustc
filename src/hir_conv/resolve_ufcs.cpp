@@ -362,10 +362,11 @@ namespace resolve_ufcs {
 
             if( m_visit_exprs && expr.get() != nullptr )
             {
+                auto saved_in_expr = m_in_expr;
                 m_in_expr = true;
                 ExprVisitor v { *this };
                 (*expr).visit(v);
-                m_in_expr = false;
+                m_in_expr = saved_in_expr;
             }
         }
 
@@ -415,6 +416,9 @@ namespace resolve_ufcs {
                     e.params.m_lifetimes.resize( aty.m_generics.m_lifetimes.size() );
                 }
             }
+            //auto s = trait_path.m_params.m_types.size();
+            //trait_path.m_params.m_types.clear();
+            //trait_path.m_params.m_types.resize(s);
             return ::HIR::Path::Data::make_UfcsKnown({ mv$(e.type), mv$(trait_path), mv$(e.item), mv$(e.params)} );
         }
         static bool locate_item_in_trait(::HIR::Visitor::PathContext pc, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
@@ -756,7 +760,7 @@ namespace resolve_ufcs {
                             for(auto& t : p.m_data.as_UfcsKnown().trait.m_params.m_types)
                                 t = ::HIR::TypeRef();
                         }
-                        DEBUG("Found in Self, p = " << p);
+                        DEBUG("Found in Self (trait), p = " << p);
                         return ;
                     }
                     DEBUG("- Item " << e.item << " not found in Self - ty=" << e.type);
@@ -811,6 +815,7 @@ namespace resolve_ufcs {
                             trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
                         }
                     }
+
                     if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
                         assert(!p.m_data.is_UfcsUnknown());
                         // Success!
@@ -818,7 +823,7 @@ namespace resolve_ufcs {
                             for(auto& t : p.m_data.as_UfcsKnown().trait.m_params.m_types)
                                 t = ::HIR::TypeRef();
                         }
-                        DEBUG("Found in Self, p = " << p);
+                        DEBUG("Found in Self (impl" << (m_in_expr ? " expr" : "") << "), p = " << p);
                         return ;
                     }
                     DEBUG("- Item " << e.item << " not found in Self - ty=" << e.type);
