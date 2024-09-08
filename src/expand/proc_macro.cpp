@@ -895,8 +895,13 @@ namespace {
                 nodes = &pe.nodes;
                 ),
             (Absolute,
-                m_pmi.send_symbol("::");
-                m_pmi.send_string(pe.crate.c_str());
+                if( pe.crate == "" ) {
+                    m_pmi.send_rword("crate");
+                }
+                else {
+                    m_pmi.send_symbol("::");
+                    m_pmi.send_string(pe.crate.c_str());
+                }
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
                 ),
