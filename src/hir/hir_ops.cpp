@@ -465,7 +465,10 @@ namespace {
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
             ASSERT_BUG(sp, g.group() == 0, "");
             ASSERT_BUG(sp, g.idx() < impl_tys.size(), "");
-            ASSERT_BUG(sp, impl_tys[g.idx()], "");
+            if( ! impl_tys[g.idx()] ) {
+                DEBUG("get_type - not populated, " << g);
+                return HIR::TypeRef(HIR::GenericRef( RcString(FMT("placeholder_" << &impl_tys << "_" << g.idx())), HIR::GENERIC_Placeholder, g.idx() ));
+            }
             return impl_tys[g.idx()]->clone();
         }
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
