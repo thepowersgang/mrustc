@@ -59,6 +59,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
 
     // '<' - An associated type cast
     case TOK_LT:
+    case TOK_THINARROW_LEFT:
     case TOK_DOUBLE_LT: {
         PUTBACK(tok, lex);
         auto path = Parse_Path(lex, PATH_GENERIC_TYPE);

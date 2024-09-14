@@ -71,6 +71,9 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
 
     case TOK_DOUBLE_LT:
         lex.putback( Token(TOK_LT) );
+        if(0)
+    case TOK_THINARROW_LEFT:
+        lex.putback( Token(TOK_DASH) );
     case TOK_LT: {
         TypeRef ty = Parse_Type(lex, true);  // Allow trait objects without parens
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
@@ -142,16 +145,18 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         if( generic_mode == PATH_GENERIC_TYPE )
         {
             // If `foo::<` is seen in type context, then consume the `::` and continue on.
-            if( lex.lookahead(0) == TOK_DOUBLE_COLON && (lex.lookahead(1) == TOK_LT || lex.lookahead(1) == TOK_DOUBLE_LT) )
+            if( lex.lookahead(0) == TOK_DOUBLE_COLON && (lex.lookahead(1) == TOK_LT || lex.lookahead(1) == TOK_DOUBLE_LT || lex.lookahead(1) == TOK_THINARROW_LEFT) )
             {
                 GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
             }
-            if( lex.lookahead(0) == TOK_LT || lex.lookahead(0) == TOK_DOUBLE_LT )
+            if( lex.lookahead(0) == TOK_LT || lex.lookahead(0) == TOK_DOUBLE_LT || lex.lookahead(0) == TOK_THINARROW_LEFT )
             {
                 GET_TOK(tok, lex);
                 // HACK! Handle breaking << into < <
                 if( tok.type() == TOK_DOUBLE_LT )
                     lex.putback( Token(TOK_LT) );
+                if( tok.type() == TOK_THINARROW_LEFT )
+                    lex.putback( Token(TOK_DASH) );
 
                 // Type-mode generics "::path::to::Type<A,B>"
                 params = Parse_Path_GenericList(lex);
@@ -195,12 +200,14 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             break;
         }
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        if( generic_mode == PATH_GENERIC_EXPR && (lex.lookahead(0) == TOK_LT || lex.lookahead(0) == TOK_DOUBLE_LT) )
+        if( generic_mode == PATH_GENERIC_EXPR && (lex.lookahead(0) == TOK_LT || lex.lookahead(0) == TOK_DOUBLE_LT || lex.lookahead(0) == TOK_THINARROW_LEFT) )
         {
             GET_TOK(tok, lex);
             // HACK! Handle breaking << into < <
             if( tok.type() == TOK_DOUBLE_LT )
                 lex.putback( Token(TOK_LT) );
+            if( tok.type() == TOK_THINARROW_LEFT )
+                lex.putback( Token(TOK_DASH) );
 
             // Expr-mode generics "::path::to::function::<Type1,Type2>(arg1, arg2)"
             params = Parse_Path_GenericList(lex);
