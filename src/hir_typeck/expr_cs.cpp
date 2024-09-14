@@ -983,6 +983,10 @@ namespace {
 
                             DEBUG("Duplicate trait in possible_methods - " << it_1->second << " and " << it_2->second);
 
+                            // Remove the second entry, after re-creating the params using the ivar list
+                            // TODO: If `Into<Foo>` and `Into<_>` is seen, we want to pick the solid type, BUT
+                            //       For `Into<Foo>` and `Into<Bar>` this needs to be collapsed into `Into<_>` and propagated
+                            //if( e1.trait .compare_with_placeholders(sp, e2.trait, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal )
                             {
                                 const auto& ivars = node.m_trait_param_ivars;
                                 unsigned int n_params = e1.trait.m_params.m_types.size();
@@ -1001,9 +1005,9 @@ namespace {
                                 {
                                     e1.trait.m_params = mv$(trait_params);
                                 }
-
-                                it_2 = possible_methods.erase(it_2) - 1;
                             }
+
+                            it_2 = possible_methods.erase(it_2) - 1;
                         }
                     }
 
@@ -6710,6 +6714,48 @@ namespace
                     // Multiple fitting types, keep going
                 }
             }
+
+            // Check if any of the bounded types match only one of the possible types
+            {
+                bool failed = false;
+                const HIR::TypeRef* found_ty = nullptr;
+                for(const auto& bounded_ty : ivar_ent.bounded)
+                {
+                    // Skip ivars
+                    if( bounded_ty.data().is_Infer() ) {
+                        continue;
+                    }
+                    for(const auto& t : possible_tys)
+                    {
+                        // Skip ivars
+                        if( t.ty->data().is_Infer() ) {
+                            continue;
+                        }
+
+                        if( bounded_ty.compare_with_placeholders(sp, *t.ty, context.m_ivars.callback_resolve_infer()) != HIR::Compare::Unequal ) {
+                            if( !found_ty ) {
+                                found_ty = &bounded_ty;
+                            }
+                            else if( found_ty == &bounded_ty ) {
+                                // Same type still, continue
+                            }
+                            else if( bounded_ty.compare_with_placeholders(sp, *found_ty, context.m_ivars.callback_resolve_infer()) == HIR::Compare::Unequal ) {
+                                // Incompatible types
+                                failed = true;
+                            }
+                            else {
+                                // Compatible, keep the first one
+                            }
+                        }
+                    }
+                }
+                if( found_ty && !failed ) {
+                    DEBUG("- Bounded and possible type");
+                    context.equate_types(sp, ty_l, *found_ty);
+                    return true;
+                }
+            }
+
             // Either there are no bounds available, OR the bounds are not fully restrictive
             // - Add the bounded types to `possible_tys`
             for( const auto& new_ty : ivar_ent.bounded )
