@@ -1112,6 +1112,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
         attr_data = TokenTree(lex.get_edition(), lex.get_hygiene(), std::move(tt));
         } break;
     case TOK_PAREN_OPEN:
+    case TOK_SQUARE_OPEN:   // 1.74 - openssl v0.10.57
         PUTBACK(tok, lex);
         attr_data = Parse_TT(lex, false);
         break;
