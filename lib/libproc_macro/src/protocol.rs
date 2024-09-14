@@ -61,7 +61,12 @@ impl<R: ::std::io::Read> Reader<R>
         3 => Token::Lifetime(self.get_string()),
         4 => Token::String(self.get_string()),
         5 => Token::ByteString(self.get_byte_vec()),
-        6 => Token::Char(::std::char::from_u32(self.get_i128v() as u32).expect("char lit")),
+        6 => Token::Char({
+            let v = self.get_u128v();
+            assert!(v < 0x10FFFF, "Protocol error: malformed char literal {:#x}", v);
+            let v = v as u32;
+            ::std::char::from_u32(v).expect("protocol: char lit invalid")
+            }),
         7 => {
             let ty = self.getb().expect("getb int ty");
             let val = self.get_u128v();
