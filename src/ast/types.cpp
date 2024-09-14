@@ -307,7 +307,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
         ent.inner->print(os, is_debug);
         } break;
     _(Pointer,
-        os << "*" << (ent.is_mut ? "mut" : "const");
+        os << "*" << (ent.is_mut ? "mut " : "const ");
         ent.inner->print(os, is_debug);
         )
     _(Array,
