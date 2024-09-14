@@ -142,7 +142,7 @@ namespace static_borrow_constants {
                     m_is_constant = true;
                     return ;
                 }
-                auto usage = value_ptr->m_usage;
+                //auto usage = value_ptr->m_usage;
 
                 bool is_unsized = false;
                 bool is_zst = ([&]()->bool{
@@ -785,7 +785,13 @@ namespace static_borrow_constants {
                 TU_ARMA(TypeLifetime, e)
                     return ::HIR::GenericBound::make_TypeLifetime({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_lifetime(sp, e.valid_for) });
                 TU_ARMA(TraitBound, e)
-                    return ::HIR::GenericBound::make_TraitBound  ({ (e.hrtbs ? box$(e.hrtbs->clone()) : nullptr), monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    if( e.hrtbs ) {
+                        auto _h = monomorph_cb.push_hrb(*e.hrtbs);
+                        return ::HIR::GenericBound::make_TraitBound({ box$(e.hrtbs->clone()), monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    }
+                    else {
+                        return ::HIR::GenericBound::make_TraitBound({ nullptr               , monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    }
                 TU_ARMA(TypeEquality, e)
                     return ::HIR::GenericBound::make_TypeEquality({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_type(sp, e.other_type) });
                 }
