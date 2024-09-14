@@ -125,6 +125,7 @@ namespace {
                             if(out_path) {
                                 *out_path = AST::AbsolutePath(c.name,{});
                             }
+                            ASSERT_BUG(sp, crate.m_extern_crates.count(c.name) > 0, "Unable to find crate `" << c.name << "`");
                             return get_module_hir(crate.m_extern_crates.at(c.name).m_hir->m_root_module, path, 1, ignore_last, out_path);
                             }
                         TU_ARMA(Module, m) {
@@ -509,6 +510,9 @@ namespace {
             {
                 //DEBUG(i.name << " " << i.data.tag_str());
                 // What about `cfg()`?
+                if( !check_cfg_attrs(i->attrs) ) {
+                    continue ;
+                }
                 if( matching_namespace(i->data, ns) && i->name == name )
                 {
                     if(out_path) {
