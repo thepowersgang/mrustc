@@ -161,3 +161,6 @@
 - Types shadowing prelude (or imported) traits prevent the trait from being included for method resolution.
   - See rustc-1.74.0-src/vendor/nom/src/internal.rs:451 - where `Into::into` is not available due to the struct `Into` existing.
 - Really long method call chains breaking the 350 call recursion limit (rustc-1.74.0-src/vendor/curl-sys/build.rs:108)
+- `type Owned: OwnedToRef<Borrowed<'a> = Self>`
+  - Associated type bound with HRL defined
+  - `rustc-1.74.0-src/vendor/der/src/referenced.rs:19`
