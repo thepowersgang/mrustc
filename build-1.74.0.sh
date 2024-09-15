@@ -6,10 +6,8 @@ make RUSTCSRC
 make -f minicargo.mk LIBS $@
 make test $@
 make local_tests $@
-## Build just rustc-driver BEFORE building llvm
-#RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk output-1.74.0/rustc-build/librustc_driver.rlib
 
-LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk output-1.74.0/cargo $@
+LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk -j ${PARLEVEL:-1} output-1.74.0/cargo $@
 ./output-1.74.0/cargo --version
 
 RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk output-1.74.0/rustc $@
