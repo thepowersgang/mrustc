@@ -1134,11 +1134,16 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                 auto slash_pos = sub_feat.find('/');
                 if( slash_pos != ::std::string::npos ) {
                     ::std::string depname = sub_feat.substr(0, slash_pos);
+                    bool enable_optional = true;
+                    if( depname.back() == '?' ) {
+                        depname.pop_back();
+                        enable_optional = true;
+                    }
                     ::std::string depfeat = sub_feat.substr(slash_pos+1);
                     DEBUG("Activate feature '" << depfeat << "' from dependency '" << depname << "'");
                     iter_all_deps([&](PackageRef& dep) {
                         if(dep.m_key == depname) {
-                            dep.m_optional_enabled = true;
+                            dep.m_optional_enabled |= enable_optional;
                             dep.m_features.push_back(depfeat);
                             // TODO: Does this need to call `set_features` again?
                         }
