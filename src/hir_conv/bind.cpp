@@ -747,9 +747,9 @@ namespace {
                     auto monomorph_tp = [&](const HIR::TraitPath& tp)->HIR::TraitPath {
                         // TODO: if `path.m_path` has HRLs, then this needs HRLs (only if the HRLs get used?)
                         if( (tp.m_hrtbs && !tp.m_hrtbs->is_empty()) && (path.m_hrtbs && !path.m_hrtbs->is_empty()) ) {
-                            TODO(sp, "");
                             // TODO: How to determine which to use?
                             // - May need to combine them.
+                            TODO(sp, "Trait path and outer path both have HRLs, how to handle?");
                             return monomorph_cb.monomorph_traitpath(sp, tp, false);
                         }
                         else if( path.m_hrtbs && !path.m_hrtbs->is_empty() ) {
@@ -774,7 +774,6 @@ namespace {
                         // Recurse into parent traits
                         for(const auto& pt : tr.m_parent_traits)
                         {
-                            // TODO: if `path.m_path` has HRLs, then this needs HRLs
                             enum_supertraits_in(*pt.m_trait_ptr, monomorph_tp(pt));
                         }
                         // - Bound parent traits

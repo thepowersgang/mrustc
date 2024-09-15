@@ -3746,6 +3746,9 @@ const ::HIR::Function* TraitResolution::trait_contains_method(const Span& sp, co
         if( trait_contains_method_inner(*st.m_trait_ptr, name, rv) )
         {
             assert(rv);
+            // TODO: HRLs
+            static ::HIR::GenericParams empty_hrtbs;
+            auto _h = monomorph_cb.push_hrb(st.m_hrtbs ? *st.m_hrtbs : empty_hrtbs);
             out_path.m_path = st.m_path.m_path;
             out_path.m_params = monomorph_cb.monomorph_path_params(sp, st.m_path.m_params, false);
             return rv;
@@ -4702,8 +4705,31 @@ bool TraitResolution::find_method(const Span& sp,
         // 2. Compare the receiver of the above to this type and the bound.
         if(const auto* self_ty = check_method_receiver(sp, *fcn_ptr, ty, access))
         {
-            // TODO: HRLs.
-            final_trait_path = MonomorphHrlsOnly(tb.second.hrbs.make_empty_params(true)).monomorph_genericpath(sp, final_trait_path, true);
+            // HRLs - could be some in the path from `trait_contains_method`
+            // - Lazy option, just erase whatever we find
+            struct MonomorphEraseHrls:
+                public Monomorphiser
+            {
+                ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
+                    if( ty.group() == 3 ) {
+                        return ::HIR::TypeRef();
+                    }
+                    return HIR::TypeRef(ty);
+                }
+                ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+                    if( val.group() == 3 ) {
+                        return ::HIR::ConstGeneric();
+                    }
+                    return HIR::ConstGeneric(val);
+                }
+                ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& lft_ref) const override {
+                    if( lft_ref.group() == 3 ) {
+                        return ::HIR::LifetimeRef();
+                    }
+                    return ::HIR::LifetimeRef(lft_ref.binding);
+                }
+            };
+            final_trait_path = MonomorphEraseHrls().monomorph_genericpath(sp, final_trait_path, true);
 
             // If the type is an unbounded ivar, don't check.
             if( TU_TEST1(self_ty->data(), Infer, .is_lit() == false) )

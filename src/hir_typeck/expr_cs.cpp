@@ -988,8 +988,11 @@ namespace {
                             //       For `Into<Foo>` and `Into<Bar>` this needs to be collapsed into `Into<_>` and propagated
                             //if( e1.trait .compare_with_placeholders(sp, e2.trait, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal )
                             {
-                                const auto& ivars = node.m_trait_param_ivars;
+                                auto& ivars = node.m_trait_param_ivars;
                                 unsigned int n_params = e1.trait.m_params.m_types.size();
+                                while(ivars.size() < n_params) {
+                                    ivars.push_back(context.m_ivars.new_ivar());
+                                }
                                 assert(n_params <= ivars.size());
                                 ::HIR::PathParams   trait_params;
                                 trait_params.m_types.reserve( n_params );
