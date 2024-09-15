@@ -1137,7 +1137,7 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                     bool enable_optional = true;
                     if( depname.back() == '?' ) {
                         depname.pop_back();
-                        enable_optional = true;
+                        enable_optional = false;
                     }
                     ::std::string depfeat = sub_feat.substr(slash_pos+1);
                     DEBUG("Activate feature '" << depfeat << "' from dependency '" << depname << "'");
