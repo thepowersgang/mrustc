@@ -653,6 +653,7 @@ namespace
                     {
                         switch(mode)
                         {
+                        case LookupMode::PatternType:
                         case LookupMode::Type:
                         case LookupMode::Namespace:
                             // TODO: Want to return the type if handling a struct literal
