@@ -69,11 +69,11 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         }
         return Parse_Path(lex, true, generic_mode);
 
+    //case TOK_THINARROW_LEFT:
+    //    lex.putback( Token(TOK_DASH) );
+    //    if(0)
     case TOK_DOUBLE_LT:
         lex.putback( Token(TOK_LT) );
-        if(0)
-    case TOK_THINARROW_LEFT:
-        lex.putback( Token(TOK_DASH) );
     case TOK_LT: {
         TypeRef ty = Parse_Type(lex, true);  // Allow trait objects without parens
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
@@ -243,12 +243,13 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             break;
         case TOK_RWORD_TRUE:
         case TOK_RWORD_FALSE:
+        case TOK_DASH:
         case TOK_INTEGER:
         case TOK_FLOAT:
         case TOK_INTERPOLATED_EXPR:
         case TOK_BRACE_OPEN:
             PUTBACK(tok, lex);
-            rv.m_entries.push_back( Parse_ExprVal(lex) );
+            rv.m_entries.push_back( Parse_Expr13(lex) );
             break;
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )
@@ -274,6 +275,41 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         default:
             PUTBACK(tok, lex);
             rv.m_entries.push_back( Parse_Type(lex) );
+            if( lex.lookahead(0) == TOK_EQUAL || lex.lookahead(0) == TOK_COLON ) {
+                auto sp = lex.point_span();
+                // Uh-oh, the previously-parsed type was actually an ATY name (with generics, probably)
+                // - Decode the above type into the name
+                auto& ty = rv.m_entries.back().as_Type();
+                if( !ty.is_path() ) {
+                    ERROR(sp, E0000, "Unexpected = or : after non-trivial type path - " << ty);
+                }
+                auto& p = ty.path();
+                if( !p.m_class.is_Relative() ) {
+                    ERROR(sp, E0000, "Unexpected = or : after non-trivial type path - " << ty);
+                }
+                if( p.m_class.as_Relative().nodes.size() != 1 ) {
+                    ERROR(sp, E0000, "Unexpected = or : after non-trivial type path - " << ty);
+                }
+                auto n = std::move(p.m_class.as_Relative().nodes[0]);
+                rv.m_entries.pop_back();
+                if( lex.getTokenIf(TOK_EQUAL) ) {
+                    auto name = n.name();
+                    rv.m_entries.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
+                }
+                else if( lex.getTokenIf(TOK_COLON) ) {
+                    auto name = n.name();
+                    // TODO: Trait list instead of duplicating the name
+                    do {
+                        rv.m_entries.push_back( ::std::make_pair( name, Parse_Path(lex, PATH_GENERIC_TYPE) ) );
+                        if(lex.lookahead(0) != TOK_PLUS)
+                            break;
+                        GET_CHECK_TOK(tok, lex, TOK_PLUS);
+                    } while(true);
+                }
+                else {
+                    throw "Unreachable";
+                }
+            }
             break;
         }
     } while( GET_TOK(tok, lex) == TOK_COMMA );

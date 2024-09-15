@@ -287,10 +287,15 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 bound_start = ret.m_bounds.size();
-                do {
-                    GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-                    ret.add_bound(AST::GenericBound::make_Lifetime({ AST::LifetimeRef(ref), get_LifetimeRef(lex, mv$(tok)) }));
-                } while( GET_TOK(tok, lex) == TOK_PLUS );
+                if( lex.lookahead(0) == TOK_LIFETIME ) {
+                    do {
+                        GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
+                        ret.add_bound(AST::GenericBound::make_Lifetime({ AST::LifetimeRef(ref), get_LifetimeRef(lex, mv$(tok)) }));
+                    } while( GET_TOK(tok, lex) == TOK_PLUS );
+                }
+                else {
+                    GET_TOK(tok, lex);
+                }
                 bound_end = ret.m_bounds.size();
             }
             ret.add_lft_param(::AST::LifetimeParam(lex.point_span(), ::std::move(attrs), param_name ), bound_start, bound_end);

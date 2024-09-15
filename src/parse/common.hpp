@@ -65,6 +65,7 @@ extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod);
 extern AST::Expr   Parse_Expr(TokenStream& lex);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
 extern AST::ExprNodeP   Parse_Expr0(TokenStream& lex);
+extern AST::ExprNodeP   Parse_Expr13(TokenStream& lex); // Unaries
 extern AST::ExprNodeP   Parse_ExprVal(TokenStream& lex);
 //extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex, AST::ExprNode_Block::Type ty=AST::ExprNode_Block::Type::Bare, Ident label=Ident(""));
 extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex);
