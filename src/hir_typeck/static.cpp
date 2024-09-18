@@ -3218,10 +3218,13 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                     TU_MATCH_HDRA( (v), {)
                     TU_ARMA(Constant, ve) {
                         // Constants?
-                        if( ve.m_value_state != HIR::Constant::ValueState::Unknown ) {
+                        if( ve.m_value || ve.m_value_state != HIR::Constant::ValueState::Unknown ) {
                             DEBUG("Trait provided value");
                             // NOTE: The parameters have already been set
                             return &ve;
+                        }
+                        else {
+                            DEBUG("Trait did not provide a value");
                         }
                         }
                     TU_ARMA(Static, ve) {
@@ -3236,6 +3239,9 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                         // Fall through if there's no provided body
                         }
                     }
+                }
+                else {
+                    DEBUG("No best impl, but monomorph needed - can't check trait");
                 }
                 return ValuePtr::make_NotYetKnown({});
             }

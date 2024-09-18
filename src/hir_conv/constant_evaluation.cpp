@@ -1330,7 +1330,7 @@ namespace MIR { namespace eval {
                 DEBUG("- Evaluate " << p);
                 try
                 {
-                    item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone());
+                    item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone(), const_ms.clone());
                     item.m_value_state = HIR::Constant::ValueState::Known;
                 }
                 catch(const Defer& )
