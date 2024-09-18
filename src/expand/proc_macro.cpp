@@ -1010,10 +1010,10 @@ namespace {
                             }
                             TU_MATCH_HDRA((params.m_bounds[i]), {)
                             default:
-                                BUG(sp, "");
+                                BUG(sp, "Unhandled bound type - " << params.m_bounds[i]);
                             TU_ARMA(None, be) {}
-                            TU_ARMA(Lifetime, be) {
-                                m_pmi.send_lifetime(be.test.name().name.c_str());
+                            TU_ARMA(TypeLifetime, be) {
+                                m_pmi.send_lifetime(be.bound.name().name.c_str());
                                 }
                             TU_ARMA(IsTrait, be) {
                                 assert(be.outer_hrbs.empty());  // Shouldn't be possible in this position
