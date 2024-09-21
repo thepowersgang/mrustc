@@ -285,6 +285,10 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
     }
 }
 
+bool ::HIR::TypeRef::operator==(const ::HIR::CoreType& x) const
+{
+    return data().is_Primitive() && data().as_Primitive() == x;
+}
 bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 {
     if( m_ptr == x.m_ptr )

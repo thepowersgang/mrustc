@@ -117,6 +117,9 @@ public:
     //TypeRef clone_deep() const;
     void fmt(::std::ostream& os) const;
 
+    bool operator==(const ::HIR::CoreType& x) const;
+    bool operator!=(const ::HIR::CoreType& x) const { return !(*this == x); }
+
     bool operator==(const ::HIR::TypeRef& x) const;
     bool operator!=(const ::HIR::TypeRef& x) const { return !(*this == x); }
     bool operator<(const ::HIR::TypeRef& x) const { return ord(x) == OrdLess; }
