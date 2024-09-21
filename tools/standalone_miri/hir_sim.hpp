@@ -107,7 +107,12 @@ namespace HIR {
         friend ::std::ostream& operator<<(::std::ostream& os, const ArraySize& x) {
             return os << x.count;
         }
+        Ordering ord(const ArraySize& x) const {
+            return ::ord(count, x.count);
+        }
         bool operator<(const ArraySize& o) const { return count < o.count; }
+        bool operator==(const ArraySize& o) const { return count == o.count; }
+        bool operator!=(const ArraySize& o) const { return count != o.count; }
     };
 
     /// Definition of a type
@@ -239,6 +244,20 @@ namespace HIR {
         ::std::vector<TypeRef>  tys;
 
         friend ::std::ostream& operator<<(::std::ostream& os, const PathParams& x);
+
+        Ordering ord(const PathParams& x) const {
+            __ORD(tys);
+            return OrdEqual;
+        }
+        bool operator==(const PathParams& x) const {
+            return this->ord(x) == OrdEqual;
+        }
+        bool operator!=(const PathParams& x) const {
+            return this->ord(x) != OrdEqual;
+        }
+        bool operator<(const PathParams& x) const {
+            return this->ord(x) == OrdLess;
+        }
     };
 
     struct Path {
@@ -257,6 +276,11 @@ namespace HIR {
     struct GenericPath {
         RcString    n;
 
+        Ordering ord(const GenericPath& x) const {
+            return ::ord(n, x.n);
+        }
+        bool operator==(const GenericPath& p) const { return ord(p) == OrdEqual; }
+        bool operator!=(const GenericPath& p) const { return ord(p) != OrdEqual; }
         friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x){
             return os << x.n;
         }

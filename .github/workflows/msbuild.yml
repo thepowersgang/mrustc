@@ -52,7 +52,7 @@ jobs:
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
      
     - name: Save Artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: binaries
         # Includes `minipatch` as that's needed by the test scripts
@@ -82,7 +82,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
     - name: Download all workflow run artifacts
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
       with:
         name: binaries
         path: vsproject/x64/${{env.BUILD_CONFIGURATION}}

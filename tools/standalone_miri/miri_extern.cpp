@@ -46,31 +46,33 @@ extern "C" {
     ssize_t write(int, const void*, size_t);
 }
 #endif
+namespace FfiHelpers {
+    static const char* read_cstr(const Value& v, size_t ptr_ofs, size_t* out_strlen=nullptr, size_t max_len=SIZE_MAX)
+    {
+        bool _is_mut;
+        size_t  size;
+        // Get the base pointer and allocation size (checking for at least one valid byte to start with)
+        const char* ptr = reinterpret_cast<const char*>( v.read_pointer_unsafe(ptr_ofs, 1, /*out->*/ size, _is_mut) );
+        size_t len = 0;
+        // Seek until either out of space, or a NUL is found
+        while(size -- && *ptr && max_len --)
+        {
+            ptr ++;
+            len ++;
+        }
+        if( out_strlen )
+        {
+            *out_strlen = len;
+        }
+        return reinterpret_cast<const char*>(v.read_pointer_const(0, max_len == 0 ? len : len + 1));  // Final read will trigger an error if the NUL isn't there
+    }
+}
 
 // A very simple implementation of `printf`-style formatting, with internal checks
 ::std::string format_string(const char* fmt, const ::std::vector<Value>& args, size_t cur_arg) {
     ::std::stringstream output;
     for(const char* s = fmt; *s; s++) {
         if( *s == '%' ) {
-            s ++;
-            if( *s == '%' ) {
-                output << '%';
-                continue;
-            }
-            char pad = ' ';
-            if( *s == '0' ) {
-                pad = '0';
-                s ++;
-            }
-            size_t width = 0;
-            while(std::isdigit(*s)) {
-                width *= 10;
-                width += *s - '0';
-                s ++;
-            }
-            LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
-            const auto& arg = args.at(cur_arg);
-            LOG_DEBUG("printf> pad='" << pad << "', width=" << width << ", arg=" << arg);
             struct H {
                 static int64_t read_signed(const Value& v) {
                     switch(v.size())
@@ -95,32 +97,61 @@ extern "C" {
                     }
                 }
             };
+            s ++;
+            if( *s == '%' ) {
+                output << '%';
+                continue;
+            }
+            char pad = ' ';
+            if( *s == '0' ) {
+                pad = '0';
+                s ++;
+            }
+            size_t width = 0;
+            if( *s == '*' ) {
+                LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
+                const auto& arg = args.at(cur_arg);
+                width = H::read_unsigned(arg);
+                cur_arg ++;
+                s ++;
+            }
+            else {
+                while(std::isdigit(*s)) {
+                    width *= 10;
+                    width += *s - '0';
+                    s ++;
+                }
+            }
+            LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
+            const auto& arg = args.at(cur_arg);
+            LOG_DEBUG("printf> pad='" << pad << "', width=" << width << ", arg=" << arg);
             switch(*s)
             {
             case 'i':
             case 'd':
                 output << std::setfill(pad) << std::setw(width);
                 output << std::dec << H::read_signed(arg);
-                cur_arg += 1;
                 break;
             case 'u':
                 output << std::setfill(pad) << std::setw(width);
                 output << std::dec << H::read_unsigned(arg);
-                cur_arg += 1;
                 break;
             case 'x':
                 output << std::setfill(pad) << std::setw(width);
                 output << std::hex << H::read_unsigned(arg);
-                cur_arg += 1;
+                break;
+            case 's':
+                output << std::setfill(pad) << std::setw(width);
+                output << FfiHelpers::read_cstr(arg, 0);
                 break;
             case 'p':
                 LOG_ASSERT(arg.size() == POINTER_SIZE, "Printf `%p` with wrong size integer - " << arg.size() << " != " << POINTER_SIZE);
-                output << std::hex << "0x" << args.at(cur_arg).read_usize(0);
-                cur_arg += 1;
+                output << std::hex << "0x" << arg.read_usize(0);
                 break;
             default:
                 LOG_FATAL("Malformed printf string - unexpected character `" << *s << "`");
             }
+            cur_arg += 1;
         }
         else {
             output << *s;
@@ -131,27 +162,6 @@ extern "C" {
 
 bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
-    struct FfiHelpers {
-        static const char* read_cstr(const Value& v, size_t ptr_ofs, size_t* out_strlen=nullptr)
-        {
-            bool _is_mut;
-            size_t  size;
-            // Get the base pointer and allocation size (checking for at least one valid byte to start with)
-            const char* ptr = reinterpret_cast<const char*>( v.read_pointer_unsafe(0, 1, /*out->*/ size, _is_mut) );
-            size_t len = 0;
-            // Seek until either out of space, or a NUL is found
-            while(size -- && *ptr)
-            {
-                ptr ++;
-                len ++;
-            }
-            if( out_strlen )
-            {
-                *out_strlen = len;
-            }
-            return reinterpret_cast<const char*>(v.read_pointer_const(0, len + 1));  // Final read will trigger an error if the NUL isn't there
-        }
-    };
     if( link_name == "__rust_allocate" || link_name == "__rust_alloc" || link_name == "__rust_alloc_zeroed" )
     {
         static unsigned s_alloc_count = 0;
@@ -304,7 +314,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const auto& sym_alloc = args.at(1).get_relocation(0);
 
         // TODO: Ensure that first arg is a FFI pointer with offset+size of zero
-        void* handle = handle_alloc.ffi().ptr_value;
+        void* handle = handle_alloc.ffi().ptr_value();
         // TODO: Get either a FFI data pointer, or a inner data pointer
         const void* symname = sym_alloc.alloc().data_ptr();
         // TODO: Sanity check that it's a valid c string within its allocation
@@ -866,6 +876,30 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     //
     // <stdlib.h>
     //
+    else if( link_name == "atoi" )
+    {
+        // extern int atoi(const char *nptr);
+        size_t len = 0;
+        const char* nptr = FfiHelpers::read_cstr(args.at(0), 0, &len);
+        rv = Value::new_i32( atoi(nptr) );
+    }
+    else if( link_name == "strtoll" )
+    {
+        // long long strtoll(const char *nptr, char **endptr, int base);
+        size_t len = 0;
+        const char* nptr = FfiHelpers::read_cstr(args.at(0), 0, &len);
+        auto endptr_req = args.at(1).read_usize(0) != 0;
+        auto base = args.at(2).read_i32(0);
+        char* endptr_real;
+        auto retval = strtoll(nptr, endptr_req ? &endptr_real : nullptr, base);
+        if(endptr_req) {
+            auto ofs = endptr_real - nptr;
+            args.at(1).read_pointer_valref_mut(0, ::HIR::TypeRef(RawType::USize).get_size())
+                .to_write()
+                .write_ptr(0, args.at(0).read_usize(0) + ofs, args.at(0).get_relocation(0));
+        }
+        rv = Value::new_i64(retval);
+    }
     else if( link_name == "malloc" )
     {
         auto size = args.at(0).read_usize(0);
@@ -887,16 +921,42 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         rv = Value::new_pointer_ofs(rty, 0, RelocationPtr::new_alloc(::std::move(alloc)));
     }
+    else if( link_name == "realloc" )
+    {
+        auto size = args.at(1).read_usize(0);
+        auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
+        auto alloc = Allocation::new_alloc(size, "realloc");
+        if( args.at(0).read_usize(0) == 0 ) {
+        }
+        else {
+            auto ptr = args.at(0).read_pointer_valref_mut(0, 0);
+            LOG_ASSERT(ptr.m_offset == 0, "`realloc` with pointer not to beginning of block");
+
+            LOG_ASSERT(ptr.m_alloc, "`realloc` with no backing allocation attached to pointer");
+            LOG_ASSERT(ptr.m_alloc.is_alloc(), "`realloc` with no backing allocation attached to pointer");
+            auto& old_alloc = ptr.m_alloc.alloc();
+
+            auto s = ::std::min(static_cast<size_t>(size), old_alloc.size());
+            auto ptr2 = args.at(0).read_pointer_valref_mut(0, s);
+            alloc->write_value(0, ptr2.read_value(0, s));
+            old_alloc.mark_as_freed();
+        }
+        rv = Value::new_pointer_ofs(rty, 0, RelocationPtr::new_alloc(::std::move(alloc)));
+    }
     else if( link_name == "free" )
     {
-        auto ptr = args.at(0).read_pointer_valref_mut(0, 0);
-        LOG_ASSERT(ptr.m_offset == 0, "`free` with pointer not to beginning of block");
-        LOG_DEBUG("free(ptr=" << ptr.m_alloc << ")");
+        // If `ptr` is NULL, no operation is performed
+        if( args.at(0).read_usize(0) != 0 )
+        {
+            auto ptr = args.at(0).read_pointer_valref_mut(0, 0);
+            LOG_ASSERT(ptr.m_offset == 0, "`free` with pointer not to beginning of block");
+            LOG_DEBUG("free(ptr=" << ptr.m_alloc << ")");
 
-        LOG_ASSERT(ptr.m_alloc, "`free` with no backing allocation attached to pointer");
-        LOG_ASSERT(ptr.m_alloc.is_alloc(), "`free` with no backing allocation attached to pointer");
-        auto& alloc = ptr.m_alloc.alloc();
-        alloc.mark_as_freed();
+            LOG_ASSERT(ptr.m_alloc, "`free` with no backing allocation attached to pointer");
+            LOG_ASSERT(ptr.m_alloc.is_alloc(), "`free` with no backing allocation attached to pointer");
+            auto& alloc = ptr.m_alloc.alloc();
+            alloc.mark_as_freed();
+        }
 
         rv = Value();
     }
@@ -985,6 +1045,16 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             rv.write_usize(0, 0);
         }
     }
+    else if( link_name == "strcpy" ) {
+        // strlen - custom implementation to ensure validity
+        size_t len = 0;
+        auto src = FfiHelpers::read_cstr(args.at(1), 0, &len);
+
+        auto vr = args.at(0).read_pointer_valref_mut(0, len+1).to_write();
+        memcpy(vr.data_ptr_mut(len+1), src, len+1);
+        vr.mark_bytes_valid(0, len+1);
+        rv = std::move(args.at(0));
+    }
     else if( link_name == "strlen" )
     {
         // strlen - custom implementation to ensure validity
@@ -1000,10 +1070,56 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         size_t len;
         const char* a = FfiHelpers::read_cstr(args.at(0), 0, &len);
         const char* b = FfiHelpers::read_cstr(args.at(1), 0, &len);
+        LOG_DEBUG("strcmp(\"" << a <<"\", \"" << b << "\")");
 
         int rv_i = strcmp(a, b);
         rv = Value::new_i32(rv_i);
     }
+    else if( link_name == "strncmp" )
+    {
+        size_t len;
+        const char* a = FfiHelpers::read_cstr(args.at(0), 0, &len);
+        const char* b = FfiHelpers::read_cstr(args.at(1), 0, &len);
+        size_t max = args.at(2).read_usize(0);
+        LOG_DEBUG("strncmp(\"" << a <<"\", \"" << b << "\", " << max <<")");
+
+        int rv_i = strncmp(a, b, max);
+        rv = Value::new_i32(rv_i);
+    }
+    else if( link_name == "strdup" )
+    {
+        size_t len;
+        const char* a = FfiHelpers::read_cstr(args.at(0), 0, &len);
+
+        auto alloc = Allocation::new_alloc(len+1, "strdup");
+        auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
+
+        rv = Value::new_pointer_ofs(rty, 0, RelocationPtr::new_alloc(::std::move(alloc)));
+        {
+            auto vr = rv.read_pointer_valref_mut(0, len+1).to_write();
+            memcpy(vr.data_ptr_mut(len+1), a, len+1);
+            vr.mark_bytes_valid(0, len+1);
+        }
+    }
+    else if( link_name == "strndup" )
+    {
+        size_t max = args.at(1).read_usize(0);
+        size_t len;
+        const char* a = FfiHelpers::read_cstr(args.at(0), 0, &len, max);
+
+        auto alloc = Allocation::new_alloc(len+1, "strndup");
+        auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
+
+        rv = Value::new_pointer_ofs(rty, 0, RelocationPtr::new_alloc(::std::move(alloc)));
+        {
+            auto vr = rv.read_pointer_valref_mut(0, len+1).to_write();
+            auto p = vr.data_ptr_mut(len+1);
+            memcpy(p, a, len);
+            p[len] = 0;
+            vr.mark_bytes_valid(0, len+1);
+        }
+    }
+    // --- ?
     else if( link_name == "getenv" )
     {
         const auto* name = FfiHelpers::read_cstr(args.at(0), 0);
@@ -1063,6 +1179,19 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         ::std::cout << out;
         rv = Value::new_i32(static_cast<int32_t>(out.size()));
     }
+    else if( link_name == "snprintf" )
+    {
+        const auto* fmt = FfiHelpers::read_cstr(args.at(2), 0);
+        auto out = format_string(fmt, args, 3);
+        size_t len = args.at(1).read_usize(0);
+        if( len > 0 )
+        {
+            auto buf = args.at(0).read_pointer_valref_mut(0, len).to_write();
+            buf.write_bytes(0, out.data(), std::min(len-1, out.size()));
+            buf.write_u8( ::std::min(len-1, out.size()), 0 );
+        }
+        rv = Value::new_i32(static_cast<int32_t>(out.size()));
+    }
     //
     // <stdio.h>
     //
@@ -1070,7 +1199,79 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
         const auto* mode = FfiHelpers::read_cstr(args.at(1), 0);
-        LOG_TODO("fopen(\"" << path << "\", \"" << mode << "\")");
+        FILE* fp = fopen(path, mode);
+        if(fp) {
+            rv = Value::new_ffiptr(FFIPointer::new_void("FILE", fp));
+        }
+        else {
+            rv = Value::new_usize(0);
+        }
+    }
+    else if( link_name == "fclose" )
+    {
+        FILE* fp = static_cast<FILE*>(args.at(0).read_pointer_tagged_nonnull(0, "FILE"));
+        int retval = fclose(fp);
+        args.at(0).get_relocation(0).ffi().release();
+        rv = Value::new_i32(retval);
+    }
+    else if( link_name == "fseek" )
+    {
+        // int fseek(FILE *stream, long offset, int whence);
+        FILE* fp = static_cast<FILE*>(args.at(0).read_pointer_tagged_nonnull(0, "FILE"));
+        auto offset = args.at(1).read_i64(0);
+        int whence_v = args.at(2).read_i32(0);
+        int whence;
+        switch(whence_v)
+        {
+        case -1: whence = SEEK_END;  break;
+        case 0: whence = SEEK_CUR;  break;
+        case 1: whence = SEEK_SET;  break;
+        default:
+            rv = Value::new_i32(-1);
+            return true;
+        }
+
+        rv = Value::new_i32( fseek(fp, offset, whence) );
+    }
+    else if( link_name == "ftell" )
+    {
+        // long ftell(FILE *stream);
+        FILE* fp = static_cast<FILE*>(args.at(0).read_pointer_tagged_nonnull(0, "FILE"));
+        rv = Value::new_i64( ftell(fp) );
+    }
+    else if( link_name == "fread")
+    {
+        // size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+        FILE* fp = static_cast<FILE*>(args.at(3).read_pointer_tagged_nonnull(0, "FILE"));
+        auto nmemb = args.at(2).read_usize(0);
+        auto size = args.at(1).read_usize(0);
+        auto ptr = args.at(0).read_pointer_valref_mut(0, size*nmemb).to_write();
+
+        int retval = fread(ptr.data_ptr_mut(size*nmemb), size, nmemb, fp);
+        if(retval > 0)
+        {
+            ptr.mark_bytes_valid(0, retval * size);
+        }
+        rv = Value::new_i64(retval);
+    }
+    // --- setjmp.h
+    else if( link_name == "setjmp" )
+    {
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "longjmp" )
+    {
+        LOG_TODO("Call `longjmp`");
+    }
+    // --- ctype.h
+    else if( link_name == "isspace" ) {
+        rv = Value::new_i32( isspace(args.at(0).read_i32(0)) );
+    }
+    else if( link_name == "isalpha" ) {
+        rv = Value::new_i32( isalpha(args.at(0).read_i32(0)) );
+    }
+    else if( link_name == "isalnum" ) {
+        rv = Value::new_i32( isalnum(args.at(0).read_i32(0)) );
     }
     else
     {

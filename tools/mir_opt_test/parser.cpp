@@ -95,18 +95,50 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             auto type = parse_type(lex);
             GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-            GET_CHECK_TOK(tok, lex, TOK_STRING);
-            EncodedLiteral value;
-            for(auto b : tok.str())
-                value.bytes.push_back(b);
-            if( consume_if(lex, TOK_BRACE_OPEN) ) {
-                TODO(lex.point_span(), "static - relocations");
-            }
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
             auto st_decl = ::HIR::Static(HIR::Linkage(), is_mut, std::move(type), HIR::ExprPtr());
-            st_decl.m_value_res = std::move(value);
-            st_decl.m_value_generated = true;
+
+            if( consume_if(lex, TOK_AT) ) {
+                GET_CHECK_TOK(tok, lex, TOK_STRING);
+                st_decl.m_linkage.name = tok.str();
+            }
+            else {
+                GET_CHECK_TOK(tok, lex, TOK_STRING);
+                EncodedLiteral value;
+                for(auto b : tok.str())
+                    value.bytes.push_back(b);
+                if( consume_if(lex, TOK_BRACE_OPEN) ) {
+                    while( lex.lookahead(0) != TOK_BRACE_CLOSE ) {
+                        GET_CHECK_TOK(tok, lex, TOK_AT);
+                        GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                        auto ofs = tok.intval();
+                        GET_CHECK_TOK(tok, lex, TOK_PLUS);
+                        GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                        auto len = tok.intval();
+                        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+
+                        GET_TOK(tok, lex);
+                        if( tok.type() == TOK_IDENT ) {
+                            auto path = ::HIR::SimplePath("", { tok.ident().name });
+                            value.relocations.push_back(Reloc::new_named(ofs.get_lo(), len.get_lo(), path));
+                        }
+                        else if( tok.type() == TOK_STRING ) {
+                            value.relocations.push_back(Reloc::new_bytes(ofs.get_lo(), len.get_lo(), tok.str()));
+                        }
+                        else {
+                            ERROR(lex.point_span(), E0000, "Expected ident or string");
+                        }
+                        if( !consume_if(lex, TOK_COMMA) ) {
+                            continue;
+                        }
+                    }
+                    GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+                }
+
+                st_decl.m_value_res = std::move(value);
+                st_decl.m_value_generated = true;
+            }
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             auto vi = ::HIR::VisEnt<HIR::ValueItem> {
                 HIR::Publicity::new_global(), ::HIR::ValueItem(mv$(st_decl))
                 };
@@ -193,6 +225,7 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
                     str_fields.push_back(HIR::VisEnt<HIR::TypeRef>{ HIR::Publicity::new_global(), f.ty.clone() });
                 }
                 auto str = HIR::Struct(HIR::GenericParams(), HIR::Struct::Repr::C, mv$(str_fields));
+                str.m_markings.is_copy = true;
                 auto vi = ::HIR::VisEnt<HIR::TypeItem> {
                     HIR::Publicity::new_global(), ::HIR::TypeItem(mv$(str))
                     };
@@ -208,6 +241,7 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
                     for(const auto& f : repr.fields) {
                         unn.m_variants.push_back(std::make_pair( RcString(), HIR::VisEnt<HIR::TypeRef>{ HIR::Publicity::new_global(), f.ty.clone() } ));
                     }
+                    unn.m_markings.is_copy = true;
                     auto vi = ::HIR::VisEnt<HIR::TypeItem> {
                         HIR::Publicity::new_global(), ::HIR::TypeItem(mv$(unn))
                         };
@@ -590,6 +624,11 @@ namespace {
                             }
                             auto r = parse_param(lex, val_name_map);
                             src = MIR::RValue::make_BinOp({ mv$(l), op, mv$(r) });
+                        }
+                        else if( tok.ident() == "DSTPTR" )
+                        {
+                            auto v = parse_lvalue(lex, val_name_map);
+                            src = MIR::RValue::make_DstPtr({ mv$(v) });
                         }
                         else if( consume_if(lex, TOK_PAREN_OPEN) )
                         {

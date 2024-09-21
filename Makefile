@@ -22,6 +22,9 @@ V ?= !
 # GPROF : If set, enables the generation of a gprof annotated executable
 GPROF ?=
 
+OBJCOPY ?= objcopy
+STRIP ?= strip
+
 ifneq ($(VERBOSE),)
  V :=
 endif
@@ -170,9 +173,9 @@ else ifeq ($(shell uname -s || echo not),Darwin)
 	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,-all_load bin/mrustc.a bin/common_lib.a $(LIBS)
 else
 	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,--whole-archive bin/mrustc.a -Wl,--no-whole-archive bin/common_lib.a $(LIBS)
-	objcopy --only-keep-debug $(BIN) $(BIN).debug
-	objcopy --add-gnu-debuglink=$(BIN).debug $(BIN)
-	strip $(BIN)
+	$(OBJCOPY) --only-keep-debug $(BIN) $(BIN).debug
+	$(OBJCOPY) --add-gnu-debuglink=$(BIN).debug $(BIN)
+	$(STRIP) $(BIN)
 endif
 
 $(OBJDIR)%.o: src/%.cpp

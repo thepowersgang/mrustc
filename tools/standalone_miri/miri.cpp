@@ -1689,7 +1689,12 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             {
                 const auto& fe = te.fcn.as_Intrinsic();
                 auto ret_ty = state.get_lvalue_ty(te.ret_val);
-                if( !this->call_intrinsic(rv, ret_ty, fe.name, fe.params, ::std::move(sub_args)) )
+                if( fe.name == "va_start" ) {
+                    // Initialise the return value with the number of formal arguments
+                    //rv = Value::new_usize( cur_frame.fcn->m_args.size() );
+                    LOG_TODO("va_start");
+                }
+                else if( !this->call_intrinsic(rv, ret_ty, fe.name, fe.params, ::std::move(sub_args)) )
                 {
                     // Early return, don't want to update stmt_idx yet
                     return false;

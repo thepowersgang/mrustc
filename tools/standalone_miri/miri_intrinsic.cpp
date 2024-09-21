@@ -227,6 +227,22 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
             rv.write_usize(0, new_ofs);
         }
     }
+    else if( name == "ptr_diff" )
+    {
+        auto ty_size = ty_params.tys.at(0).get_size();
+
+        const auto& ptr_a = args.at(0);
+        const auto& ptr_b = args.at(1);
+
+        auto alloc_a = ptr_a.get_relocation(0);
+        auto alloc_b = ptr_b.get_relocation(0);
+        auto ofs_a = ptr_a.read_usize(0);
+        auto ofs_b = ptr_b.read_usize(0);
+        if( alloc_a != alloc_b ) {
+            LOG_ERROR("`ptr_diff` with different allocations - " << alloc_a << " & " << alloc_b);
+        }
+        rv = Value::new_usize( (ofs_a - ofs_b) / ty_size );
+    }
     else if( name == "ptr_guaranteed_eq" ) {
         bool is_eq = true;
         is_eq &= args.at(0).read_usize(0) == args.at(1).read_usize(0);
@@ -653,6 +669,27 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         auto& a = v.m_inner.alloc.alloc;
         rv = Value(t.wrapped(TypeWrapper::Ty::Borrow, 0));
         rv.write_ptr(0, 0x1000, RelocationPtr::new_alloc(a));
+    }
+    // ----
+    // C hackery
+    // ----
+    else if( name == "alloca_array" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        //auto count = args.at(0).read_usize(0);
+        auto count = args.at(0).read_u32(0);
+
+        auto size = count * ty_T.get_size();
+        auto alloc = Allocation::new_alloc(size, "alloca_array");
+        if(false) {
+            rv = Value(ty_T.wrapped(TypeWrapper::Ty::Slice, 0).wrap(TypeWrapper::Ty::Borrow, 0));
+            rv.write_ptr_ofs(0, 0x0, RelocationPtr::new_alloc(alloc));
+            rv.write_usize(8, count);
+        }
+        else {
+            rv = Value(ty_T.wrapped(TypeWrapper::Ty::Pointer, 0));
+            rv.write_ptr_ofs(0, 0x0, RelocationPtr::new_alloc(alloc));
+        }
     }
     else
     {

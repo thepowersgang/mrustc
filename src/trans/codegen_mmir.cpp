@@ -330,7 +330,7 @@ namespace
                     const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
                     MIR_ASSERT(*m_mir_res, repr, "No repr for tuple " << ty);
 
-                    bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, ty);
+                    bool has_drop_glue = m_resolve.type_needs_drop_glue(sp, ty);
                     auto drop_glue_path = ::HIR::Path(ty.clone(), "#drop_glue");
 
                     m_of << "type " << fmt(ty) << " {\n";

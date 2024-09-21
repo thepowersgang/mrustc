@@ -10,6 +10,7 @@
 #include <trans/monomorphise.hpp>   // used as a MIR clone
 #include <debug_inner.hpp>
 #include <mir/visit_crate_mir.hpp>
+#include <trans/codegen.hpp>
 
 #ifdef _WIN32
 # define NOGDI  // Don't include GDI functions (defines some macros that collide with mrustc ones)
@@ -69,6 +70,18 @@ int main(int argc, char* argv[])
     {
         auto ph = DebugTimedPhase("Optimise");
         MIR_OptimiseCrate(*file->m_crate, false);
+    }
+
+    TransList   tl;
+    {
+        auto ph = DebugTimedPhase("Enumerate");
+        tl = Trans_Enumerate_Public(*file->m_crate);
+    }
+    TransOptions    opt;
+    opt.mode = "monomir";
+    {
+        auto ph = DebugTimedPhase("Codegen");
+        Trans_Codegen(opts.output, CodegenOutput::Object, opt, *file->m_crate, tl, "");
     }
 
     return 0;

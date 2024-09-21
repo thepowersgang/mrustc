@@ -24,27 +24,14 @@ class Allocation;
 struct Value;
 struct ValueRef;
 
-struct FfiLayout
+struct FfiPointerInner
 {
     struct Range {
         size_t  len;
         bool    is_valid;
         bool    is_writable;
     };
-    ::std::vector<Range>    ranges;
 
-    static FfiLayout new_const_bytes(size_t s);
-
-    size_t get_size() const {
-        size_t rv = 0;
-        for(const auto& r : ranges)
-            rv += r.len;
-        return rv;
-    }
-    bool is_valid_read(size_t o, size_t s) const;
-};
-struct FFIPointer
-{
     // FFI pointers require the following:
     // - A tag indicating where they're valid/from
     // - A data format (e.g. size of allocation, internal data format)
@@ -54,20 +41,44 @@ struct FFIPointer
 
     // Pointer value, returned by the FFI
     void*   ptr_value;
-    // Tag name, used for validty checking by FFI hooks
+    // Tag name, used for validity checking by FFI hooks
     const char* tag_name;
-    ::std::shared_ptr<FfiLayout>    layout;
 
-    static FFIPointer new_void(const char* name, const void* v) {
-        return FFIPointer { const_cast<void*>(v), name, ::std::make_shared<FfiLayout>() };
+    ::std::vector<Range>    layout;
+
+    void release() {
+        ptr_value = nullptr;
+        tag_name = "#released";
     }
-    static FFIPointer new_const_bytes(const char* name, const void* s, size_t size) {
-        return FFIPointer { const_cast<void*>(s), name, ::std::make_shared<FfiLayout>(FfiLayout::new_const_bytes(size)) };
-    };
 
     size_t get_size() const {
-        return (layout ? layout->get_size() : 0);
+        size_t rv = 0;
+        for(const auto& r : layout)
+            rv += r.len;
+        return rv;
     }
+    bool is_valid_read(size_t o, size_t s) const;
+};
+struct FFIPointer
+{
+    ::std::shared_ptr<FfiPointerInner>    inner;
+
+    const char* tag_name() const { return inner->tag_name; }
+    void* ptr_value() const { return inner->ptr_value; }
+    size_t get_size() const { return inner->get_size(); }
+    bool is_valid_read(size_t o, size_t s) const {
+        return inner->is_valid_read(o,s);
+    }
+    void release() {
+        inner->release();
+    }
+
+    static FFIPointer new_void(const char* name, const void* v) {
+        return FFIPointer{ ::std::make_shared<FfiPointerInner>(FfiPointerInner{ const_cast<void*>(v), name, {} }) };
+    }
+    static FFIPointer new_const_bytes(const char* name, const void* s, size_t size) {
+        return FFIPointer{ ::std::make_shared<FfiPointerInner>(FfiPointerInner{ const_cast<void*>(s), name, { FfiPointerInner::Range { size, true, false } }}) };
+    };
 };
 
 class AllocationHandle
@@ -173,6 +184,11 @@ public:
         assert(*this);
         assert(get_ty() == Ty::StdString);
         return *static_cast<const ::std::string*>(get_ptr());
+    }
+    FFIPointer& ffi() {
+        assert(*this);
+        assert(get_ty() == Ty::FfiPointer);
+        return *static_cast<FFIPointer*>(get_ptr());
     }
     const FFIPointer& ffi() const {
         assert(*this);
@@ -629,8 +645,8 @@ struct ValueRef:
                 ::std::memcpy(dst, m_alloc.str().data() + m_offset + ofs, size);
                 break;
             case RelocationPtr::Ty::FfiPointer:
-                assert( m_alloc.ffi().layout->is_valid_read(m_offset + ofs, size) );
-                ::std::memcpy(dst, (const char*)m_alloc.ffi().ptr_value + m_offset + ofs, size);
+                assert( m_alloc.ffi().is_valid_read(m_offset + ofs, size) );
+                ::std::memcpy(dst, (const char*)m_alloc.ffi().ptr_value() + m_offset + ofs, size);
                 break;
             default:
                 //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
