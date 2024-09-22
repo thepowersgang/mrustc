@@ -1623,7 +1623,7 @@ namespace {
             );
     }
     bool do_arith_checked(
-        const ::MIR::eval::CallStackEntry& local_state,
+        ::MIR::eval::CallStackEntry& local_state,
         const HIR::TypeRef& ty,
         ::MIR::eval::ValueRef& dst,
         const ::MIR::Param& val_l,
@@ -1677,6 +1677,10 @@ namespace {
                 MIR_BUG(state, "Invalid use of BIT_SHL/BIT_SHR on " << ty);
             }
             return did_overflow;
+        }
+        {
+            ::HIR::TypeRef  tmp_r;
+            MIR_ASSERT(state, ty == local_state.state.get_param_type(tmp_r, val_r), "BinOp with mismatched types");
         }
 
         switch(ti.ty)
@@ -1866,7 +1870,48 @@ namespace {
             }
             break; }
         case TypeInfo::Other:
-            MIR_BUG(state, "BinOp on " << ty);
+            if( false
+                || TU_TEST2(ty.data(), Borrow, .inner.data(), Slice, .inner == HIR::CoreType::U8)
+                || TU_TEST1(ty.data(), Borrow, .inner == HIR::CoreType::Str)
+                ) {
+                struct P {
+                    ::MIR::eval::RelocPtr   reloc;
+                    const void* data;
+                    size_t  len;
+                    P(::MIR::eval::CallStackEntry& local_state, const ::MIR::Param& p)
+                    {
+                        auto vr = local_state.get_lval(p.as_LValue());
+                        auto ptr = vr.read_ptr(local_state.state);
+                        this->len = vr.slice(Target_GetPointerBits()/8).read_usize(local_state.state);
+                        this->data = ptr.second.as_value().get_bytes(ptr.first - EncodedLiteral::PTR_BASE, this->len, true);
+                        MIR_ASSERT(local_state.state, this->data, "Invalid pointer " << p << " : " << vr << " = " << ptr.second << " @ " << ptr.first << "+" << this->len);
+                        this->reloc = std::move(ptr.second);
+                    }
+                };
+                auto ptr_l = P(local_state, val_l);
+                auto ptr_r = P(local_state, val_r);
+                int cmp = memcmp(ptr_l.data, ptr_r.data, std::min(ptr_l.len, ptr_l.len));
+                if( cmp == 0 ) {
+                    if( ptr_l.len != ptr_r.len ) {
+                        cmp = ptr_l.len < ptr_r.len ? -1 : 1;
+                    }
+                }
+                switch(op)
+                {
+                case ::MIR::eBinOp::EQ: dst.write_byte(state, cmp == 0);  break;
+                case ::MIR::eBinOp::NE: dst.write_byte(state, cmp != 0);  break;
+                case ::MIR::eBinOp::GT: dst.write_byte(state, cmp >  0);  break;
+                case ::MIR::eBinOp::GE: dst.write_byte(state, cmp >= 0);  break;
+                case ::MIR::eBinOp::LT: dst.write_byte(state, cmp <  0);  break;
+                case ::MIR::eBinOp::LE: dst.write_byte(state, cmp <= 0);  break;
+                default:
+                    MIR_BUG(state, "BinOp " << int(op) << " on " << ty << " - Byte slice or &str");
+                }
+                break;
+            }
+            else {
+                MIR_BUG(state, "BinOp on " << ty);
+            }
         }
         return did_overflow;
     }
