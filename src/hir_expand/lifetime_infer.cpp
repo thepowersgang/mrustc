@@ -95,6 +95,7 @@ namespace {
         };
 
         const StaticTraitResolve& m_resolve;
+        bool    m_in_constant_context;
         std::vector<LifetimeBound>  m_bounds;
         std::vector<LocalLifetime>  m_locals;
         std::vector<IvarLifetime>   m_ivars;
@@ -102,8 +103,9 @@ namespace {
         /// - The `PathParams` is used to map between this context and the TAIT
         std::map<const HIR::TypeData_ErasedType_AliasInner*,std::pair<HIR::PathParams,HIR::TypeRef>>  m_tait_values;
 
-        LifetimeInferState(const StaticTraitResolve& resolve)
+        LifetimeInferState(const StaticTraitResolve& resolve, bool in_constant_context)
             : m_resolve(resolve)
+            , m_in_constant_context(in_constant_context)
         {}
 
         void add_lifetime_bound(const HIR::LifetimeRef& test, const HIR::LifetimeRef& valid_for) {
@@ -328,8 +330,9 @@ namespace {
                 if( rhs.is_param() ) {
                     // Check for an outlives relationship
                     bool rv = iterate_lft_bounds(rhs, [&](const HIR::LifetimeRef& valid_for)->bool {
-                        if( valid_for == lhs) {
-                        //if( check_lifetimes(sp, lhs, valid_for, fails) ) {
+                        if( valid_for == lhs )
+                        //if( check_lifetimes(sp, lhs, valid_for, fails) )
+                        {
                             return true;
                         }
                         return false;
@@ -419,6 +422,11 @@ namespace {
                             }
                         }
                     }
+                }
+                if( lhs.binding == HIR::LifetimeRef::STATIC && m_in_constant_context ) {
+                    // If we're in a constant context, allow a failed assignment to static
+                    WARNING(sp, W0000, "IGNORE (in constant context) : Lifetime bound " << rhs << ": " << lhs << " failed - [" << failed_bounds << "]");
+                    return ;
                 }
                 ERROR(sp, E0000, "Lifetime bound " << rhs << ": " << lhs << " failed - [" << failed_bounds << "]");
             }
@@ -1987,9 +1995,10 @@ namespace {
     };
 
 
-    void HIR_Expand_LifetimeInfer_ExprInner(LocalTraitResolve& resolve, const ::HIR::Function::args_t& args, const HIR::TypeRef& ret_ty, HIR::ExprPtr& ep, bool remove_locals)
+    void HIR_Expand_LifetimeInfer_ExprInner(LocalTraitResolve& resolve, const ::HIR::Function::args_t& args, const HIR::TypeRef& ret_ty, HIR::ExprPtr& ep,
+        bool remove_locals, bool is_const_context)
     {
-        LifetimeInferState  state { resolve };
+        LifetimeInferState  state { resolve, is_const_context };
 
         // Before running algorithm, dump the HIR (just as a reference for debugging)
         DEBUG("\n" << FMT_CB(os, HIR_DumpExpr(os, ep)));
@@ -2591,13 +2600,13 @@ namespace {
             , m_remove_locals(remove_locals)
         {}
 
-        void check(const HIR::TypeRef& ret_ty, const ::HIR::Function::args_t& args, HIR::ExprPtr& root)
+        void check(const HIR::TypeRef& ret_ty, const ::HIR::Function::args_t& args, HIR::ExprPtr& root, bool is_function=false)
         {
             if( root.m_mir ) {
                 DEBUG("MIR present, skipping");
                 return ;
             }
-            HIR_Expand_LifetimeInfer_ExprInner(m_resolve, args, ret_ty, root, m_remove_locals);
+            HIR_Expand_LifetimeInfer_ExprInner(m_resolve, args, ret_ty, root, m_remove_locals, !is_function);
         }
 
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
@@ -2629,7 +2638,7 @@ namespace {
             {
                 DEBUG("Function code " << p);
                 auto _ = this->m_resolve.set_item_generics(item.m_params);
-                check(item.m_return, item.m_args, item.m_code);
+                check(item.m_return, item.m_args, item.m_code, /*is_function=*/true);
             }
             else
             {
@@ -2774,5 +2783,5 @@ void HIR_Expand_LifetimeInfer_Expr(const ::HIR::Crate& crate, const ::HIR::ItemP
     LocalTraitResolve  resolve { crate };
     resolve.set_both_generics_raw(exp.m_state->m_impl_generics, exp.m_state->m_item_generics);
 
-    HIR_Expand_LifetimeInfer_ExprInner(resolve, args, ret_ty, exp, /*remove_locals*/false);
+    HIR_Expand_LifetimeInfer_ExprInner(resolve, args, ret_ty, exp, /*remove_locals*/false, /*is_const_context=*/true);
 }
