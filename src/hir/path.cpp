@@ -299,7 +299,7 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
 {
     using ::HIR::Compare;
     auto rv = Compare::Equal;
-    TRACE_FUNCTION_F(*this << " with " << x);
+    TRACE_FUNCTION_F("(PathParams) " << *this << " with " << x);
 
     if( this->m_types.size() != x.m_types.size() ) {
         return Compare::Unequal;

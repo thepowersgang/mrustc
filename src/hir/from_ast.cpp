@@ -954,6 +954,8 @@ namespace {
                 v.m_trait = LowerHIR_TraitPath(ty.span(), *t.path, t.hrbs);
             }
         }
+        // Sort markers so downstream can compare properly
+        ::std::sort(v.m_markers.begin(), v.m_markers.end());
         return ::HIR::TypeRef( ::HIR::TypeData::make_TraitObject( mv$(v) ) );
         }
     TU_ARMA(ErasedType, e) {
