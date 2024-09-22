@@ -2547,9 +2547,9 @@ namespace HIR {
                 // ---
                 else if( te->name == "ctpop" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
-                    MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
+                    MIR_ASSERT(state, ty.data().is_Primitive(), "ctpop with non-primitive " << ty);
                     auto ti = TypeInfo::for_type(ty);
-                    //MIR_ASSERT(state, ti.type == TypeInfo::Unsigned, "`bswap` with non-unsigned " << ty);
+                    //MIR_ASSERT(state, ti.type == TypeInfo::Unsigned, "`ctpop` with non-unsigned " << ty);
                     auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
 #ifdef _MSC_VER
                     unsigned rv = __popcnt(val.get_lo() & 0xFFFFFFFF) + __popcnt(val.get_lo() >> 32)
@@ -2610,7 +2610,7 @@ namespace HIR {
                             return bswap32(v >> 32) | (static_cast<uint64_t>(bswap32(static_cast<uint32_t>(v))) << 32);
                         }
                         static U128 bswap128(U128 v) {
-                            return U128( bswap64( (v >> 32).truncate_u64()), bswap64(v.truncate_u64()) );
+                            return U128( bswap64((v >> 64).truncate_u64()), bswap64(v.truncate_u64()) );
                         }
                     };
                     U128 rv;
