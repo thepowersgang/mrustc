@@ -419,7 +419,7 @@ namespace {
                 // - Get the result type (can't use `get_value` as that won't find the still-to-be stored impls)
                 // TODO: Get lifetime params?
                 const auto& src_node = *src_te.node;
-                ::HIR::TypeData_FunctionPointer    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, ABI_RUST, src_node.m_return.clone_shallow(), {} };
+                ::HIR::TypeData_FunctionPointer    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, /*is_variadic=*/false, ABI_RUST, src_node.m_return.clone_shallow(), {} };
                 fcn_ty_inner.m_arg_types.reserve(src_node.m_args.size());
                 for(const auto& arg : src_node.m_args) {
                     fcn_ty_inner.m_arg_types.push_back( arg.second.clone_shallow() );

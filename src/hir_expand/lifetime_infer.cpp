@@ -1502,8 +1502,8 @@ namespace {
                 this->visit_path_params(hrl_params);
                 auto ms = MonomorphHrlsOnly(hrl_params);
 
-                ASSERT_BUG(node.span(), tep->m_arg_types.size() == node.m_args.size(), "");
-                for(size_t i = 0; i < node.m_args.size(); i ++) {
+                ASSERT_BUG(node.span(), tep->m_arg_types.size() <= node.m_args.size(), "");
+                for(size_t i = 0; i < tep->m_arg_types.size(); i ++) {
                     this->equate_types(node.m_args[i]->span(), ms.monomorph_type(node.span(), tep->m_arg_types[i], false), node.m_args[i]->m_res_type);
                 }
                 this->equate_types(node.span(), node.m_res_type, ms.monomorph_type(node.span(), tep->m_rettype, false));
@@ -1653,38 +1653,23 @@ namespace {
                 const auto& str = *variant_ty.data().as_Path().binding.as_Struct();
                 const auto& fields = str.m_data.as_Tuple();
 
+                auto ms = MonomorphStatePtr(nullptr, &node.m_path.m_data.as_Generic().m_params, nullptr);
+
                 auto p = node.m_path.m_data.as_Generic().m_path;
                 p.m_components.pop_back();
-
-                ::HIR::TypeData_FunctionPointer ft {
-                    HIR::GenericParams(),   // TODO: Get HRLs?
-                    false, ABI_RUST,
-                    HIR::TypeRef::new_path(HIR::GenericPath(p, node.m_path.m_data.as_Generic().m_params.clone()), ve.e),
-                    {}
-                    };
-
-                auto ms = MonomorphStatePtr(nullptr, &node.m_path.m_data.as_Generic().m_params, nullptr);
-                for(const auto& var : fields) {
-                    ft.m_arg_types.push_back( m_resolve.monomorph_expand(sp, var.ent, ms) );
-                }
-                ty = ::HIR::TypeRef(mv$(ft));
+                auto ret_ty = HIR::TypeRef::new_path(HIR::GenericPath(p, node.m_path.m_data.as_Generic().m_params.clone()), ve.e);
+                ty = ::HIR::fn_ptr_tuple_constructor(sp, ms, std::move(ret_ty), fields);
+                m_resolve.expand_associated_types(sp, ty);
                 }
             TU_ARMA(StructConstructor, ve) {
                 const auto& str = *ve.s;
                 const auto& fields = str.m_data.as_Tuple();
 
-                ::HIR::TypeData_FunctionPointer ft {
-                    HIR::GenericParams(),   // TODO: Get HRLs?
-                    false, ABI_RUST,
-                    HIR::TypeRef::new_path(node.m_path.m_data.as_Generic().clone(), ve.s),
-                    {}
-                };
-
                 auto ms = MonomorphStatePtr(nullptr, &node.m_path.m_data.as_Generic().m_params, nullptr);
-                for(const auto& var : fields) {
-                    ft.m_arg_types.push_back( m_resolve.monomorph_expand(sp, var.ent, ms) );
-                }
-                ty = ::HIR::TypeRef(mv$(ft));
+                auto ret_ty = HIR::TypeRef::new_path(node.m_path.m_data.as_Generic().clone(), ve.s);
+                ty = HIR::fn_ptr_tuple_constructor(sp, ms, std::move(ret_ty), fields);
+                DEBUG("SC " << ty);
+                m_resolve.expand_associated_types(sp, ty);
                 }
             TU_ARMA(Constant, ve) {
                 ty = m_resolve.monomorph_expand(sp, ve->m_type, ms);
@@ -1695,7 +1680,7 @@ namespace {
             TU_ARMA(Function, ve) {
                 ::HIR::TypeData_FunctionPointer ft {
                     HIR::GenericParams(),
-                    ve->m_unsafe, ve->m_abi,
+                    ve->m_unsafe, ve->m_variadic, ve->m_abi,
                     m_resolve.monomorph_expand(sp, ve->m_return, ms),
                     {}
                 };

@@ -1757,11 +1757,12 @@ namespace typecheck
             TRACE_FUNCTION_F(&node << " " << node.m_path);
 
             this->add_ivars_path(node.span(), node.m_path);
-            
+
             auto get_function_type = [](const Span& sp, const HIR::Function& f, MonomorphStatePtr ms)->HIR::TypeRef {
                 ::HIR::TypeData_FunctionPointer ft {
                     HIR::GenericParams(),   // TODO: Get HRLs
                     f.m_unsafe,
+                    f.m_variadic,
                     f.m_abi,
                     ms.monomorph_type(sp, f.m_return),
                     {}
@@ -1808,7 +1809,7 @@ namespace typecheck
 
                     ::HIR::TypeData_FunctionPointer ft {
                         HIR::GenericParams(),   // TODO: Get HRLs
-                        false,
+                        false, false,
                         ABI_RUST,
                         ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypePathBinding::make_Struct(&s) ),
                         {}
@@ -1837,7 +1838,7 @@ namespace typecheck
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
                     ::HIR::TypeData_FunctionPointer ft {
                         HIR::GenericParams(),   // TODO: Get HRLs
-                        false,
+                        false, false,
                         ABI_RUST,
                         ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(enum_path), e.m_params.clone()), ::HIR::TypePathBinding::make_Enum(&enm) ),
                         {}

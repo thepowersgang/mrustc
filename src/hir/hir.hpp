@@ -34,6 +34,8 @@
 #define ABI_RUST    "Rust"
 #define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
 
+class Monomorphiser;
+
 namespace HIR {
 
 class Crate;
@@ -223,7 +225,7 @@ public:
     {
     }
 
-    //::HIR::TypeRef make_ty(const Span& sp, const ::HIR::PathParams& params) const;
+    ::HIR::TypeRef make_ptr_ty(const Span& sp, const Monomorphiser& ms) const;
 };
 
 // --------------------------------------------------------------------
@@ -242,6 +244,8 @@ struct TraitAlias
 
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
 typedef ::std::vector< ::std::pair< RcString, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
+
+extern HIR::TypeRef fn_ptr_tuple_constructor(const Span& sp, const Monomorphiser& ms, HIR::TypeRef ret_ty, const t_tuple_fields& types);
 
 /// Cache of the state of various language traits on an enum/struct
 struct TraitMarkings

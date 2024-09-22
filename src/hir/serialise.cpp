@@ -254,6 +254,7 @@
             TU_ARMA(Function, e) {
                 serialise_generics(e.hrls);
                 m_out.write_bool(e.is_unsafe);
+                m_out.write_bool(e.is_variadic);
                 m_out.write_string(e.m_abi);
                 serialise_type(e.m_rettype);
                 serialise_vec(e.m_arg_types);

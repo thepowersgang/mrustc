@@ -2441,6 +2441,7 @@ namespace {
                     auto fcn_ty_data = ::HIR::TypeData_FunctionPointer {
                         HIR::GenericParams(),
                         e.m_unsafe,
+                        e.m_variadic,
                         e.m_abi,
                         monomorph_cb.monomorph_type(sp, e.m_return),
                         {}

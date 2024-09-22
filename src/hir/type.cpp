@@ -274,6 +274,9 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << "fn(";
         for(const auto& t : e.m_arg_types)
             os << t << ", ";
+        if( e.is_variadic ) {
+            os << "...";
+        }
         os << ") -> " << e.m_rettype;
         }
     TU_ARMA(Closure, e) {
@@ -1131,6 +1134,7 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
         TypeData_FunctionPointer ft {
             e.hrls.clone(),
             e.is_unsafe,
+            e.is_variadic,
             e.m_abi,
             e.m_rettype.clone(),
             {}

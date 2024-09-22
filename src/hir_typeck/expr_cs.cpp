@@ -726,7 +726,7 @@ namespace {
             const auto* ty_p = &ty_o;
 
             bool keep_looping = false;
-            do  // } while( keep_looping );
+            do  // while( keep_looping );
             {
                 // Reset at the start of each loop
                 keep_looping = false;
@@ -744,8 +744,14 @@ namespace {
                 {
                     auto hrls = e->hrls.make_empty_params(true);
                     auto m = MonomorphHrlsOnly(hrls);
-                    for( const auto& arg : e->m_arg_types )
+                    for( const auto& arg : e->m_arg_types ) {
                         node.m_arg_types.push_back(m.monomorph_type(node.span(), arg));
+                    }
+                    if( e->is_variadic ) {
+                        for(size_t i = e->m_arg_types.size(); i < node.m_args.size(); i ++) {
+                            node.m_arg_types.push_back( node.m_arg_ivars[i].clone() );
+                        }
+                    }
                     node.m_arg_types.push_back(m.monomorph_type(node.span(), e->m_rettype));
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
                 }
@@ -873,7 +879,8 @@ namespace {
                 }
             }
 
-            assert( node.m_arg_types.size() == node.m_args.size() + 1 );
+            ASSERT_BUG(node.span(), node.m_arg_types.size() == node.m_args.size() + 1,
+                "Malformed cache in CallValue: " << node.m_arg_types.size() << " != 1+"<<node.m_args.size());
             for(unsigned int i = 0; i < node.m_args.size(); i ++)
             {
                 this->context.equate_types(node.span(), node.m_arg_types[i], node.m_arg_ivars[i]);
@@ -7339,7 +7346,7 @@ namespace
              )
             {
                 const auto& t1_c = possible_tys[0].ty->data().as_Closure();
-                auto ft = HIR::TypeData_FunctionPointer { HIR::GenericParams(), false, ABI_RUST, t1_c.node->m_return.clone(), {} };
+                auto ft = HIR::TypeData_FunctionPointer { HIR::GenericParams(), false, false, ABI_RUST, t1_c.node->m_return.clone(), {} };
                 for(const auto& t : t1_c.node->m_args)
                     ft.m_arg_types.push_back(t.second.clone());
                 auto new_ty = HIR::TypeRef(std::move(ft));

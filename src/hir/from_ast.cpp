@@ -1024,9 +1024,10 @@ namespace {
         ::HIR::TypeData_FunctionPointer f {
             mv$(params),
             e.info.is_unsafe,
+            e.info.is_variadic,
             e.info.m_abi,
             LowerHIR_Type(*e.info.m_rettype),
-            mv$(args)   // TODO: e.info.is_variadic
+            mv$(args)
             };
         if( f.m_abi == "" )
             f.m_abi = ABI_RUST;

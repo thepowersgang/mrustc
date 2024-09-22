@@ -173,6 +173,31 @@ bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const
     return true;
 }
 
+::HIR::TypeRef HIR::Function::make_ptr_ty(const Span& sp, const Monomorphiser& ms) const
+{
+    ::HIR::TypeData_FunctionPointer ft;
+    ft.is_unsafe   = this->m_unsafe;
+    ft.is_variadic = this->m_variadic;
+    ft.m_abi = this->m_abi;
+    ft.m_rettype = ms.monomorph_type(sp, this->m_return);
+    ft.m_arg_types.reserve(this->m_args.size());
+    for(const auto& arg : this->m_args)
+        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.second) );
+    return HIR::TypeRef(std::move(ft));
+}
+::HIR::TypeRef HIR::fn_ptr_tuple_constructor(const Span& sp, const Monomorphiser& ms, HIR::TypeRef ret_ty, const t_tuple_fields& fields)
+{
+    ::HIR::TypeData_FunctionPointer ft;
+    ft.is_unsafe   = false;
+    ft.is_variadic = false;
+    ft.m_abi = ABI_RUST;
+    ft.m_rettype = std::move(ret_ty);
+    ft.m_arg_types.reserve(fields.size());
+    for(const auto& fld : fields)
+        ft.m_arg_types.push_back( ms.monomorph_type(sp, fld.ent) );
+    return HIR::TypeRef(std::move(ft));
+}
+
 size_t HIR::Enum::find_variant(const RcString& name) const
 {
     if( m_data.is_Value() )

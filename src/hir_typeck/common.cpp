@@ -407,6 +407,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         ::HIR::TypeData_FunctionPointer ft;
         ft.hrls = e.hrls.clone();
         ft.is_unsafe = e.is_unsafe;
+        ft.is_variadic = e.is_variadic;
         ft.m_abi = e.m_abi;
         ft.m_rettype = this->monomorph_type(sp, e.m_rettype, allow_infer);
         for( const auto& arg : e.m_arg_types )

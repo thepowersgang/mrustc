@@ -1692,6 +1692,9 @@ namespace {
                     m_of << " ";
                     this->emit_ctype( te.m_arg_types[i], FMT_CB(os, os << (this->type_is_high_align(te.m_arg_types[i]) ? "*":"");) );
                 }
+                if( te.is_variadic ) {
+                    m_of << ", ...";
+                }
                 m_of << " )";
             }
             m_of << ";";

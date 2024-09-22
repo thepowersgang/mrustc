@@ -189,6 +189,7 @@ namespace {
                             ::HIR::TypeData_FunctionPointer ft;
                             ft.hrls.m_lifetimes = ve.m_params.m_lifetimes;
                             ft.is_unsafe = ve.m_unsafe;
+                            ft.is_variadic = ve.m_variadic;
                             ft.m_abi = ve.m_abi;
                             ft.m_rettype = m_resolve_ptr->monomorph_expand(sp, ve.m_return, m);
                             ft.m_arg_types.reserve( ve.m_args.size() );
@@ -247,6 +248,7 @@ namespace {
             // - Drop glue pointer
             ::HIR::TypeData_FunctionPointer ft;
             ft.is_unsafe = false;
+            ft.is_variadic = false;
             ft.m_abi = ABI_RUST;
             ft.m_rettype = ::HIR::TypeRef::new_unit();
             ft.m_arg_types.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ::HIR::TypeRef::new_unit()) );

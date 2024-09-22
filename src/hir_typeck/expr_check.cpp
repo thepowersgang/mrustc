@@ -894,10 +894,10 @@ namespace {
             if( const auto* e = val_ty.data().opt_Function() )
             {
                 DEBUG("- Function pointer: " << val_ty);
-                if( node.m_args.size() != e->m_arg_types.size() ) {
+                if( e->is_variadic ? node.m_args.size() < e->m_arg_types.size() : node.m_args.size() != e->m_arg_types.size() ) {
                     ERROR(node.span(), E0000, "Incorrect number of arguments to call via " << val_ty);
                 }
-                for( unsigned int i = 0; i < node.m_args.size(); i ++ )
+                for( unsigned int i = 0; i < e->m_arg_types.size(); i ++ )
                 {
                     check_types_equal(node.m_args[i]->span(), e->m_arg_types[i], node.m_args[i]->m_res_type);
                 }

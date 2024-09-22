@@ -314,14 +314,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, mv$(rv));
             }
         TU_ARMA(Function, ve) {
-            ::HIR::TypeData_FunctionPointer ft;
-            ft.is_unsafe = ve->m_unsafe;
-            ft.m_abi = ve->m_abi;
-            ft.m_rettype = p.monomorph_type(this->sp, ve->m_return);
-            ft.m_arg_types.reserve(ve->m_args.size());
-            for(const auto& arg : ve->m_args)
-                ft.m_arg_types.push_back( p.monomorph_type(this->sp, arg.second) );
-            auto rv = ::HIR::TypeRef( mv$(ft) );
+            auto rv = ve->make_ptr_ty(this->sp, p);
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
             }
@@ -337,17 +330,9 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like variant");
             const auto& str_data = str.m_data.as_Tuple();
 
-            ::HIR::TypeData_FunctionPointer ft;
-            ft.is_unsafe = false;
-            ft.m_abi = ABI_RUST;
             auto enum_path = e->clone();
             enum_path.m_data.as_Generic().m_path.m_components.pop_back();
-            ft.m_rettype = ::HIR::TypeRef::new_path(mv$(enum_path), ve.e);
-            ft.m_arg_types.reserve(str_data.size());
-            for(const auto& fld : str_data)
-                ft.m_arg_types.push_back( p.monomorph_type(this->sp, fld.ent) );
-
-            auto rv = ::HIR::TypeRef( mv$(ft) );
+            auto rv = HIR::fn_ptr_tuple_constructor(this->sp, p, ::HIR::TypeRef::new_path(mv$(enum_path), ve.e), str_data);
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
             }
@@ -360,15 +345,8 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like struct");
             const auto& str_data = str.m_data.as_Tuple();
 
-            ::HIR::TypeData_FunctionPointer ft;
-            ft.is_unsafe = false;
-            ft.m_abi = ABI_RUST;
-            ft.m_rettype = ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str);
-            ft.m_arg_types.reserve(str_data.size());
-            for(const auto& fld : str_data)
-                ft.m_arg_types.push_back( p.monomorph_type(this->sp, fld.ent) );
-
-            auto rv = ::HIR::TypeRef( mv$(ft) );
+            auto ret_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str);
+            auto rv = HIR::fn_ptr_tuple_constructor(this->sp, p, std::move(ret_ty), str_data);
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
             }

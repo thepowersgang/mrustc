@@ -1116,6 +1116,7 @@ namespace {
         _(Function, {
             deserialise_genericparams(),
             m_in.read_bool(),
+            m_in.read_bool(),
             m_in.read_string(),
             deserialise_type(),
             deserialise_vec< ::HIR::TypeRef>()
