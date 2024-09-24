@@ -183,8 +183,8 @@ struct TypeData_ErasedType
 struct TypeData_FunctionPointer
 {
     GenericParams   hrls;   // Higher-ranked lifetimes
-    bool    is_unsafe = false;
-    bool    is_variadic = false;
+    bool    is_unsafe;
+    bool    is_variadic;
     ::std::string   m_abi;
     TypeRef m_rettype;
     ::std::vector<TypeRef>  m_arg_types;

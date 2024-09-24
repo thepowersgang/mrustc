@@ -39,8 +39,10 @@ public:
     const EncodedLiteral* operator->() const { assert(p); return p; }
 };
 TAGGED_UNION_EX(ConstGeneric, (), Infer, (
-    (Infer, struct {    // To be inferred
-        unsigned index = ~0u;
+    (Infer, struct InferData {    // To be inferred
+        unsigned index;
+        // NOTE: Workaround for VS2014, which can't use initialiser lists when a default is specified
+        InferData(unsigned index=~0u): index(index) {}
         }),
     (Unevaluated, std::shared_ptr<HIR::ExprPtr>),    // Unevaluated (or evaluation deferred)
     (Generic, GenericRef),  // A single generic reference

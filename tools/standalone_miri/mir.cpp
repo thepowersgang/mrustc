@@ -666,9 +666,9 @@ namespace MIR {
         (If,
             if( ae.cond != be.cond )
                 return false;
-            if( ae.bb0 != be.bb0 )
+            if( ae.bb_true != be.bb_true )
                 return false;
-            if( ae.bb1 != be.bb1 )
+            if( ae.bb_false != be.bb_false )
                 return false;
             ),
         (Switch,
