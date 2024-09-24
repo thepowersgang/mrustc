@@ -2437,21 +2437,9 @@ namespace {
                     // TODO: Why not use the result type?
                     auto monomorph_cb = MonomorphStatePtr(nullptr, nullptr, &pe.m_params);
 
-                    // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
-                    auto fcn_ty_data = ::HIR::TypeData_FunctionPointer {
-                        HIR::GenericParams(),
-                        e.m_unsafe,
-                        e.m_variadic,
-                        e.m_abi,
-                        monomorph_cb.monomorph_type(sp, e.m_return),
-                        {}
-                        };
-                    fcn_ty_data.m_arg_types.reserve( e.m_args.size() );
-                    for(const auto& arg : e.m_args)
-                    {
-                        fcn_ty_data.m_arg_types.push_back( monomorph_cb.monomorph_type(sp, arg.second) );
-                    }
-                    auto tmp = m_builder.new_temporary( ::HIR::TypeRef( mv$(fcn_ty_data) ) );
+                    auto fcn_ty = e.make_ptr_ty(sp, monomorph_cb);
+                    m_builder.resolve().expand_associated_types( node.span(), fcn_ty );
+                    auto tmp = m_builder.new_temporary( mv$(fcn_ty) );
                     m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
                     m_builder.set_result( sp, mv$(tmp) );
                     }
