@@ -164,3 +164,4 @@
 - `type Owned: OwnedToRef<Borrowed<'a> = Self>`
   - Associated type bound with HRL defined
   - `rustc-1.74.0-src/vendor/der/src/referenced.rs:19`
+- Method lookup with `Arc` reciever

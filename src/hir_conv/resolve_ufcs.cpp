@@ -1052,12 +1052,13 @@ namespace resolve_ufcs {
         for(const auto& ti : src)
         {
             const auto& impl = *ti;
-            DEBUG("impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             icache.insert_all(sp, impl, lang_Box);
         }
     }
     void push_index_inherent_methods(::HIR::InherentCache& icache, const HIR::SimplePath& lang_Box, const ::HIR::Crate& src)
     {
+        TRACE_FUNCTION_F("src = " << src.m_crate_name);
         for(const auto& e : src.m_type_impls.named) {
             push_index_inherent_methods_list(icache, lang_Box, e.second);
         }

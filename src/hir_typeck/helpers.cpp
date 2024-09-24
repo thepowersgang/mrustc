@@ -4639,6 +4639,8 @@ bool TraitResolution::find_method(const Span& sp,
         }
         });
 
+    // TODO: Handle custom recievers by finding the bottom of a deref chain (or take the top-level reciever as an argument here?)
+
     // 2. Search the current trait (if in an impl block)
     if(m_current_trait_path)
     {

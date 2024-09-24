@@ -1171,6 +1171,9 @@ namespace {
             }
             assert(m_current_lifetime.empty());
 
+            if( item.m_receiver == HIR::Function::Receiver::Custom ) {
+                this->visit_type(item.m_receiver_type);
+            }
             ::HIR::Visitor::visit_function(p, item);
         }
     };

@@ -442,6 +442,15 @@ public:
         ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         m_impl_type = nullptr;
     }
+
+    void visit_function(HIR::ItemPath p, ::HIR::Function& item) override {
+        ::HIR::Visitor::visit_function(p, item);
+        if( item.m_receiver == HIR::Function::Receiver::Custom ) {
+            //DEBUG("Updating reciever from " << item.m_receiver_type << " to " << item.m_args.at(0).second);
+            //item.m_receiver_type = item.m_args.at(0).second.clone();
+            this->visit_type(item.m_receiver_type);
+        }
+    }
 };
 
 
