@@ -1310,7 +1310,8 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         if( tok.type() == TOK_RWORD_ASYNC )
     case TOK_RWORD_ASYNC:
         {
-            TODO(lex.point_span(), "async fn");
+            fn_flags.is_async = true;
+            GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_RWORD_FN);
     case TOK_RWORD_FN: {

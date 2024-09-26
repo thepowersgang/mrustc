@@ -1759,6 +1759,11 @@ namespace {
     rv.m_return = LowerHIR_Type( f.rettype() );
     rv.m_code = LowerHIR_Expr( f.code() );
     rv.m_markings = markings;
+
+    if( f.is_async() ) {
+        TODO(f.sp(), "Transform `async fn` into `fn(...) { async { ... } }`");
+    }
+
     return rv;
 }
 

@@ -259,6 +259,8 @@ public:
 
     void set_code(Expr code) { m_code = ::std::move(code); }
 
+    const Span& sp() const { return m_span; }
+
     const ::std::string& abi() const { return m_abi; };
     bool is_const() const { return m_flags.is_const; }
     bool is_unsafe() const { return m_flags.is_unsafe; }
