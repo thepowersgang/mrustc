@@ -133,8 +133,8 @@ namespace {
                             }
                         }
                         }
-                    TU_ARMA(HirRoot, hir_mod) {
-                        return get_module_hir(*hir_mod, path, 1, ignore_last, out_path);
+                    TU_ARMA(HirRoot, hir_crate) {
+                        return get_module_hir(hir_crate->m_root_module, path, 1, ignore_last, out_path);
                         }
                     TU_ARMA(Hir, i_ent_ptr) {
                         ASSERT_BUG(sp, !i_ent_ptr->is_Import(), "");
@@ -310,8 +310,11 @@ namespace {
                     }
                     }
                 TU_ARMA(HirRoot, e) {
-                    if(out_path)    TODO(sp, "Get output path for HIR module");
-                    return get_module_hir(*e, path, idx+1, ignore_last, out_path);
+                    if(out_path) {
+                        out_path->crate = e->m_crate_name;
+                        out_path->nodes.clear();
+                    }
+                    return get_module_hir(e->m_root_module, path, idx+1, ignore_last, out_path);
                     }
                 }
             }
@@ -693,7 +696,7 @@ namespace {
                         }
                         const auto& ext_crate = H::get_crate(sp, crate, p->path);
                         if( p->path.m_components.empty() ) {
-                            return ResolveItemRef_Type(&ext_crate.m_root_module);
+                            return ResolveItemRef_Type(&ext_crate);
                         }
                         ti = &ext_crate.get_typeitem_by_path(sp, p->path, true);
                     }
