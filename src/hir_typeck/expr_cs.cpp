@@ -7432,7 +7432,7 @@ namespace
             }
             DEBUG("possible_tys = {" << possible_tys << "} (" << n_src_ivars << " src ivars, " << n_dst_ivars << " dst ivars, possibly_diverge=" << possibly_diverge << ")");
 
-            if( /*n_src_ivars == 0 && n_dst_ivars == 0 &&*/ possible_tys.empty() && possibly_diverge && fallback_ty == IvarPossFallbackType::IgnoreWeakDisable ) {
+            if( n_src_ivars == 0 && /*n_dst_ivars == 0 &&*/ possible_tys.empty() && possibly_diverge && fallback_ty == IvarPossFallbackType::IgnoreWeakDisable ) {
                 auto t = ::HIR::TypeRef::new_diverge();
                 if( !check_ivar_poss__fails_bounds(sp, context, ty_l, t) )
                 {
