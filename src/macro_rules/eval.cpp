@@ -1112,6 +1112,7 @@ namespace
                 if( allow_or && lex.consume_if(TOK_PIPE) )
                     continue;
                 return true;
+            case TOK_BYTESTRING:
             case TOK_STRING:
             case TOK_INTEGER:
             case TOK_FLOAT:
