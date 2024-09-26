@@ -6072,6 +6072,8 @@ namespace
         Assume,
         // Ignores the weaker disable flags (`force_no_to` and `force_no_from`)
         IgnoreWeakDisable,
+        // First bound, if nothing else works
+        PickFirstBound,
         // Just picks an option (even if it might be wrong)
         FinalOption,
     };
@@ -6082,6 +6084,7 @@ namespace
         case IvarPossFallbackType::Backwards:   os << " backwards";   break;
         case IvarPossFallbackType::Assume:  os << " weak";   break;
         case IvarPossFallbackType::IgnoreWeakDisable:  os << " unblock";   break;
+        case IvarPossFallbackType::PickFirstBound:  os << " pick-bound";   break;
         case IvarPossFallbackType::FinalOption:  os << " final";   break;
         }
         return os;
@@ -6516,6 +6519,8 @@ namespace
     };
 
 
+    // TODO: Split the below into a common portion, and a "run" portion (which uses the fallback)
+
     /// Check IVar possibilities, from both coercion/unsizing (which have well-encoded rules) and from trait impls
     bool check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent, IvarPossFallbackType fallback_ty=IvarPossFallbackType::None)
     {
@@ -6715,7 +6720,7 @@ namespace
                 {
                     // If there's no other rules, just pick the first fitting type
                     // TODO: Should this be restricted to a fallback mode?
-                    if( fallback_ty == IvarPossFallbackType::FinalOption && possible_tys.empty())
+                    if( fallback_ty == IvarPossFallbackType::PickFirstBound && possible_tys.empty())
                     {
                         DEBUG("Multiple fitting types in bounded and no other rules, picking first (bounded=[" << ivar_ent.bounded << "])");
                         context.equate_types(sp, ty_l, *best_ty);
@@ -6898,6 +6903,7 @@ namespace
                 switch(fallback_ty)
                 {
                 case IvarPossFallbackType::IgnoreWeakDisable:
+                case IvarPossFallbackType::PickFirstBound:
                 case IvarPossFallbackType::FinalOption:
                     break;
                 default:
@@ -7479,6 +7485,7 @@ namespace
                     break;
                 case IvarPossFallbackType::Assume:
                 case IvarPossFallbackType::IgnoreWeakDisable:
+                case IvarPossFallbackType::PickFirstBound:
                     active = (ivar_ent.bounded.size() == 0);
                     break;
                 case IvarPossFallbackType::FinalOption:
@@ -7912,6 +7919,17 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         } // `if peek_changed` (node revisits)
 
 #if 1
+        if( !context.m_ivars.peek_changed() )
+        {
+            // Check the possible equations
+            DEBUG("--- IVar possibilities (just pick a bound)");
+            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            {
+                if( check_ivar_poss(context, i, context.possible_ivar_vals[i], IvarPossFallbackType::PickFirstBound) ) {
+                    break;
+                }
+            }
+        }
         if( !context.m_ivars.peek_changed() )
         {
             // Check the possible equations
