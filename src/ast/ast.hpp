@@ -197,6 +197,29 @@ public:
         }
     };
     typedef ::std::vector<Arg>   Arglist;
+    struct Flags {
+        bool    is_const;
+        bool    is_unsafe;
+        bool    is_async;
+        Flags()
+            : is_const(false)
+            , is_unsafe(false)
+            , is_async(false)
+        {}
+        static Flags make_unsafe() {
+            return Flags().set_unsafe();
+        }
+        Flags set_unsafe() const {
+            auto rv = *this;
+            rv.is_unsafe = true;
+            return rv;
+        }
+        Flags set_const() const {
+            auto rv = *this;
+            rv.is_const = true;
+            return rv;
+        }
+    };
 
 private:
     Span    m_span;
@@ -204,11 +227,10 @@ private:
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
+    bool    m_is_variadic;  // extern only
 
     ::std::string   m_abi;
-    bool    m_is_const;
-    bool    m_is_unsafe;
-    bool    m_is_variadic;  // extern only
+    Flags   m_flags;
 public:
     struct Markings {
         enum Inline {
@@ -231,14 +253,16 @@ public:
     Function(Function&&) = default;
     Function& operator=(Function&&) = default;
 
-    Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args);
+    Function(Span sp, ::std::string abi, Flags flags, GenericParams params, TypeRef ret_type, Arglist args, bool is_variadic);
+    // Helper for derive, defines an ABI_RUST function with no generics
+    Function(Span sp, TypeRef ret_type, Arglist args): Function(sp, ABI_RUST, Flags(), GenericParams(), std::move(ret_type), std::move(args), false) {}
 
     void set_code(Expr code) { m_code = ::std::move(code); }
 
     const ::std::string& abi() const { return m_abi; };
-    bool is_const() const { return m_is_const; }
-    bool is_unsafe() const { return m_is_unsafe; }
-    bool is_variadic() const { return m_is_variadic; }
+    bool is_const() const { return m_flags.is_const; }
+    bool is_unsafe() const { return m_flags.is_unsafe; }
+    bool is_async() const { return m_flags.is_async; }
 
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
@@ -248,6 +272,7 @@ public:
           TypeRef& rettype()       { return m_rettype; }
     const Arglist& args() const { return m_args; }
           Arglist& args()       { return m_args; }
+    bool is_variadic() const { return m_is_variadic; }
 
     Function clone() const;
 };

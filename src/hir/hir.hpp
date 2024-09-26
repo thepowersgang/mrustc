@@ -31,9 +31,6 @@
 #include <hir/inherent_cache.hpp>
 #include <hir/asm.hpp>
 
-#define ABI_RUST    "Rust"
-#define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
-
 class Monomorphiser;
 
 namespace HIR {

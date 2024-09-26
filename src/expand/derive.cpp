@@ -399,8 +399,6 @@ class Deriver_Debug:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(sp, get_path(core_name, "fmt", "Result")),
             vec$(
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"),
@@ -688,8 +686,6 @@ class Deriver_PartialEq:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(sp, CORETYPE_BOOL),
             vec$(
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
@@ -737,8 +733,6 @@ class Deriver_PartialOrd:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(sp, path_option_ordering),
             vec$(
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
@@ -816,8 +810,6 @@ class Deriver_Eq:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) )
@@ -939,8 +931,6 @@ class Deriver_Ord:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(sp, path_ordering),
             vec$(
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
@@ -1013,8 +1003,6 @@ class Deriver_Clone:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(sp, "Self", 0xFFFF),
             vec$(
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) )
@@ -1215,8 +1203,6 @@ class Deriver_Default:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(sp, "Self", 0xFFFF),
             {}
             );
@@ -1333,8 +1319,6 @@ class Deriver_Hash:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
@@ -1484,8 +1468,6 @@ class Deriver_RustcEncodable:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(sp, mv$(result_path)),
             vec$(
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
@@ -1716,8 +1698,6 @@ class Deriver_RustcDecodable:
 
         AST::Function fcn(
             sp,
-            AST::GenericParams(),
-            ABI_RUST, false, false, false,
             TypeRef(sp, result_path),
             vec$(
                 //AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, false, AST::LifetimeRef(), TypeRef(sp, "Self", 0xFFFF)) ),

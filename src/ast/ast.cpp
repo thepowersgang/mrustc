@@ -151,26 +151,25 @@ Static Static::clone() const
     return Static( m_class, m_type.clone(), m_value.is_valid() ? AST::Expr( m_value.node().clone() ) : AST::Expr() );
 }
 
-Function::Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args):
+Function::Function(Span sp, ::std::string abi, Flags flags, GenericParams params, TypeRef ret_type, Arglist args, bool is_variadic):
     m_span(sp),
     m_params( move(params) ),
     m_rettype( move(ret_type) ),
     m_args( move(args) ),
+    m_is_variadic(is_variadic),
     m_abi( mv$(abi) ),
-    m_is_const(is_const),
-    m_is_unsafe(is_unsafe),
-    m_is_variadic(is_variadic)
+    m_flags(flags)
 {
 }
 Function Function::clone() const
 {
     decltype(m_args)    new_args;
-    for(const auto& arg : m_args)
+    for(const auto& arg : m_args) {
         new_args.push_back( AST::Function::Arg( arg.pat.clone(), arg.ty.clone(), arg.attrs.clone() ) );
+    }
 
-    auto rv = Function( m_span, m_params.clone(), m_abi, m_is_unsafe, m_is_const, m_is_variadic, m_rettype.clone(), mv$(new_args) );
-    if( m_code.is_valid() )
-    {
+    auto rv = Function( m_span, m_abi, m_flags, m_params.clone(), m_rettype.clone(), mv$(new_args), m_is_variadic );
+    if( m_code.is_valid() ) {
         rv.m_code = AST::Expr( m_code.node().clone() );
     }
     return rv;

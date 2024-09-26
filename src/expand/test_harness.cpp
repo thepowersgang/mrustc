@@ -33,7 +33,7 @@ void Expand_TestHarness(::AST::Crate& crate)
     // ```
 
     // ---- main function ----
-    auto main_fn = ::AST::Function { Span(), {}, ABI_RUST, false, false, false, TypeRef(TypeRef::TagUnit(), Span()), {} };
+    auto main_fn = ::AST::Function { Span(), TypeRef(TypeRef::TagUnit(), Span()), {} };
     {
         auto call_node = NEWNODE(_CallPath,
                 ::AST::Path(c_test, { ::AST::PathNode("test_main_static") }),

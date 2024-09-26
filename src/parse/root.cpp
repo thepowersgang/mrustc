@@ -424,7 +424,7 @@ AST::Function::Arg Parse_Function_Arg(TokenStream& lex, bool expect_named)
 }
 
 /// Parse a function definition (after the 'fn <name>')
-AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_self, bool can_be_prototype,  bool is_unsafe, bool is_const)
+AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_prototype, std::string abi, AST::Function::Flags flags)
 {
     TRACE_FUNCTION;
     ProtoSpan   ps = lex.start_span();
@@ -577,13 +577,13 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         PUTBACK(tok, lex);
     }
 
-    return AST::Function(lex.end_span(ps), mv$(params), mv$(abi), is_unsafe, is_const, is_variadic, mv$(ret_type), mv$(args));
+    return AST::Function(lex.end_span(ps), mv$(abi), mv$(flags), mv$(params), mv$(ret_type), mv$(args), is_variadic);
 }
 
-AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, bool allow_self, bool is_unsafe, bool is_const)
+AST::Function Parse_FunctionDefWithCode(TokenStream& lex, bool allow_self, std::string abi, AST::Function::Flags flags)
 {
     Token   tok;
-    auto ret = Parse_FunctionDef(lex, abi, allow_self, false,  is_unsafe, is_const);
+    auto ret = Parse_FunctionDef(lex, allow_self, /*can_be_prototype=*/false, std::move(abi), flags);
     GET_TOK(tok, lex);
     if( tok == TOK_BRACE_OPEN ) {
     }
@@ -740,9 +740,8 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
     // TODO: Mark specialisation
     (void)is_specialisable;
 
-    bool fn_is_const = false;
-    bool fn_is_unsafe = false;
-    ::std::string   abi = ABI_RUST;
+    std::string abi = ABI_RUST;
+    AST::Function::Flags    fn_flags;
 
     RcString    name;
     ::AST::Item   rv;
@@ -808,24 +807,24 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
 
     // Functions (possibly unsafe)
     case TOK_RWORD_UNSAFE:
-        fn_is_unsafe = true;
+        fn_flags.is_unsafe = true;
         if( GET_TOK(tok, lex) == TOK_RWORD_EXTERN )
     case TOK_RWORD_EXTERN:
         {
-            abi = "C";
-            if( GET_TOK(tok, lex) == TOK_STRING )
+            if( GET_TOK(tok, lex) == TOK_STRING ) {
                 abi = tok.str();
-            else
-                PUTBACK(tok, lex);
-
-            GET_TOK(tok, lex);
+                GET_TOK(tok, lex);
+            }
+            else {
+                abi = "C";
+            }
         }
         CHECK_TOK(tok, TOK_RWORD_FN);
     case TOK_RWORD_FN: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         name = tok.ident().name;
         // Self allowed, prototype-form allowed (optional names and no code)
-        auto fcn = Parse_FunctionDef(lex, abi, /*allow_self*/true, /*can_be_proto*/true,  fn_is_unsafe, fn_is_const);
+        auto fcn = Parse_FunctionDef(lex, /*allow_self*/true, /*can_be_proto*/true, std::move(abi), fn_flags);
         if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
         {
             PUTBACK(tok, lex);
@@ -1252,8 +1251,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     }
 
     ::std::string   abi = ABI_RUST;
-    bool fn_is_unsafe = false;
-    bool fn_is_const = false;
+    AST::Function::Flags    fn_flags;
     switch(tok.type())
     {
     case TOK_RWORD_TYPE: {
@@ -1269,13 +1267,13 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         impl.add_type(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, name, mv$(atype_params), mv$(ty));
         break; }
     case TOK_RWORD_UNSAFE:
-        fn_is_unsafe = true;
+        fn_flags.is_unsafe = true;
         GET_TOK(tok, lex);
         if( tok.type() == TOK_RWORD_CONST )
     case TOK_RWORD_CONST:
         {
             GET_TOK(tok, lex);
-            if( tok.type() != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE && !fn_is_unsafe )
+            if( tok.type() != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE && !fn_flags.is_unsafe )
             {
                 CHECK_TOK(tok, TOK_IDENT);
                 auto name = tok.ident().name;
@@ -1291,32 +1289,37 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
             }
             else if( tok.type() == TOK_RWORD_UNSAFE )
             {
-                fn_is_unsafe = true;
+                fn_flags.is_unsafe = true;
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             }
-            fn_is_const = true;
+            fn_flags.is_const = true;
         }
         if( tok.type() == TOK_RWORD_EXTERN )
         // FALL
     case TOK_RWORD_EXTERN:
         {
-            abi = "C";
-            if( GET_TOK(tok, lex) == TOK_STRING )
+            if( GET_TOK(tok, lex) == TOK_STRING ) {
                 abi = tok.str();
-            else
-                PUTBACK(tok, lex);
-
-            GET_TOK(tok, lex);
+                GET_TOK(tok, lex);
+            }
+            else {
+                abi = "C";
+            }
+        }
+        // FALL
+        if( tok.type() == TOK_RWORD_ASYNC )
+    case TOK_RWORD_ASYNC:
+        {
+            TODO(lex.point_span(), "async fn");
         }
         CHECK_TOK(tok, TOK_RWORD_FN);
-        // FALL
     case TOK_RWORD_FN: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         // TODO: Hygine on function names? - Not in impl blocks?
         auto name = tok.ident().name;
         DEBUG("Function " << name);
         // - Self allowed, can't be prototype-form
-        auto fcn = Parse_FunctionDefWithCode(lex, abi, true,  fn_is_unsafe, fn_is_const);
+        auto fcn = Parse_FunctionDefWithCode(lex, /*allow_self=*/true,  std::move(abi), fn_flags);
         impl.add_function(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, mv$(name), mv$(fcn));
         break; }
 
@@ -1350,7 +1353,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             auto name = tok.ident().name;
             // parse function as prototype
             // - no self, is prototype, is unsafe and not const
-            auto i = ::AST::Item( Parse_FunctionDef(lex, abi, false, true,  true,false) );
+            auto i = ::AST::Item( Parse_FunctionDef(lex, /*allow_self*/false, /*can_be_prototype=*/true, abi, AST::Function::Flags::make_unsafe()) );
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
             rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), is_public, mv$(name), mv$(i) } );
@@ -1818,7 +1821,7 @@ namespace {
             case TOK_RWORD_FN: {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 item_name = tok.ident().name;
-                item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  false,false) );
+                item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  abi, AST::Function::Flags()) );
                 break; }
             // `extern "ABI" {`
             case TOK_BRACE_OPEN:
@@ -1833,7 +1836,7 @@ namespace {
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "C", false,  false,false) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  "C", AST::Function::Flags()) );
             break;
 
         // NOTE: `extern { ...` is handled in caller
@@ -1923,20 +1926,20 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  true,true/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  abi, AST::Function::Flags().set_const().set_unsafe()) );
             break; }
         case TOK_RWORD_EXTERN: {
             auto abi = lex.lookahead(0) == TOK_STRING ? lex.getToken().str() : "C";
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  false,true/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  abi, AST::Function::Flags().set_const()) );
             break; }
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
             // - self not allowed, not prototype
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  false,true/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  ABI_RUST, AST::Function::Flags().set_const()) );
             break;
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_UNDERSCORE, TOK_RWORD_UNSAFE, TOK_RWORD_FN});
@@ -1982,14 +1985,14 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  true,false/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  abi, AST::Function::Flags().set_unsafe()) );
             break; }
         // `unsafe fn`
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
             // - self not allowed, not prototype
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  true,false/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  ABI_RUST, AST::Function::Flags().set_unsafe()) );
             break;
         // `unsafe trait`
         case TOK_RWORD_TRAIT: {
@@ -2036,7 +2039,7 @@ namespace {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = tok.ident().name;
         // - self not allowed, not prototype
-        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  false,false/*unsafe,const*/) );
+        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  ABI_RUST, AST::Function::Flags()) );
         break;
     // `type`
     case TOK_RWORD_TYPE:

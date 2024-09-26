@@ -131,7 +131,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     // ```
 
     // ---- main function ----
-    auto main_fn = ::AST::Function { Span(), {}, ABI_RUST, false, false, false, TypeRef(TypeRef::TagUnit(), Span()), {} };
+    auto main_fn = ::AST::Function { Span(), TypeRef(TypeRef::TagUnit(), Span()), {} };
     {
         auto call_node = NEWNODE(_CallPath,
                 ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("main") }),
