@@ -637,6 +637,7 @@ NODE(ExprNode_UniOp, {
     case RawBorrow: os << "(&raw const "; break;
     case RawBorrowMut: os << "(&raw mut "; break;
     case QMARK: os << "(" << *m_value << "?)"; return;
+    case AWait: os << "((" << *m_value << ").await)"; return;
     }
     os << *m_value << ")";
 },{

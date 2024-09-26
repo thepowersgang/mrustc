@@ -808,18 +808,23 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
     // Functions (possibly unsafe)
     case TOK_RWORD_UNSAFE:
         fn_flags.is_unsafe = true;
-        if( GET_TOK(tok, lex) == TOK_RWORD_EXTERN )
+        if( lex.getTokenIf(TOK_RWORD_ASYNC) )
+    case TOK_RWORD_ASYNC:
+        {
+            fn_flags.is_async = true;
+        }
+        if( lex.getTokenIf(TOK_RWORD_EXTERN) )
     case TOK_RWORD_EXTERN:
         {
             if( GET_TOK(tok, lex) == TOK_STRING ) {
                 abi = tok.str();
-                GET_TOK(tok, lex);
             }
             else {
                 abi = "C";
+                PUTBACK(tok, lex);
             }
         }
-        CHECK_TOK(tok, TOK_RWORD_FN);
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
     case TOK_RWORD_FN: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         name = tok.ident().name;
@@ -2034,6 +2039,13 @@ namespace {
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
         }
+        break;
+    case TOK_RWORD_ASYNC:
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        item_name = tok.ident().name;
+        // - self not allowed, not prototype
+        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  ABI_RUST, AST::Function::Flags().set_async()) );
         break;
     // `fn`
     case TOK_RWORD_FN:

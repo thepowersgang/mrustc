@@ -727,6 +727,7 @@ struct ExprNode_UniOp:
         INVERT, // '!<expr>'
         NEGATE, // '-<expr>'
         QMARK, // '<expr>?'
+        AWait,  // `.await`
     };
 
     enum Type   m_type;

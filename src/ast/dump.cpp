@@ -699,6 +699,7 @@ public:
         case AST::ExprNode_UniOp::RawBorrow:    m_os << "&raw const "; break;
         case AST::ExprNode_UniOp::RawBorrowMut: m_os << "&raw mut "; break;
         case AST::ExprNode_UniOp::QMARK: break;
+        case AST::ExprNode_UniOp::AWait: break;
         }
 
         if( IS(*n.m_value, AST::ExprNode_BinOp) )
@@ -709,6 +710,7 @@ public:
         switch(n.m_type)
         {
         case AST::ExprNode_UniOp::QMARK: m_os << "?"; break;
+        case AST::ExprNode_UniOp::AWait: m_os << ".await";  break;
         default:    break;
         }
     }
@@ -1342,6 +1344,8 @@ void RustPrinter::handle_function(bool is_pub, const RcString& name, const AST::
         m_os << "const ";
     if( f.is_unsafe() )
         m_os << "unsafe ";
+    if( f.is_async() )
+        m_os << "async ";
     if( f.abi() != ABI_RUST )
         m_os << "extern \"" << f.abi() << "\" ";
     m_os << "fn " << name;

@@ -1425,6 +1425,9 @@ namespace {
             if( fcn.is_const() ) {
                 m_pmi.send_rword("const");
             }
+            if( fcn.is_async() ) {
+                m_pmi.send_rword("async");
+            }
             if( fcn.abi() != ABI_RUST ) {
                 m_pmi.send_rword("extern");
                 m_pmi.send_string(fcn.abi());

@@ -371,6 +371,10 @@ struct LowerHIR_ExprNode_Visitor:
             m_rv.reset(new ::HIR::ExprNode_RawBorrow(v.span(), ::HIR::BorrowType::Unique, lower( v.m_value ) ));
             break;
 
+        case ::AST::ExprNode_UniOp::AWait:
+            TODO(v.span(), "Convert AWait operator");
+            break;
+
         case ::AST::ExprNode_UniOp::INVERT: op = ::HIR::ExprNode_UniOp::Op::Invert; if(0)
         case ::AST::ExprNode_UniOp::NEGATE: op = ::HIR::ExprNode_UniOp::Op::Negate;
             m_rv.reset( new ::HIR::ExprNode_UniOp( v.span(),

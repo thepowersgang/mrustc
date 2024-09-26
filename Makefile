@@ -58,6 +58,7 @@ CXXFLAGS += -Wno-misleading-indentation
 #CXXFLAGS += -Wno-unknown-warning-option
 
 CXXFLAGS += -Werror=return-type
+CXXFLAGS += -Werror=switch
 
 # Force the use of `bash` as the shell
 SHELL = bash

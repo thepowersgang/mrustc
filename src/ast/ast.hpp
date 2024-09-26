@@ -219,6 +219,11 @@ public:
             rv.is_const = true;
             return rv;
         }
+        Flags set_async() const {
+            auto rv = *this;
+            rv.is_async = true;
+            return rv;
+        }
     };
 
 private:
