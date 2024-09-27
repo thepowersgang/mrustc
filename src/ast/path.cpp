@@ -429,10 +429,13 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
         }
         }
     TU_ARMA(Absolute, ent) {
-        if( ent.crate != "" )
-            os << "::\"" << ent.crate << "\"";
-        else
+        if( ent.crate == "" )
             os << "crate";
+        else if( ent.crate.c_str()[0] == '=' ) {
+            os << "::" << ent.crate.c_str()+1 << "";
+        }
+        else
+            os << "::\"" << ent.crate << "\"";
         for(const auto& n : ent.nodes)
         {
             os << "::";
