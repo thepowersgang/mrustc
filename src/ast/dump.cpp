@@ -963,6 +963,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << indent() << "}\n";
     }
 
+    // HACK: Assume that anon modules have been printed already, so don't include them here.
+    // - Needed, because this code is used for proc macro output, which doen't like the `#<n>` syntax
+    #if 0
     for(const auto& m : mod.anon_mods())
     {
         if(!m) {
@@ -975,6 +978,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         dec_indent();
         m_os << indent() << "}\n";
     }
+    #endif
 }
 
 void RustPrinter::print_params(const AST::GenericParams& params)
