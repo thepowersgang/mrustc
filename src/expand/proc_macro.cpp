@@ -1073,6 +1073,18 @@ namespace {
                 m_pmi.send_symbol(">");
             }
         }
+        void visit_hrb(const AST::HigherRankedBounds& hrb)
+        {
+            if( !hrb.empty() ) {
+                m_pmi.send_rword("for");
+                m_pmi.send_symbol("<");
+                for(const auto& lft : hrb.m_lifetimes) {
+                    m_pmi.send_lifetime(lft.name().name.c_str());
+                    m_pmi.send_symbol(",");
+                }
+                m_pmi.send_symbol(">");
+            }
+        }
         void visit_bounds(const AST::GenericParams& params)
         {
             if( !params.m_bounds.empty() )
@@ -1109,14 +1121,10 @@ namespace {
                         m_pmi.send_lifetime(be.bound.name().name.c_str());
                         }
                     TU_ARMA(IsTrait, be) {
-                        if( !be.outer_hrbs.empty() ) {
-                            TODO(sp, "be.inner_hrbs");
-                        }
+                        visit_hrbs(be.outer_hrbs);
                         visit_type(be.type);
                         m_pmi.send_symbol(":");
-                        if( !be.inner_hrbs.empty() ) {
-                            TODO(sp, "be.inner_hrbs");
-                        }
+                        visit_hrbs(be.inner_hrbs);
                         visit_path(be.trait);
                         }
                     TU_ARMA(MaybeTrait, be) {
@@ -1554,8 +1562,8 @@ namespace {
         if( attr_input->size() != 0 )
         {
             // If the input is non-empty, then it must be a parenthesised token tree
-            assert(attr_input->size() >= 2);
-            assert((*attr_input)[0].tok() == TOK_PAREN_OPEN);
+            ASSERT_BUG(sp, attr_input->size() >= 2, "");
+            ASSERT_BUG(sp, (*attr_input)[0].tok() == TOK_PAREN_OPEN || (*attr_input)[0].tok() == TOK_SQUARE_OPEN, "");
             Visitor v(sp, pmi);
             // - Strip the parens when sending
             for(size_t i = 1; i < attr_input->size() - 1; i++)
