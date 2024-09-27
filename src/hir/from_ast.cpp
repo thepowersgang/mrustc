@@ -986,13 +986,11 @@ namespace {
             // NOTE: This signals to the lifetime elision code
             //lfts.push_back(::HIR::LifetimeRef());
         }
-        else if( e.lifetimes.size() == 1 )
-        {
-            lfts.push_back( LowerHIR_LifetimeRef(e.lifetimes[0]) );
-        }
         else
         {
-            TODO(ty.span(), "Handle multiple lifetime parameters - " << ty);
+            for(const auto& lft : e.lifetimes) {
+                lfts.push_back( LowerHIR_LifetimeRef(lft) );
+            }
         }
         ::HIR::TypeData_ErasedType_Inner    inner;
         if( g_impl_trait_source.path ) {
