@@ -26,6 +26,9 @@ DecoratorDef*   g_decorators_list = nullptr;
 MacroDef*   g_macros_list = nullptr;
 ::std::map< RcString, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< RcString, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
+// HACK: Used for expanding proc macros, which need to re-parse without access to the current module
+// - Parsing needs module for 1) anon modules, and 2) expanding `#[path]`
+AST::Module*    g_current_mod = nullptr;
 
 enum class ExpandMode {
     FirstPass,
@@ -177,7 +180,6 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                     // Disabled due to lack of module to pass to parse.
                     // - Maybe modules shouldn't be linked in until after expand?
                     // - Because otherwise anon mods won't be #[cfg]'d out properly?
-                    #if 0
                     void handle(
                         const Span& sp,
                         const AST::Attribute& attr,
@@ -189,7 +191,8 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                             auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, is_pub, name.c_str(), i);
                             if( lex ) {
                                 i = AST::Item::make_None({});
-                                //lex->parse_state().module = &mod;
+                                assert(g_current_mod);
+                                lex->parse_state().module = g_current_mod;
                                 while( lex->lookahead(0) != TOK_EOF )
                                 {
                                     Parse_Impl_Item(*lex, impl);
@@ -200,7 +203,6 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                             }
                         }
                     }
-                    #endif
                 } d;
                 d.mac_path.push_back(proc_mac->path.m_crate_name);
                 d.mac_path.insert(d.mac_path.end(), proc_mac->path.m_components.begin(), proc_mac->path.m_components.end());
@@ -265,23 +267,25 @@ void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, Attr
         }
         });
 }
-void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Trait& trait, ::AST::Item& item)
+void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Module& mod, ::AST::Trait& trait, ::AST::Item& item)
 {
+    g_current_mod = &mod;
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
-            // TODO: Pass attributes _after_ this attribute
             d.handle(sp, a, es.crate, path, trait, get_attrs_after(attrs, a), item);
         }
         });
+    g_current_mod = nullptr;
 }
-void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Impl& impl, bool is_pub, const RcString& name, ::AST::Item& item)
+void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage, ::AST::Module& mod, ::AST::Impl& impl, bool is_pub, const RcString& name, ::AST::Item& item)
 {
+    g_current_mod = &mod;
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
-            // TODO: Pass attributes _after_ this attribute
             d.handle(sp, a, es.crate, impl, name, get_attrs_after(attrs, a), is_pub, item);
         }
         });
+    g_current_mod = nullptr;
 }
 void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Module& mod, ::AST::ImplDef& impl)
 {
@@ -1803,7 +1807,7 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
 
         auto attrs = mv$(i.attrs);
         Expand_Attrs_CfgAttr(attrs);
-        Expand_Attrs(es, attrs, AttrStage::Pre,  impl, i.is_pub, i.name, *i.data);
+        Expand_Attrs(es, attrs, AttrStage::Pre,  mod, impl, i.is_pub, i.name, *i.data);
 
         TU_MATCH_HDRA( (*i.data), {)
         default:
@@ -1857,7 +1861,7 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
         // Run post-expansion decorators and restore attributes
         {
             auto& i = impl.items()[idx];
-            Expand_Attrs(es, attrs, AttrStage::Post,  impl, i.is_pub, i.name, *i.data);
+            Expand_Attrs(es, attrs, AttrStage::Post,  mod, impl, i.is_pub, i.name, *i.data);
             // TODO: How would this be populated? It got moved out?
             if( i.attrs.m_items.size() == 0 )
                 i.attrs = mv$(attrs);
@@ -2276,7 +2280,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 auto attrs = mv$(ti.attrs);
                 auto ti_path = path + ti.name;
                 Expand_Attrs_CfgAttr(attrs);
-                Expand_Attrs(es, attrs, AttrStage::Pre,  ti_path, e, ti.data);
+                Expand_Attrs(es, attrs, AttrStage::Pre,  ti_path, mod, e, ti.data);
 
                 TU_MATCH_HDRA( (ti.data), {)
                 default:
@@ -2327,7 +2331,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 {
                     auto& ti = trait_items[idx];
 
-                    Expand_Attrs(es, attrs, AttrStage::Post,  ti_path, e, ti.data);
+                    Expand_Attrs(es, attrs, AttrStage::Post,  ti_path, mod, e, ti.data);
                     if( ti.attrs.m_items.size() == 0 )
                         ti.attrs = mv$(attrs);
                 }
