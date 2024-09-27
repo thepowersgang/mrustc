@@ -2787,7 +2787,7 @@ namespace {
         {
             const auto& pat = arg.first;
             // If the binding is set (i.e. this isn't destructuring) then the table populated by `MirBuilder::MirBuilder(...)` will be used
-            if( pat.m_bindings.size() == 1 && pat.m_bindings[0].m_type == ::HIR::PatternBinding::Type::Move )
+            if( pat.m_bindings.size() == 1 && pat.m_bindings[0].m_type == ::HIR::PatternBinding::Type::Move && pat.m_data.is_Any() )
             {
                 // Simple `var: Type` arguments are handled by `MirBuilder.m_var_arg_mappings`
             }
