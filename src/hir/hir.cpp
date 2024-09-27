@@ -110,7 +110,11 @@ namespace HIR {
             }
             else
             {
-                TODO(Span(), "Compare non-expanded array sizes - (wo/ MIR) " << *this << " and " << x);
+                // EVIL OPTION: Just compare the string representations
+                // - Hopefully there's no pointers printed involved.
+                auto v_t = FMT(*this);
+                auto v_x = FMT(x);
+                return ::ord(v_t, v_x);
             }
             }
         TU_ARMA(Generic, te, xe) {
