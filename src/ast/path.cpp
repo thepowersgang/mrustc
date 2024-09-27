@@ -109,6 +109,14 @@ PathBinding_Macro PathBinding_Macro::clone() const
 
 ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
 {
+    if( x.m_is_paren ) {
+        auto& t = x.m_entries.at(0).as_Type();
+        os << t;    // Should be a tuple
+        auto& rv = x.m_entries.at(1).as_AssociatedTyEqual();
+        os << "->";
+        os << rv.second;
+        return os;
+    }
     bool needs_comma = false;
     os << (x.m_is_paren ? "(" : "<");
     for(const auto& e : x.m_entries)

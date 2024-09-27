@@ -927,6 +927,15 @@ namespace {
                 m_pmi.send_ident(e.name().c_str());
                 if( ! e.args().is_empty() )
                 {
+                    if( e.args().m_is_paren ) {
+                        auto& t = e.args().m_entries.at(0).as_Type();
+                        this->visit_type(t);    // Should be a tuple
+                        auto& rv = e.args().m_entries.at(1).as_AssociatedTyEqual();
+                        m_pmi.send_symbol("->");
+                        this->visit_type(rv.second);
+                        continue ;
+                    }
+
                     if( is_expr )
                         m_pmi.send_symbol("::");
                     m_pmi.send_symbol("<");
