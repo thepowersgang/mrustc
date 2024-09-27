@@ -68,6 +68,9 @@ public:
                 m_os << ";";
             }
             m_os << "\n";
+            if( child ) {
+                this->print_attrs(child->attrs());
+            }
             m_os << indent();
             m_expr_root = true;
             if( !child.get() )
