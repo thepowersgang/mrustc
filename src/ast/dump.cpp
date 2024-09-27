@@ -194,8 +194,10 @@ public:
         print_pattern(n.m_pat, false);
         m_os << ": ";
         print_type(n.m_type);
-        m_os << " = ";
-        AST::NodeVisitor::visit(n.m_value);
+        if( n.m_value ) {
+            m_os << " = ";
+            AST::NodeVisitor::visit(n.m_value);
+        }
         m_os << ";";
     }
     virtual void visit(AST::ExprNode_Assign& n) override {
