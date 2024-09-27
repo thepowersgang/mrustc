@@ -7,6 +7,7 @@
  */
 #include <synext.hpp>
 #include "../common.hpp"
+#include "cfg.hpp"
 #include <ast/ast.hpp>
 #include <ast/expr.hpp>
 #include <ast/crate.hpp>
@@ -698,6 +699,21 @@ namespace {
                 visit_tuple_pattern(e);
                 m_pmi.send_symbol(")");
                 }
+            TU_ARMA(Struct, e) {
+                this->visit_path(e.path);
+                m_pmi.send_symbol("{");
+                for(const auto& spe : e.sub_patterns) {
+                    this->visit_attrs(spe.attrs);
+                    m_pmi.send_ident(spe.name);
+                    m_pmi.send_symbol(":");
+                    this->visit_pattern(spe.pat);
+                    m_pmi.send_symbol(",");
+                }
+                if( !e.is_exhaustive ) {
+                    m_pmi.send_symbol("...");
+                }
+                m_pmi.send_symbol("}");
+                }
             }
         }
         void visit_tuple_pattern(const AST::Pattern::TuplePat& v)
@@ -1300,6 +1316,12 @@ namespace {
         }
         void visit_attr(const ::AST::Attribute& a)
         {
+            if( a.name() == "cfg_attr" ) {
+                auto new_attrs = check_cfg_attr(a);
+                for(const auto& na : new_attrs) {
+                    this->visit_attr(na);
+                }
+            }
             if( this->emit_all_attrs || (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial())) )
             {
                 DEBUG("Send " << a);
@@ -1307,6 +1329,9 @@ namespace {
                 m_pmi.send_symbol("[");
                 this->visit_meta_item(a);
                 m_pmi.send_symbol("]");
+            }
+            else {
+                DEBUG("Skip " << a << " (" << m_pmi.m_proc_macro_desc.attributes << ")");
             }
         }
         void visit_meta_item(const ::AST::Attribute& i)
