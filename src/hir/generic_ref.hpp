@@ -57,7 +57,12 @@ struct GenericRef
 
 
     Ordering ord(const GenericRef& x) const {
-        return ::ord(binding, x.binding);
+        auto rv = ::ord(binding, x.binding);
+        if(rv)  return rv;
+        if(group() == GENERIC_Placeholder ) {
+            return ::ord(name, x.name); // names matter for placeholders
+        }
+        return rv;
     }
     bool operator==(const GenericRef& x) const { return this->ord(x) == OrdEqual; }
     bool operator!=(const GenericRef& x) const { return this->ord(x) != OrdEqual; }

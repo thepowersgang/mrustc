@@ -658,7 +658,9 @@ unsigned int HMTypeInferrence::new_ivar(HIR::InferClass ic/* = HIR::InferClass::
     m_ivars.push_back( IVar() );
     m_ivars.back().type->get_unique().as_Infer().index = m_ivars.size() - 1;
     m_ivars.back().type->get_unique().as_Infer().ty_class = ic;
-    return m_ivars.size() - 1;
+    auto rv = m_ivars.size() - 1;
+    DEBUG("New type IVar " << rv);
+    return rv;
 }
 ::HIR::TypeRef HMTypeInferrence::new_ivar_tr(HIR::InferClass ic/* = HIR::InferClass::None*/)
 {

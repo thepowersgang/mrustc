@@ -5676,6 +5676,7 @@ namespace {
                             auto it = m_types.find(g);
                             if( it == m_types.end() ) {
                                 it = m_types.insert(std::make_pair( g, m_context.m_ivars.new_ivar_tr() )).first;
+                                DEBUG("New type ivar for placeholder " << g << " = " << it->second);
                             }
                             return it->second.clone();
                         }
@@ -5689,6 +5690,7 @@ namespace {
                             if( it == m_values.end() ) {
                                 auto v = ::HIR::ConstGeneric::make_Infer( ::HIR::ConstGeneric::Data_Infer { m_context.m_ivars.new_ivar_val() });
                                 it = m_values.insert(std::make_pair( g, std::move(v) )).first;
+                                DEBUG("New value ivar for placeholder " << g << " = " << it->second);
                             }
                             return it->second.clone();
                         }
