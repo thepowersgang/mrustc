@@ -567,7 +567,7 @@ public:
             }
         }
         auto named_item = AST::Named<AST::Item>(
-            sp, {}, false, "",
+            sp, {}, AST::Visibility::make_bare_private(), "",
             AST::Item(std::move(global_asm))
         );
         return box$( TTStreamO(sp, ParseState(), TokenTree(Token( Token::TagTakeIP(), InterpolatedFragment(std::move(named_item)) )) ) );

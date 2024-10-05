@@ -52,8 +52,8 @@ public:
     virtual bool run_during_iter() const { return false; }
 
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
-    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const { unexpected(sp, mi, "item"); }
-    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, bool is_pub, AST::Item&i) const { unexpected(sp, mi, "associated item"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const { unexpected(sp, mi, "item"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const { unexpected(sp, mi, "associated item"); }
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Trait& trait, slice<const AST::Attribute> attrs, AST::Item&i) const { unexpected(sp, mi, "trait item"); }
 
     // NOTE: To delete, set the type to `_`

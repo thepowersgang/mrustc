@@ -38,7 +38,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -81,7 +81,7 @@ class Decorator_ProcMacroAttribute:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -98,7 +98,7 @@ class Decorator_ProcMacro:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -186,12 +186,13 @@ void Expand_ProcMacro(::AST::Crate& crate)
     auto newmod = ::AST::Module { ::AST::AbsolutePath("", { "proc_macro#" }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
-    newmod.add_ext_crate(Span(), false, crate.m_ext_cratename_procmacro, "proc_macro", {});
+    auto vis_private = AST::Visibility::make_restricted(AST::Visibility::Ty::Private, newmod.path());
+    newmod.add_ext_crate(Span(), vis_private, crate.m_ext_cratename_procmacro, "proc_macro", {});
 
-    newmod.add_item(Span(), false, "main", mv$(main_fn), {});
-    newmod.add_item(Span(), false, "MACROS", mv$(tests_list), {});
+    newmod.add_item(Span(), vis_private, "main", mv$(main_fn), {});
+    newmod.add_item(Span(), vis_private, "MACROS", mv$(tests_list), {});
 
-    crate.m_root_module.add_item(Span(), false, "proc_macro#", mv$(newmod), {});
+    crate.m_root_module.add_item(Span(), vis_private, "proc_macro#", mv$(newmod), {});
     crate.m_lang_items["mrustc-main"] = ::AST::AbsolutePath("", { "proc_macro#", "main" });
 }
 
@@ -1353,13 +1354,49 @@ namespace {
 
             visit_tokentree(i.data());
         }
-
-        void visit_struct(const ::std::string& name, bool is_pub, const ::AST::Struct& str)
+        void visit_vis(const ::AST::Visibility& vis)
         {
-            if( is_pub ) {
+            switch(vis.ty())
+            {
+            case ::AST::Visibility::Ty::Private:
+                break;
+            case ::AST::Visibility::Ty::Pub:
                 m_pmi.send_rword("pub");
+                break;
+            case ::AST::Visibility::Ty::Crate:
+                m_pmi.send_rword("crate");
+                break;
+            case ::AST::Visibility::Ty::PubCrate:
+                m_pmi.send_rword("pub");
+                m_pmi.send_symbol("(");
+                m_pmi.send_rword("crate");
+                m_pmi.send_symbol(")");
+                break;
+            case ::AST::Visibility::Ty::PubSuper:
+                m_pmi.send_rword("pub");
+                m_pmi.send_symbol("(");
+                m_pmi.send_rword("super");
+                m_pmi.send_symbol(")");
+                break;
+            case ::AST::Visibility::Ty::PubSelf:
+                m_pmi.send_rword("pub");
+                m_pmi.send_symbol("(");
+                m_pmi.send_rword("self");
+                m_pmi.send_symbol(")");
+                break;
+            case ::AST::Visibility::Ty::PubIn:
+                m_pmi.send_rword("pub");
+                m_pmi.send_symbol("(");
+                m_pmi.send_rword("in");
+                visit_path(vis.in_path());
+                m_pmi.send_symbol(")");
+                break;
             }
+        }
 
+        void visit_struct(const ::std::string& name, const AST::Visibility& vis, const ::AST::Struct& str)
+        {
+            this->visit_vis(vis);
             m_pmi.send_rword("struct");
             m_pmi.send_ident(name.c_str());
             this->visit_params(str.params());
@@ -1373,8 +1410,7 @@ namespace {
                 for( const auto& si : se.ents )
                 {
                     this->visit_attrs(si.m_attrs);
-                    if( si.m_is_public )
-                        m_pmi.send_rword("pub");
+                    this->visit_vis(si.m_vis);
                     this->visit_type(si.m_type);
                     m_pmi.send_symbol(",");
                 }
@@ -1389,8 +1425,7 @@ namespace {
                 for( const auto& si : se.ents )
                 {
                     this->visit_attrs(si.m_attrs);
-                    if( si.m_is_public )
-                        m_pmi.send_rword("pub");
+                    this->visit_vis(si.m_vis);
                     m_pmi.send_ident(si.m_name.c_str());
                     m_pmi.send_symbol(":");
                     this->visit_type(si.m_type);
@@ -1400,11 +1435,9 @@ namespace {
                 )
             )
         }
-        void visit_enum(const ::std::string& name, bool is_pub, const ::AST::Enum& enm)
+        void visit_enum(const ::std::string& name, const AST::Visibility& vis, const ::AST::Enum& enm)
         {
-            if( is_pub ) {
-                m_pmi.send_rword("pub");
-            }
+            this->visit_vis(vis);
 
             m_pmi.send_rword("enum");
             m_pmi.send_ident(name.c_str());
@@ -1450,16 +1483,14 @@ namespace {
             }
             m_pmi.send_symbol("}");
         }
-        void visit_union(const ::std::string& name, bool is_pub, const ::AST::Union& unn)
+        void visit_union(const ::std::string& name, const AST::Visibility& vis, const ::AST::Union& unn)
         {
             TODO(sp, "visit_union");
         }
 
-        void visit_function(const ::std::string& name, bool is_pub, const ::AST::Function& fcn)
+        void visit_function(const ::std::string& name, const AST::Visibility& vis, const ::AST::Function& fcn)
         {
-            if( is_pub ) {
-                m_pmi.send_rword("pub");
-            }
+            this->visit_vis(vis);
 
             if( fcn.is_unsafe() ) {
                 m_pmi.send_rword("unsafe");
@@ -1497,11 +1528,9 @@ namespace {
             this->visit_nodes(fcn.code());
         }
 
-        void visit_use(const ::std::string& name, bool is_pub, const ::AST::UseItem& item)
+        void visit_use(const ::std::string& name, const AST::Visibility& vis, const ::AST::UseItem& item)
         {
-            if( is_pub ) {
-                m_pmi.send_rword("pub");
-            }
+            this->visit_vis(vis);
             m_pmi.send_rword("use");
 
             if( item.entries.size() == 1 ) {
@@ -1523,29 +1552,29 @@ namespace {
             m_pmi.send_symbol(";");
         }
 
-        void visit_item(const ::std::string& name, bool is_pub, const ::AST::Item& item)
+        void visit_item(const ::std::string& name, const AST::Visibility& vis, const ::AST::Item& item)
         {
             TU_MATCH_HDRA((item), {)
             default:
                 TODO(sp, "visit_item - " << item.tag_str());
                 break;
             TU_ARMA(Use, e) {
-                visit_use(name, is_pub, e);
+                visit_use(name, vis, e);
                 }
             // Types
             TU_ARMA(Struct, e) {
-                visit_struct(name, is_pub, e);
+                visit_struct(name, vis, e);
                 }
             TU_ARMA(Enum, e) {
-                visit_enum(name, is_pub, e);
+                visit_enum(name, vis, e);
                 }
             TU_ARMA(Union, e) {
-                visit_union(name, is_pub, e);
+                visit_union(name, vis, e);
                 }
 
             // Values
             TU_ARMA(Function, e) {
-                visit_function(name, is_pub, e);
+                visit_function(name, vis, e);
                 }
             }
         }
@@ -1581,40 +1610,40 @@ namespace {
     return box$(pmi);
 }
 // --- Derive inputs
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, bool pub, const ::std::string& item_name, const ::AST::Struct& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Struct& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on struct");
         v.visit_top_attrs(attrs);
-        v.visit_struct(item_name, pub, i);
+        v.visit_struct(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, bool pub, const ::std::string& item_name, const ::AST::Enum& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Enum& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on enum");
         v.visit_top_attrs(attrs);
-        v.visit_enum(item_name, pub, i);
+        v.visit_enum(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, bool pub, const ::std::string& item_name, const ::AST::Union& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Union& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on union");
         v.visit_top_attrs(attrs);
-        v.visit_union(item_name, pub, i);
+        v.visit_union(item_name, vis, i);
         });
 }
 // --- attribute
 ::std::unique_ptr<TokenStream> ProcMacro_Invoke(
     const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt,
-    slice<const AST::Attribute> attrs, bool is_pub, const ::std::string& item_name, const ::AST::Item& i
+    slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Item& i
     )
 {
     return ProcMacro_Invoke(sp, crate, mac_path, &tt, [&](Visitor& v) {
         v.emit_all_attrs = true;
         v.visit_top_attrs(attrs);
-        v.visit_item(item_name, is_pub, i);
+        v.visit_item(item_name, vis, i);
         });
 }
 // -- function-like input

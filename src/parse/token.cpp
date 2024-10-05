@@ -122,7 +122,7 @@ Token::Token(const InterpolatedFragment& frag)
         m_type = TOK_INTERPOLATED_ITEM;
         const auto& named = *reinterpret_cast<const AST::Named<AST::Item>*>(frag.m_ptr);
         auto item = named.data.clone();
-        m_data = new AST::Named<AST::Item>( named.span, named.attrs.clone(), named.is_pub, named.name, mv$(item) );
+        m_data = new AST::Named<AST::Item>( named.span, named.attrs.clone(), named.vis, named.name, mv$(item) );
         break; }
     }
 }
@@ -367,7 +367,7 @@ struct EscapedString {
     case TOK_INTERPOLATED_ITEM: return "/*:item*/";
     case TOK_INTERPOLATED_VIS: {
         ::std::stringstream ss;
-        ss << (*reinterpret_cast<const ::AST::Visibility*>(m_data.as_Fragment()) ? "pub" : "/*priv*/");
+        ss << *reinterpret_cast<const ::AST::Visibility*>(m_data.as_Fragment());
         return ss.str();
         }
     // Value tokens

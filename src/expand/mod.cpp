@@ -161,12 +161,12 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                     void handle(
                         const Span& sp,
                         const AST::Attribute& attr,
-                        ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i
+                        ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i
                         ) const override
                     {
                         if( !i.is_None() )
                         {
-                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, is_pub, path.nodes.back().c_str(), i);
+                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, path.nodes.back().c_str(), i);
                             if( lex ) {
                                 i = AST::Item::make_None({});
                                 lex->parse_state().module = &mod;
@@ -183,12 +183,12 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                     void handle(
                         const Span& sp,
                         const AST::Attribute& attr,
-                        AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, bool is_pub, AST::Item& i
+                        AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i
                         ) const override
                     {
                         if( !i.is_None() )
                         {
-                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, is_pub, name.c_str(), i);
+                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, name.c_str(), i);
                             if( lex ) {
                                 i = AST::Item::make_None({});
                                 assert(g_current_mod);
@@ -258,12 +258,12 @@ namespace {
         return slice<const AST::Attribute>(start, end - start);
     }
 }
-void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Module& mod, bool is_pub, ::AST::Item& item)
+void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Module& mod, const AST::Visibility& vis, ::AST::Item& item)
 {
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
             // Pass attributes _after_ this attribute
-            d.handle(sp, a, es.crate, path, mod, get_attrs_after(attrs, a), is_pub, item);
+            d.handle(sp, a, es.crate, path, mod, get_attrs_after(attrs, a), vis, item);
         }
         });
 }
@@ -277,12 +277,12 @@ void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, Attr
         });
     g_current_mod = nullptr;
 }
-void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage, ::AST::Module& mod, ::AST::Impl& impl, bool is_pub, const RcString& name, ::AST::Item& item)
+void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage, ::AST::Module& mod, ::AST::Impl& impl, const AST::Visibility& vis, const RcString& name, ::AST::Item& item)
 {
     g_current_mod = &mod;
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
-            d.handle(sp, a, es.crate, impl, name, get_attrs_after(attrs, a), is_pub, item);
+            d.handle(sp, a, es.crate, impl, name, get_attrs_after(attrs, a), vis, item);
         }
         });
     g_current_mod = nullptr;
@@ -1807,7 +1807,7 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
 
         auto attrs = mv$(i.attrs);
         Expand_Attrs_CfgAttr(attrs);
-        Expand_Attrs(es, attrs, AttrStage::Pre,  mod, impl, i.is_pub, i.name, *i.data);
+        Expand_Attrs(es, attrs, AttrStage::Pre,  mod, impl, i.vis, i.name, *i.data);
 
         TU_MATCH_HDRA( (*i.data), {)
         default:
@@ -1861,7 +1861,7 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
         // Run post-expansion decorators and restore attributes
         {
             auto& i = impl.items()[idx];
-            Expand_Attrs(es, attrs, AttrStage::Post,  mod, impl, i.is_pub, i.name, *i.data);
+            Expand_Attrs(es, attrs, AttrStage::Post,  mod, impl, i.vis, i.name, *i.data);
             // TODO: How would this be populated? It got moved out?
             if( i.attrs.m_items.size() == 0 )
                 i.attrs = mv$(attrs);
@@ -1918,7 +1918,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
         {
             if( mod.m_insert_prelude && ! mod.is_anon() ) {
                 DEBUG("> Adding custom prelude " << es.crate.m_prelude_path);
-                mod.add_item(Span(), false, "", ::AST::UseItem { Span(), ::make_vec1(::AST::UseItem::Ent { Span(), es.crate.m_prelude_path, "" }) }, {});
+                mod.add_item(Span(), AST::Visibility::make_restricted(AST::Visibility::Ty::Private, mod.path()), "", ::AST::UseItem { Span(), ::make_vec1(::AST::UseItem::Ent { Span(), es.crate.m_prelude_path, "" }) }, {});
             }
             else {
                 DEBUG("> Not inserting custom prelude (anon or disabled)");
@@ -1948,7 +1948,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
         if(const auto* mi = i.data.opt_MacroInv() )
         {
             if( mi->path().is_trivial() && mi->path().as_trivial() == "macro_rules" ) {
-                i.is_pub = true;
+                i.vis = AST::Visibility::make_global();
                 DEBUG("macro_rules made pub");
             }
         }
@@ -2012,11 +2012,11 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
         }
 
         auto attrs = mv$(i.attrs);
-        bool is_pub = i.is_pub;
+        auto vis = i.vis;
         if( es.mode == ExpandMode::FirstPass )
         {
             Expand_Attrs_CfgAttr(attrs);
-            Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, is_pub, i.data);
+            Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, vis, i.data);
         }
 
         // Do modules without moving the definition (so the module path is always valid)
@@ -2026,7 +2026,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
             LList<const AST::Module*>   sub_modstack(&es.modstack, &e);
             ExpandState es_inner(es.crate, sub_modstack, es.mode);
             Expand_Mod(es_inner, path, e, 0);
-            Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, is_pub, i.data);
+            Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, vis, i.data);
             es.change |= es_inner.change;
             es.has_missing |= es_inner.has_missing;
             i.attrs = std::move(attrs);
@@ -2058,7 +2058,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 auto ttl = Expand_Macro(es, mod, mi_owned);
                 if( ttl )
                 {
-                    Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, is_pub, dat);
+                    Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, vis, dat);
 
                     // Re-parse tt
                     // TODO: All new items should be placed just after this?
@@ -2086,7 +2086,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
             }
         TU_ARMA(Macro, e) {
             ASSERT_BUG(i.span, e, "Null macro - " << i.name);
-            mod.add_macro(i.is_pub, i.name, mv$(e));
+            mod.add_macro(i.vis.is_global(), i.name, mv$(e));
             dat = AST::Item::make_None({});
             }
         TU_ARMA(Use, e) {
@@ -2353,7 +2353,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 Expand_Path(es, mod, *p.ent.path);
             }
         }
-        Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, is_pub, dat);
+        Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, vis, dat);
 
         {
 
@@ -2411,7 +2411,7 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::
         if(const auto* mi = i->data.opt_MacroInv() )
         {
             if( mi->path().is_trivial() && mi->path().as_trivial() == "macro_rules" ) {
-                i->is_pub = true;
+                i->vis = AST::Visibility::make_global();
                 DEBUG("macro_rules made pub");
             }
         }
@@ -2580,7 +2580,7 @@ void Expand(::AST::Crate& crate)
         attrs.push_back( AST::Attribute(Span(), mv$(name), {}) );
         crate.m_root_module.m_items.insert(
             crate.m_root_module.m_items.begin(),
-            box$( AST::Named<AST::Item>(Span(), mv$(attrs), false, std_crate_shortname, AST::Item::make_Crate({std_crate_name}) ) )
+            box$( AST::Named<AST::Item>(Span(), mv$(attrs), AST::Visibility::make_restricted(AST::Visibility::Ty::Private, AST::AbsolutePath()), std_crate_shortname, AST::Item::make_Crate({std_crate_name}) ) )
             );
     }
 

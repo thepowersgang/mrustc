@@ -44,27 +44,25 @@ class Item;
 using ::std::unique_ptr;
 using ::std::move;
 
-typedef bool    Visibility;
-
 struct StructItem
 {
     ::AST::AttributeList   m_attrs;
-    bool    m_is_public;
+    ::AST::Visibility   m_vis;
     RcString   m_name;
     TypeRef m_type;
 
     //StructItem() {}
 
-    StructItem(::AST::AttributeList attrs, bool is_pub, RcString name, TypeRef ty):
+    StructItem(::AST::AttributeList attrs, AST::Visibility vis, RcString name, TypeRef ty):
         m_attrs( mv$(attrs) ),
-        m_is_public(is_pub),
+        m_vis( mv$(vis) ),
         m_name( mv$(name) ),
         m_type( mv$(ty) )
     {
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const StructItem& x) {
-        return os << (x.m_is_public ? "pub " : "") << x.m_name << ": " << x.m_type;
+        return os << x.m_vis << x.m_name << ": " << x.m_type;
     }
 
     StructItem clone() const;
@@ -73,20 +71,20 @@ struct StructItem
 struct TupleItem
 {
     ::AST::AttributeList    m_attrs;
-    bool    m_is_public;
+    ::AST::Visibility   m_vis;
     TypeRef m_type;
 
     //TupleItem() {}
 
-    TupleItem(::AST::AttributeList attrs, bool is_pub, TypeRef ty):
+    TupleItem(::AST::AttributeList attrs, AST::Visibility vis, TypeRef ty):
         m_attrs( mv$(attrs) ),
-        m_is_public(is_pub),
+        m_vis(mv$(vis)),
         m_type( mv$(ty) )
     {
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TupleItem& x) {
-        return os << (x.m_is_public ? "pub " : "") << x.m_type;
+        return os << x.m_vis << x.m_type;
     }
 
     TupleItem clone() const;
@@ -566,7 +564,7 @@ public:
     struct ImplItem {
         Span    sp;
         AttributeList   attrs;
-        bool    is_pub; // Ignored for trait impls
+        AST::Visibility vis; // Ignored for trait impls
         bool    is_specialisable;
         RcString   name;
 
@@ -588,9 +586,9 @@ public:
     {}
     Impl& operator=(Impl&&) = default;
 
-    void add_function(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Function fcn);
-    void add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, GenericParams params, TypeRef type);
-    void add_static(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Static v);
+    void add_function(Span sp, AttributeList attrs, AST::Visibility vis, bool is_specialisable, RcString name, Function fcn);
+    void add_type    (Span sp, AttributeList attrs, AST::Visibility vis, bool is_specialisable, RcString name, GenericParams params, TypeRef type);
+    void add_static  (Span sp, AttributeList attrs, AST::Visibility vis, bool is_specialisable, RcString name, Static v);
     void add_macro_invocation( MacroInvocation inv );
 
     const ImplDef& def() const { return m_def; }
@@ -684,8 +682,8 @@ public:
     bool    m_insert_prelude = true;    // Set to false by `#[no_prelude]` handler
     char    m_index_populated = 0;  // 0 = no, 1 = partial, 2 = complete
     struct IndexEnt {
-        bool is_pub;    // Used as part of glob import checking
         bool is_import; // Set if this item has a path that isn't `mod->path() + name`
+        ::AST::Visibility   vis;
         ::AST::Path path;
     };
 
@@ -734,8 +732,8 @@ public:
     ::std::shared_ptr<AST::Module> add_anon();
 
     void add_item(Named<Item> item);
-    void add_item(Span sp, bool is_pub, RcString name, Item it, AttributeList attrs);
-    void add_ext_crate(Span sp, bool is_pub, RcString ext_name, RcString imp_name, AttributeList attrs);
+    void add_item(Span sp, Visibility vis, RcString name, Item it, AttributeList attrs);
+    void add_ext_crate(Span sp, Visibility vis, RcString ext_name, RcString imp_name, AttributeList attrs);
     void add_macro_invocation(MacroInvocation item);
 
     void add_macro(bool is_exported, RcString name, MacroRulesPtr macro);

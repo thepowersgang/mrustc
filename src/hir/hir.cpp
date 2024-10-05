@@ -156,6 +156,7 @@ HIR::ConstGeneric HIR::ConstGeneric::clone() const
 
 bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const
 {
+    DEBUG(*this << " " << p);
     // No path = global public
     if( !vis_path )
         return true;

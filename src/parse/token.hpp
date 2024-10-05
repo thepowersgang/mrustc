@@ -54,7 +54,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
 class TypeRef;
 class TokenTree;
 namespace AST {
-    typedef bool Visibility;
+    class Visibility;
     class Pattern;
     class Path;
     class ExprNode;

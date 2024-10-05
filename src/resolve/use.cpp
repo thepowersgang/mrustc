@@ -570,7 +570,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             const Span& sp2 = imp_e.sp;
             if( imp_e.name == des_item_name ) {
                 DEBUG("- Named import " << imp_e.name << " = " << imp_e.path);
-                if( !(imp->is_pub || can_see_private) ) {
+                if( !(can_see_private || imp->vis.is_visible(source_mod_path/*, mod.path()*/)) ) {
                     DEBUG("Ignore private import");
                     continue;
                 }
@@ -610,7 +610,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 continue ;
 
             // TODO: Correct privacy rules (if the origin of this lookup can see this item)
-            if( (imp->is_pub || can_see_private) )
+            if( (can_see_private || imp->vis.is_visible(source_mod_path/*, mod.path()*/)) )
             {
                 DEBUG("- Search glob of " << imp_e.path << " in " << mod.path());
                 // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)

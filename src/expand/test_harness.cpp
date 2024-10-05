@@ -152,14 +152,15 @@ void Expand_TestHarness(::AST::Crate& crate)
 
     // ---- module ----
     auto newmod = ::AST::Module { ::AST::AbsolutePath("", { "test#" }) };
+    auto vis_private = AST::Visibility::make_restricted(AST::Visibility::Ty::Private, newmod.path());
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
     //newmod.add_ext_crate(Span(), false, "std", "std", {});
     //newmod.add_ext_crate(Span(), false, "test", "test", {});
 
-    newmod.add_item(Span(), false, "main", mv$(main_fn), {});
-    newmod.add_item(Span(), false, "TESTS", mv$(tests_list), {});
+    newmod.add_item(Span(), vis_private, "main", mv$(main_fn), {});
+    newmod.add_item(Span(), vis_private, "TESTS", mv$(tests_list), {});
 
-    crate.m_root_module.add_item(Span(), false, "test#", mv$(newmod), {});
+    crate.m_root_module.add_item(Span(), vis_private, "test#", mv$(newmod), {});
     crate.m_lang_items["mrustc-main"] = ::AST::AbsolutePath("", { "test#", "main" });
 }
