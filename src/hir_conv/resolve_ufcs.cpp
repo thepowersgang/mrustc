@@ -34,6 +34,7 @@ namespace resolve_ufcs {
         const ::HIR::Trait* m_current_trait = nullptr;
         const ::HIR::ItemPath* m_current_trait_path = nullptr;
         bool m_in_expr = false;
+        HIR::SimplePath m_cur_mod_path;
 
     public:
         Visitor(const ::HIR::Crate& crate, bool visit_exprs):
@@ -58,7 +59,7 @@ namespace resolve_ufcs {
                 }
             }
         };
-        ModTraitsGuard push_mod_traits(const ::HIR::Module& mod) {
+        ModTraitsGuard push_mod_traits(HIR::SimplePath path, const ::HIR::Module& mod) {
             static Span sp;
             DEBUG("");
             ModTraitsGuard rv { *this, mv$(this->m_traits)  };
@@ -66,11 +67,12 @@ namespace resolve_ufcs {
                 DEBUG("- " << trait_path);
                 m_traits.push_back( ::std::make_pair( &trait_path, &m_crate.get_trait_by_path(sp, trait_path) ) );
             }
+            m_cur_mod_path = std::move(path);
             return rv;
         }
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
-            auto _ = this->push_mod_traits( mod );
+            auto _ = this->push_mod_traits( p.get_simple_path(), mod );
             ::HIR::Visitor::visit_module(p, mod);
         }
 
@@ -138,7 +140,7 @@ namespace resolve_ufcs {
         }
         void visit_type_impl(::HIR::TypeImpl& impl) override {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type << " (mod=" << impl.m_src_module << ")");
-            auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
+            auto _t = this->push_mod_traits( impl.m_src_module, this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
             m_current_type = &impl.m_type;
             ::HIR::Visitor::visit_type_impl(impl);
@@ -147,7 +149,7 @@ namespace resolve_ufcs {
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
-            auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
+            auto _t = this->push_mod_traits( impl.m_src_module, this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
             // TODO: Push a bound that `Self: ThisTrait`
@@ -166,7 +168,7 @@ namespace resolve_ufcs {
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
-            auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
+            auto _t = this->push_mod_traits( impl.m_src_module, this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
 
@@ -598,7 +600,7 @@ namespace resolve_ufcs {
             return false;
         }
 
-        bool resolve_UfcsUnknown_inherent(const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
+        bool resolve_UfcsUnknown_inherent(const ::HIR::SimplePath& vis_path, const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
             TRACE_FUNCTION_F(e.type);
@@ -609,8 +611,23 @@ namespace resolve_ufcs {
                 {
                 case ::HIR::Visitor::PathContext::VALUE:
                     if( impl.m_methods.find(e.item) != impl.m_methods.end() ) {
+                        // HACK: Allow access to privates of `fmt:rt::Argument`
+                        if( e.type.data().is_Path()
+                            && e.type.data().as_Path().path.m_data.is_Generic()
+                            && e.type.data().as_Path().path.m_data.as_Generic().m_path == m_crate.get_lang_item_path_opt("format_argument")
+                            ) {
+                            // Allow
+                        }
+                        else if( !impl.m_methods.at(e.item).publicity.is_visible(vis_path) ) {
+                            DEBUG("Private");
+                            return false;
+                        }
                     }
                     else if( impl.m_constants.find(e.item) != impl.m_constants.end() ) {
+                        if( !impl.m_constants.at(e.item).publicity.is_visible(vis_path) ) {
+                            DEBUG("Private");
+                            return false;
+                        }
                     }
                     else {
                         return false;
@@ -792,7 +809,7 @@ namespace resolve_ufcs {
 
                 // TODO: Control ordering with a flag in UfcsUnknown
                 // 1. Search for applicable inherent methods (COMES FIRST!)
-                if( this->resolve_UfcsUnknown_inherent(p, pc, p.m_data) ) {
+                if( this->resolve_UfcsUnknown_inherent(m_cur_mod_path, p, pc, p.m_data) ) {
                     assert(!p.m_data.is_UfcsUnknown());
                     return ;
                 }
