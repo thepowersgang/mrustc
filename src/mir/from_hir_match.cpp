@@ -1768,7 +1768,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
 
             if(pe.extra_bind.is_valid())
             {
-                TODO(sp, "Insert binding for SplitSlice (Array)");
+                ASSERT_BUG(sp, pe.extra_bind.m_implicit_deref_count == 0, "");
+                PatternBinding  pb(m_field_path, pe.extra_bind);
+                pb.field.pop_back();
+                pb.split_slice = std::make_pair( pe.leading.size(), pe.trailing.size() );
+                this->push_binding(mv$(pb));
             }
             }
         }

@@ -303,9 +303,36 @@ namespace {
                     }
                 };
 
-                if( ty.data().is_Array() )
+                unsigned sub_val_i = static_cast<unsigned>(b.split_slice.first + b.split_slice.second);
+                if( const auto* tep = ty.data().opt_Array() )
                 {
-                    TODO(sp, "SplitSlice binding: Array - " << b.split_slice);
+                    auto inner_type = tep->inner.clone_shallow();
+                    auto len = tep->size.as_Known() - sub_val_i;
+                    auto ret_ty = HIR::TypeRef::new_array(inner_type.clone(), len);
+
+                    if( b.binding->m_type == ::HIR::PatternBinding::Type::Move ) {
+                        // Create a new array value
+                        std::vector<MIR::Param> array_vals;
+                        for(size_t i = b.split_slice.first; i < tep->size.as_Known() - b.split_slice.second; i++)
+                        {
+                            array_vals.push_back( ::MIR::LValue::new_Field(lval.clone(), static_cast<unsigned>(i)) );
+                        }
+                        lval = m_builder.lvalue_or_temp(sp, mv$(ret_ty), ::MIR::RValue::make_Array({ std::move(array_vals) }));
+                    }
+                    else {
+                        // Create a pointer to this array, by casting the source
+                        ::HIR::BorrowType   bt = H::get_borrow_type(sp, *b.binding);
+                        ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
+                            ::HIR::TypeRef::new_borrow( bt, std::move(inner_type) ),
+                            ::MIR::RValue::make_Borrow({ bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
+                        );
+
+                        // 3. Create a slice pointer
+                        auto ptr_ty = ::HIR::TypeRef::new_pointer(bt, std::move(ret_ty));
+                        lval = m_builder.lvalue_or_temp(sp, ptr_ty.clone(), ::MIR::RValue::make_Cast({ mv$(ptr_val), mv$(ptr_ty) }) );
+                        // 4. And dereference it
+                        lval = ::MIR::LValue::new_Deref(std::move(lval));
+                    }
                 }
                 else if( const auto* tep = ty.data().opt_Slice() )
                 {
@@ -313,7 +340,6 @@ namespace {
 
                     // 1. Obtain remaining length
                     auto src_len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval) }));
-                    unsigned sub_val_i = static_cast<unsigned>(b.split_slice.first + b.split_slice.second);
                     auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ U128(sub_val_i), ::HIR::CoreType::Usize }));
                     ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(src_len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
 

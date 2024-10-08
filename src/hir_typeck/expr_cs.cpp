@@ -2886,10 +2886,13 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         rv |= this->revisit_inner(context, sub, *slice_inner, binding_mode);
                     if(pe.extra_bind.is_valid())
                     {
-                        // TODO: Do arrays get bound as arrays?
                         ::HIR::TypeRef  binding_ty_inner = ::HIR::TypeRef::new_slice( slice_inner->clone() );
-                        if( ty.data().is_Array() )
-                            TODO(sp, "SplitSlice extra bind with array: " << pe.extra_bind << " on " << ty);
+                        // TODO: Do arrays get bound as arrays?
+                        if( ty.data().is_Array() ) {
+                            size_t size_sub = pe.leading.size() + pe.trailing.size();
+                            binding_ty_inner = ::HIR::TypeRef::new_array(slice_inner->clone(), ty.data().as_Array().size.as_Known() - size_sub);
+                            //TODO(sp, "SplitSlice extra bind with array: " << pe.extra_bind << " on " << ty);
+                        }
                         ::HIR::TypeRef  binding_ty;
                         if( pe.extra_bind.m_type == ::HIR::PatternBinding::Type::Move )
                         {
@@ -2899,7 +2902,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         {
                         case ::HIR::PatternBinding::Type::Move:
                             // Only valid for an array?
-                            TODO(sp, "SplitSlice extra bind: " << pe.extra_bind);
+                            ASSERT_BUG(sp, ty.data().is_Array(), "Non-array SplitSlize move bind");
+                            binding_ty = mv$(binding_ty_inner);
                             break;
                         case ::HIR::PatternBinding::Type::Ref:
                             binding_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(binding_ty_inner));
