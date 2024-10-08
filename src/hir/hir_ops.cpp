@@ -1150,6 +1150,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 if( ep.m_state->stage == ::HIR::ExprState::Stage::ConstEvalRequest )
                     ERROR(Span(), E0000, "Loop in constant evaluation");
                 ep.m_state->stage = ::HIR::ExprState::Stage::ConstEvalRequest;
+                ConvertHIR_ResolveUFCS_Expr(*this, ip, ep_mut);
                 ConvertHIR_ConstantEvaluate_Expr(*this, ip, ep_mut);
                 ep.m_state->stage = ::HIR::ExprState::Stage::ConstEval;
             }

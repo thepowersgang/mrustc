@@ -1095,6 +1095,13 @@ void ConvertHIR_ResolveUFCS(::HIR::Crate& crate)
     Visitor exp { crate, true };
     exp.visit_crate( crate );
 }
+void ConvertHIR_ResolveUFCS_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& expr_ptr)
+{
+    TRACE_FUNCTION_F(ip);
+    // Check innards but NOT the value
+    Visitor    exp { crate, true };
+    exp.visit_expr( expr_ptr );
+}
 
 void ConvertHIR_ResolveUFCS_SortImpls(::HIR::Crate& crate)
 {
