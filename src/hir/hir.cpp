@@ -57,7 +57,19 @@ namespace HIR {
                 }
             }
             else {
-                HIR_DumpExpr(os, *e);
+                struct NoNewline: public ::std::ostream, ::std::streambuf {
+                    ::std::ostream& inner;
+                    NoNewline(::std::ostream& inner): ::std::ostream(this), inner(inner) {}
+                    int overflow(int c) override {
+                        switch(c)
+                        {
+                        case '\n':  inner.put(' '); break;
+                        default:    inner.put(c);   break;
+                        }
+                        return 0;
+                    }
+                } inner_os(os);
+                HIR_DumpExpr(inner_os, *e);
             }
             os << ")";
             }
