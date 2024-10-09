@@ -2670,7 +2670,9 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         case ResultType::Opaque: {
             DEBUG("Assuming that " << input << " is an opaque name");
             input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
-            ASSERT_BUG(sp, visit_ty_with(input, [](const HIR::TypeRef& ty){ return ty.data().is_Generic() || ty.data().is_ErasedType() || ty.data().is_Infer(); }),
+            ASSERT_BUG(sp,
+                visit_ty_with(input, [](const HIR::TypeRef& ty){ return ty.data().is_ErasedType() || ty.data().is_Infer(); })
+                || monomorphise_type_needed(input),
                 "Set opaque on a non-generic type: " << input);
 
             DEBUG("- " << m_type_equalities.size() << " replacements");
