@@ -1984,7 +1984,8 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
         return true;
     }
 
-    auto monomorph = MonomorphStatePtr(nullptr, &trait_path.m_params, nullptr);
+    auto ty_Self = HIR::TypeRef("Self", GENERIC_Self);
+    auto monomorph = MonomorphStatePtr(&ty_Self, &trait_path.m_params, nullptr);
     for(const auto& st : trait_ptr.m_all_parent_traits)
     {
         if( st.m_trait_ptr->m_types.count(name) )
