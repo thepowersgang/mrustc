@@ -1570,7 +1570,7 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
 namespace {
     bool valid_for_opaque(const ::HIR::TypeRef& ty)
     {
-        return monomorphise_type_needed(ty) || visit_ty_with(ty, [](const HIR::TypeRef& t){ return t.data().is_ErasedType(); });
+        return monomorphise_type_needed(ty) || visit_ty_with(ty, [](const HIR::TypeRef& t){ return t.data().is_ErasedType() || t.data().is_Infer(); });
     }
 }
 bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse/*=true*/) const
@@ -1632,6 +1632,17 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     s_recursion_level -= 1;
 
     DEBUG("Locating associated type for " << e.path);
+
+    {
+        const auto* t = &e2.type;
+        while( t->data().is_Path() && t->data().as_Path().path.m_data.is_UfcsKnown() ) {
+            t = &t->data().as_Path().path.m_data.as_UfcsKnown().type;
+        }
+        if( t->data().is_Infer() ) {
+            DEBUG("Infer seen in static EAT, leaving as-is");
+            return false;
+        }
+    }
 
     TU_MATCH_HDRA( (e2.type.data()), {)
     default:
