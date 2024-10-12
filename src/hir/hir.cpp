@@ -116,9 +116,12 @@ namespace HIR {
 
             if( te->m_mir )
             {
-                assert(xe->m_mir);
-                // TODO: Compare MIR
-                TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
+                if( te.get() != xe.get() )
+                {
+                    assert(xe->m_mir);
+                    // TODO: Compare MIR
+                    TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
+                }
             }
             else
             {
