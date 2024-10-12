@@ -83,6 +83,9 @@ namespace HIR {
         for(const auto& ty : x.m_path.m_params.m_types) {
             os << ty << ",";
         }
+        for(const auto& v : x.m_path.m_params.m_values) {
+            os << v << ",";
+        }
         for(const auto& assoc : x.m_type_bounds) {
             os << assoc.first << "{" << assoc.second.source_trait << "}=" << assoc.second << ",";
         }
