@@ -3010,6 +3010,19 @@ namespace HIR {
         TRACE_FUNCTION_F(ip);
         const auto* mir = this->resolve.m_crate.get_or_gen_mir(ip, expr, exp);
 
+        // If `ms` is empty, but `resolve` has impl/item generics, then re-make `ms` as a nop set of params
+        // - This is a lazy hack, isntead of doing this creation in the caller
+        ::HIR::PathParams   nop_params_impl;
+        ::HIR::PathParams   nop_params_method;
+        if( !ms.pp_impl && !ms.pp_method ) {
+            if( resolve.m_item_generics ) {
+                ms.pp_method = &(nop_params_method = resolve.m_item_generics->make_nop_params(1));
+            }
+            if( resolve.m_impl_generics ) {
+                ms.pp_impl = &(nop_params_impl = resolve.m_impl_generics->make_nop_params(0));
+            }
+        }
+
         if( mir ) {
             ::HIR::TypeRef  ty_self { "Self", GENERIC_Self };
             // Might want to have a fully-populated MonomorphState for expanding inside impl blocks
@@ -3165,6 +3178,7 @@ namespace {
                     const auto& e = *v.as_Unevaluated();
                     auto name = FMT("param_" << &v << "#");
                     auto nvs = NewvalState { *m_mod, *m_mod_path, name };
+                    TRACE_FUNCTION_FR(name, name);
                     auto eval = get_eval(e->span(), nvs);
 
                     // Need to look up the required type - to do that requires knowing the item it's for
@@ -3668,6 +3682,7 @@ void ConvertHIR_ConstantEvaluate_MethodParams(
         {
             const auto& e = *v.as_Unevaluated();
             auto name = FMT("param_" << &v << "#");
+            TRACE_FUNCTION_FR(name, name);
             auto nvs = NewvalState { crate.get_mod_by_path(Span(), mod_path), mod_path, name };
             auto eval = ::HIR::Evaluator { sp, crate, nvs };
             eval.resolve.set_both_generics_raw(impl_generics, item_generics);
