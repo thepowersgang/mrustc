@@ -13,9 +13,11 @@ namespace HIR {
     class ItemPath;
     class ExprPtr;
     class Enum;
+    class TypeRef;
     struct SimplePath;
     class GenericParams;
     struct PathParams;
+    class ConstGeneric;
     class ArraySize;
 };
 
@@ -38,8 +40,5 @@ extern void ConvertHIR_ConstantEvaluate_MethodParams(
     const ::HIR::GenericParams& params_def,
     ::HIR::PathParams& params
 );
-extern void ConvertHIR_ConstantEvaluate_ArraySize(
-    const Span& sp,
-    const ::HIR::Crate& crate, const HIR::SimplePath& mod_path, const ::HIR::GenericParams* impl_generics, const ::HIR::GenericParams* item_generics,
-    ::HIR::ArraySize& size
-    );
+extern void ConvertHIR_ConstantEvaluate_ConstGeneric(const Span& sp, const ::HIR::Crate& crate, const HIR::TypeRef& ty, ::HIR::ConstGeneric& cg);
+extern void ConvertHIR_ConstantEvaluate_ArraySize(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, ::HIR::ArraySize& size);

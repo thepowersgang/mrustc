@@ -547,8 +547,14 @@ namespace {
             params.m_types.push_back( LowerHIR_Type(ty) );
             }
         TU_ARMA(Value, iv) {
+            const AST::ExprNode*    node = &*iv;
+            if( const auto* e = dynamic_cast<const AST::ExprNode_Block*>(node) ) {
+                if( e->m_yields_final_value && e->m_nodes.size() == 1 ) {
+                    node = e->m_nodes.back().get();
+                }
+            }
             // TODO: Explicitly handle each expected variant... or add a proper consteval expression
-            if( const auto* e = dynamic_cast<const AST::ExprNode_NamedValue*>(&*iv) ) {
+            if( const auto* e = dynamic_cast<const AST::ExprNode_NamedValue*>(node) ) {
                 if( e->m_path.is_trivial() ) {
                     const auto& b = e->m_path.m_bindings.value.binding;
                     ASSERT_BUG(sp, b.is_Generic(), "Trivial path not type parameter - " << e->m_path << " - " << b.tag_str());
@@ -557,7 +563,7 @@ namespace {
                     break ;
                 }
             }
-            params.m_values.push_back( std::make_shared<HIR::ExprPtr>(LowerHIR_ExprNode(*iv)) );
+            params.m_values.push_back( std::make_unique<HIR::ConstGeneric_Unevaluated>(LowerHIR_ExprNode(*iv)) );
             }
         TU_ARMA(AssociatedTyEqual, ty) {
             if( !allow_assoc )
@@ -902,7 +908,7 @@ namespace {
                 }
             }
 
-            return ::HIR::TypeRef::new_array( mv$(inner), HIR::ConstGeneric::make_Unevaluated(std::make_shared<HIR::ExprPtr>(LowerHIR_Expr(e.size))) );
+            return ::HIR::TypeRef::new_array( mv$(inner), HIR::ConstGeneric::make_Unevaluated(std::make_unique<HIR::ConstGeneric_Unevaluated>(LowerHIR_Expr(e.size))) );
         }
         else {
             return ::HIR::TypeRef::new_array( mv$(inner), HIR::ConstGeneric::make_Infer({}) );

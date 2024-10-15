@@ -298,11 +298,28 @@ namespace {
                 if( params.m_values.size() == 0 && fill_infer ) {
                     for(const auto& val : param_defs.m_values) {
                         if( val.m_default ) {
+                            // NOTE: Can't just copy, as Unevaluated may not have had its params set yet
                             TODO(sp, "Value generic defaults");
                         }
                         else {
                             params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
                         }
+                    }
+                }
+            }
+        }
+        void visit_path_params(::HIR::PathParams& params) override
+        {
+            HIR::Visitor::visit_path_params(params);
+            for(auto& v : params.m_values)
+            {
+                if(auto* ve = v.opt_Unevaluated())
+                {
+                    if( m_ms.m_impl_generics ) {
+                        (*ve)->params_impl = m_ms.m_impl_generics->make_nop_params(0);
+                    }
+                    if( m_ms.m_item_generics ) {
+                        (*ve)->params_item = m_ms.m_item_generics->make_nop_params(1);
                     }
                 }
             }
@@ -593,7 +610,7 @@ namespace {
                                     //if( !dynamic_cast<const HIR::ExprNode_Literal*>(arg_node.get()) )
                                     //    ERROR(arg_node->span(), E0000, "Argument " << idx << " must be a literal for #[rustc_legacy_const_generics] tagged function");
                                     HIR::ExprPtr    ep { std::move(arg_node) };
-                                    e->m_params.m_values.push_back( HIR::ConstGeneric( std::make_shared<HIR::ExprPtr>(std::move(ep)) ));
+                                    e->m_params.m_values.push_back( HIR::ConstGeneric( std::make_unique<HIR::ConstGeneric_Unevaluated>(std::move(ep)) ));
                                     // - Visit to ensure that the expr state gets filled
                                     upper_visitor.visit_constgeneric(e->m_params.m_values.back());
                                 }
@@ -621,9 +638,9 @@ namespace {
                 void visit(::HIR::ExprNode_ArraySized& node) override
                 {
                     auto& as = node.m_size;
-                    if( as.is_Unevaluated() && as.as_Unevaluated().is_Unevaluated() )
+                    if( as.is_Unevaluated() )
                     {
-                        upper_visitor.visit_expr(*as.as_Unevaluated().as_Unevaluated());
+                        upper_visitor.visit_constgeneric(as.as_Unevaluated());
                     }
                     ::HIR::ExprVisitorDef::visit(node);
                 }

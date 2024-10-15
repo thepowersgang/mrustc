@@ -3010,6 +3010,13 @@ namespace HIR {
         TRACE_FUNCTION_F(ip);
         const auto* mir = this->resolve.m_crate.get_or_gen_mir(ip, expr, exp);
 
+        if( mir ) {
+            ASSERT_BUG(Span(), expr.m_state, "");
+            if( !resolve.m_item_generics && !resolve.m_impl_generics ) {
+                resolve.set_both_generics_raw(expr.m_state->m_impl_generics, expr.m_state->m_item_generics);
+            }
+        }
+
         // If `ms` is empty, but `resolve` has impl/item generics, then re-make `ms` as a nop set of params
         // - This is a lazy hack, isntead of doing this creation in the caller
         ::HIR::PathParams   nop_params_impl;
@@ -3063,6 +3070,11 @@ namespace {
         const ::HIR::GenericParams* m_item_params;
 
         std::function<const ::HIR::GenericParams&(const Span& sp)>    m_get_params;
+
+        enum class Pass {
+            OuterOnly,
+            Values,
+        } m_pass;
 
         Expander(const ::HIR::Crate& crate)
             : m_crate(crate)
@@ -3175,7 +3187,7 @@ namespace {
             {
                 if(v.is_Unevaluated())
                 {
-                    const auto& e = *v.as_Unevaluated();
+                    const auto& e = *v.as_Unevaluated()->expr;
                     auto name = FMT("param_" << &v << "#");
                     auto nvs = NewvalState { *m_mod, *m_mod_path, name };
                     TRACE_FUNCTION_FR(name, name);
@@ -3288,7 +3300,7 @@ namespace {
             if( as.is_Unevaluated() && as.as_Unevaluated().is_Unevaluated() )
             {
                 TRACE_FUNCTION_FR(as, as);
-                const auto& expr_ptr = *as.as_Unevaluated().as_Unevaluated();
+                const auto& expr_ptr = *as.as_Unevaluated().as_Unevaluated()->expr;
 
                 auto nvs = NewvalState { *m_mod, *m_mod_path, name };
                 auto eval = get_eval(expr_ptr->span(), nvs);
@@ -3363,7 +3375,10 @@ namespace {
             m_recurse_types = false;
 
             // NOTE: Consteval needed here for MIR match generation to work
-            if( item.m_value || item.m_value.m_mir )
+            if( m_pass != Pass::Values )
+            {
+            }
+            else if( item.m_value || item.m_value.m_mir )
             {
                 auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "#") };
                 auto eval = get_eval(item.m_value.span(), nvs);
@@ -3397,7 +3412,10 @@ namespace {
             ::HIR::Visitor::visit_static(p, item);
             m_recurse_types = false;
 
-            if( item.m_value )
+            if( m_pass != Pass::Values )
+            {
+            }
+            else if( item.m_value )
             {
                 auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "#") };
                 auto eval = get_eval(item.m_value.span(), nvs);
@@ -3606,6 +3624,8 @@ void ConvertHIR_ConstantEvaluate(::HIR::Crate& crate)
 {
     Expander    exp { crate };
     exp.visit_crate( crate );
+    exp.m_pass = Expander::Pass::Values;
+    exp.visit_crate( crate );
 
     ExpanderApply().visit_crate(crate);
     for(auto& new_ty_pair : crate.m_new_types)
@@ -3639,36 +3659,58 @@ void ConvertHIR_ConstantEvaluate_Enum(const ::HIR::Crate& crate, const ::HIR::It
 
     Expander::visit_enum_inner(crate, ip, mod, mod_path, item_name.c_str(), item);
 }
-void ConvertHIR_ConstantEvaluate_ArraySize(
-    const Span& sp,
-    const ::HIR::Crate& crate, const HIR::SimplePath& mod_path, const ::HIR::GenericParams* impl_generics, const ::HIR::GenericParams* item_generics,
-    ::HIR::ArraySize& size
-    )
+void ConvertHIR_ConstantEvaluate_ConstGeneric( const Span& sp, const ::HIR::Crate& crate, const HIR::TypeRef& ty, ::HIR::ConstGeneric& cg )
 {
-    if(auto* se = size.opt_Unevaluated())
+    if( auto* cge_p = cg.opt_Unevaluated() )
     {
-        if( se->is_Unevaluated() )
+        const auto& cge = *cge_p;
+        const auto& e = *cge->expr;
+        ASSERT_BUG(sp, e.m_state, "TODO: Should the expression state be set already?");
+        const auto& s = *e.m_state;
+        auto name = FMT("const_" << &e << "#");
+        struct NewvalState_Nop
+            : public HIR::Evaluator::Newval
         {
-            const auto& e = *se->as_Unevaluated();
-            auto name = FMT("arraysize_" << &size << "#");
-            auto nvs = NewvalState { crate.get_mod_by_path(Span(), mod_path), mod_path, name };
-            auto eval = ::HIR::Evaluator { sp, crate, nvs };
-            eval.resolve.set_both_generics_raw(impl_generics, item_generics);
+            const Span& sp;
+            ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override
+            {
+                TODO(this->sp, "new_static - in ConvertHIR_ConstantEvaluate_ConstGeneric");
+            }
+            NewvalState_Nop(const Span& sp): sp(sp) {}
+        } nvs { sp };
+        //auto nvs = NewvalState { crate.get_mod_by_path(Span(), mod_path), mod_path, name };
+        auto eval = ::HIR::Evaluator { sp, crate, nvs };
+        eval.resolve.set_both_generics_raw(s.m_impl_generics, s.m_item_generics);
 
-            // Need to look up the required type - to do that requires knowing the item it's for
-            // - Which, might not be known at this point - might be a UfcsInherent
-            try
-            {
-                auto val = eval.evaluate_constant( ::HIR::ItemPath(mod_path, name.c_str()), e, HIR::CoreType::Usize );
-                size = val.read_usize(0);
-            }
-            catch(const Defer& )
-            {
-                // Deferred - no update
-            }
+        // Need to look up the required type - to do that requires knowing the item it's for
+        // - Which, might not be known at this point - might be a UfcsInherent
+        try
+        {
+            MonomorphState  ms;
+            ms.pp_impl   = &cge->params_impl;
+            ms.pp_method = &cge->params_item;
+            auto val = eval.evaluate_constant( ::HIR::ItemPath(s.m_mod_path, name.c_str()), e, ty.clone(), std::move(ms) );
+            cg = HIR::EncodedLiteralPtr(std::move(val));
+        }
+        catch(const Defer& )
+        {
+            // Deferred - no update
         }
     }
 }
+
+void ConvertHIR_ConstantEvaluate_ArraySize(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, ::HIR::ArraySize& size)
+{
+    if( auto* se = size.opt_Unevaluated() ) {
+        if(se->is_Unevaluated()) {
+            ConvertHIR_ConstantEvaluate_ConstGeneric(sp, crate, HIR::CoreType::Usize, *se);
+        }
+        if( const auto* e = se->opt_Evaluated() ) {
+            size = (*e)->read_usize(0);
+        }
+    }
+}
+
 void ConvertHIR_ConstantEvaluate_MethodParams(
     const Span& sp,
     const ::HIR::Crate& crate, const HIR::SimplePath& mod_path, const ::HIR::GenericParams* impl_generics, const ::HIR::GenericParams* item_generics,
@@ -3680,7 +3722,7 @@ void ConvertHIR_ConstantEvaluate_MethodParams(
     {
         if(v.is_Unevaluated())
         {
-            const auto& e = *v.as_Unevaluated();
+            const auto& e = *v.as_Unevaluated()->expr;
             auto name = FMT("param_" << &v << "#");
             TRACE_FUNCTION_FR(name, name);
             auto nvs = NewvalState { crate.get_mod_by_path(Span(), mod_path), mod_path, name };

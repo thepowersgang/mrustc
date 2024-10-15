@@ -826,7 +826,7 @@ struct ExprNode_ArraySized:
     ExprNode_ArraySized(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprPtr size):
         ExprNode(mv$(sp)),
         m_val( mv$(val) ),
-        m_size( HIR::ConstGeneric(std::make_shared<HIR::ExprPtr>(mv$(size))) )
+        m_size( HIR::ConstGeneric(std::make_unique<HIR::ConstGeneric_Unevaluated>(mv$(size))) )
     {}
 
     NODE_METHODS();

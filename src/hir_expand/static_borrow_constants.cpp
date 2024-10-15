@@ -518,22 +518,14 @@ namespace static_borrow_constants {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
 
-        void visit_type(::HIR::TypeRef& ty) override
+        void visit_constgeneric(::HIR::ConstGeneric& c) override
         {
-            if( auto* ep = ty.data_mut().opt_Array() )
+            HIR::Visitor::visit_constgeneric(c);
+            if( auto* e = c.opt_Unevaluated() )
             {
-                this->visit_type( ep->inner );
-                DEBUG("Array size " << ty);
-                if( auto* cg = ep->size.opt_Unevaluated() ) {
-                    if(cg->is_Unevaluated())
-                    {
-                        ExprVisitor_Mark    ev(m_resolve, m_self_type, *cg->as_Unevaluated());
-                        ev.visit_node_ptr( *cg->as_Unevaluated() );
-                    }
-                }
-            }
-            else {
-                ::HIR::Visitor::visit_type(ty);
+                auto& ep = (*e)->expr;
+                ExprVisitor_Mark    ev(m_resolve, m_self_type, *ep);
+                ev.visit_node_ptr( *ep );
             }
         }
         // ------
@@ -1212,22 +1204,13 @@ namespace static_borrow_constants {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
 
-        void visit_type(::HIR::TypeRef& ty) override
+        void visit_constgeneric(::HIR::ConstGeneric& c) override
         {
-            if( auto* ep = ty.data_mut().opt_Array() )
+            HIR::Visitor::visit_constgeneric(c);
+            if( auto* e = c.opt_Unevaluated() )
             {
-                this->visit_type( ep->inner );
-                DEBUG("Array size " << ty);
-                if( auto* cg = ep->size.opt_Unevaluated() ) {
-                    if(cg->is_Unevaluated())
-                    {
-                        ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), *cg->as_Unevaluated());
-                        ev.visit_node_ptr( *cg->as_Unevaluated() );
-                    }
-                }
-            }
-            else {
-                ::HIR::Visitor::visit_type(ty);
+                ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), *(*e)->expr);
+                ev.visit_node_ptr( *(*e)->expr );
             }
         }
         // ------

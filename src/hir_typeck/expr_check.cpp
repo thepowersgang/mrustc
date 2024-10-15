@@ -1363,7 +1363,7 @@ namespace {
                         t_args  tmp;
                         auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
                         ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
-                        ev.visit_root( **se );
+                        ev.visit_root( *(*se)->expr );
                     }
                 }
             }

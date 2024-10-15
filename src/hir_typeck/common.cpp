@@ -8,7 +8,7 @@
 #include "common.hpp"
 #include <hir/path.hpp>
 #include "trans/target.hpp"
-#include <hir_conv/constant_evaluation.hpp>
+#include <hir_conv/main_bindings.hpp>
 
 template<typename I>
 struct WConst {
@@ -523,6 +523,23 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
 
     return rv;
 }
+::HIR::ConstGeneric Monomorphiser::monomorph_constgeneric(const Span& sp, const ::HIR::ConstGeneric& val, bool allow_infer) const
+{
+    if(const auto* ge = val.opt_Generic())
+    {
+        return this->get_value(sp, *ge);
+    }
+    else if( const auto* ge = val.opt_Unevaluated() )
+    {
+        auto rv = HIR::ConstGeneric(std::make_unique<HIR::ConstGeneric_Unevaluated>( (*ge)->monomorph(sp, *this, true) ));
+        // TODO: Evaluate this constant (if possible), but that requires knowing the target type :/
+        return rv;
+    }
+    else
+    {
+        return val.clone();
+    }
+}
 ::HIR::PathParams Monomorphiser::monomorph_path_params(const Span& sp, const ::HIR::PathParams& tpl, bool allow_infer) const
 {
     ::HIR::PathParams   rv;
@@ -533,20 +550,13 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     }
 
     rv.m_types.reserve( tpl.m_types.size() );
-    for( const auto& ty : tpl.m_types)
+    for( const auto& ty : tpl.m_types) {
         rv.m_types.push_back( this->monomorph_type(sp, ty, allow_infer) );
+    }
 
     rv.m_values.reserve( tpl.m_values.size() );
-    for( const auto& val : tpl.m_values)
-    {
-        if(const auto* ge = val.opt_Generic())
-        {
-            rv.m_values.push_back( this->get_value(sp, *ge) );
-        }
-        else
-        {
-            rv.m_values.push_back( val.clone() );
-        }
+    for( const auto& val : tpl.m_values) {
+        rv.m_values.push_back(monomorph_constgeneric(sp, val, allow_infer));
     }
 
     return rv;
@@ -563,34 +573,30 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         if( se->is_Generic() ) {
             sz = this->get_value(sp, se->as_Generic());
             DEBUG(tpl << " -> " << sz);
-            se = sz.opt_Unevaluated();
-            assert(se);
         }
+        else if( se->is_Unevaluated() ) {
+            sz = HIR::ConstGeneric(std::make_unique<HIR::ConstGeneric_Unevaluated>( se->as_Unevaluated()->monomorph(sp, *this, true) ));
+        }
+        else {
+            sz = se->clone();
+        }
+        se = sz.opt_Unevaluated();
+        assert(se);
 
+        // Evaluate, if possible
         if(se->is_Unevaluated()) {
             if( this->consteval_crate ) {
-                auto& uneval = se->as_Unevaluated();
-                struct Nvs: public ::HIR::Evaluator::Newval
-                {
-                    ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
-                        TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
-                    }
-                } nvs;
-                auto eval = ::HIR::Evaluator { sp, *this->consteval_crate, nvs };
-                auto res = eval.evaluate_constant(this->consteval_path, *uneval, HIR::TypeRef(HIR::CoreType::Usize));
-                return res.read_usize(0);
+                ConvertHIR_ConstantEvaluate_ConstGeneric(sp, *this->consteval_crate, HIR::CoreType::Usize, sz.as_Unevaluated());
             }
             else {
                 DEBUG("TODO: Evaluate unevaluated generic for array size - " << *se);
-                return se->clone();
             }
         }
-        else if( se->is_Evaluated() ) {
-            return se->as_Evaluated()->read_usize(0);
+
+        if( const auto* e = se->opt_Evaluated() ) {
+            return (*e)->read_usize(0);
         }
-        else {
-            return se->clone();
-        }
+        return sz;
     }
     else {
         return tpl.clone();

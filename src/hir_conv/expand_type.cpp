@@ -410,7 +410,7 @@ public:
                 auto& as = node.m_size;
                 if( as.is_Unevaluated() && as.as_Unevaluated().is_Unevaluated() )
                 {
-                    upper_visitor.visit_expr(*as.as_Unevaluated().as_Unevaluated());
+                    upper_visitor.visit_expr(*as.as_Unevaluated().as_Unevaluated()->expr);
                 }
                 ::HIR::ExprVisitorDef::visit(node);
             }
@@ -515,7 +515,7 @@ public:
                 auto& as = node.m_size;
                 if( as.is_Unevaluated() && as.as_Unevaluated().is_Unevaluated() )
                 {
-                    upper_visitor.visit_expr(*as.as_Unevaluated().as_Unevaluated());
+                    upper_visitor.visit_expr(*as.as_Unevaluated().as_Unevaluated()->expr);
                 }
                 ::HIR::ExprVisitorDef::visit(node);
             }

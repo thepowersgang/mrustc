@@ -501,6 +501,7 @@ namespace {
             }
         }
 
+        ::HIR::ConstGeneric_Unevaluated deserialise_constgeneric_unevaluated();
         ::HIR::ConstGeneric deserialise_constgeneric();
         EncodedLiteral deserialise_encodedliteral();
 
@@ -1375,13 +1376,22 @@ namespace {
         return rv;
     }
 
+    ::HIR::ConstGeneric_Unevaluated HirDeserialiser::deserialise_constgeneric_unevaluated()
+    {
+        auto p_i = deserialise_pathparams();
+        auto p_m = deserialise_pathparams();
+        auto rv = ::HIR::ConstGeneric_Unevaluated(deserialise_exprptr());
+        rv.params_impl = std::move(p_i);
+        rv.params_item = std::move(p_m);
+        return rv;
+    }
     ::HIR::ConstGeneric HirDeserialiser::deserialise_constgeneric()
     {
         switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::HIR::ConstGeneric::TAG_##x:   return ::HIR::ConstGeneric::make_##x(__VA_ARGS__);
         _(Infer, {})
-        _(Unevaluated, std::make_shared<HIR::ExprPtr>(deserialise_exprptr()))
+        _(Unevaluated, std::make_unique<HIR::ConstGeneric_Unevaluated>(deserialise_constgeneric_unevaluated()))
         _(Generic,
             deserialise_genericref()
             )

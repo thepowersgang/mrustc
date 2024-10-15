@@ -480,7 +480,7 @@ void ::HIR::Visitor::visit_constgeneric(::HIR::ConstGeneric& v)
 {
     if(v.is_Unevaluated())
     {
-        this->visit_expr(*v.as_Unevaluated());
+        this->visit_expr(*v.as_Unevaluated()->expr);
     }
 }
 void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)

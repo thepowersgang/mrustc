@@ -46,31 +46,7 @@ namespace HIR {
             }
         TU_ARMA(Unevaluated, e) {
             os << "Unevaluated(";
-            if(e->m_mir) {
-                for(const auto& b : e->m_mir->blocks) {
-                    os << "bb" << (&b - e->m_mir->blocks.data()) << ":{ ";
-                    for(const auto& s : b.statements) {
-                        os << s << "; ";
-                    }
-                    os << b.terminator;
-                    os << " }";
-                }
-            }
-            else {
-                struct NoNewline: public ::std::ostream, ::std::streambuf {
-                    ::std::ostream& inner;
-                    NoNewline(::std::ostream& inner): ::std::ostream(this), inner(inner) {}
-                    int overflow(int c) override {
-                        switch(c)
-                        {
-                        case '\n':  inner.put(' '); break;
-                        default:    inner.put(c);   break;
-                        }
-                        return 0;
-                    }
-                } inner_os(os);
-                HIR_DumpExpr(inner_os, *e);
-            }
+            e->fmt(os);
             os << ")";
             }
         TU_ARMA(Generic, e) os << "Generic(" << e << ")";
@@ -99,38 +75,7 @@ namespace HIR {
             if(auto cmp = ::ord(te.index, xe.index))    return cmp;
             }
         TU_ARMA(Unevaluated, te, xe) {
-            // If only one has populated MIR, they can't be equal (sort populated MIR after)
-            if( !te->m_mir != !xe->m_mir ) {
-                return (te->m_mir ? OrdGreater : OrdLess);
-            }
-
-            // HACK: If the inner is a const param on both, sort based on that.
-            // - Very similar to the ordering of TypeRef::Generic
-            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**te);
-            const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xe);
-            if( tn && xn )
-            {
-                // Is this valid? What if they're from different scopes?
-                return ::ord(tn->m_binding, xn->m_binding);
-            }
-
-            if( te->m_mir )
-            {
-                if( te.get() != xe.get() )
-                {
-                    assert(xe->m_mir);
-                    // TODO: Compare MIR
-                    TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
-                }
-            }
-            else
-            {
-                // EVIL OPTION: Just compare the string representations
-                // - Hopefully there's no pointers printed involved.
-                auto v_t = FMT(*this);
-                auto v_x = FMT(x);
-                return ::ord(v_t, v_x);
-            }
+            return te->ord(*xe);
             }
         TU_ARMA(Generic, te, xe) {
             if(auto cmp = ::ord(te, xe))    return cmp;
@@ -140,6 +85,95 @@ namespace HIR {
             }
         }
         return OrdEqual;
+    }
+
+    ::std::ostream& operator<<(::std::ostream& os, const ConstGeneric_Unevaluated& x)
+    {
+        x.fmt(os);
+        return os;
+    }
+    ConstGeneric_Unevaluated::ConstGeneric_Unevaluated(HIR::ExprPtr ep)
+        : expr(std::make_shared<HIR::ExprPtr>(std::move(ep)))
+    {
+    }
+    ConstGeneric_Unevaluated ConstGeneric_Unevaluated::clone() const
+    {
+        return monomorph(Span(), MonomorphiserNop());
+    }
+    ConstGeneric_Unevaluated ConstGeneric_Unevaluated::monomorph(const Span& sp, const Monomorphiser& ms, bool allow_infer/*=true*/) const
+    {
+        ConstGeneric_Unevaluated    rv;
+        rv.params_impl = ms.monomorph_path_params(sp, params_impl, allow_infer);
+        rv.params_item = ms.monomorph_path_params(sp, params_item, allow_infer);
+        rv.expr = this->expr;
+        return rv;
+    }
+    Ordering ConstGeneric_Unevaluated::ord(const ConstGeneric_Unevaluated& x) const
+    {
+        if( this->expr.get() != x.expr.get() ) {
+            // If only one has populated MIR, they can't be equal (sort populated MIR after)
+            if( !this->expr->m_mir != !this->expr->m_mir ) {
+                return (this->expr->m_mir ? OrdGreater : OrdLess);
+            }
+
+            // HACK: If the inner is a const param on both, sort based on that.
+            // - Very similar to the ordering of TypeRef::Generic
+            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**this->expr);
+            const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**x.expr);
+            if( tn && xn )
+            {
+                // Is this valid? What if they're from different scopes?
+                return ::ord(tn->m_binding, xn->m_binding);
+            }
+
+            // If the MIR is populated
+            if( this->expr->m_mir )
+            {
+                TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
+            }
+            else {
+                // EVIL OPTION: Just compare the string representations
+                // - Hopefully there's no pointers printed involved.
+                auto v_t = FMT(*this->expr);
+                auto v_x = FMT(x);
+                return ::ord(v_t, v_x);
+            }
+        }
+        if(auto cmp = this->params_impl.ord(x.params_impl)) return cmp;
+        if(auto cmp = this->params_item.ord(x.params_item)) return cmp;
+        return OrdEqual;
+    }
+    void ConstGeneric_Unevaluated::fmt(::std::ostream& os) const
+    {
+        os << "{";
+        os << "0=" << this->params_impl;
+        os << "1=" << this->params_item;
+        os << "}";
+        if(expr->m_mir) {
+            for(const auto& b : expr->m_mir->blocks) {
+                os << "bb" << (&b - expr->m_mir->blocks.data()) << ":{ ";
+                for(const auto& s : b.statements) {
+                    os << s << "; ";
+                }
+                os << b.terminator;
+                os << " }";
+            }
+        }
+        else {
+            struct NoNewline: public ::std::ostream, ::std::streambuf {
+                ::std::ostream& inner;
+                NoNewline(::std::ostream& inner): ::std::ostream(this), inner(inner) {}
+                int overflow(int c) override {
+                    switch(c)
+                    {
+                    case '\n':  inner.put(' '); break;
+                    default:    inner.put(c);   break;
+                    }
+                    return 0;
+                }
+            } inner_os(os);
+            HIR_DumpExpr(inner_os, *expr);
+        }
     }
 
     ::std::ostream& operator<<(::std::ostream& os, const Struct::Repr& x) {
@@ -160,7 +194,7 @@ HIR::ConstGeneric HIR::ConstGeneric::clone() const
 {
     TU_MATCH_HDRA( (*this), {)
     TU_ARMA(Infer, e) return e;
-    TU_ARMA(Unevaluated, e) return e;
+    TU_ARMA(Unevaluated, e) return ::std::make_unique<ConstGeneric_Unevaluated>(e->clone());
     TU_ARMA(Generic, e) return e;
     TU_ARMA(Evaluated, e)   return EncodedLiteralPtr(e->clone());
     }

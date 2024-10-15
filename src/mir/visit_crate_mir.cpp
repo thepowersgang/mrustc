@@ -22,7 +22,7 @@ void MIR::OuterVisitor::visit_type(::HIR::TypeRef& ty)
         DEBUG("Array size " << ty);
         if( auto* se1 = e->size.opt_Unevaluated() ) {
             if( auto* se = se1->opt_Unevaluated() ) {
-                m_cb(m_resolve, ::HIR::ItemPath(""), **se, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+                m_cb(m_resolve, ::HIR::ItemPath(""), *(*se)->expr, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
             }
         }
     }

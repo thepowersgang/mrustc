@@ -1536,7 +1536,7 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
         // Recurse?
         }
     TU_ARMA(Array, e) {
-        ConvertHIR_ConstantEvaluate_ArraySize(sp, m_crate, HIR::SimplePath(m_crate.m_crate_name, {}), m_impl_generics, m_item_generics, e.size);
+        ConvertHIR_ConstantEvaluate_ArraySize(sp, m_crate, HIR::SimplePath(m_crate.m_crate_name, {}), e.size);
         expand_associated_types_inner(sp, e.inner);
         }
     TU_ARMA(Slice, e) {

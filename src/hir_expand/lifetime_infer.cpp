@@ -2607,7 +2607,7 @@ namespace {
                 DEBUG("Array size " << ty);
                 if( auto* se1 = e->size.opt_Unevaluated() ) {
                     if( auto* se = se1->opt_Unevaluated() ) {
-                        check(::HIR::TypeRef(::HIR::CoreType::Usize), ::HIR::Function::args_t {}, **se);
+                        check(::HIR::TypeRef(::HIR::CoreType::Usize), ::HIR::Function::args_t {}, *(**se).expr);
                     }
                 }
             }

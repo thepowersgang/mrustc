@@ -690,6 +690,13 @@
                 }
             }
         }
+        void serialise(const ::HIR::ConstGeneric_Unevaluated& v)
+        {
+            ASSERT_BUG(v.expr->span(), v.expr->m_mir, "Encountered non-translated value in ConstGeneric");
+            serialise_pathparams(v.params_impl);
+            serialise_pathparams(v.params_item);
+            serialise(*v.expr);
+        }
         void serialise(const ::HIR::ConstGeneric& v)
         {
             m_out.write_tag(v.tag());
@@ -697,7 +704,6 @@
             TU_ARMA(Infer, e) {
                 }
             TU_ARMA(Unevaluated, e) {
-                ASSERT_BUG(e->span(), e->m_mir, "Encountered non-translated value in ConstGeneric");
                 serialise(*e);
                 }
             TU_ARMA(Generic, e)

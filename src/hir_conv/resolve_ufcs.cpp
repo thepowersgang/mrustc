@@ -254,9 +254,9 @@ namespace resolve_ufcs {
                 void visit(::HIR::ExprNode_ArraySized& node) override
                 {
                     auto& as = node.m_size;
-                    if( as.is_Unevaluated() && as.as_Unevaluated().is_Unevaluated() )
+                    if( as.is_Unevaluated() )
                     {
-                        upper_visitor.visit_expr(*as.as_Unevaluated().as_Unevaluated());
+                        upper_visitor.visit_constgeneric(as.as_Unevaluated());
                     }
                     ::HIR::ExprVisitorDef::visit(node);
                 }

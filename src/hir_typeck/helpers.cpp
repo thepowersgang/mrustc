@@ -2142,7 +2142,7 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
         // Recurse?
         }
     TU_ARMA(Array, e) {
-        ConvertHIR_ConstantEvaluate_ArraySize(sp, m_crate, m_vis_path, m_impl_generics, m_item_generics, e.size);
+        ConvertHIR_ConstantEvaluate_ArraySize(sp, m_crate, m_vis_path, e.size);
         expand_associated_types_inplace(sp, e.inner, stack);
         }
     TU_ARMA(Slice, e) {
