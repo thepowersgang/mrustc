@@ -221,8 +221,10 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
     if( m_resolve ) {
         m_resolve->set_impl_generics_raw(MetadataType::Unknown, item.m_params);
     }
-    ::HIR::SimplePath trait_sp = p.get_simple_path();
-    ItemPath    trait_ip(trait_sp);
+    auto trait_sp = p.get_simple_path();
+    auto trait_pp = item.m_params.make_nop_params(0);
+    static HIR::TypeRef ty_Self = ::HIR::TypeRef("Self", GENERIC_Self);
+    ItemPath    trait_ip(ty_Self, trait_sp, trait_pp);
     TRACE_FUNCTION;
 
     this->visit_params(item.m_params);

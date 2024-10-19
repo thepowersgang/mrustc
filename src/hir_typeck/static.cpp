@@ -1962,9 +1962,8 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
     if( pp.m_types.size() != trait_ptr.m_params.m_types.size() ) {
         BUG(sp, "Incorrect number of parameters for trait - " << trait_path << pp);
     }
-    
-    auto monomorph = MonomorphStatePtr(&target_type, &pp, nullptr);
 
+    auto monomorph = MonomorphStatePtr(&target_type, &pp, nullptr);
     for( const auto& pt : trait_ptr.m_all_parent_traits )
     {
         auto pt_mono = monomorph.monomorph_traitpath(sp, pt, false);

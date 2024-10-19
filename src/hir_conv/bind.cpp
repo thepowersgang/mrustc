@@ -254,7 +254,11 @@ namespace {
                 }
             }
         }
-        static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
+        static void fix_param_count(
+            const Span& sp,
+            const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params,
+            bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr
+            )
         {
             if( params.m_lifetimes.size() != param_defs.m_lifetimes.size() )
             {
@@ -349,6 +353,16 @@ namespace {
             }
 
             ::HIR::Visitor::visit_params(params);
+        }
+        void visit_associatedtype(HIR::ItemPath p, ::HIR::AssociatedType& item) override
+        {
+            static Span sp;
+            HIR::Visitor::visit_associatedtype(p, item);
+            HIR::TypeRef    ty = ::HIR::TypeRef::new_path(p.get_full_path(), {});
+            for(auto& bound : item.m_trait_bounds) {
+                const auto& trait = m_crate.get_trait_by_path(sp, bound.m_path.m_path);
+                fix_param_count(sp, bound.m_path, trait.m_params, bound.m_path.m_params, /*fill_infer=*/false, &ty);
+            }
         }
         void visit_type(::HIR::TypeRef& ty) override
         {

@@ -3008,6 +3008,7 @@ namespace HIR {
     EncodedLiteral Evaluator::evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, MonomorphState ms/*={}*/)
     {
         TRACE_FUNCTION_F(ip);
+        DEBUG("ms = " << ms);
         const auto* mir = this->resolve.m_crate.get_or_gen_mir(ip, expr, exp);
 
         if( mir ) {
@@ -3168,6 +3169,7 @@ namespace {
         void visit_trait(::HIR::ItemPath ip, ::HIR::Trait& trait) override
         {
             auto pp_impl = get_params_for_def(trait.m_params);
+            m_monomorph_state.self_ty = ::HIR::TypeRef("Self", GENERIC_Self);
             m_monomorph_state.pp_impl = &pp_impl;
             m_impl_params = &trait.m_params;
 
