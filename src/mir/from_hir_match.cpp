@@ -1121,6 +1121,37 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
 
             this->push_rule(PatternRule::make_Value( std::string(r->bytes.data() + ptr, r->bytes.data() + ptr + len) ));
         }
+        else if( e.inner.data().is_Slice() && e.inner.data().as_Slice().inner == ::HIR::CoreType::U8 ) {
+            auto ptr_size = Target_GetPointerBits()/8;
+            auto ptr = lit.read_uint(ptr_size).truncate_u64();
+            auto len = lit.slice(ptr_size, ptr_size).read_uint(ptr_size).truncate_u64();
+            auto* r = lit.get_reloc();
+            ASSERT_BUG(sp, r, "Null relocation for byte-string in pattern generation");
+            ASSERT_BUG(sp, ptr >= EncodedLiteral::PTR_BASE, "");
+            ptr -= EncodedLiteral::PTR_BASE;
+
+            if( r->p ) {
+                ASSERT_BUG(sp, ptr == 0, "TODO: Non-zero offset with reference");
+                MonomorphState  val_params;
+                auto v = m_resolve.get_value(sp, *r->p, val_params);
+                ASSERT_BUG(sp, v.is_Static(), "&[u8] match with borrow of non-static (" << *r->p << ") - " << v.tag_str());
+                const HIR::Static& s = *v.as_Static();
+                ASSERT_BUG(sp, s.m_value_generated, "&[u8] match with borrow of non-resolved static (" << *r->p << ")");
+                const EncodedLiteral& val = s.m_value_res;
+                ASSERT_BUG(sp, ptr <= val.bytes.size(), "");
+                ASSERT_BUG(sp, len <= val.bytes.size(), "");
+                ASSERT_BUG(sp, ptr+len <= val.bytes.size(), "");
+
+                this->push_rule(PatternRule::make_Value(std::vector<uint8_t>(val.bytes.data() + ptr, val.bytes.data() + ptr + len)));
+            }
+            else {
+                ASSERT_BUG(sp, ptr <= r->bytes.size(), "");
+                ASSERT_BUG(sp, len <= r->bytes.size(), "");
+                ASSERT_BUG(sp, ptr+len <= r->bytes.size(), "");
+
+                this->push_rule(PatternRule::make_Value( std::vector<uint8_t>(r->bytes.data() + ptr, r->bytes.data() + ptr + len) ));
+            }
+        }
         else {
             TODO(sp, "Match literal Borrow: ty=" << ty << " lit=" << lit);
         }
