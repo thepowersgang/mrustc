@@ -244,12 +244,13 @@ public:
     /// Searches for a trait impl that matches the provided trait name and type
     bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback, bool magic_trait_impls=true) const;
 
+    typedef ::std::function<bool(const ::HIR::TraitPath&)> t_cb_find_trait;
     /// Locate a named trait in the provied trait (either itself or as a parent trait)
     bool find_named_trait_in_trait(const Span& sp,
             const ::HIR::SimplePath& des, const ::HIR::PathParams& params,
             const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
             const ::HIR::TypeRef& self_type,
-            t_cb_trait_impl callback
+            t_cb_find_trait callback
             ) const;
     /// Search for a trait implementation in current bounds
     bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
