@@ -923,7 +923,14 @@ namespace {
                         else if( it->m_type_bounds.size() == 0 ) {
                         }
                         else {
-                            TODO(sp, "Merge associated types from " << *prev << " and " << *it);
+                            for(auto& e : it->m_type_bounds ) {
+                                if( prev->m_type_bounds.count(e.first) ) {
+                                    ASSERT_BUG(sp, prev->m_type_bounds[e.first].type == e.second.type,
+                                        "TODO: Handle mismatched type bounds in merging supertrait ATY bounds: " << e.first << " =\n " <<
+                                        prev->m_type_bounds[e.first] << "\n " << e.second.type);
+                                }
+                                prev->m_type_bounds.insert(std::move(e));
+                            }
                         }
                         it = e.supertraits.erase(it);
                         dedeup_done = true;
