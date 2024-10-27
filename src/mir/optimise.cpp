@@ -4410,8 +4410,14 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 TU_ARMA(DstPtr, se) {
                     }
                 TU_ARMA(MakeDst, se) {
-                    check_param(se.ptr_val);
-                    check_param(se.meta_val);
+                    // NOTE: This disables any checks if the metadata isn't populated.
+                    // This avoids issues with cleanup when optimise is run first
+                    if( TU_TEST2(se.meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
+                    }
+                    else {
+                        check_param(se.ptr_val);
+                        check_param(se.meta_val);
+                    }
                     }
                 TU_ARMA(Tuple, se) {
                     for(auto& p : se.vals)

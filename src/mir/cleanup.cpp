@@ -118,6 +118,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     {
         const auto& hir_const = **e;
         out_ty = params.monomorph_type(state.sp, hir_const.m_type);
+        state.m_resolve.expand_associated_types(state.sp, out_ty);
         switch( hir_const.m_value_state )
         {
         case HIR::Constant::ValueState::Known:
@@ -1285,6 +1286,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         ::HIR::TypeRef  tmp, tmp2;
                         const auto& src_ty = state.get_param_type(tmp, e->ptr_val);
                         const auto& dst_ty = state.get_lvalue_type(tmp2, se.dst);
+                        MIR_ASSERT(state, e->ptr_val.is_LValue(), "BUG: MakeDst with no metadata should be LValue");
                         se.src = MIR_Cleanup_CoerceUnsized(state, mutator, dst_ty, src_ty, mv$(e->ptr_val.as_LValue()));
                     }
                 }

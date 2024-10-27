@@ -2195,12 +2195,10 @@ namespace HIR {
                 ::HIR::TypeRef  tmp2;
                 const auto& dst_ty = state.get_lvalue_type(tmp2, sa.dst);
 
-                auto inval = local_state.get_lval(e.ptr_val.as_LValue());
-
                 TU_MATCH_HDRA( (dst_ty.data()), {)
                 default:
                     // NOTE: Can be an unsizing!
-                    MIR_TODO(state, "RValue::MakeDst Coerce to " << dst_ty<< ", val = " << inval);
+                    MIR_TODO(state, "RValue::MakeDst Coerce to " << dst_ty);
                 TU_ARMA(Path, te) {
                     bool done = false;
                     // CoerceUnsized cast
@@ -2211,14 +2209,13 @@ namespace HIR {
                         {
                             if( str.m_struct_markings.coerce_unsized != HIR::StructMarkings::Coerce::None )
                             {
-                                dst.copy_from( state, inval );
                                 done = true;
                             }
                         }
                     }
                     if(!done )
                     {
-                        MIR_TODO(state, "RValue::MakeDst Coerce to " << dst_ty<< ", val = " << inval);
+                        MIR_TODO(state, "RValue::MakeDst Coerce to " << dst_ty);
                     }
                     }
                 TU_ARMA(Borrow, te) {
@@ -2243,13 +2240,11 @@ namespace HIR {
                     if( const auto* tep = dynamic_type_d->data().opt_TraitObject() )
                     {
                         auto vtable_path = ::HIR::Path(dynamic_type_s->clone(), tep->m_trait.m_path.clone(), "vtable#");
-                        dst.copy_from( state, inval );
                         dst.slice(Target_GetPointerBits()/8).write_ptr(state, EncodedLiteral::PTR_BASE, local_state.get_staticref(std::move(vtable_path)));
                     }
                     else if( /*const auto* tep =*/ dynamic_type_d->data().opt_Slice() )
                     {
                         auto size = dynamic_type_s->data().as_Array().size.as_Known();
-                        dst.copy_from( state, inval );
                         dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), size);
                     }
                     else
@@ -2257,6 +2252,17 @@ namespace HIR {
                         MIR_BUG(state, "RValue::MakeDst to " << dst_ty << " from " << src_ty << " - " << *dynamic_type_d << " from " << *dynamic_type_s);
                     }
                     }
+                }
+
+                if( const auto* p = e.ptr_val.opt_Borrow() ) {
+                    local_state.write_borrow( dst, p->type, p->val );
+                }
+                else if( const auto* c = e.ptr_val.opt_Constant() ) {
+                    local_state.write_const(dst, *c);
+                }
+                else {
+                    auto inval = local_state.get_lval(e.ptr_val.as_LValue());
+                    dst.slice(0,Target_GetPointerBits()/8).copy_from( state, inval );
                 }
             }
             else {
