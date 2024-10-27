@@ -3018,6 +3018,9 @@ void HIR_GenerateMIR_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& path
         // Run cleanup to simplify consteval?
         // - This ends up running before things like vtable generation, so parts of cleanup won't work.
         //MIR_Cleanup(resolve, path, *expr_ptr.m_mir, args, res_ty);
+        // Run minimal optimisation
+        //MIR_OptimiseMin(resolve, path, *expr_ptr.m_mir, args, res_ty);
+        MIR_Optimise(resolve, path, *expr_ptr.m_mir, args, res_ty, /*do_inline=*/false);
     }
 }
 

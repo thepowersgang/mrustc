@@ -1951,8 +1951,8 @@ namespace HIR {
 
     AllocationPtr Evaluator::run_until_stack_empty()
     {
-        const unsigned MAX_BLOCK_COUNT = 40000;
-        const unsigned MAX_STMT_COUNT = 100'000;
+        const unsigned MAX_BLOCK_COUNT = 1'000'000;
+        const unsigned MAX_STMT_COUNT = 4'000'000;
         assert( !this->call_stack.empty() );
         unsigned int num_stmts_run = 0;
         unsigned int idx;
@@ -2400,7 +2400,7 @@ namespace HIR {
             }
         }
 
-        DEBUG(sa.dst << " := " << dst);
+        DEBUG("> E" << this->eval_index << " F" << local_state.frame_index << " " << sa.dst << " := " << dst);
     }
 
     unsigned Evaluator::run_terminator(::MIR::eval::CallStackEntry& local_state, const ::MIR::Terminator& terminator)
@@ -2898,7 +2898,7 @@ namespace HIR {
                 else {
                     MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << terminator);
                 }
-                DEBUG(e.ret_val << " := " << dst);
+                DEBUG("> E" << this->eval_index << " F" << local_state.frame_index << " " << e.ret_val << " := " << dst);
                 return e.ret_block;
             }
             else if( const auto* te = e.fcn.opt_Path() )
