@@ -90,6 +90,64 @@ namespace {
         }
         #endif
     }
+    void fix_param_count(
+        const Span& sp,
+        const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params,
+        bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr
+        )
+    {
+        if( params.m_lifetimes.size() != param_defs.m_lifetimes.size() )
+        {
+            if( params.m_lifetimes.size() == 0 && fill_infer ) {
+                for(const auto& lft : param_defs.m_lifetimes) {
+                    (void)lft;
+                    params.m_lifetimes.push_back({});
+                }
+            }
+        }
+        if( params.m_types.size() != param_defs.m_types.size() )
+        {
+            TRACE_FUNCTION_FR(path, params);
+
+            if( params.m_types.size() == 0 && fill_infer ) {
+                for(const auto& typ : param_defs.m_types) {
+                    (void)typ;
+                    params.m_types.push_back( ::HIR::TypeRef() );
+                }
+            }
+            else if( params.m_types.size() > param_defs.m_types.size() ) {
+                ERROR(sp, E0000, "Too many type parameters passed to " << path);
+            }
+            else {
+                while( params.m_types.size() < param_defs.m_types.size() ) {
+                    const auto& typ = param_defs.m_types[params.m_types.size()];
+                    if( typ.m_default.data().is_Infer() ) {
+                        ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
+                    }
+                    else {
+                        // TODO: Does expanding defaults need a custom monomorphiser that can handle later defaults?
+                        MonomorphStatePtr   ms(self_ty, &params, nullptr);
+                        auto ty = ms.monomorph_type(sp, typ.m_default);
+                        params.m_types.push_back( mv$(ty) );
+                    }
+                }
+            }
+        }
+        if( params.m_values.size() != param_defs.m_values.size() )
+        {
+            if( params.m_values.size() == 0 && fill_infer ) {
+                for(const auto& val : param_defs.m_values) {
+                    if( val.m_default ) {
+                        // NOTE: Can't just copy, as Unevaluated may not have had its params set yet
+                        TODO(sp, "Value generic defaults");
+                    }
+                    else {
+                        params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
+                    }
+                }
+            }
+        }
+    }
 
     class Visitor:
         public ::HIR::Visitor
@@ -251,64 +309,6 @@ namespace {
             TU_ARMA(PathTuple, e) {
                 }
             TU_ARMA(PathNamed, e) {
-                }
-            }
-        }
-        static void fix_param_count(
-            const Span& sp,
-            const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params,
-            bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr
-            )
-        {
-            if( params.m_lifetimes.size() != param_defs.m_lifetimes.size() )
-            {
-                if( params.m_lifetimes.size() == 0 && fill_infer ) {
-                    for(const auto& lft : param_defs.m_lifetimes) {
-                        (void)lft;
-                        params.m_lifetimes.push_back({});
-                    }
-                }
-            }
-            if( params.m_types.size() != param_defs.m_types.size() )
-            {
-                TRACE_FUNCTION_FR(path, params);
-
-                if( params.m_types.size() == 0 && fill_infer ) {
-                    for(const auto& typ : param_defs.m_types) {
-                        (void)typ;
-                        params.m_types.push_back( ::HIR::TypeRef() );
-                    }
-                }
-                else if( params.m_types.size() > param_defs.m_types.size() ) {
-                    ERROR(sp, E0000, "Too many type parameters passed to " << path);
-                }
-                else {
-                    while( params.m_types.size() < param_defs.m_types.size() ) {
-                        const auto& typ = param_defs.m_types[params.m_types.size()];
-                        if( typ.m_default.data().is_Infer() ) {
-                            ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
-                        }
-                        else {
-                            // TODO: Does expanding defaults need a custom monomorphiser that can handle later defaults?
-                            MonomorphStatePtr   ms(self_ty, &params, nullptr);
-                            auto ty = ms.monomorph_type(sp, typ.m_default);
-                            params.m_types.push_back( mv$(ty) );
-                        }
-                    }
-                }
-            }
-            if( params.m_values.size() != param_defs.m_values.size() )
-            {
-                if( params.m_values.size() == 0 && fill_infer ) {
-                    for(const auto& val : param_defs.m_values) {
-                        if( val.m_default ) {
-                            // NOTE: Can't just copy, as Unevaluated may not have had its params set yet
-                            TODO(sp, "Value generic defaults");
-                        }
-                        else {
-                            params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
-                        }
-                    }
                 }
             }
         }
@@ -757,23 +757,15 @@ namespace {
 
                 void enum_supertraits_in(const ::HIR::Trait& tr, ::HIR::TraitPath path)
                 {
+                    ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
                     TRACE_FUNCTION_F(path);
                     tp_stack.push_back(&path);
                     auto& params = path.m_path.m_params;
 
                     // Fill defaulted parameters.
                     // NOTE: Doesn't do much error checking.
-                    if( path.m_path.m_params.m_types.size() != tr.m_params.m_types.size() )
-                    {
-                        ASSERT_BUG(sp, params.m_types.size() < tr.m_params.m_types.size(), "");
-                        for(unsigned int i = params.m_types.size(); i < tr.m_params.m_types.size(); i ++)
-                        {
-                            const auto& def = tr.m_params.m_types[i];
-                            params.m_types.push_back( def.m_default.clone_shallow() );
-                        }
-                    }
+                    fix_param_count(sp, path.m_path, tr.m_params, path.m_path.m_params, false, &ty_self);
 
-                    ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
                     auto monomorph_cb = MonomorphStatePtr(&ty_self, &params, nullptr);
                     auto monomorph_tp = [&](const HIR::TraitPath& tp)->HIR::TraitPath {
                         // TODO: if `path.m_path` has HRLs, then this needs HRLs (only if the HRLs get used?)
