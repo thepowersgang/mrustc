@@ -4908,7 +4908,11 @@ bool TraitResolution::find_method(const Span& sp,
             ASSERT_BUG(sp, bound.m_trait_ptr, "Pointer to trait " << bound.m_path << " not set in " << e.trait.m_path);
             ::HIR::GenericPath final_trait_path;
 
-            if( const auto* fcn_ptr = this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path) )
+            auto ty_self = ::HIR::TypeRef::new_path(
+                ::HIR::Path( ::HIR::TypeRef("Self", GENERIC_Self), bound.m_path.clone(), e.item ),
+                HIR::TypePathBinding::make_Opaque({})
+                );
+            if( const auto* fcn_ptr = this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ty_self, method_name,  final_trait_path) )
             {
                 DEBUG("- Found trait " << final_trait_path << " (UFCS Known, aty bounds)");
 
