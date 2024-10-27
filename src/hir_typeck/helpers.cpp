@@ -1739,7 +1739,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                             assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
                         ASSERT_BUG(sp, !e.m_trait.m_hrtbs || !i_tp.m_hrtbs, "TODO: Handle two layers of HRTBs - " << e.m_trait << " and " << i_tp);
                         auto ir = ImplRef(e.m_trait.m_hrtbs ? e.m_trait.m_hrtbs->clone() : HIR::GenericParams(), type.clone(), i_tp.m_path.m_params.clone(), mv$(assoc_clone));
-                        DEBUG("- ir = " << ir);
+                        DEBUG("TraitObject: - ir = " << ir);
                         is_supertrait = true;
                         rv = callback(mv$(ir), cmp);
                         return cmp == ::HIR::Compare::Equal;    // Shortcut if perfect match
@@ -1779,7 +1779,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         ASSERT_BUG(sp, !trait_path.m_hrtbs || !i_tp.m_hrtbs, "TODO: Handle two layers of HRTBs - " << trait_path << " and " << i_tp);
                         const HIR::GenericParams* hrtbs = trait_path.m_hrtbs ? trait_path.m_hrtbs.get() : i_tp.m_hrtbs.get();
                         auto ir = ImplRef(hrtbs ? hrtbs->clone() : HIR::GenericParams(), type.clone(), i_tp.m_path.m_params.clone(), mv$(assoc_clone));
-                        DEBUG("- ir = " << ir);
+                        DEBUG("ErasedType: - ir = " << ir);
                         is_supertrait = true;
                         rv = callback(mv$(ir), cmp);
                         return cmp == HIR::Compare::Equal;
@@ -1856,7 +1856,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 this->find_named_trait_in_trait(sp,  trait, params,  *bound.m_trait_ptr,  bound.m_path.m_path, b_params_mono, type,
                     [&](const HIR::TraitPath& i_tp) {
                         auto cmp = this->compare_pp(sp, i_tp.m_path.m_params, params);
-                        DEBUG("cmp=" << cmp << ", impl " << i_tp.m_path << " for " << type << " -- desired " << trait << params);
+                        DEBUG("Opaque Path: cmp=" << cmp << ", impl " << i_tp.m_path << " for " << type << " -- desired " << trait << params);
                         ASSERT_BUG(sp, !bound.m_hrtbs || !i_tp.m_hrtbs, "TODO: Handle two layers of HRTBs - " << bound.m_path << " and " << i_tp);
                         const HIR::GenericParams* hrtbs = bound.m_hrtbs ? bound.m_hrtbs.get() : i_tp.m_hrtbs.get();
                         auto ir = ImplRef(hrtbs ? hrtbs->clone() : HIR::GenericParams(), type.clone(), i_tp.m_path.m_params.clone(), {});
@@ -2489,6 +2489,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     {
         if(const auto* pe_inner_p = te_inner->path.m_data.opt_UfcsKnown())
         {
+            DEBUG("Checking inner bounds");
             const auto& pe_inner = *pe_inner_p;
             // TODO: Search for equality bounds on this associated type (pe_inner) that match the entire type (pe)
             // - Does simplification of complex associated types
@@ -2507,7 +2508,11 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 // - TODO: Fuzzy check the parameters?
                 ::HIR::GenericPath  tmp_tp;
                 const auto& bound_tp = monomorphise_genericpath_with_opt(sp, tmp_tp, bound.m_path, cb_placeholders_trait);
-                DEBUG(bound_tp << " ?= " << pe.trait);
+                for(auto& t : tmp_tp.m_params.m_types) {
+                    expand_associated_types_inplace(sp, t, stack);
+                }
+                DEBUG("B " << bound.m_path);
+                DEBUG("-> " << bound_tp);
                 if( bound_tp == pe.trait ) {
                     auto it = bound.m_type_bounds.find( pe.item );
                     if( it != bound.m_type_bounds.end() ) {
@@ -2743,6 +2748,12 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
     for( const auto& pt : trait_ptr.m_all_parent_traits )
     {
         auto pt_mono = monomorph_cb.monomorph_traitpath(sp, pt, false);
+        for(auto& ty : pt_mono.m_path.m_params.m_types) {
+            ty = this->expand_associated_types(sp, mv$(ty));
+        }
+        for(auto& ty : pt_mono.m_type_bounds) {
+            ty.second.type = this->expand_associated_types(sp, mv$(ty.second.type));
+        }
 
         //DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {

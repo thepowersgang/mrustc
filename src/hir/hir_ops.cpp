@@ -542,6 +542,8 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
         static bool types_overlap(const ::HIR::TypeRef& a, const ::HIR::TypeRef& b)
         {
             static Span sp;
+            if( a == b )
+                return true;
             //DEBUG("(" << a << "," << b << ")");
             if( a.data().is_Generic() || b.data().is_Generic() )
                 return true;
@@ -581,7 +583,9 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 (UfcsInherent,
                     )
                 )
-                TODO(sp, "Path - " << ae.path << " and " << be.path);
+                DEBUG("TODO: Path - " << ae.path << " and " << be.path);
+                return false;
+                //TODO(sp, "Path - " << ae.path << " and " << be.path);
                 }
             TU_ARMA(TraitObject, ae, be) {
                 if( ae.m_trait.m_path.m_path != be.m_trait.m_path.m_path )

@@ -75,6 +75,9 @@ namespace {
             }
             m_os << indent() << "{\n";
             inc_indent();
+            for(auto& ent : impl.m_types) {
+                m_os << indent() << "type " << ent.first << " = " << ent.second.data << "\n";
+            }
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             dec_indent();
             m_os << indent() << "}\n";

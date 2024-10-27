@@ -388,6 +388,7 @@ bool StaticTraitResolve::find_impl(
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = monomorphise_pathparams_with_opt(sp, params_mono_o, b_params, monomorph_cb, false);
+                this->expand_associated_types_params(sp, params_mono_o);
                 DEBUG("[find_impl] : " << bound.m_path.m_path << b_params_mono);
 
                 if( bound.m_path.m_path == trait_path )

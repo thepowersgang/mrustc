@@ -173,7 +173,7 @@ void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR
         this->visit_static(p + ent.first, ent.second.data);
     }
     for(auto& ent : impl.m_types) {
-        DEBUG("type " << ent.first);
+        TRACE_FUNCTION_F("type " << ent.first << " = " << ent.second.data);
         this->visit_type(ent.second.data);
     }
     if( m_resolve ) {
