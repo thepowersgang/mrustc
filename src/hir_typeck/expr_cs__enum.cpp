@@ -2190,7 +2190,7 @@ void Typecheck_Code_CS__EnumerateRules(
         }
 
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
-            if( g.binding == GENERIC_Self && cur_self )
+            if( g.binding == GENERIC_ErasedSelf && cur_self )
                 return cur_self->clone();
             return ::HIR::TypeRef(g);
         }
