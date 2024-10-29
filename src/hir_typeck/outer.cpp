@@ -452,12 +452,24 @@ namespace {
                         auto name = RcString::new_interned(FMT("erased$" << idx));
                         auto new_ty = ::HIR::TypeRef( name, 256 + idx );
                         m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), e->m_is_sized });
-                        for( const auto& trait : e->m_traits )
+                        for( auto& trait : e->m_traits )
                         {
+                            struct M: MonomorphiserNop {
+                                const HIR::TypeRef& new_ty;
+                                M(const HIR::TypeRef& ty): new_ty(ty) {}
+                                ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
+                                    if( ty.binding == GENERIC_ErasedSelf ) {
+                                        return new_ty.clone();
+                                    }
+                                    return HIR::TypeRef(ty);
+                                }
+                            } m { new_ty };
+                            // TODO: Monomorph the trait to replace `Self` with this generic?
+                            // - Except, that should it be?
                             m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
                                 nullptr,
                                 new_ty.clone(),
-                                trait.clone()
+                                m.monomorph_traitpath(sp, trait, false)
                                 }));
                         }
                         for(const auto& lft : e->m_lifetimes)

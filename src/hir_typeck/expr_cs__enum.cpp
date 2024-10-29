@@ -264,7 +264,7 @@ namespace typecheck
                     return context.get_type(fcn_params.m_types[idx]).clone();
                 }
                 else {
-                    BUG(sp, "Generic bounding out of total range (" << e << ")");
+                    BUG(sp, "Generic binding out of total range (" << e << ")");
                 }
             }
 

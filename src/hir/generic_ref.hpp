@@ -10,6 +10,8 @@
 
 /// Binding index for a Generic that indicates "Self"
 #define GENERIC_Self    0xFFFF
+/// `Self` in the context of an erased type
+#define GENERIC_ErasedSelf  0xFFFE
 
 namespace HIR {
 

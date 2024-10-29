@@ -443,8 +443,18 @@ namespace {
                     }
                 }
             }
+            else if( auto* te = ty.data_mut().opt_ErasedType() )
+            {
+                HIR::TypeRef    ty_eself { "ErasedSelf", GENERIC_ErasedSelf };
+                for(auto& t : te->m_traits)
+                {
+                    const auto& trait = m_crate.get_trait_by_path(sp, t.m_path.m_path);
+                    fix_param_count(sp, t.m_path, trait.m_params, t.m_path.m_params, /*fill_infer=*/m_in_expr, &ty_eself);
+                }
+            }
             else if( auto* te = ty.data_mut().opt_TraitObject() )
             {
+                HIR::TypeRef    ty_eself { "ErasedSelf", GENERIC_ErasedSelf };
                 if( te->m_trait.m_path.m_path != HIR::SimplePath() )
                 {
                     const auto& trait = m_crate.get_trait_by_path(sp, te->m_trait.m_path.m_path);
