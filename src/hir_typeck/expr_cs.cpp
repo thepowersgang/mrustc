@@ -6738,18 +6738,28 @@ namespace
 
             // Check if any of the bounded types match only one of the possible types
             {
+                struct H {
+                    static const ::HIR::TypeRef& get_borrow_inner(const ::HIR::TypeRef& ty) {
+                        if( ty.data().is_Borrow() ) {
+                            return get_borrow_inner(ty.data().as_Borrow().inner);
+                        }
+                        else {
+                            return ty;
+                        }
+                    }
+                };
                 bool failed = false;
                 const HIR::TypeRef* found_ty = nullptr;
                 for(const auto& bounded_ty : ivar_ent.bounded)
                 {
                     // Skip ivars
-                    if( bounded_ty.data().is_Infer() ) {
+                    if( H::get_borrow_inner(bounded_ty).data().is_Infer() ) {
                         continue;
                     }
                     for(const auto& t : possible_tys)
                     {
                         // Skip ivars
-                        if( t.ty->data().is_Infer() ) {
+                        if( H::get_borrow_inner(*t.ty).data().is_Infer() ) {
                             continue;
                         }
 
@@ -6765,13 +6775,15 @@ namespace
                                 failed = true;
                             }
                             else {
-                                // Compatible, keep the first one
+                                // Compatible, keep the first one?
+                                // - Nope, could be ivars involved.
+                                failed = true;
                             }
                         }
                     }
                 }
                 if( found_ty && !failed ) {
-                    DEBUG("- Bounded and possible type");
+                    DEBUG("- Bounded and possible type - " << *found_ty);
                     context.equate_types(sp, ty_l, *found_ty);
                     return true;
                 }
