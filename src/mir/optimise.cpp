@@ -3762,7 +3762,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         case ::HIR::CoreType::Usize:
                             if(Target_GetPointerBits() < 64)
                                 return v & U128(UINT64_MAX >> (64 - Target_GetPointerBits()));
-                            return v;
+                            return v & U128(UINT64_MAX);
                         case ::HIR::CoreType::Char:
                             //MIR_BUG(state, "Invalid use of operator on char");
                             break;
