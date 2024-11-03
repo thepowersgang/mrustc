@@ -1279,6 +1279,11 @@ namespace {
                     args.push_back("-O2");
                     break;
                 }
+                // HACK: Work around [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117423] by disabling an optimisation stage
+                if( opt.opt_level > 0 )
+                {
+                    args.push_back("-fno-tree-sra");
+                }
                 if( opt.emit_debug_info )
                 {
                     args.push_back("-g");
@@ -5148,6 +5153,20 @@ namespace {
                     m_of << " );\n";
                     return ;
                 //}
+            }
+            else if( m.matches_template({"mov {0:r}, rbx", "cpuid", "xchg {0:r}, rbx"}, {"out:reg", "inout=eax", "inout=ecx", "out=edx"}) )  // 1.74 libstd_detect
+            {
+                m_of << indent << "__asm__(\"cpuid\"";
+                m_of << " : ";
+                m_of << "\"=a\" ("; emit_lvalue(m.output(1)); m_of << "), ";
+                m_of << "\"=b\" ("; emit_lvalue(m.output(0)); m_of << "), ";
+                m_of << "\"=c\" ("; emit_lvalue(m.output(2)); m_of << "), ";
+                m_of << "\"=d\" ("; emit_lvalue(m.output(3)); m_of << ")";
+                m_of << " : ";
+                m_of << "\"a\" ("; emit_param(m.input(1)); m_of << "), ";
+                m_of << "\"c\" ("; emit_param(m.input(2)); m_of << ")";
+                m_of << " );\n";
+                return ;
             }
             else if( m.matches_template({"btl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
             {
