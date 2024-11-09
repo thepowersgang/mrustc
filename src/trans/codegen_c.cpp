@@ -7215,7 +7215,7 @@ namespace {
                     auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
                     size_t size_out = 0;
                     Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_out);
-                    m_of << "{ uint8_t* out = &"; emit_lvalue(e.ret_val); m_of << "; memset(out, 0, " << size_out << "); ";
+                    m_of << "{ uint8_t* out = (uint8_t*)&("; emit_lvalue(e.ret_val); m_of << "); memset(out, 0, " << size_out << "); ";
                     for(size_t i = 0; i < src_info.count; i ++) {
                         m_of << "out[" << (i / 8) << "] |= (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[" << i << "] == 0 ? 0 : (1 << " << (i % 8) << "); ";
                     }
@@ -7325,7 +7325,7 @@ namespace {
                 // platform:simd_reduce_or
                 // platform:simd_saturating_add
                 // platform:simd_saturating_sub
-                else if(name == "platform:simd_ceil")    simd_call("ciel");
+                else if(name == "platform:simd_ceil")    simd_call("ceil");
                 else if(name == "platform:simd_floor")    simd_call("floor");
                 else if(name == "platform:simd_fsqrt")    simd_call("sqrt");
                 // platform:simd_fma
