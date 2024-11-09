@@ -2679,6 +2679,11 @@ namespace {
                     m_of << "\tif(arg0) rv._0 |= __builtin_sub_overflow" << msvc_suffix_u32 << "(rv._1, 1, &rv._1);\n";
                     m_of << "\treturn rv;\n";
                 }
+                else if( item.m_linkage.name == "llvm.x86.xgetbv" ) {
+                    m_of << "\tuint32_t lo, hi;\n";
+                    m_of << "\t__asm__ __volatile__ (\"xgetbv\" : \"=a\" (lo), \"=d\" (hi) : \"c\" (arg0) );\n";
+                    m_of << "\treturn lo | ((uint64_t)hi << 32);\n";
+                }
                 // AES functions
                 else if( item.m_linkage.name.rfind("llvm.x86.aesni.", 0) == 0 )
                 {
@@ -7174,6 +7179,13 @@ namespace {
                     m_of << op << "=";
                     m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
                     };
+                auto simd_call = [&](const char* op) {
+                    auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    // Emulate!
+                    m_of << "for(int i = 0; i < " << info.count << "; i++)";
+                    m_of << "(("; info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= " << op << "( (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i] )";
+                    };
 
                 // dst: T, index: usize, val: U
                 // Insert a value at position
@@ -7197,6 +7209,17 @@ namespace {
 
                     // Emulate!
                     emit_lvalue(e.ret_val); m_of << " = (( "; emit_ctype(params.m_types.at(1)); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")["; emit_param(e.args.at(1)); m_of << "]";
+                }
+                // Truncate into a bitmask - Converts a collection of [0,!0] into bits
+                else if( name == "platform:simd_bitmask" ) {
+                    auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    size_t size_out = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_out);
+                    m_of << "{ uint8_t* out = &"; emit_lvalue(e.ret_val); m_of << "; memset(out, 0, " << size_out << "); ";
+                    for(size_t i = 0; i < src_info.count; i ++) {
+                        m_of << "out[" << (i / 8) << "] |= (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[" << i << "] == 0 ? 0 : (1 << " << (i % 8) << "); ";
+                    }
+                    m_of << "}";
                 }
                 else if(
                         name == "platform:simd_shuffle128" ||
@@ -7226,6 +7249,24 @@ namespace {
                     MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
                     m_of << "for(int i = 0; i < " << div << "; i++) { int j = "; emit_param(e.args.at(2)); m_of << ".DATA[i];";
                     m_of << "((uint" << (size_val*8) << "_t*)&"; emit_lvalue(e.ret_val); m_of << ")[i]";
+                    m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
+                    m_of << "}";
+                }
+                else if( name == "platform:simd_shuffle" ) {
+                    //const auto& vec_ty = params.m_types.at(0);
+                    const auto& map_ty = params.m_types.at(1);
+                    const auto& ret_ty = params.m_types.at(2);
+                    //size_t size_vec = 0;
+                    size_t size_map = 0;
+                    size_t size_ret = 0;
+                    //Target_GetSizeOf(sp, m_resolve, vec_ty, size_vec);
+                    Target_GetSizeOf(sp, m_resolve, map_ty, size_map);
+                    Target_GetSizeOf(sp, m_resolve, ret_ty, size_ret);
+                    size_t div = size_map / 4;  // map must be u32s
+                    size_t size_val = size_ret / div;
+                    m_of << "for(int i = 0; i < " << div << "; i++) {";
+                    m_of << " int j = "; emit_param(e.args.at(2)); m_of << ".DATA[i];";
+                    m_of << " ((uint" << (size_val*8) << "_t*)&"; emit_lvalue(e.ret_val); m_of << ")[i]";
                     m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
                     m_of << "}";
                 }
@@ -7273,11 +7314,36 @@ namespace {
                 else if(name == "platform:simd_and")    simd_arith("&");
                 else if(name == "platform:simd_or" )    simd_arith("|");
                 else if(name == "platform:simd_xor")    simd_arith("^");
+                else if(name == "platform:simd_xor")    simd_arith("^");
+                else if(name == "platform:simd_shr")    simd_arith(">>");
+                else if(name == "platform:simd_shl")    simd_arith("<<");
+                // platform:simd_reduce_and
+                // platform:simd_reduce_max
+                // platform:simd_reduce_min
+                // platform:simd_reduce_mul_unordered
+                // platform:simd_reduce_add_unordered
+                // platform:simd_reduce_or
+                // platform:simd_saturating_add
+                // platform:simd_saturating_sub
+                else if(name == "platform:simd_ceil")    simd_call("ciel");
+                else if(name == "platform:simd_floor")    simd_call("floor");
+                else if(name == "platform:simd_fsqrt")    simd_call("sqrt");
+                // platform:simd_fma
+                else if(name == "platform::simd_fma") {
+                    auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    // Emulate!
+                    m_of << "for(int i = 0; i < " << info.count << "; i++)";
+                    m_of << "(("; info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= fma(";
+                    m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i],";
+                    m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i],";
+                    m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(2)); m_of << ")[i]";
+                    m_of << ")";
+                }
 
                 else {
                     // TODO: Platform intrinsics
                     m_of << "assert(!\"TODO: Platform intrinsic \\\"" << name << "\\\"\")";
-                    //MIR_TODO(mir_res, "Platform intrinsic " << name);
                 }
             }
             else {
