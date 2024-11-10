@@ -148,6 +148,9 @@ struct TyVisitor
         TU_ARMA(Pointer, e) {
             return visit_type(e.inner);
             }
+        TU_ARMA(NamedFunction, e) {
+            return visit_path(e.path);
+            }
         TU_ARMA(Function, e) {
             for(auto& ty : e.m_arg_types) {
                 if( visit_type(ty) )
@@ -401,6 +404,12 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         }
     TU_ARMA(Pointer, e) {
         return ::HIR::TypeRef::new_pointer(e.type, this->monomorph_type(sp, e.inner, allow_infer));
+        }
+    TU_ARMA(NamedFunction, e) {
+        return ::HIR::TypeRef( ::HIR::TypeData::Data_NamedFunction {
+            this->monomorph_path(sp, e.path, allow_infer),
+            e.def   // Should this become `nullptr`? Or should the definition be fixed
+            } );
         }
     TU_ARMA(Function, e) {
         m_hrb_stack.push_back(&e.hrls);

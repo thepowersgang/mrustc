@@ -1554,6 +1554,29 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
     TU_ARMA(Pointer, e) {
         expand_associated_types_inner(sp, e.inner);
         }
+    TU_ARMA(NamedFunction, e) {
+        TU_MATCH_HDRA( (e.path.m_data), { )
+        TU_ARMA(Generic, e2) {
+            //ConvertHIR_ConstantEvaluate_MethodParams(sp, m_crate, HIR::SimplePath(m_crate.m_crate_name, {}), m_impl_generics, m_item_generics, *e.binding.get_generics(), e2.m_params);
+            expand_associated_types_params(sp, e2.m_params);
+            }
+        TU_ARMA(UfcsInherent, e2) {
+            this->expand_associated_types_inner(sp, e2.type);
+            expand_associated_types_params(sp, e2.params);
+            // TODO: impl params too?
+            for(auto& arg : e2.impl_params.m_types)
+                this->expand_associated_types_inner(sp, arg);
+            }
+        TU_ARMA(UfcsKnown, e2) {
+            this->expand_associated_types_inner(sp, e2.type);
+            expand_associated_types_params(sp, e2.trait.m_params);
+            expand_associated_types_params(sp, e2.params);
+            }
+        TU_ARMA(UfcsUnknown, e2) {
+            BUG(sp, "Encountered UfcsUnknown in EAT - " << e.path);
+            }
+        }
+        }
     TU_ARMA(Function, e) {
         // Recurse?
         for(auto& ty : e.m_arg_types)
@@ -2083,6 +2106,10 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         // All raw pointers are Copy
         return true;
         }
+    TU_ARMA(NamedFunction, e) {
+        // All function pointers are Copy/Clone
+        return true;
+        }
     TU_ARMA(Function, e) {
         // All function pointers are Copy
         return true;
@@ -2126,7 +2153,7 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
 bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const
 {
     if( !TARGETVER_LEAST_1_29 )   BUG(sp, "Calling type_is_clone when not in >=1.29 mode");
-    
+
     TU_MATCH_HDRA( (ty.data()), {)
     TU_ARMA(Generic, e) {
         {
@@ -2183,6 +2210,10 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
         }
     TU_ARMA(Pointer, e) {
         // All raw pointers are Copy/Clone
+        return true;
+        }
+    TU_ARMA(NamedFunction, e) {
+        // All function pointers are Copy/Clone
         return true;
         }
     TU_ARMA(Function, e) {
@@ -2705,6 +2736,9 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
     TU_ARMA(Pointer, e) {
         return HIR::Compare::Unequal;
         }
+    TU_ARMA(NamedFunction, e) {
+        return HIR::Compare::Unequal;
+        }
     TU_ARMA(Function, e) {
         return HIR::Compare::Unequal;
         }
@@ -2959,6 +2993,9 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
         return type_needs_drop_glue(sp, e.inner);
         }
     TU_ARMA(Pointer, e) {
+        return false;
+        }
+    TU_ARMA(NamedFunction, e) {
         return false;
         }
     TU_ARMA(Function, e) {

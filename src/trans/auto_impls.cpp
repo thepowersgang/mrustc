@@ -865,6 +865,9 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 TU_ARMA(Primitive, te) {
                     // Nothing to do
                     }
+                TU_ARMA(NamedFunction, te) {
+                    // Nothing to do
+                    }
                 TU_ARMA(Function, te) {
                     // Nothing to do
                     }

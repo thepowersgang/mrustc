@@ -177,6 +177,9 @@ namespace {
         TU_ARMA(ErasedType, le) {
             TODO(sp, "ErasedType - " << left);
             }
+        TU_ARMA(NamedFunction, le) {
+            BUG(sp, "Hit function type");
+            }
         TU_ARMA(Function, le) {
             if(/*const auto* re =*/ right.data().opt_Function() ) {
                 if( left == right )
@@ -539,6 +542,26 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
             }
             return true;
         }
+        static bool types_overlap_path(const ::HIR::Path& a, const ::HIR::Path& b)
+        {
+            if( a.m_data.tag() != b.m_data.tag() )
+                return false;
+            TU_MATCHA( (a.m_data, b.m_data), (ape, bpe),
+            (Generic,
+                if( ape.m_path != bpe.m_path )
+                    return false;
+                return H::types_overlap(ape.m_params, bpe.m_params);
+                ),
+            (UfcsUnknown,
+                ),
+            (UfcsKnown,
+                ),
+            (UfcsInherent,
+                )
+            )
+            DEBUG("TODO: Path - " << a << " and " << b);
+            return false;
+        }
         static bool types_overlap(const ::HIR::TypeRef& a, const ::HIR::TypeRef& b)
         {
             static Span sp;
@@ -568,23 +591,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                     return false;
                 }
             TU_ARMA(Path, ae, be) {
-                if( ae.path.m_data.tag() != be.path.m_data.tag() )
-                    return false;
-                TU_MATCHA( (ae.path.m_data, be.path.m_data), (ape, bpe),
-                (Generic,
-                    if( ape.m_path != bpe.m_path )
-                        return false;
-                    return H::types_overlap(ape.m_params, bpe.m_params);
-                    ),
-                (UfcsUnknown,
-                    ),
-                (UfcsKnown,
-                    ),
-                (UfcsInherent,
-                    )
-                )
-                DEBUG("TODO: Path - " << ae.path << " and " << be.path);
-                return false;
+                return types_overlap_path(ae.path, be.path);
                 //TODO(sp, "Path - " << ae.path << " and " << be.path);
                 }
             TU_ARMA(TraitObject, ae, be) {
@@ -606,6 +613,9 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 }
             TU_ARMA(ErasedType, ae, be) {
                 TODO(sp, "ErasedType - " << a);
+                }
+            TU_ARMA(NamedFunction, ae, be) {
+                return types_overlap_path(ae.path, be.path);
                 }
             TU_ARMA(Function, ae, be) {
                 if( ae.is_unsafe != be.is_unsafe )
@@ -921,6 +931,7 @@ namespace
         return false;
     }
 
+#if 0
     // Obtain the crate that defined the named type
     // See https://github.com/rust-lang/rfcs/blob/master/text/2451-re-rebalancing-coherence.md
     // - Catch: The above allows `impl ForeignTrait for ForeignType<LocalType>`
@@ -958,6 +969,8 @@ namespace
         TU_ARMA(Generator, _)
             return crate.m_crate_name;
         // Functions aren't owned
+        TU_ARMA(NamedFunction, _)
+            return RcString();
         TU_ARMA(Function, _)
             return RcString();
         TU_ARMA(ErasedType, _)
@@ -972,6 +985,7 @@ namespace
         }
         throw "Unreachable";
     }
+#endif
 }
 
 bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const

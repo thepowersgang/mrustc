@@ -231,6 +231,10 @@ TAGGED_UNION(TypeData, Diverge,
         ::HIR::BorrowType   type;
         TypeRef inner;
         }),
+    (NamedFunction, struct {
+        ::HIR::Path path;
+        const ::HIR::Function* def; // Function definition, used to decay to a pointer, populated by bind
+        }),
     (Function, TypeData_FunctionPointer),   // TODO: Pointer wrap, this is quite large
     (Closure, struct {
         const ::HIR::ExprNode_Closure*  node;

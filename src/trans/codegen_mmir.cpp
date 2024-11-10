@@ -95,6 +95,9 @@ namespace
             }
             os << fmt(te.inner);
             }
+        TU_ARMA(NamedFunction, te) {
+            os << "fn " << Trans_Mangle(te.path);
+            }
         TU_ARMA(Function, e) {
             if( e.is_unsafe ) {
                 os << "unsafe ";

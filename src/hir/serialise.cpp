@@ -251,6 +251,9 @@
                 m_out.write_tag(static_cast<int>(e.type));
                 serialise_type(e.inner);
                 }
+            TU_ARMA(NamedFunction, e) {
+                serialise_path(e.path);
+                }
             TU_ARMA(Function, e) {
                 serialise_generics(e.hrls);
                 m_out.write_bool(e.is_unsafe);

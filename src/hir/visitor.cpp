@@ -466,6 +466,9 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
     TU_ARMA(Pointer, e) {
         this->visit_type( e.inner );
         }
+    TU_ARMA(NamedFunction, e) {
+        this->visit_path(e.path, ::HIR::Visitor::PathContext::VALUE);
+        }
     TU_ARMA(Function, e) {
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);

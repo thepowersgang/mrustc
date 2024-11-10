@@ -355,6 +355,11 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
         os << "{gen:" << e.node << "}";
         // TODO: Print the types?
         }
+    TU_ARMA(NamedFunction, e) {
+        os << "fn{";
+        print_path(e.path);
+        os << "}";
+        }
     TU_ARMA(Function, e) {
         if(e.is_unsafe)
             os << "unsafe ";
@@ -534,6 +539,9 @@ void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
     TU_ARMA(Pointer, e) {
         this->expand_ivars(e.inner);
         }
+    TU_ARMA(NamedFunction, e) {
+        H::expand_ivars_path(*this, e.path);
+        }
     TU_ARMA(Function, e) {
         this->expand_ivars(e.m_rettype);
         for(auto& ty : e.m_arg_types)
@@ -619,6 +627,10 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
         }
     TU_ARMA(Pointer, e) {
         add_ivars(e.inner);
+        }
+    TU_ARMA(NamedFunction, e) {
+        // Shouldn't be possible
+        TODO(Span(), "NamedFunction adding ivars?");
         }
     TU_ARMA(Function, e) {
         add_ivars(e.m_rettype);
@@ -1017,6 +1029,9 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty, bool only_u
         // Generator types don't contain their own ivars.
         return false;
         ),
+    (NamedFunction,
+        return path_contains_ivars(e.path, only_unbound);
+        ),
     (Function,
         for(const auto& arg : e.m_arg_types)
             if( type_contains_ivars(arg, only_unbound) )
@@ -1141,6 +1156,9 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         ),
     (Generator,
         return le.node == re.node;
+        ),
+    (NamedFunction,
+        return H::compare_path(*this, le.path, re.path);
         ),
     (Function,
         if( le.is_unsafe != re.is_unsafe || le.m_abi != re.m_abi )
@@ -2035,6 +2053,9 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
     TU_ARMA(Pointer, e) {
         return has_associated_type(e.inner);
         }
+    TU_ARMA(NamedFunction, e) {
+        return H::check_path(*this, e.path);
+        }
     TU_ARMA(Function, e) {
         // Recurse?
         return false;
@@ -2170,6 +2191,27 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
         }
     TU_ARMA(Pointer, e) {
         expand_associated_types_inplace(sp, e.inner, stack);
+        }
+    TU_ARMA(NamedFunction, e) {
+        TU_MATCH_HDRA( (e.path.m_data), {)
+        TU_ARMA(Generic, pe) {
+            //ConvertHIR_ConstantEvaluate_MethodParams(sp, m_crate, m_vis_path, m_impl_generics, m_item_generics, *e.binding.get_generics(), pe.m_params);
+            H::expand_associated_types_params(sp, *this, pe.m_params, stack);
+            }
+        TU_ARMA(UfcsInherent, pe) {
+            expand_associated_types_inplace(sp, pe.type, stack);
+            H::expand_associated_types_params(sp, *this, pe.params, stack);
+            }
+        TU_ARMA(UfcsKnown, pe) {
+            expand_associated_types_inplace(sp, pe.type, stack);
+            H::expand_associated_types_params(sp, *this, pe.params, stack);
+            H::expand_associated_types_params(sp, *this, pe.trait.m_params, stack);
+            }
+        TU_ARMA(UfcsUnknown, pe) {
+            BUG(sp, "Encountered UfcsUnknown");
+            }
+        }
+        // TODO: Should this re-populate `def`? Not right now, assuming it's set once only
         }
     TU_ARMA(Function, e) {
         for(auto& ty : e.m_arg_types)

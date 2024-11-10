@@ -420,6 +420,9 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
     (Pointer,
         this->visit_type( e.inner );
         ),
+    (NamedFunction,
+        this->visit_path(::HIR::Visitor::PathContext::VALUE, e.path);
+        ),
     (Function,
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);

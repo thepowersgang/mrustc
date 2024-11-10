@@ -1162,6 +1162,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
         this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(Target_GetPointerBits()/8), HIR::CoreType::Usize}) ) );
         //TODO(sp, "Match literal with pointer? " << lit);
         }
+    TU_ARMA(NamedFunction, e) {
+        ERROR(sp, E0000, "Attempting to match over a functon pointer");
+        }
     TU_ARMA(Function, e) {
         ERROR(sp, E0000, "Attempting to match over a functon pointer");
         }
@@ -1934,6 +1937,13 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             ERROR(sp, E0000, "Attempting to match over a pointer");
         }
         }
+    TU_ARMA(NamedFunction, e) {
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a functon pointer");
+        }
+        }
     TU_ARMA(Function, e) {
         if( pat.m_data.is_Any() ) {
         }
@@ -2358,6 +2368,9 @@ namespace {
                 }
             TU_ARMA(Pointer, e) {
                 ERROR(sp, E0000, "Attempting to match over a pointer");
+                }
+            TU_ARMA(NamedFunction, e) {
+                ERROR(sp, E0000, "Attempting to match over a functon pointer");
                 }
             TU_ARMA(Function, e) {
                 ERROR(sp, E0000, "Attempting to match over a functon pointer");
@@ -2809,6 +2822,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             }   // Type::Data::Borrow
         TU_ARMA(Pointer, te) {
             BUG(sp, "Attempting to match a pointer - " << rule << " against " << ty);
+            }
+        TU_ARMA(NamedFunction, te) {
+            BUG(sp, "Attempting to match a function pointer - " << rule << " against " << ty);
             }
         TU_ARMA(Function, te) {
             BUG(sp, "Attempting to match a function pointer - " << rule << " against " << ty);
@@ -3411,6 +3427,9 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
         auto val_usize = m_builder.new_temporary(HIR::CoreType::Usize);
         m_builder.push_stmt_assign(sp, val_usize.clone(), ::MIR::RValue::make_Cast({ mv$(val), ::HIR::CoreType::Usize }));
         this->gen_dispatch__primitive(HIR::CoreType::Usize, mv$(val_usize), rules, ofs, arm_targets, def_blk);
+        }
+    TU_ARMA(NamedFunction, te) {
+        BUG(sp, "Attempting to match a function pointer - " << ty);
         }
     TU_ARMA(Function, te) {
         // TODO: Could this actually be valid?

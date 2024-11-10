@@ -435,6 +435,9 @@ namespace {
                     }
                 }
                 }
+            TU_ARMA(NamedFunction, e) {
+                BUG(sp, "Attempting to cast to a named-function type - impossible");
+                }
             TU_ARMA(Closure, e) {
                 BUG(sp, "Attempting to cast to a closure type - impossible");
                 }
@@ -2298,6 +2301,11 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - Pointer mutability differs");
                 }
                 this->equate_types_inner(sp, l_e.inner, r_e.inner);
+                }
+            TU_ARMA(NamedFunction, l_e, r_e) {
+                if( !equality_path(l_e.path, r_e.path) ) {
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
+                }
                 }
             TU_ARMA(Function, l_e, r_e) {
                 if( l_e.is_unsafe != r_e.is_unsafe

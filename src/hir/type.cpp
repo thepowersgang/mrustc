@@ -261,6 +261,9 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         }
         os << e.inner;
         }
+    TU_ARMA(NamedFunction, e) {
+        os << "fn{" << e.path <<"}";
+        }
     TU_ARMA(Function, e) {
         if( !e.hrls.m_lifetimes.empty() ) {
             os << "for" << e.hrls.fmt_args() << " ";
@@ -364,6 +367,9 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         if( te.type != xe.type )
             return false;
         return te.inner == xe.inner;
+        }
+    TU_ARMA(NamedFunction, te, xe) {
+        return te.path == xe.path;
         }
     TU_ARMA(Function, te, xe) {
         if( te.is_unsafe != xe.is_unsafe )
@@ -473,6 +479,9 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
     (Pointer,
         ORD( static_cast<unsigned>(te.type), static_cast<unsigned>(xe.type) );
         return ::ord(te.inner, xe.inner);
+        ),
+    (NamedFunction,
+        return ::ord(te.path, xe.path);
         ),
     (Function,
         ORD(te.is_unsafe, xe.is_unsafe);
@@ -626,6 +635,48 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
 {
     return callback.cmp_type(sp, *this, x_in, resolve_placeholder);
 }
+::HIR::Compare HIR::MatchGenerics::cmp_path(const Span& sp, const ::HIR::Path& path_l, const ::HIR::Path& path_r, t_cb_resolve_type resolve_placeholder)
+{
+    ::HIR::Compare  rv = Compare::Unequal;
+    if( path_l.m_data.tag() != path_r.m_data.tag() ) {
+        rv = Compare::Unequal;
+    }
+    else {
+        TU_MATCH_HDRA((path_l.m_data, path_r.m_data), {)
+        TU_ARMA(Generic, tpe, xpe) {
+            if( tpe.m_path != xpe.m_path ) {
+                rv = Compare::Unequal;
+            }
+            else {
+                rv = match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, *this);
+            }
+            }
+        TU_ARMA(UfcsKnown, tpe, xpe) {
+            rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
+            if( tpe.trait.m_path != xpe.trait.m_path )
+                rv = Compare::Unequal;
+            rv &= match_generics_pp(sp, tpe.trait.m_params, xpe.trait.m_params, resolve_placeholder, *this);
+            if( tpe.item != xpe.item )
+                rv = Compare::Unequal;
+            rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
+            }
+        TU_ARMA(UfcsUnknown, tpe, xpe) {
+            rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
+            if( tpe.item != xpe.item )
+                rv = Compare::Unequal;
+            rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
+            }
+        TU_ARMA(UfcsInherent, tpe, xpe) {
+            rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
+            if( tpe.item != xpe.item )
+                rv = Compare::Unequal;
+            rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
+            }
+        }
+    }
+    return rv;
+}
+
 ::HIR::Compare HIR::MatchGenerics::cmp_type(const Span& sp, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, t_cb_resolve_type resolve_placeholder)
 {
     if( const auto* e = ty_l.data().opt_Generic() ) {
@@ -809,43 +860,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return Compare::Equal;
         }
     TU_ARMA(Path, te, xe) {
-        ::HIR::Compare  rv = Compare::Unequal;
-        if( te.path.m_data.tag() != xe.path.m_data.tag() ) {
-            rv = Compare::Unequal;
-        }
-        else {
-            TU_MATCH_HDRA((te.path.m_data, xe.path.m_data), {)
-            TU_ARMA(Generic, tpe, xpe) {
-                if( tpe.m_path != xpe.m_path ) {
-                    rv = Compare::Unequal;
-                }
-                else {
-                    rv = match_generics_pp(sp, tpe.m_params, xpe.m_params, resolve_placeholder, *this);
-                }
-                }
-            TU_ARMA(UfcsKnown, tpe, xpe) {
-                rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
-                if( tpe.trait.m_path != xpe.trait.m_path )
-                    rv = Compare::Unequal;
-                rv &= match_generics_pp(sp, tpe.trait.m_params, xpe.trait.m_params, resolve_placeholder, *this);
-                if( tpe.item != xpe.item )
-                    rv = Compare::Unequal;
-                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
-                }
-            TU_ARMA(UfcsUnknown, tpe, xpe) {
-                rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
-                if( tpe.item != xpe.item )
-                    rv = Compare::Unequal;
-                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
-                }
-            TU_ARMA(UfcsInherent, tpe, xpe) {
-                rv = this->cmp_type(sp, tpe.type, xpe.type, resolve_placeholder);
-                if( tpe.item != xpe.item )
-                    rv = Compare::Unequal;
-                rv &= match_generics_pp(sp, tpe.params, xpe.params, resolve_placeholder, *this);
-                }
-            }
-        }
+        auto rv = this->cmp_path(sp, te.path, xe.path, resolve_placeholder);
 
         if( rv == ::HIR::Compare::Unequal ) {
             if( te.binding.is_Unbound() || xe.binding.is_Unbound() ) {
@@ -965,6 +980,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
         rv &= this->cmp_type(sp, te.inner, xe.inner, resolve_placeholder);
         return rv;
+        }
+    TU_ARMA(NamedFunction, te, xe) {
+        return this->cmp_path(sp, te.path, xe.path, resolve_placeholder);
         }
     TU_ARMA(Function, te, xe) {
         if( te.is_unsafe != xe.is_unsafe )
@@ -1129,6 +1147,9 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
         }
     TU_ARMA(Pointer, e) {
         return ::HIR::TypeRef( TypeData::make_Pointer({e.type, e.inner.clone()}) );
+        }
+    TU_ARMA(NamedFunction, e) {
+        return ::HIR::TypeRef( TypeData::make_NamedFunction({ e.path.clone(), e.def }) );
         }
     TU_ARMA(Function, e) {
         TypeData_FunctionPointer ft {
@@ -1421,6 +1442,9 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
         if( le.type != re.type )
             return Compare::Unequal;
         return le.inner.compare_with_placeholders(sp, re.inner, resolve_placeholder);
+        }
+    TU_ARMA(NamedFunction, le, re) {
+        return le.path.compare_with_placeholders( sp, re.path, resolve_placeholder );
         }
     TU_ARMA(Function, le, re) {
         if( le.m_abi != re.m_abi || le.is_unsafe != re.is_unsafe )

@@ -729,6 +729,8 @@ namespace
                     for(const auto& sty : te)
                         visit_type(sty, mode);
                     }
+                TU_ARMA(NamedFunction, te) {
+                    }
                 TU_ARMA(Function, te) {
                     visit_type(te.m_rettype, mode != Mode::Deep ? Mode::Shallow : Mode::Deep);
                     for(const auto& sty : te.m_arg_types)

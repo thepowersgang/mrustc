@@ -594,6 +594,27 @@ namespace {
             }
         }
 
+        void equate_paths(const Span& sp, const HIR::Path& lhs, const HIR::Path& rhs) {
+            TU_MATCH_HDRA( (lhs.m_data, rhs.m_data), { )
+            TU_ARMA(Generic, le, re) {
+                equate_pps(sp, le.m_params, re.m_params);
+                }
+            TU_ARMA(UfcsKnown, le, re) {
+                equate_types(sp, le.type, re.type);
+                equate_pps(sp, le.params, re.params);
+                equate_pps(sp, le.trait.m_params, re.trait.m_params);
+                }
+            TU_ARMA(UfcsInherent, le, re) {
+                equate_types(sp, le.type, re.type);
+                equate_pps(sp, le.params, re.params);
+                equate_pps(sp, le.impl_params, re.impl_params);
+                }
+            TU_ARMA(UfcsUnknown, le, re) {
+                BUG(sp, lhs << " := " << rhs << ": UfcsUnknown");
+                }
+            }
+        }
+
         void equate_types(const Span& sp, const HIR::TypeRef& lhs, const HIR::TypeRef& rhs) {
             // TODO: Only print when at the top-level
             TRACE_FUNCTION_F(lhs << " == " << rhs);
@@ -646,24 +667,7 @@ namespace {
             TU_ARMA(Generic, l, r) {}
             TU_ARMA(Diverge, l, r) {}
             TU_ARMA(Path, l, r) {
-                TU_MATCH_HDRA( (l.path.m_data, r.path.m_data), { )
-                TU_ARMA(Generic, le, re) {
-                    equate_pps(sp, le.m_params, re.m_params);
-                    }
-                TU_ARMA(UfcsKnown, le, re) {
-                    equate_types(sp, le.type, re.type);
-                    equate_pps(sp, le.params, re.params);
-                    equate_pps(sp, le.trait.m_params, re.trait.m_params);
-                    }
-                TU_ARMA(UfcsInherent, le, re) {
-                    equate_types(sp, le.type, re.type);
-                    equate_pps(sp, le.params, re.params);
-                    equate_pps(sp, le.impl_params, re.impl_params);
-                    }
-                TU_ARMA(UfcsUnknown, le, re) {
-                    BUG(sp, lhs << " := " << rhs << ": UfcsUnknown");
-                    }
-                }
+                equate_paths(sp, l.path, r.path);
                 }
             TU_ARMA(TraitObject, l, r) {
                 this->equate_lifetimes(sp, l.m_lifetime, r.m_lifetime);
@@ -696,6 +700,9 @@ namespace {
                 }
             TU_ARMA(Pointer, l, r) {
                 this->equate_types(sp, l.inner, r.inner);
+                }
+            TU_ARMA(NamedFunction, l, r) {
+                equate_paths(sp, l.path, r.path);
                 }
             TU_ARMA(Function, l, r) {
                 // Handling required?

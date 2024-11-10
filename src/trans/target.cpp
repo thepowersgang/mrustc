@@ -898,6 +898,12 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         }
         return true;
         }
+    TU_ARMA(NamedFunction, te) {
+        // Zero size
+        out_size = 0;
+        out_align = 1;
+        return true;
+        }
     TU_ARMA(Function, te) {
         // Pointer size
         out_size = g_target.m_arch.m_pointer_bits / 8;

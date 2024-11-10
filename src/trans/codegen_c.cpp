@@ -7378,6 +7378,8 @@ namespace {
                 }
             TU_ARMA(Pointer, te) {
                 }
+            TU_ARMA(NamedFunction, te) {
+                }
             TU_ARMA(Function, te) {
                 }
             // Has drop glue/destructors
@@ -7899,6 +7901,9 @@ namespace {
                 }
             TU_ARMA(Pointer, te) {
                 emit_ctype_ptr(te.inner, inner);
+                }
+            TU_ARMA(NamedFunction, te) {
+                m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 }
             TU_ARMA(Function, te) {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
