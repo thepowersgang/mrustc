@@ -1255,6 +1255,16 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
             //for(const auto& ty : fcn_ty.m_arg_types)
             //    state.rv.vi
         }
+        // - <fn{...} as Fn*>::call*
+        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type.data().is_NamedFunction() && (
+               path_mono.m_data.as_UfcsKnown().trait.m_path == state.crate.get_lang_item_path_opt("fn")
+            || path_mono.m_data.as_UfcsKnown().trait.m_path == state.crate.get_lang_item_path_opt("fn_mut")
+            || path_mono.m_data.as_UfcsKnown().trait.m_path == state.crate.get_lang_item_path_opt("fn_once")
+            ) )
+        {
+            // Calling a non-dynamic function, need to visit that function
+            Trans_Enumerate_FillFrom_Path(state, path_mono.m_data.as_UfcsKnown().type.data().as_NamedFunction().path, sub_pp);
+        }
         // - <fn(...) as FnPtr>::addr
         else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type.data().is_Function()
             && path_mono.m_data.as_UfcsKnown().trait.m_path == state.crate.get_lang_item_path_opt("fn_ptr_trait") )
@@ -1367,6 +1377,9 @@ void Trans_Enumerate_FillFrom_MIR_Constant(MIR::EnumCache& state, const ::MIR::C
         state.insert_path(*ce.p);
         ),
     (Generic,
+        ),
+    (Function,
+        state.insert_path(*ce.p);
         ),
     (ItemAddr,
         if(ce)

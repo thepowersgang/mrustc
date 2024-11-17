@@ -1626,6 +1626,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     }
                 }
                 }
+            TU_ARMA(Function, ce) {
+                return ::MIR::Constant::make_Function({ box$(this->monomorph(*ce.p)) });
+                }
             TU_ARMA(ItemAddr, ce) {
                 if(!ce)
                     return ::MIR::Constant::make_ItemAddr({});
@@ -4363,6 +4366,8 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 }
                             TU_ARMA(Generic, ve) {
                                 }
+                            TU_ARMA(Function, ve) {
+                                }
                             TU_ARMA(ItemAddr, ve) {
                                 }
                             }
@@ -4390,10 +4395,9 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             (Const,
                                 // TODO:
                                 ),
-                            (Generic,
-                                ),
-                            (ItemAddr,
-                                )
+                            (Generic,  ),
+                            (Function, ),
+                            (ItemAddr, )
                             )
                             break;
                         }

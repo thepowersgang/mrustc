@@ -1429,10 +1429,11 @@ namespace MIR { namespace eval {
                 }
                 }
             }
+            TU_ARM(c, Function, e2) {
+            }
             TU_ARM(c, ItemAddr, e2) {
                 assert(e2);
                 dst.write_ptr(state, EncodedLiteral::PTR_BASE, get_staticref_mono(*e2));
-                //MIR_TODO(state, "ItemAddr");
             }
             }
         }
@@ -2068,6 +2069,7 @@ namespace HIR {
                         dst.write_uint( state, ti.bits, v.get_inner() );
                         } break;
                     case TypeInfo::Unsigned:
+                        MIR_ASSERT(state, !src_ty.data().is_NamedFunction(), "");
                         dst.write_uint( state, ti.bits, inval.read_uint(state, src_ti.bits) );
                         break;
                     case TypeInfo::Float:
@@ -2114,14 +2116,17 @@ namespace HIR {
                     MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
                 }
                 }
+                break;
             // Allow casting any integer value to a pointer (TODO: Ensure that the pointer is sized?)
-            TU_ARMA(Pointer, te) {
-                // This might be a cast fat to thin, so restrict the input size
-                dst.copy_from( state, inval.slice(0, std::min(inval.get_len(), dst.get_len())) );
+            case HIR::TypeData::TAG_Pointer:
+            case HIR::TypeData::TAG_Function:
+                if( const auto* e = src_ty.data().opt_NamedFunction() ) {
+                    dst.write_ptr(state, EncodedLiteral::PTR_BASE, local_state.get_staticref_mono(e->path));
                 }
-            TU_ARMA(Function, te) {
-                dst.copy_from( state, inval.slice(0, std::min(inval.get_len(), dst.get_len())) );
+                else {
+                    dst.copy_from( state, inval.slice(0, std::min(inval.get_len(), dst.get_len())) );
                 }
+                break;
             }
             }
         TU_ARMA(BinOp, e) {
@@ -2814,11 +2819,15 @@ namespace HIR {
                         MIR_BUG(state, "Invalid argument for function pointer to `const_eval_select`: " << fcn_arg);
                         }
                     TU_ARMA(Constant, e) {
-                        if( !e.is_ItemAddr() ) {
+                        if( const auto* ce = e.opt_Function() ) {
+                            fcn_path = std::make_shared<HIR::Path>( ms.monomorph_path(state.sp, *ce->p) );
+                        }
+                        else if( const auto* ce = e.opt_ItemAddr() ) {
+                            fcn_path = std::make_shared<HIR::Path>( ms.monomorph_path(state.sp, **ce) );
+                        }
+                        else {
                             MIR_BUG(state, "Invalid argument for function pointer to `const_eval_select`: " << fcn_arg);
                         }
-                        const auto& p = *e.as_ItemAddr();
-                        fcn_path = std::make_shared<HIR::Path>( ms.monomorph_path(state.sp, p) );
                         }
                     }
 

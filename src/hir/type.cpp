@@ -133,6 +133,101 @@ bool ::HIR::TypeData_ErasedType_AliasInner::is_public_to(const HIR::SimplePath& 
     return true;
 }
 
+::HIR::TypeData_FunctionPointer HIR::TypeData::Data_NamedFunction::decay(const Span& sp) const
+{
+    const ::HIR::TypeRef* ty_self = nullptr;
+    const ::HIR::PathParams* pp_impl = nullptr;
+    const ::HIR::PathParams* pp_method = nullptr;
+
+    TU_MATCH_HDRA( (this->def), { )
+    TU_ARMA(Function, fp) {
+        ASSERT_BUG(sp, fp, "Non-initialised NamedFunction definition: " << this->path);
+        TU_MATCH_HDRA( (this->path.m_data), {)
+        TU_ARMA(Generic, pe) {
+            pp_method = &pe.m_params;
+            }
+        TU_ARMA(UfcsKnown, pe) {
+            ty_self = &pe.type;
+            pp_impl = &pe.trait.m_params;
+            pp_method = &pe.params;
+            }
+        TU_ARMA(UfcsInherent, pe) {
+            ty_self = &pe.type;
+            pp_impl = &pe.impl_params;
+            pp_method = &pe.params;
+            }
+        TU_ARMA(UfcsUnknown, pe) {
+            BUG(sp, "UfcsUnknown seen");
+            }
+        }
+        MonomorphStatePtr   ms { ty_self, pp_impl, pp_method };
+        const auto& f = *fp;
+        ::HIR::TypeData_FunctionPointer ft {
+            HIR::GenericParams(),   // TODO: Get HRLs
+            f.m_unsafe,
+            f.m_variadic,
+            f.m_abi,
+            ms.monomorph_type(sp, f.m_return),
+            {}
+        };
+        HIR::PathParams method_pp_trimmed;
+        if( !f.m_params.m_lifetimes.empty() )
+        {
+            ft.hrls.m_lifetimes = f.m_params.m_lifetimes;
+            method_pp_trimmed = ms.pp_method->clone();
+            method_pp_trimmed.m_lifetimes = std::move(ft.hrls.make_nop_params(3, /*lifetimes_only*/true).m_lifetimes);
+            ms.pp_method = &method_pp_trimmed;
+        }
+        for( const auto& arg : f.m_args )
+        {
+            ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.second) );
+        }
+        return ft;
+        }
+    TU_ARMA(EnumConstructor, ec) {
+        const auto& e = this->path.m_data.as_Generic();
+        MonomorphStatePtr   ms { nullptr, &e.m_params, nullptr };
+        auto enum_path = e.m_path; enum_path.m_components.pop_back();
+        const auto& enm = *ec.e;
+        ASSERT_BUG(sp, enm.m_data.is_Data(), "Enum " << enum_path << " isn't a data-holding enum");
+        const auto& var_ty = enm.m_data.as_Data()[ec.v].type;
+        const auto& str = *var_ty.data().as_Path().binding.as_Struct();
+        const auto& var_data = str.m_data.as_Tuple();
+
+        ::HIR::TypeData_FunctionPointer ft {
+            HIR::GenericParams(),   // TODO: Get HRLs
+            false, false,
+            ABI_RUST,
+            ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(enum_path), e.m_params.clone()), ::HIR::TypePathBinding::make_Enum(&enm) ),
+            {}
+            };
+        for( const auto& arg : var_data )
+        {
+            ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.ent) );
+        }
+        return ft;
+        }
+    TU_ARMA(StructConstructor, p) {
+        const auto& e = this->path.m_data.as_Generic();
+        MonomorphStatePtr   ms { nullptr, &e.m_params, nullptr };
+        ::HIR::TypeData_FunctionPointer ft {
+            HIR::GenericParams(),   // TODO: Get HRLs
+            false, false,
+            ABI_RUST,
+            ::HIR::TypeRef::new_path( this->path.clone(), ::HIR::TypePathBinding::make_Struct(p) ),
+            {}
+            };
+        for( const auto& arg : p->m_data.as_Tuple() )
+        {
+            ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.ent) );
+        }
+        return ft;
+        }
+    }
+    BUG(sp, "Unreachable code?");
+}
+
+
 void ::HIR::TypeRef::fmt(::std::ostream& os) const
 {
     if(!m_ptr) {
@@ -262,7 +357,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << e.inner;
         }
     TU_ARMA(NamedFunction, e) {
-        os << "fn{" << e.path <<"}";
+        os << "fn{" << (e.def.is_Function() && !e.def.as_Function() ? "!" : "") << e.path <<"}";
         }
     TU_ARMA(Function, e) {
         if( !e.hrls.m_lifetimes.empty() ) {
@@ -674,6 +769,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             }
         }
     }
+    DEBUG("rv = " << rv);
     return rv;
 }
 
@@ -1067,6 +1163,14 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
     }
     return rv;
 }
+HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
+    TU_MATCH_HDRA( (*this), { )
+    TU_ARMA(Function, e)    return e;
+    TU_ARMA(EnumConstructor, e)    return e;
+    TU_ARMA(StructConstructor, e)    return e;
+    }
+    throw "";
+}
 
 ::HIR::TypeRef HIR::TypeRef::clone() const
 {
@@ -1149,7 +1253,7 @@ const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
         return ::HIR::TypeRef( TypeData::make_Pointer({e.type, e.inner.clone()}) );
         }
     TU_ARMA(NamedFunction, e) {
-        return ::HIR::TypeRef( TypeData::make_NamedFunction({ e.path.clone(), e.def }) );
+        return ::HIR::TypeRef( TypeData::make_NamedFunction({ e.path.clone(), e.def.clone() }) );
         }
     TU_ARMA(Function, e) {
         TypeData_FunctionPointer ft {

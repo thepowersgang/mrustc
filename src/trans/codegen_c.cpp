@@ -1628,6 +1628,9 @@ namespace {
             TU_ARMA(Function, te) {
                 emit_type_fn(ty); m_of << "\n";
                 }
+            TU_ARMA(NamedFunction, te) {
+                m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
+                }
             TU_ARMA(Array, te) {
                 m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
                 }
@@ -1906,6 +1909,13 @@ namespace {
             TU_ARMA(Function, te) {
                 emit_type_fn(ty);
                 m_of << " // " << ty << "\n";
+                }
+            TU_ARMA(NamedFunction, te) {
+                m_of << "typedef struct "; emit_ctype(ty); m_of << " {";
+                if( m_options.disallow_empty_structs ) {
+                    m_of << " char _unused; ";
+                }
+                m_of << "} "; emit_ctype(ty); m_of << ";\n";
                 }
             TU_ARMA(Array, te) {
                 m_of << "typedef ";
@@ -4017,6 +4027,13 @@ namespace {
                 return;
             }
 
+            // Cast of a named function to a function pointer - originate the pointer
+            if( ve.type.data().is_Function() && ty.data().is_NamedFunction() ) {
+                emit_lvalue(dst);
+                m_of << " = " << Trans_Mangle(ty.data().as_NamedFunction().path);
+                return;
+            }
+
             // Emulated i128/u128 support
             if (m_options.emulated_i128 && (
                 ve.type == ::HIR::CoreType::U128 || ve.type == ::HIR::CoreType::I128
@@ -4130,6 +4147,11 @@ namespace {
                     m_of << ".PTR";
                     special = true;
                 }
+            }
+            if( ty.data().is_NamedFunction() )
+            {
+                m_of << Trans_Mangle(ty.data().as_NamedFunction().path);
+                special = true;
             }
             if (ve.type.data().is_Primitive() && ty.data().is_Path() && ty.data().as_Path().binding.is_Enum())
             {
@@ -5877,7 +5899,7 @@ namespace {
                 const auto& arg_ty_tuple = params.m_types.at(0).data().as_Tuple();
                 const auto& arg = e.args.at(0).as_LValue();
                 // Note: arg 1 is the constant function
-                const auto& fcn_path = *e.args.at(2).as_Constant().as_ItemAddr();
+                const auto& fcn_path = *e.args.at(2).as_Constant().as_Function().p;
 
                 // HACK: Just make a path terminator and call into that
                 ::std::vector<MIR::Param>   args;
@@ -7774,6 +7796,9 @@ namespace {
                 }
             TU_ARMA(Generic, c) {
                 MIR_BUG(*m_mir_res, "Generic value present at codegen");
+                }
+            TU_ARMA(Function, c) {
+                MIR_TODO(*m_mir_res, "Constant::Function");
                 }
             TU_ARMA(ItemAddr, c) {
                 bool  is_fcn = false;

@@ -167,3 +167,4 @@
 - Method lookup with `Arc` reciever
 - `async` (functions and blocks)
 - References to `Self` in `impl Foo`
+- Requires zero-sized functions?

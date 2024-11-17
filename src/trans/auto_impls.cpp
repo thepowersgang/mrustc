@@ -556,32 +556,85 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
         trans_list.m_auto_statics.reserve( trans_list.m_vtables.size() );
         for(const auto& ent : trans_list.m_vtables)
         {
+            Span    sp;
             const auto& path = ent.first;
             const auto& trait_path = path.m_data.as_UfcsKnown().trait;
             const auto& type = path.m_data.as_UfcsKnown().type;
 
-            if( const auto* te = type.data().opt_Function() )
+            struct {
+                const char* fcn_name;
+                const HIR::SimplePath* trait_path;
+                HIR::BorrowType bt;
+            } const entries[3] = {
+                { "call", &state.resolve.m_lang_Fn, HIR::BorrowType::Shared },
+                { "call_mut", &state.resolve.m_lang_FnMut, HIR::BorrowType::Unique },
+                { "call_once", &state.resolve.m_lang_FnOnce, HIR::BorrowType::Owned }
+            };
+
+            size_t  offset;
+            if( trait_path.m_path == state.resolve.m_lang_Fn )
+                offset = 0;
+            else if( trait_path.m_path == state.resolve.m_lang_FnMut )
+                offset = 1;
+            else if( TARGETVER_LEAST_1_39 && trait_path.m_path == state.resolve.m_lang_FnOnce )
+                offset = 2;
+            else
+                offset = 3; // Wait, is this reachable?
+
+            if( const auto* te = type.data().opt_NamedFunction() )
             {
-                struct {
-                    const char* fcn_name;
-                    const HIR::SimplePath* trait_path;
-                    HIR::BorrowType bt;
-                } const entries[3] = {
-                    { "call", &state.resolve.m_lang_Fn, HIR::BorrowType::Shared },
-                    { "call_mut", &state.resolve.m_lang_FnMut, HIR::BorrowType::Unique },
-                    { "call_once", &state.resolve.m_lang_FnOnce, HIR::BorrowType::Owned }
-                };
+                for(; offset < sizeof(entries)/sizeof(entries[0]); offset ++)
+                {
+                    bool is_by_value = (offset == 2);
+                    const auto& ent = entries[offset];
 
-                size_t  offset;
-                if( trait_path.m_path == state.resolve.m_lang_Fn )
-                    offset = 0;
-                else if( trait_path.m_path == state.resolve.m_lang_FnMut )
-                    offset = 1;
-                else if( TARGETVER_LEAST_1_39 && trait_path.m_path == state.resolve.m_lang_FnOnce )
-                    offset = 2;
-                else
-                    offset = 3; // Wait, is this reachable?
+                    auto fcn_p = path.clone();
+                    fcn_p.m_data.as_UfcsKnown().item = ent.fcn_name;
+                    fcn_p.m_data.as_UfcsKnown().trait.m_path = ent.trait_path->clone();
 
+                    auto* e = trans_list.add_function(mv$(fcn_p));
+                    if( e ) {
+                        auto ft = te->decay(sp);
+
+                        ::std::vector<HIR::TypeRef> arg_tys;
+                        for(auto& ty : ft.m_arg_types)
+                            arg_tys.push_back( ty.clone() );
+                        auto arg_ty = ::HIR::TypeRef(mv$(arg_tys));
+                        state.resolve.expand_associated_types(sp, arg_ty);
+
+                        HIR::Function   fcn;
+                        fcn.m_return = ft.m_rettype.clone();
+                        state.resolve.expand_associated_types(sp, arg_ty);
+                        fcn.m_args.push_back(std::make_pair( HIR::Pattern(), !is_by_value ? HIR::TypeRef::new_borrow(ent.bt, type.clone()) : type.clone() ));
+                        fcn.m_args.push_back(std::make_pair( HIR::Pattern(), mv$(arg_ty) ));
+
+                        fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
+                        Builder builder(state, *fcn.m_code.m_mir);
+
+                        std::vector<MIR::Param> arg_params;
+                        for(size_t i = 0; i < ft.m_arg_types.size(); i ++) {
+                            arg_params.push_back(MIR::LValue::new_Field(MIR::LValue::new_Argument(1), i));
+                        }
+                        builder.terminate_Call(MIR::LValue::new_Return(),
+                            te->path.clone(),
+                            mv$(arg_params),
+                            1, 2
+                            );
+                        // BB1: Return
+                        builder.ensure_open();
+                        builder.terminate_block(MIR::Terminator::make_Return({}));
+                        // BB1: Diverge
+                        builder.ensure_open();
+                        builder.terminate_block(MIR::Terminator::make_Diverge({}));
+
+                        MIR_Validate(state.resolve, HIR::ItemPath(path), *fcn.m_code.m_mir, fcn.m_args, fcn.m_return);
+                        trans_list.m_auto_functions.push_back(box$(fcn));
+                        e->ptr = trans_list.m_auto_functions.back().get();
+                    }
+                }
+            }
+            else if( const auto* te = type.data().opt_Function() )
+            {
                 for(; offset < sizeof(entries)/sizeof(entries[0]); offset ++)
                 {
                     bool is_by_value = (offset == 2);

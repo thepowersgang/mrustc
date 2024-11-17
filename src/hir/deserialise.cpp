@@ -656,6 +656,7 @@ namespace {
             _(StaticString, m_in.read_string() )
             _(Const,  { box$(deserialise_path()) } )
             _(Generic,  deserialise_genericref())
+            _(Function, { box$(deserialise_path()) } )
             _(ItemAddr, box$(deserialise_path()) )
             #undef _
             default:
@@ -1113,6 +1114,9 @@ namespace {
         _(Pointer, {
             static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
             deserialise_type()
+            })
+        _(NamedFunction, {
+            deserialise_path()
             })
         _(Function, {
             deserialise_genericparams(),

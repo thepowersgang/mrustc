@@ -514,7 +514,7 @@ namespace {
         }
     TU_ARMA(Function, te) {
         const auto* data_reloc = lit.get_reloc();
-        MIR_ASSERT(state, data_reloc, "");
+        MIR_ASSERT(state, data_reloc, "Function with no relocation?!");
         MIR_ASSERT(state, data_reloc->p, "");
         return ::MIR::Constant::make_ItemAddr( box$( data_reloc->p->clone() ) );
         }
@@ -1391,6 +1391,48 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                             e.fcn = mv$(fcn_lvalue);
                         else
                             e.fcn = ::MIR::LValue::new_Deref( mv$(fcn_lvalue) );
+                    }
+                }
+                if( path.m_data.is_UfcsKnown() && path.m_data.as_UfcsKnown().type.data().is_NamedFunction() )
+                {
+                    const auto& pe = path.m_data.as_UfcsKnown();
+                    const auto& fcn_ty = pe.type.data().as_NamedFunction();
+                    if( pe.trait.m_path == resolve.m_lang_Fn || pe.trait.m_path == resolve.m_lang_FnMut || pe.trait.m_path == resolve.m_lang_FnOnce )
+                    {
+                        auto n_args = fcn_ty.decay(state.sp).m_arg_types.size();
+                        MIR_ASSERT(state, e.args.size() == 2, "Fn* call requires two arguments");
+                        auto fcn_lvalue = mv$(e.args[0].as_LValue());
+                        auto args_lvalue = mv$(e.args[1].as_LValue());
+
+                        DEBUG("Convert named function pointer call");
+
+                        e.args.clear();
+                        e.args.reserve( n_args );
+                        for(unsigned int i = 0; i < n_args; i ++)
+                        {
+                            e.args.push_back( ::MIR::LValue::new_Field(args_lvalue.clone(), i) );
+                        }
+                        TU_MATCH_HDRA( (fcn_ty.def), {)
+                        TU_ARMA(Function, ve) {
+                            e.fcn = fcn_ty.path.clone();
+                            }
+                        TU_ARMA(StructConstructor, ve) {
+                            block.statements.push_back(::MIR::Statement::make_Assign({
+                                std::move(e.ret_val),
+                                MIR::RValue::make_Struct({ fcn_ty.path.m_data.as_Generic().clone(), std::move(e.args) })
+                                }));
+                            block.terminator = MIR::Terminator::make_Goto(e.ret_block);
+                            }
+                        TU_ARMA(EnumConstructor, ve) {
+                            auto enm_path = fcn_ty.path.m_data.as_Generic().clone();
+                            enm_path.m_path.m_components.pop_back();
+                            block.statements.push_back(::MIR::Statement::make_Assign({
+                                std::move(e.ret_val),
+                                MIR::RValue::make_EnumVariant({ std::move(enm_path), static_cast<unsigned>(ve.v), std::move(e.args) })
+                                }));
+                            block.terminator = MIR::Terminator::make_Goto(e.ret_block);
+                            }
+                        }
                     }
                 }
             }

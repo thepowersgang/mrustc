@@ -396,7 +396,9 @@ namespace {
                     //    ERROR(sp, E0000, "Invalid cast to fat pointer " << dst_ty << " from " << src_ty);
                     //}
                     }
-                TU_ARMA(Function, se) {
+                    break;
+                case ::HIR::TypeData::TAG_Function:
+                case ::HIR::TypeData::TAG_NamedFunction:
                     if( de.inner == ::HIR::TypeRef::new_unit() || de.inner == ::HIR::CoreType::U8 || de.inner == ::HIR::CoreType::I8 ) {
                     }
                     else if( m_resolve.type_is_sized(sp, de.inner) ) {
@@ -404,7 +406,6 @@ namespace {
                     }
                     else {
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
-                    }
                     }
                 TU_ARMA(Borrow, se) {
                     this->check_types_equal(sp, de.inner, se.inner);
@@ -419,6 +420,9 @@ namespace {
                 default:
                     ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     break;
+                TU_ARMA(NamedFunction, se) {
+                    // TODO: Check?
+                    }
                 TU_ARMA(Function, se) {
                     if( se.is_unsafe != de.is_unsafe && se.is_unsafe )
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - removing unsafe");
@@ -891,9 +895,16 @@ namespace {
 
             const auto& val_ty = node.m_value->m_res_type;
 
-            if( const auto* e = val_ty.data().opt_Function() )
+            if( val_ty.data().is_Function() || val_ty.data().is_NamedFunction() )
             {
                 DEBUG("- Function pointer: " << val_ty);
+                ::HIR::TypeRef  tmp_ft;
+                const auto* e = val_ty.data().opt_Function();
+                if( !e ) {
+                    tmp_ft = ::HIR::TypeRef( val_ty.data().as_NamedFunction().decay(node.span()) );
+                    m_resolve.expand_associated_types(node.span(), tmp_ft);
+                    e = &tmp_ft.data().as_Function();
+                }
                 if( e->is_variadic ? node.m_args.size() < e->m_arg_types.size() : node.m_args.size() != e->m_arg_types.size() ) {
                     ERROR(node.span(), E0000, "Incorrect number of arguments to call via " << val_ty);
                 }

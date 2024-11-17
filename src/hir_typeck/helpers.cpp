@@ -1676,6 +1676,49 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             return callback( ImplRef(e.hrls.clone(), type.clone(), mv$(pp), mv$(types)), cmp );
         }
         }
+    // Magic Fn* trait impls for function pointers
+    TU_ARMA(NamedFunction, real_e) {
+        if( trait == m_lang_Fn || trait == m_lang_FnMut || trait == m_lang_FnOnce ) {
+            if( params.m_types.size() != 1 )
+                BUG(sp, "Fn* traits require a single tuple argument");
+            if( !params.m_types[0].data().is_Tuple() )
+                BUG(sp, "Fn* traits require a single tuple argument");
+
+            DEBUG("- Magic impl of Fn* for " << type);
+            auto e = real_e.decay(sp);
+            DEBUG("> " << e.m_rettype << " - " << e.m_arg_types);
+            const auto& args_des = params.m_types[0].data().as_Tuple();
+            if( args_des.size() != e.m_arg_types.size() ) {
+                return false;
+            }
+
+            // NOTE: unsafe or non-rust ABI functions aren't valid
+            if( e.m_abi != ABI_RUST  ) {
+                DEBUG("- No magic impl, wrong ABI (`" << e.m_abi << "`): " << type);
+                return false;
+            }
+            if( e.is_unsafe ) {
+                DEBUG("- No magic impl, unsafe function: " << type);
+                return false;
+            }
+            DEBUG("- Magic impl of Fn* for " << type);
+
+            auto cmp = ::HIR::Compare::Equal;
+            ::std::vector< ::HIR::TypeRef>  args;
+            for(unsigned int i = 0; i < e.m_arg_types.size(); i ++)
+            {
+                const auto& at = e.m_arg_types[i];
+                args.push_back( at.clone() );
+                cmp &= at.compare_with_placeholders(sp, args_des[i], this->m_ivars.callback_resolve_infer());
+            }
+
+            ::HIR::PathParams   pp;
+            pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
+            ::HIR::TraitPath::assoc_list_t  types;
+            types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), e.m_rettype.clone()} ) );
+            return callback( ImplRef(e.hrls.clone(), type.clone(), mv$(pp), mv$(types)), cmp );
+        }
+        }
     // Magic index and unsize impls for Arrays
     // NOTE: The index impl for [T] is in libcore.
     TU_ARMA(Array, e) {
@@ -4019,6 +4062,9 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     TU_ARMA(Slice, e) {
         return ::HIR::Compare::Unequal;
         }
+    TU_ARMA(NamedFunction, e) {
+        return ::HIR::Compare::Equal;
+        }
     TU_ARMA(Function, e) {
         return ::HIR::Compare::Equal;
         }
@@ -4102,6 +4148,9 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         }
     TU_ARMA(Slice, e) {
         return ::HIR::Compare::Unequal;
+        }
+    TU_ARMA(NamedFunction, e) {
+        return ::HIR::Compare::Equal;
         }
     TU_ARMA(Function, e) {
         return ::HIR::Compare::Equal;

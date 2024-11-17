@@ -99,6 +99,11 @@ namespace {
                 }
             }
             }
+        TU_ARMA(Function, ce) {
+            return ::MIR::Constant::make_Function({
+                box$(params.monomorph(resolve, *ce.p))
+                });
+            }
         TU_ARMA(ItemAddr, ce) {
             if(!ce)
                 return ::MIR::Constant::make_ItemAddr({});

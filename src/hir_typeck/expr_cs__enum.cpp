@@ -1758,30 +1758,6 @@ namespace typecheck
 
             this->add_ivars_path(node.span(), node.m_path);
 
-            auto get_function_type = [](const Span& sp, const HIR::Function& f, MonomorphStatePtr ms)->HIR::TypeRef {
-                ::HIR::TypeData_FunctionPointer ft {
-                    HIR::GenericParams(),   // TODO: Get HRLs
-                    f.m_unsafe,
-                    f.m_variadic,
-                    f.m_abi,
-                    ms.monomorph_type(sp, f.m_return),
-                    {}
-                };
-                HIR::PathParams method_pp_trimmed;
-                if( !f.m_params.m_lifetimes.empty() )
-                {
-                    ft.hrls.m_lifetimes = f.m_params.m_lifetimes;
-                    method_pp_trimmed = ms.pp_method->clone();
-                    method_pp_trimmed.m_lifetimes = std::move(ft.hrls.make_nop_params(3, /*lifetimes_only*/true).m_lifetimes);
-                    ms.pp_method = &method_pp_trimmed;
-                }
-                for( const auto& arg : f.m_args )
-                {
-                    ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.second) );
-                }
-                return ::HIR::TypeRef( ::HIR::TypeData::make_Function(mv$(ft)) );
-                };
-
             TU_MATCH_HDRA( (node.m_path.m_data), {)
             TU_ARMA(Generic, e) {
                 switch(node.m_target) {
@@ -1792,7 +1768,7 @@ namespace typecheck
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, f.m_params, e.m_params);
 
                     auto ms = MonomorphStatePtr(nullptr, nullptr, &e.m_params);
-                    auto ty = get_function_type(sp, f, ms);
+                    auto ty = HIR::TypeRef(HIR::TypeData::make_NamedFunction({ node.m_path.clone(), &f }));
 
                     // Apply bounds
                     apply_bounds_as_rules(this->context, sp, f.m_params, ms, /*is_impl_level=*/false);
@@ -1806,21 +1782,9 @@ namespace typecheck
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, s.m_params, e.m_params);
 
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
-
-                    ::HIR::TypeData_FunctionPointer ft {
-                        HIR::GenericParams(),   // TODO: Get HRLs
-                        false, false,
-                        ABI_RUST,
-                        ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypePathBinding::make_Struct(&s) ),
-                        {}
-                        };
-                    for( const auto& arg : se )
-                    {
-                        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.ent) );
-                    }
                     //apply_bounds_as_rules(this->context, sp, s.m_params, monomorph_cb, /*is_impl_level=*/true);
+                    auto ty = HIR::TypeRef(HIR::TypeData::make_NamedFunction({ node.m_path.clone(), &s }));
 
-                    auto ty = ::HIR::TypeRef( ::HIR::TypeData::make_Function(mv$(ft)) );
                     this->context.equate_types(sp, node.m_res_type, ty);
                     } break;
                 case ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR: {
@@ -1836,20 +1800,11 @@ namespace typecheck
                     const auto& var_data = str.m_data.as_Tuple();
 
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
-                    ::HIR::TypeData_FunctionPointer ft {
-                        HIR::GenericParams(),   // TODO: Get HRLs
-                        false, false,
-                        ABI_RUST,
-                        ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(enum_path), e.m_params.clone()), ::HIR::TypePathBinding::make_Enum(&enm) ),
-                        {}
-                        };
-                    for( const auto& arg : var_data )
-                    {
-                        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.ent) );
-                    }
                     //apply_bounds_as_rules(this->context, sp, enm.m_params, monomorph_cb, /*is_impl_level=*/true);
-
-                    auto ty = ::HIR::TypeRef( ::HIR::TypeData::make_Function(mv$(ft)) );
+                    auto ty = HIR::TypeRef(HIR::TypeData::make_NamedFunction({
+                        node.m_path.clone(),
+                        HIR::TypeData_NamedFunction_Ty::make_EnumConstructor({ &enm, idx })
+                        }));
                     this->context.equate_types(sp, node.m_res_type, ty);
                     } break;
                 case ::HIR::ExprNode_PathValue::STATIC: {
@@ -1897,9 +1852,9 @@ namespace typecheck
                     fix_param_count(sp, this->context, e.type, false, node.m_path, ie.m_params,  e.params);
 
                     auto ms = MonomorphStatePtr(&e.type, &e.trait.m_params, &e.params);
-                    auto ty = get_function_type(sp, ie, ms);
                     apply_bounds_as_rules(this->context, sp, ie.m_params, ms, /*is_impl_level=*/false);
 
+                    auto ty = HIR::TypeRef(HIR::TypeData::make_NamedFunction({ node.m_path.clone(), &ie }));
                     this->context.equate_types(node.span(), node.m_res_type, ty);
                     }
                 }
@@ -1990,8 +1945,7 @@ namespace typecheck
                     apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, ms, /*is_impl_level=*/true);
                     apply_bounds_as_rules(this->context, sp, fcn_ptr->m_params, ms, /*is_impl_level=*/false);
 
-                    auto ty = get_function_type(sp, *fcn_ptr, ms);
-
+                    auto ty = HIR::TypeRef(HIR::TypeData::make_NamedFunction({ node.m_path.clone(), fcn_ptr }));
                     this->context.equate_types(node.span(), node.m_res_type, ty);
                 }
                 else    // !fcn_ptr, ergo const_ptr

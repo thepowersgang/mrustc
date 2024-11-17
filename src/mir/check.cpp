@@ -121,12 +121,14 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             StateVec(size_t n=0, State init={})
                 : v( (n + 3) / 4, init.v | (init.v << 2) | (init.v << 4) | (init.v << 6))
             {
-                switch(n % 4)
-                {
-                case 0: break;
-                case 1: v.back() |= 0xFC; break;
-                case 2: v.back() |= 0xF0; break;
-                case 3: v.back() |= 0xC0; break;
+                if( v.size() > 0 ) {    // Avoids a GCC warning
+                    switch(n % 4)
+                    {
+                    case 0: break;
+                    case 1: v.back() |= 0xFC; break;
+                    case 2: v.back() |= 0xF0; break;
+                    case 3: v.back() |= 0xC0; break;
+                    }
                 }
             }
 
@@ -141,7 +143,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 }
                 else
                 {
-                    size_t extra 
+                    size_t extra
                         = v.back() >= 0xFC ? 1
                         : v.back() >= 0xF0 ? 2
                         : v.back() >= 0xC0 ? 3
@@ -617,7 +619,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     // Validation rules:
 
     if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
-    
+
     {
         HIR::TypeRef ty_Self = HIR::TypeRef("Self", GENERIC_Self);
         HIR::PathParams empty_params_i = resolve.m_impl_generics ? resolve.m_impl_generics->make_nop_params(0) : HIR::PathParams();
@@ -830,6 +832,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         TU_ARMA(Generic, c) {
                             // TODO: Check result type against type of const
                             }
+                        TU_ARMA(Function, c) {
+                            MIR_ASSERT(state, dst_ty.data().is_NamedFunction(), dst_ty);
+                            }
                         TU_ARMA(ItemAddr, c) {
                             MonomorphState  ms;
                             auto v = state.m_resolve.get_value(state.sp, *c, ms, /*sig_only=*/true);
@@ -851,12 +856,15 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(tmp)) );
                                 }
                             TU_ARMA(Function, ve) {
+                                MIR_ASSERT(state, dst_ty.data().is_Function(), dst_ty);
                                 // TODO: Check
                                 }
                             TU_ARMA(EnumConstructor, ve) {
+                                MIR_ASSERT(state, dst_ty.data().is_Function(), dst_ty);
                                 // TODO: Check
                                 }
                             TU_ARMA(StructConstructor, ve) {
+                                MIR_ASSERT(state, dst_ty.data().is_Function(), dst_ty);
                                 // TODO: Check
                                 }
                             }
@@ -907,6 +915,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             //    MIR_ASSERT(state, d_e == HIR::CoreType::Usize, "Invalid cast: " << dst_ty << " from " << src_ty);
                             //    }
                             //}
+                            }
+                        TU_ARMA(NamedFunction, s_e) {
                             }
                         // Primitives: Can cast to thin pointers or to other primitives
                         TU_ARMA(Primitive, s_e) {

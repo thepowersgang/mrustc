@@ -1451,8 +1451,15 @@ namespace {
                 BUG(node.span(), "Invalid cast to " << ty_out << " from " << ty_in);
             TU_ARMA(Function, de) {
                 // Just trust the previous stages.
-                ASSERT_BUG(node.span(), ty_in.data().is_Function(), ty_in);
-                ASSERT_BUG(node.span(), de.m_arg_types == ty_in.data().as_Function().m_arg_types, ty_in);
+                if( ty_in.data().is_Function() ) {
+                    ASSERT_BUG(node.span(), de.m_arg_types == ty_in.data().as_Function().m_arg_types, ty_in);
+                }
+                else if( ty_in.data().is_NamedFunction() ) {
+                    // TODO: Extra checks?
+                }
+                else {
+                    BUG(node.span(), "_Cast from bad type: " << ty_in);
+                }
                 }
             TU_ARMA(Pointer, de) {
                 if( ty_in.data().is_Primitive() ) {
@@ -1477,7 +1484,7 @@ namespace {
                     }
                     // Valid
                 }
-                else if( /*const auto* se =*/ ty_in.data().opt_Function() )
+                else if( ty_in.data().is_Function() || ty_in.data().is_NamedFunction() )
                 {
                     if( !m_builder.resolve().type_is_sized(node.span(), de.inner) ) {
                         BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
@@ -1556,6 +1563,9 @@ namespace {
                         // TODO: Only valid for T: Sized?
                     }
                     else if( de == ::HIR::CoreType::Usize && ty_in.data().is_Function() ) {
+                        // TODO: Always valid?
+                    }
+                    else if( de == ::HIR::CoreType::Usize && ty_in.data().is_NamedFunction() ) {
                         // TODO: Always valid?
                     }
                     else {
@@ -2415,29 +2425,18 @@ namespace {
         {
             const auto& sp = node.span();
             TRACE_FUNCTION_F("_PathValue - " << node.m_path);
+            if( node.m_res_type.data().is_NamedFunction() ) {
+                auto tmp = m_builder.new_temporary( node.m_res_type );
+                m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_Function({ box$(node.m_path.clone()) }) );
+                //m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr({ box$(node.m_path.clone()) }) );
+                m_builder.set_result( sp, mv$(tmp) );
+                return ;
+            }
             TU_MATCH_HDRA( (node.m_path.m_data), { )
             TU_ARMA(Generic, pe) {
                 // Enum variant constructor.
                 if( node.m_target == ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR ) {
-                    auto enum_path = pe.m_path;
-                    enum_path.m_components.pop_back();
-                    const auto& var_name = pe.m_path.m_components.back();
-
-                    // Validation only.
-                    const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
-                    ASSERT_BUG(sp, enm.m_data.is_Data(), "Getting variant constructor of value varianta");
-                    size_t idx = enm.find_variant(var_name);
-                    ASSERT_BUG(sp, idx != SIZE_MAX, "Variant " << pe.m_path << " isn't present");
-                    const auto& var = enm.m_data.as_Data()[idx];
-                    ASSERT_BUG(sp, var.type.data().is_Path(), "Variant " << pe.m_path << " isn't a tuple");
-                    const auto& str = *var.type.data().as_Path().binding.as_Struct();
-                    ASSERT_BUG(sp, str.m_data.is_Tuple(), "Variant " << pe.m_path << " isn't a tuple");
-
-                    // TODO: Ideally, the creation of the wrapper function would happen somewhere before trans?
-                    auto tmp = m_builder.new_temporary( node.m_res_type );
-                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
-                    m_builder.set_result( sp, mv$(tmp) );
-                    return ;
+                    BUG(node.span(), "Should have produced a NamedFunction type and have been handled above");
                 }
                 const auto& vi = m_builder.crate().get_valitem_by_path(node.span(), pe.m_path);
                 TU_MATCH_HDRA( (vi), {)
@@ -2460,20 +2459,10 @@ namespace {
                         }) );
                     }
                 TU_ARMA(Function, e) {
-                    // TODO: Why not use the result type?
-                    auto monomorph_cb = MonomorphStatePtr(nullptr, nullptr, &pe.m_params);
-
-                    auto fcn_ty = e.make_ptr_ty(sp, monomorph_cb);
-                    m_builder.resolve().expand_associated_types( node.span(), fcn_ty );
-                    auto tmp = m_builder.new_temporary( mv$(fcn_ty) );
-                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
-                    m_builder.set_result( sp, mv$(tmp) );
+                    BUG(node.span(), "Should have produced a NamedFunction type and have been handled above");
                     }
                 TU_ARMA(StructConstructor, e) {
-                    // TODO: Ideally, the creation of the wrapper function would happen somewhere before this?
-                    auto tmp = m_builder.new_temporary( node.m_res_type );
-                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
-                    m_builder.set_result( sp, mv$(tmp) );
+                    BUG(node.span(), "Should have produced a NamedFunction type and have been handled above");
                     }
                 }
                 }
@@ -2490,7 +2479,7 @@ namespace {
                     TODO(sp, "Associated statics (non-rustc) - " << node.m_path);
                     ),
                 (Function,
-                    m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
+                    BUG(node.span(), "Should have produced a NamedFunction type and have been handled above");
                     )
                 )
                 }
@@ -2506,7 +2495,8 @@ namespace {
                         {
                             auto it = impl.m_methods.find(pe.item);
                             if( it != impl.m_methods.end() ) {
-                                m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
+                                //BUG(node.span(), "Should have produced a NamedFunction type and have been handled above: ");
+                                m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr({ box$(node.m_path.clone()) }) );
                                 return true;
                             }
                         }

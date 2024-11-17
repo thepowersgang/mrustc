@@ -1164,6 +1164,7 @@ namespace {
         void visit(::HIR::ExprNode_Cast& node) override {
             const auto& sp = node.span();
             HIR::ExprVisitorDef::visit(node);
+            DEBUG("Cast:");
             const auto& dst = node.m_dst_type;
             const auto& src = node.m_value->m_res_type;
             if( dst == src ) {
@@ -1173,8 +1174,18 @@ namespace {
                 auto pp = de->hrls.make_empty_params(true);
                 visit_path_params(pp);
                 auto ms_d = MonomorphHrlsOnly(pp);
-                if( const auto* se = src.data().opt_Function() ) {
+                if( src.data().is_Function() || src.data().is_NamedFunction() ) {
+                    ::HIR::TypeRef  tmp;
+                    const auto* se = src.data().opt_Function();
+                    if( !se ) {
+                        tmp = ::HIR::TypeRef( src.data().as_NamedFunction().decay(node.span()) );
+                        DEBUG("tmp = " << tmp);
+                        DEBUG("dst = " << dst);
+                        se = tmp.data().opt_Function();
+                    }
+
                     auto pp_s = se->hrls.make_empty_params(true);
+                    visit_path_params(pp_s);
                     auto ms_s = MonomorphHrlsOnly(pp_s);
                     ASSERT_BUG(node.span(), de->m_arg_types.size() == se->m_arg_types.size(), "");
                     for(size_t i = 0; i < de->m_arg_types.size(); i ++) {
@@ -1481,6 +1492,7 @@ namespace {
 
         void visit(::HIR::ExprNode_CallPath& node) override {
             HIR::ExprVisitorDef::visit(node);
+            DEBUG("CallPath:");
 
             // Equate arguments and returns (monomorphised)
             MonomorphState  ms;
@@ -1505,6 +1517,23 @@ namespace {
             // TODO: Equate arguments and returns (after monomorphising away the HRLs)
             const auto& val_ty = node.m_value->m_res_type;
             if( const auto* tep = val_ty.data().opt_Function() ) {
+                ::HIR::PathParams   hrl_params = tep->hrls.make_empty_params(true);
+                this->visit_path_params(hrl_params);
+                auto ms = MonomorphHrlsOnly(hrl_params);
+
+                ASSERT_BUG(node.span(), tep->m_arg_types.size() <= node.m_args.size(), "");
+                for(size_t i = 0; i < tep->m_arg_types.size(); i ++) {
+                    this->equate_types(node.m_args[i]->span(), ms.monomorph_type(node.span(), tep->m_arg_types[i], false), node.m_args[i]->m_res_type);
+                }
+                this->equate_types(node.span(), node.m_res_type, ms.monomorph_type(node.span(), tep->m_rettype, false));
+            }
+            else if( const auto* tep_r = val_ty.data().opt_NamedFunction() ) {
+                auto ft = tep_r->decay(node.span());
+                for(auto& t : ft.m_arg_types) {
+                    this->m_resolve.expand_associated_types(node.span(), t);
+                }
+                this->m_resolve.expand_associated_types(node.span(), ft.m_rettype);
+                const auto* tep = &ft;
                 ::HIR::PathParams   hrl_params = tep->hrls.make_empty_params(true);
                 this->visit_path_params(hrl_params);
                 auto ms = MonomorphHrlsOnly(hrl_params);
@@ -1655,28 +1684,13 @@ namespace {
             default:
                 TODO(node.span(), "PathValue - " << node.m_path << " - " << v.tag_str());
             TU_ARMA(EnumConstructor, ve) {
-                const auto& variant_ty = ve.e->m_data.as_Data().at(ve.v).type;
-                //const auto& variant_path = variant_ty.data().as_Path().path.m_data.as_Generic();
-                const auto& str = *variant_ty.data().as_Path().binding.as_Struct();
-                const auto& fields = str.m_data.as_Tuple();
-
-                auto ms = MonomorphStatePtr(nullptr, &node.m_path.m_data.as_Generic().m_params, nullptr);
-
-                auto p = node.m_path.m_data.as_Generic().m_path;
-                p.m_components.pop_back();
-                auto ret_ty = HIR::TypeRef::new_path(HIR::GenericPath(p, node.m_path.m_data.as_Generic().m_params.clone()), ve.e);
-                ty = ::HIR::fn_ptr_tuple_constructor(sp, ms, std::move(ret_ty), fields);
-                m_resolve.expand_associated_types(sp, ty);
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({
+                    node.m_path.clone(),
+                    ::HIR::TypeData_NamedFunction_Ty::make_EnumConstructor({ ve.e, ve.v })
+                    }));
                 }
             TU_ARMA(StructConstructor, ve) {
-                const auto& str = *ve.s;
-                const auto& fields = str.m_data.as_Tuple();
-
-                auto ms = MonomorphStatePtr(nullptr, &node.m_path.m_data.as_Generic().m_params, nullptr);
-                auto ret_ty = HIR::TypeRef::new_path(node.m_path.m_data.as_Generic().clone(), ve.s);
-                ty = HIR::fn_ptr_tuple_constructor(sp, ms, std::move(ret_ty), fields);
-                DEBUG("SC " << ty);
-                m_resolve.expand_associated_types(sp, ty);
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({ node.m_path.clone(), ve.s }));
                 }
             TU_ARMA(Constant, ve) {
                 ty = m_resolve.monomorph_expand(sp, ve->m_type, ms);
@@ -1685,20 +1699,7 @@ namespace {
                 ty = m_resolve.monomorph_expand(sp, ve->m_type, ms);
                 }
             TU_ARMA(Function, ve) {
-                ::HIR::TypeData_FunctionPointer ft {
-                    HIR::GenericParams(),
-                    ve->m_unsafe, ve->m_variadic, ve->m_abi,
-                    m_resolve.monomorph_expand(sp, ve->m_return, ms),
-                    {}
-                };
-                ft.hrls.m_lifetimes = ve->m_params.m_lifetimes;
-                auto method_pp_trimmed = ms.pp_method->clone();
-                method_pp_trimmed.m_lifetimes = std::move(ft.hrls.make_nop_params(3).m_lifetimes);
-                ms.pp_method = &method_pp_trimmed;
-                for(const auto& arg : ve->m_args)
-                    ft.m_arg_types.push_back( m_resolve.monomorph_expand(sp, arg.second, ms) );
-                ty = ::HIR::TypeRef(mv$(ft));
-                //ty = m_resolve.monomorph_expand(node.span(), ve->make_pointer_type(), ms);
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({ node.m_path.clone(), ve }));
                 }
             }
             this->equate_types(sp, node.m_res_type, ty);

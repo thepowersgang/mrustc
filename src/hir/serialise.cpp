@@ -1043,6 +1043,9 @@
             (Generic,
                 serialise(e);
                 ),
+            (Function,
+                serialise_path(*e.p);
+                ),
             (ItemAddr,
                 serialise_path(*e);
                 )

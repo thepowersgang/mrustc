@@ -279,6 +279,35 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
     TU_ARMA(Generic, e) {
         return m_resolve.get_const_param_type(this->sp, e.binding).clone();
         }
+    TU_ARMA(Function, e) {
+        MonomorphState  p;
+        auto v = m_resolve.get_value(this->sp, *e.p, p, /*signature_only=*/true);
+        TU_MATCH_HDRA( (v), {)
+        default:
+            MIR_BUG(*this, "get_const_type - Function points to bad type: " << v.tag_str() << " - " << c);
+        TU_ARMA(NotFound, ve) {
+            MIR_BUG(*this, "get_const_type - ItemAddr points to unknown value - " << c);
+            }
+        TU_ARMA(Function, ve) {
+            return HIR::TypeRef(::HIR::TypeData::make_NamedFunction({
+                e.p->clone(),
+                ve
+                }));
+            }
+        TU_ARMA(EnumConstructor, ve) {
+            return HIR::TypeRef(::HIR::TypeData::make_NamedFunction({
+                e.p->clone(),
+                ::HIR::TypeData_NamedFunction_Ty::make_EnumConstructor({ ve.e, ve.v })
+                }));
+            }
+        TU_ARMA(StructConstructor, ve) {
+            return HIR::TypeRef(::HIR::TypeData::make_NamedFunction({
+                e.p->clone(),
+                ve.s
+                }));
+            }
+        }
+        }
     TU_ARMA(ItemAddr, e) {
         MonomorphState  p;
         auto v = m_resolve.get_value(this->sp, *e, p, /*signature_only=*/true);
@@ -314,7 +343,10 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, mv$(rv));
             }
         TU_ARMA(Function, ve) {
-            auto rv = ve->make_ptr_ty(this->sp, p);
+            auto rv = HIR::TypeRef((::HIR::TypeData::Data_NamedFunction{
+                e->clone(),
+                ve
+                }).decay(this->sp));
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
             }
@@ -322,17 +354,10 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             MIR_BUG(*this, "get_const_type - ItemAddr points to an enum value - " << c);
             }
         TU_ARMA(EnumConstructor, ve) {
-            const auto& data_variant = ve.e->m_data.as_Data()[ve.v];
-            MIR_ASSERT(*this, data_variant.type.data().is_Path(), c << " enum variant type must be Path - " << data_variant.type);
-            const auto& dvt_path = data_variant.type.data().as_Path();
-            MIR_ASSERT(*this, dvt_path.binding.is_Struct(), c << " enum variant type path binding must be Struct - " << data_variant.type);
-            const auto& str = *dvt_path.binding.as_Struct();
-            MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like variant");
-            const auto& str_data = str.m_data.as_Tuple();
-
-            auto enum_path = e->clone();
-            enum_path.m_data.as_Generic().m_path.m_components.pop_back();
-            auto rv = HIR::fn_ptr_tuple_constructor(this->sp, p, ::HIR::TypeRef::new_path(mv$(enum_path), ve.e), str_data);
+            auto rv = HIR::TypeRef((::HIR::TypeData::Data_NamedFunction {
+                e->clone(),
+                ::HIR::TypeData_NamedFunction_Ty::make_EnumConstructor({ ve.e, ve.v })
+                }).decay(this->sp));
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
             }
@@ -340,13 +365,10 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             MIR_BUG(*this, c << " pointing to a struct constant");
             }
         TU_ARMA(StructConstructor, ve) {
-            // TODO: Move this to a method on the struct?
-            const auto& str = *ve.s;
-            MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like struct");
-            const auto& str_data = str.m_data.as_Tuple();
-
-            auto ret_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str);
-            auto rv = HIR::fn_ptr_tuple_constructor(this->sp, p, std::move(ret_ty), str_data);
+            auto rv = HIR::TypeRef((::HIR::TypeData::Data_NamedFunction{
+                e->clone(),
+                ve.s
+                }).decay(this->sp));
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
             }

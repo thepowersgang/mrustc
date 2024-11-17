@@ -189,6 +189,14 @@ struct TypeData_FunctionPointer
     TypeRef m_rettype;
     ::std::vector<TypeRef>  m_arg_types;
 };
+TAGGED_UNION_EX(TypeData_NamedFunction_Ty, (), Function, (
+    (Function, const ::HIR::Function* ),
+    (EnumConstructor, struct { const ::HIR::Enum* e; size_t v; }),
+    (StructConstructor, const ::HIR::Struct*)
+    ), (), (), (
+        TypeData_NamedFunction_Ty clone() const;
+    )
+);
 
 TAGGED_UNION(TypeData, Diverge,
     (Infer, struct {
@@ -233,7 +241,9 @@ TAGGED_UNION(TypeData, Diverge,
         }),
     (NamedFunction, struct {
         ::HIR::Path path;
-        const ::HIR::Function* def; // Function definition, used to decay to a pointer, populated by bind
+        TypeData_NamedFunction_Ty   def;
+
+        TypeData_FunctionPointer decay(const Span& sp) const;
         }),
     (Function, TypeData_FunctionPointer),   // TODO: Pointer wrap, this is quite large
     (Closure, struct {

@@ -33,7 +33,7 @@ bool StaticTraitResolve::find_impl(
         }
         else if( TARGETVER_LEAST_1_29 && trait_path == m_lang_Clone ) {
             // NOTE: Duplicated check for enumerate
-            if( type.data().is_Tuple() || type.data().is_Array() || type.data().is_Function() || type.data().is_Closure()
+            if( type.data().is_Tuple() || type.data().is_Array() || type.data().is_Function() || type.data().is_Closure() || type.data().is_NamedFunction()
                     || TU_TEST1(type.data(), Path, .is_closure()) )
             {
                 if( this->type_is_clone(sp, type) ) {
@@ -235,6 +235,38 @@ bool StaticTraitResolve::find_impl(
         // 1.74: Magic impls of `eq` for function pointers
         if( trait_path == this->m_crate.get_lang_item_path_opt("fn_ptr_trait" ) ) {
             return found_cb( ImplRef(type.clone(), {}, {}), false );
+        }
+        }
+    TU_ARMA(NamedFunction, real_e) {
+        if( trait_path == m_lang_Fn || trait_path == m_lang_FnMut || trait_path == m_lang_FnOnce ) {
+            auto e = real_e.decay(sp);
+            if( trait_params )
+            {
+                const auto& des_arg_tys = trait_params->m_types.at(0).data().as_Tuple();
+                if( des_arg_tys.size() != e.m_arg_types.size() ) {
+                    return false;
+                }
+                for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
+                {
+                    if( des_arg_tys[i].compare_with_placeholders(sp, e.m_arg_types[i], cb_ident) == ::HIR::Compare::Unequal ) {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                trait_params = &null_params;
+            }
+            std::vector<HIR::TypeRef>   arg_types;
+            for(unsigned int i = 0; i < e.m_arg_types.size(); i ++)
+            {
+                arg_types.push_back(e.m_arg_types[i].clone());
+            }
+            HIR::PathParams params;
+            params.m_types.push_back(HIR::TypeRef::new_tuple(std::move(arg_types)));
+            ::HIR::TraitPath::assoc_list_t  assoc;
+            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, params.clone()), e.m_rettype.clone() }) );
+            return found_cb( ImplRef(e.hrls.clone(), type.clone(), mv$(params), mv$(assoc)), false );
         }
         }
     TU_ARMA(Closure, e) {

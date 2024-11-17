@@ -54,6 +54,10 @@ namespace MIR {
         (Generic,
             os << e;
             ),
+        (Function,
+            assert(e.p);
+            os << "fn " << *e.p;
+            ),
         (ItemAddr,
             if(e) {
                 os << "&" << *e;
@@ -99,6 +103,9 @@ namespace MIR {
             ),
         (Generic,
             return ::ord(ae.binding, be.binding);
+            ),
+        (Function,
+            return ::ord(*ae.p, *be.p);
             ),
         (ItemAddr,
             ORD(static_cast<bool>(ae), static_cast<bool>(be));
@@ -709,6 +716,7 @@ namespace MIR {
     (StaticString, return ::MIR::Constant(e2); ),
     (Const, return ::MIR::Constant::make_Const({box$(e2.p->clone())}); ),
     (Generic, return ::MIR::Constant(e2); ),
+    (Function, return ::MIR::Constant::make_Function({box$(e2.p->clone())}); ),
     (ItemAddr, return ::MIR::Constant(box$(e2->clone())); )
     )
     throw "";

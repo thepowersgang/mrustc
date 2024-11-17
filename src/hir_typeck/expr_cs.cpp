@@ -205,6 +205,11 @@ namespace {
         void visit(::HIR::ExprNode_RawBorrow& node) override {
             no_revisit(node);
         }
+        void bad_cast(const Span& sp, const ::HIR::TypeRef& src_ty, const ::HIR::TypeRef& tgt_ty, const char* where) {
+            ERROR(sp, E0000, "Invalid cast [" << where << "]:\n"
+                << "from " << this->context.m_ivars.fmt_type(src_ty) << "\n"
+                << " to  " << this->context.m_ivars.fmt_type(tgt_ty));
+        }
         void visit(::HIR::ExprNode_Cast& node) override {
             const auto& sp = node.span();
             const auto& tgt_ty = this->context.get_type(node.m_res_type);
@@ -259,19 +264,19 @@ namespace {
                 TODO(sp, "_Cast Generic");
                 }
             TU_ARMA(TraitObject, e) {
-                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                bad_cast(sp, src_ty, tgt_ty, "dst");
                 }
             TU_ARMA(ErasedType, e) {
-                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                bad_cast(sp, src_ty, tgt_ty, "dst");
                 }
             TU_ARMA(Array, e) {
-                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                bad_cast(sp, src_ty, tgt_ty, "dst");
                 }
             TU_ARMA(Slice, e) {
-                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                bad_cast(sp, src_ty, tgt_ty, "dst");
                 }
             TU_ARMA(Tuple, e) {
-                ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
+                bad_cast(sp, src_ty, tgt_ty, "dst");
                 }
             TU_ARMA(Borrow, e) {
                 // Emit a coercion and delete this revisit
@@ -284,7 +289,8 @@ namespace {
                 TU_MATCH_HDRA( (src_ty.data()), {)
                 default:
                     ERROR(sp, E0000, "Invalid cast to pointer from " << src_ty);
-                TU_ARMA(Function, s_e) {
+                case ::HIR::TypeData::TAG_Function:
+                case ::HIR::TypeData::TAG_NamedFunction:
                     // TODO: What is the valid set? *const () and *const u8 at least are allowed
                     if( ity == ::HIR::TypeRef::new_unit() || ity == ::HIR::CoreType::U8 || ity == ::HIR::CoreType::I8 ) {
                         this->m_completed = true;
@@ -296,7 +302,6 @@ namespace {
                         //ERROR(sp, E0000, "Invalid cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " from " << src_ty);
                         // TODO: Only allow thin pointers? `c_void` is used in 1.74 libstd
                         this->m_completed = true;
-                    }
                     }
                 TU_ARMA(Primitive, s_e) {
                     switch(s_e)
@@ -413,13 +418,13 @@ namespace {
                 // NOTE: Valid if it's causing a fn item -> fn pointer coercion
                 TU_MATCH_HDRA( (src_ty.data()), {)
                 default:
-                    ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
+                    bad_cast(sp, src_ty, tgt_ty, "fcn src");
                 TU_ARMA(Closure, s_e) {
                     auto pp = e.hrls.make_empty_params(true);
                     auto ms = MonomorphHrlsOnly(pp);
                     // Valid cast here, downstream code will check if its a non-capturing closure
                     if( s_e.node->m_args.size() != e.m_arg_types.size() )
-                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
+                        bad_cast(sp, src_ty, tgt_ty, "fcn nargs");
                     this->context.equate_types(sp, ms.monomorph_type(sp, e.m_rettype), s_e.node->m_return);
                     for(size_t i = 0; i < e.m_arg_types.size(); i++)
                         this->context.equate_types(sp, ms.monomorph_type(sp, e.m_arg_types[i]), s_e.node->m_args[i].second);
@@ -427,10 +432,21 @@ namespace {
                     }
                 TU_ARMA(Function, s_e) {
                     // Check that the ABI and unsafety is correct
-                    if( s_e.m_abi != e.m_abi || s_e.is_unsafe != e.is_unsafe || s_e.m_arg_types.size() != e.m_arg_types.size() )
-                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
-                    // TODO: Equate inner types
+                    if( s_e.m_abi != e.m_abi || (s_e.is_unsafe && s_e.is_unsafe != e.is_unsafe) || s_e.m_arg_types.size() != e.m_arg_types.size() )
+                        bad_cast(sp, src_ty, tgt_ty, "fcn nargs");
                     this->context.equate_types(sp, tgt_ty, src_ty);
+                    this->m_completed = true;
+                    }
+                TU_ARMA(NamedFunction, f) {
+                    auto ft = context.m_resolve.expand_associated_types(sp, HIR::TypeRef(f.decay(sp)));
+                    const auto& s_e = ft.data().as_Function();
+                    // Check that the ABI and unsafety is correct
+                    if( s_e.m_abi != e.m_abi || (s_e.is_unsafe && s_e.is_unsafe != e.is_unsafe) || s_e.m_arg_types.size() != e.m_arg_types.size() )
+                        bad_cast(sp, src_ty, tgt_ty, "fcn nargs");
+
+                    this->context.equate_types(sp, e.m_rettype, s_e.m_rettype);
+                    for(size_t i = 0; i < e.m_arg_types.size(); i++)
+                        this->context.equate_types(sp, e.m_arg_types[i], s_e.m_arg_types[i]);
                     this->m_completed = true;
                     }
                 }
@@ -743,8 +759,14 @@ namespace {
                     node.m_arg_types.push_back(e->node->m_return.clone());
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
                 }
-                else if( const auto* e = ty.data().opt_Function() )
+                else if( ty.data().is_Function() || ty.data().is_NamedFunction() )
                 {
+                    HIR::TypeRef    tmp_ft;
+                    const auto* e = ty.data().opt_Function();
+                    if( !e ) {
+                        tmp_ft = this->context.m_resolve.expand_associated_types(node.span(), ty.data().as_NamedFunction().decay(node.span()));
+                        e = &tmp_ft.data().as_Function();
+                    }
                     auto hrls = e->hrls.make_empty_params(true);
                     auto m = MonomorphHrlsOnly(hrls);
                     for( const auto& arg : e->m_arg_types ) {
@@ -5216,6 +5238,58 @@ namespace {
                 return CoerceResult::Equality;
             }
         }
+        else if( const auto* se = src.data().opt_NamedFunction() )
+        {
+            if( const auto* de = dst.data().opt_Function() )
+            {
+                auto& node_ptr = *node_ptr_ptr;
+                auto span = node_ptr->span();
+
+                auto ft = context.m_resolve.expand_associated_types(sp, HIR::TypeRef(se->decay(sp)));
+                const auto* se = &ft.data().as_Function();
+
+                // ABI must match
+                if( se->m_abi != de->m_abi )
+                    return CoerceResult::Equality;
+                // const can be removed
+                //if( se->is_const != de->is_const && de->is_const ) // Error going TO a const function pointer
+                //    return CoerceResult::Equality;
+                // unsafe can be added
+                if( se->is_unsafe != de->is_unsafe && se->is_unsafe ) // Error going FROM an unsafe function pointer
+                    return CoerceResult::Equality;
+                // argument/return types must match
+                if( se->m_arg_types.size() != de->m_arg_types.size() )
+                    return CoerceResult::Equality;
+
+                if(context_mut)
+                {
+                    auto s_pp = se->hrls.make_empty_params(true);
+                    MonomorphHrlsOnly   s_ms(s_pp);
+                    auto d_pp = de->hrls.make_empty_params(true);
+                    MonomorphHrlsOnly   d_ms(d_pp);
+                    for(size_t i = 0; i < de->m_arg_types.size(); i++)
+                    {
+                        context_mut->equate_types(sp, d_ms.monomorph_type(span, de->m_arg_types[i]), s_ms.monomorph_type(span, se->m_arg_types[i]));
+                    }
+                    context_mut->equate_types(sp, d_ms.monomorph_type(span, de->m_rettype), s_ms.monomorph_type(span, se->m_rettype));
+                    node_ptr = NEWNODE( dst.clone(), span, _Cast,  mv$(node_ptr), dst.clone() );
+                }
+                return CoerceResult::Custom;
+            }
+            // Function pointers can coerce safety
+            else if( const auto* dep = dst.data().opt_Infer() )
+            {
+                if(context_mut)
+                {
+                    context_mut->possible_equate_ivar(sp, dep->index, src, Context::PossibleTypeSource::UnsizeFrom);
+                }
+                return CoerceResult::Unknown;
+            }
+            else
+            {
+                return CoerceResult::Equality;
+            }
+        }
         else if( const auto* se = src.data().opt_Function() )
         {
             if( const auto* de = dst.data().opt_Function() )
@@ -6340,8 +6414,9 @@ namespace
                 ::HIR::TypeData::TAG_Borrow,
                 ::HIR::TypeData::TAG_Path, // Strictly speaking, Path == Generic
                 ::HIR::TypeData::TAG_Generic,
-                // These two are kinda their own pair
                 ::HIR::TypeData::TAG_Function,
+                // These two are kinda their own pair
+                ::HIR::TypeData::TAG_NamedFunction,
                 ::HIR::TypeData::TAG_Closure,
                 };
             static const ::HIR::TypeData::Tag* tag_ordering_end = &tag_ordering[ sizeof(tag_ordering) / sizeof(tag_ordering[0] )];
@@ -6366,6 +6441,9 @@ namespace
                     BUG(sp, "Unexpected type class " << l << " in get_ordering_ty (" << r << ")");
                     break;
                 TU_ARMA(Generic, _te_l) {
+                    cmp = OrdEqual;
+                    }
+                TU_ARMA(NamedFunction, te_l) {
                     cmp = OrdEqual;
                     }
                 TU_ARMA(Path, te_l) {
@@ -7373,16 +7451,26 @@ namespace
 
             if( possible_tys.size() >= 2
             // && n_ivars == 0
-             && fallback_ty == IvarPossFallbackType::FinalOption
-             && std::all_of(possible_tys.begin(), possible_tys.end(),  [](const auto& e){ return e.ty && e.ty->data().is_Closure(); })
-             )
+             && (fallback_ty == IvarPossFallbackType::FinalOption || n_src_ivars == 0)
+            // && (fallback_ty == IvarPossFallbackType::FinalOption || n_ivars == 0)
+             && std::all_of(possible_tys.begin(), possible_tys.end(),
+                [](const auto& e){ return e.ty && (e.ty->data().is_Closure() || e.ty->data().is_NamedFunction()); })
+                )
             {
-                const auto& t1_c = possible_tys[0].ty->data().as_Closure();
-                auto ft = HIR::TypeData_FunctionPointer { HIR::GenericParams(), false, false, ABI_RUST, t1_c.node->m_return.clone(), {} };
-                for(const auto& t : t1_c.node->m_args)
-                    ft.m_arg_types.push_back(t.second.clone());
-                auto new_ty = HIR::TypeRef(std::move(ft));
-                DEBUG("HACK: All options are closures, adding a function pointer - " << new_ty);
+                HIR::TypeRef    new_ty;
+                if( const auto* te = possible_tys[0].ty->data().opt_NamedFunction() ) {
+                    new_ty = te->decay(sp);
+                }
+                else if( const auto* t1_c = possible_tys[0].ty->data().opt_Closure() ) {
+                    auto ft = HIR::TypeData_FunctionPointer { HIR::GenericParams(), false, false, ABI_RUST, t1_c->node->m_return.clone(), {} };
+                    for(const auto& t : t1_c->node->m_args)
+                        ft.m_arg_types.push_back(t.second.clone());
+                    new_ty = HIR::TypeRef(std::move(ft));
+                }
+                else {
+                    BUG(sp, "");
+                }
+                DEBUG("HACK: All options are closures/functions, adding a function pointer - " << new_ty);
                 context.equate_types(sp, ty_l, new_ty);
                 return true;
             }
@@ -7507,10 +7595,10 @@ namespace
                 {
                 case IvarPossFallbackType::None:
                 case IvarPossFallbackType::Backwards:
+                case IvarPossFallbackType::IgnoreWeakDisable:
                     active = (n_ivars == 0 && ivar_ent.bounded.size() == 0);
                     break;
                 case IvarPossFallbackType::Assume:
-                case IvarPossFallbackType::IgnoreWeakDisable:
                 case IvarPossFallbackType::PickFirstBound:
                     active = (ivar_ent.bounded.size() == 0);
                     break;

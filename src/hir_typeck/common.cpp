@@ -408,7 +408,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     TU_ARMA(NamedFunction, e) {
         return ::HIR::TypeRef( ::HIR::TypeData::Data_NamedFunction {
             this->monomorph_path(sp, e.path, allow_infer),
-            e.def   // Should this become `nullptr`? Or should the definition be fixed
+            e.def.clone()   // Should this become `nullptr`? Or should the definition be fixed
             } );
         }
     TU_ARMA(Function, e) {
