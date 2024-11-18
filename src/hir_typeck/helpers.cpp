@@ -629,8 +629,8 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
         add_ivars(e.inner);
         }
     TU_ARMA(NamedFunction, e) {
-        // Shouldn't be possible
-        TODO(Span(), "NamedFunction adding ivars?");
+        // Shouldn't be possible?
+        // Even if it is seen, it shouldn't have any empty ivars
         }
     TU_ARMA(Function, e) {
         add_ivars(e.m_rettype);
