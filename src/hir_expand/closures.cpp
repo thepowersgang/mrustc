@@ -284,6 +284,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Field& node) override
         {
+            // NOTE: The logic here matches the logic in `annotate_value_usage.cpp`
             ::std::vector<RcString> fields;
             fields.push_back(node.m_field);
 
@@ -292,6 +293,10 @@ namespace {
             while( auto* inner_field = dynamic_cast<::HIR::ExprNode_Field*>(inner) ) {
                 fields.push_back(inner_field->m_field);
                 inner = inner_field->m_value.get();
+            }
+            if( auto* inner_deref = dynamic_cast<::HIR::ExprNode_Deref*>(inner) ) {
+                fields.push_back(RcString());
+                inner = inner_deref->m_value.get();
             }
             // and if the final value is a variable, then insert into the captures
             if( auto* inner_var = dynamic_cast<::HIR::ExprNode_Variable*>(inner) ) {
@@ -772,9 +777,9 @@ namespace {
             }
 
             ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& tpl, bool allow_infer=true) const override {
-                if( const auto* te = tpl.data().opt_Closure() ) {
-                    //this->monomorph_genericpath(sp, te->node->m_obj_path, allow_infer);
-                }
+                //if( const auto* te = tpl.data().opt_Closure() ) {
+                //    this->monomorph_genericpath(sp, te->node->m_obj_path, allow_infer);
+                //}
                 return Monomorphiser::monomorph_type(sp, tpl, allow_infer);
             }
 
@@ -1059,47 +1064,59 @@ namespace {
                 auto val_node = NEWNODE(cap_ty_p->clone(), Variable,  sp, "", binding.root_slot);
                 for(const auto& n : binding.fields) {
                     tmp_ty = m_resolve.get_field_type(sp, *cap_ty_p, n);
+                    m_resolve.expand_associated_types(sp, tmp_ty);
                     cap_ty_p = &tmp_ty;
-                    val_node = NEWNODE(cap_ty_p->clone(), Field,  sp, std::move(val_node), n);
+                    if( n == "" ) {
+                        val_node = NEWNODE(cap_ty_p->clone(), Deref,  sp, std::move(val_node));
+                    }
+                    else {
+                        val_node = NEWNODE(cap_ty_p->clone(), Field,  sp, std::move(val_node), n);
+                    }
                 }
 
                 ::HIR::BorrowType   bt;
                 const auto& cap_ty = *cap_ty_p;
                 auto ty_mono = monomorph_cb.monomorph_type(sp, *cap_ty_p);
 
+                DEBUG("Binding _#" << binding.root_slot << FMT_CB(ss, for(const auto& n : binding.fields) ss << "." << n) << " : " << binding_type);
+                DEBUG(cap_ty << " -> " << ty_mono);
                 switch(binding_type)
                 {
                 case ::HIR::ValueUsage::Unknown:
                     BUG(sp, "ValueUsage::Unkown on " << binding.root_slot);
                 case ::HIR::ValueUsage::Borrow:
-                    DEBUG("Capture by & _#" << binding.root_slot << binding.fields << " : " << binding_type);
                     bt = ::HIR::BorrowType::Shared;
                     capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone(), HIR::LifetimeRef(HIR::LifetimeRef::MAX_LOCAL + 1)), Borrow,  sp, bt, mv$(val_node) ));
                     ty_mono = ::HIR::TypeRef::new_borrow(bt, mv$(ty_mono));
                     break;
                 case ::HIR::ValueUsage::Mutate:
-                    DEBUG("Capture by &mut _#" << binding.root_slot << binding.fields << " : " << binding_type);
                     bt = ::HIR::BorrowType::Unique;
                     capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone(), HIR::LifetimeRef(HIR::LifetimeRef::MAX_LOCAL + 1)), Borrow,  sp, bt, mv$(val_node) ));
                     ty_mono = ::HIR::TypeRef::new_borrow(bt, mv$(ty_mono));
                     break;
                 case ::HIR::ValueUsage::Move:
-                    DEBUG("Capture by value _#" << binding.root_slot << binding.fields << " : " << binding_type);
                     capture_nodes.push_back( mv$(val_node) );
                     break;
                 }
-
-                // - Fix type to replace closure types with known paths
-                ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
-                fixup.visit_type(ty_mono);
-                if( !fixup.m_resolve.type_is_copy(sp, ty_mono) )
-                {
-                    node.m_is_copy = false;
-                }
-                if( binding_type != ::HIR::ValueUsage::Move ) {
-                    lifetime_needed = true;
-                }
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty_mono) } );
+            }
+            // - Fix type to replace closure types with known paths
+            {
+                ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
+                for(size_t i = 0; i < capture_types.size(); i ++)
+                {
+                    auto binding_type = node.m_avu_cache.captured_vars[i].usage;
+                    HIR::TypeRef& ty_mono = capture_types[i].ent;
+                    fixup.m_resolve.expand_associated_types(sp, ty_mono);
+                    fixup.visit_type(ty_mono);
+                    if( !fixup.m_resolve.type_is_copy(sp, ty_mono) )
+                    {
+                        node.m_is_copy = false;
+                    }
+                    if( binding_type != ::HIR::ValueUsage::Move ) {
+                        lifetime_needed = true;
+                    }
+                }
             }
             assert( constructor_path_params.m_lifetimes.size() == params.m_lifetimes.size() );
             if( lifetime_needed ) {
@@ -1204,6 +1221,7 @@ namespace {
             case ::HIR::ExprNode_Closure::Class::Unknown:
                 node.m_class = ::HIR::ExprNode_Closure::Class::NoCapture;
             case ::HIR::ExprNode_Closure::Class::NoCapture: {
+                DEBUG("class=NoCapture");
 
                 struct H2 {
                     static ::std::pair<::HIR::ExprNode_Closure::Class, HIR::TraitImpl> make_dispatch(
@@ -1281,6 +1299,7 @@ namespace {
 
                 } break;
             case ::HIR::ExprNode_Closure::Class::Shared: {
+                DEBUG("class=Shared");
                 const auto& lang_Fn = m_resolve.m_crate.get_lang_item_path(node.span(), "fn");
                 const auto method_self_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, closure_type.clone() );
 
@@ -1331,6 +1350,7 @@ namespace {
                     ));
                 } break;
             case ::HIR::ExprNode_Closure::Class::Mut: {
+                DEBUG("class=Mut");
                 const auto& lang_FnMut = m_resolve.m_crate.get_lang_item_path(node.span(), "fn_mut");
                 const auto method_self_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, closure_type.clone() );
 
@@ -1361,6 +1381,7 @@ namespace {
                     ));
                 } break;
             case ::HIR::ExprNode_Closure::Class::Once:
+                DEBUG("class=Once");
                 // - FnOnce (code)
                 m_out.impls_closure.push_back(::std::make_pair(
                     ::HIR::ExprNode_Closure::Class::Once,

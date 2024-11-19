@@ -492,6 +492,12 @@ namespace {
                         fields.push_back(inner_field->m_field);
                         inner = inner_field->m_value.get();
                     }
+                    if( auto* inner_deref = dynamic_cast<::HIR::ExprNode_Deref*>(inner) ) {
+                        if( inner_deref->m_value->m_res_type.data().is_Borrow() ) {
+                            fields.push_back(RcString());
+                            inner = inner_deref->m_value.get();
+                        }
+                    }
                     // and if the final value is a variable, then insert into the captures
                     if( auto* inner_var = dynamic_cast<::HIR::ExprNode_Variable*>(inner) ) {
                         std::reverse(fields.begin(), fields.end());
@@ -711,7 +717,7 @@ namespace {
             auto _ = push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr(node.m_val);
         }
-        
+
         void visit(::HIR::ExprNode_Closure& node) override
         {
             if(!node.m_code)
@@ -747,6 +753,11 @@ namespace {
                 DEBUG("> Tagged with `move` - upgrading all usage to `Move`");
                 for(auto& cap : scope.captured_vars)
                 {
+                    if( cap.fields.size() > 0 && cap.fields[0] == "" ) {
+                        // Derefs stay as-is?
+                        // TODO: Only clear if the value isn't `Copy`
+                        cap.fields.clear();
+                    }
                     cap.usage = ::HIR::ValueUsage::Move;
                 }
             }
@@ -1121,7 +1132,6 @@ namespace {
                     rv = ::std::max(rv, get_usage_for_pattern_binding(sp, pe.extra_bind, inner_ty));
                 return rv;
                 }
-            
             TU_ARMA(Or, pe) {
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& pat : pe)

@@ -3104,6 +3104,10 @@ HIR::TypeRef StaticTraitResolve::get_field_type(const Span& sp, const ::HIR::Typ
     TU_MATCH_HDRA((ty.data()), {)
     default:
         TODO(sp, "" << ty << " " << name);
+    TU_ARMA(Borrow, te) {
+        ASSERT_BUG(sp, name == RcString(), "get_field_type: Deref with non-empty field (`" << name << "`)");
+        return te.inner.clone();
+        }
     TU_ARMA(Tuple, te) {
         ::std::stringstream ss { name.c_str() };
         int idx = -1;
