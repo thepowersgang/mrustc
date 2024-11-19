@@ -367,6 +367,9 @@ struct MirHelpers
             LOG_DEBUG(c << " = " << val);
             return val;
             } break;
+        case ::MIR::Constant::TAG_Function:
+            return Value(ty);
+            break;
         // --> Accessor
         TU_ARM(c, ItemAddr, ce) {
             // Create a value with a special backing allocation of zero size that references the specified item.
