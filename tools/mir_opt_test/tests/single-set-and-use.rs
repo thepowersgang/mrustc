@@ -113,36 +113,37 @@ fn borrowed_rev_exp(a: &mut [u8], a2: &mut u8)
 
 //fn <&usize as ::"core"::ops::bit::Shl<&i8,>>::shl(arg0: &usize, arg1: &i8) -> usize
 //#[test="borrow_usize_shl_borrow_i8_exp"]
-fn borrow_usize_shl_borrow_i8(arg0: &usize, arg1: &i8) -> usize {
-    let var0: usize;
-    let var1: i8;
-    bb0: {
-        ASSIGN var1 = arg1.*;
-        ASSIGN var0 = arg0.*;
-        ASSIGN retval = BIT_SHL(var0, var1);
-    } RETURN;
-}
-fn borrow_usize_shl_borrow_i8_exp(arg0: &usize, arg1: &i8) -> usize {
-    bb0: {
-        ASSIGN retval = BIT_SHL(arg0.*, arg1.*);
-    } RETURN;
-}
+//fn borrow_usize_shl_borrow_i8(arg0: &usize, arg1: &i8) -> usize {
+//    let var0: usize;
+//    let var1: i8;
+//    bb0: {
+//        ASSIGN var1 = arg1.*;
+//        ASSIGN var0 = arg0.*;
+//        ASSIGN retval = BIT_SHL(var0, var1);
+//    } RETURN;
+//}
+//fn borrow_usize_shl_borrow_i8_exp(arg0: &usize, arg1: &i8) -> usize {
+//    bb0: {
+//        ASSIGN retval = BIT_SHL(arg0.*, arg1.*);
+//    } RETURN;
+//}
 
 
+// Check that SS&U works when a terminator (e.g. call) is the usage site.
 #[test="call_exp"]
-fn call(a: &(fn(),)) {
+fn call(a: (fn(),)) {
     let v: fn();
     bb0: {
-        ASSIGN v = a.*.0;
+        ASSIGN v = a.0;
     } CALL retval = (v)() => bb1 else bb2;
     bb1: {
     } RETURN;
     bb2: {
     } DIVERGE;
 }
-fn call_exp(a: &(fn(),)) {
+fn call_exp(a: (fn(),)) {
     bb0: {
-    } CALL retval = (a.*.0)() => bb1 else bb2;
+    } CALL retval = (a.0)() => bb1 else bb2;
     bb1: {
     } RETURN;
     bb2: {
