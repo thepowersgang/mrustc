@@ -1453,6 +1453,9 @@ namespace {
             }
             std::string command_file = m_outfile_path + "_cmd.txt";
             std::ofstream   command_file_stream;
+            if( getenv("MRUSTC_CCACHE") ) {
+                cmd_ss << "ccache ";
+            }
             bool use_arg_file = arg_file_start > 0;
             if(use_arg_file) {
                 command_file_stream.open(command_file);
@@ -7188,9 +7191,9 @@ namespace {
                     m_of << "(("; dst_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
                     m_of << "= (";
                     m_of << " (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i]";
-                    m_of << op;
+                    m_of << " " << op;
                     m_of << " (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
-                    m_of << " )";
+                    m_of << " ? -1 : 0)";
                     };
                 auto simd_arith = [&](const char* op) {
                     auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
