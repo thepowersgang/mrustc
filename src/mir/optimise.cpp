@@ -1935,25 +1935,14 @@ namespace {
         return IterPathRes::Complete;
     }
 
-    ::std::function<bool(const ::MIR::LValue& , ValUsage)> check_invalidates_lvalue_cb(const ::MIR::LValue& val, bool also_read=false)
+    ::std::function<bool(const ::MIR::LValue& , ValUsage)> check_invalidates_lvalue_cb(const ::MIR::LValue& val, bool is_copy, bool also_read=false)
     {
         bool has_index = ::std::any_of(val.m_wrappers.begin(), val.m_wrappers.end(), [](const auto& w){ return w.is_Index(); });
         // Value is invalidated if it's used with ValUsage::Write or ValUsage::Borrow
         // - Same applies to any component of the lvalue
-        return [&val,has_index,also_read](const ::MIR::LValue& lv, ValUsage vu) {
+        return [&val,has_index,is_copy,also_read](const ::MIR::LValue& lv, ValUsage vu) {
             switch(vu)
             {
-            case ValUsage::Move:    // A move can invalidate
-                if( lv.m_root == val.m_root ) {
-                    // Check if `lv`'s wrappers are a subset of `val`'s
-                    auto l = std::min(lv.m_wrappers.size(), val.m_wrappers.size());
-                    for(size_t i = 0; i < l; i ++) {
-                        // A wrapper differs, won't invalidate
-                        if( lv.m_wrappers[i] != val.m_wrappers[i] )
-                            return false;
-                    }
-                    return true;
-                }
                 // - Ideally this would check if it DOES invalidate
             case ValUsage::Write:
             case ValUsage::Borrow:
@@ -1975,6 +1964,20 @@ namespace {
                     }
                 }
                 break;
+            case ValUsage::Move:    // A move can invalidate
+                if( is_copy ) {
+                }
+                else if( lv.m_root == val.m_root ) {
+                    // Check if `lv`'s wrappers are a subset of `val`'s
+                    auto l = std::min(lv.m_wrappers.size(), val.m_wrappers.size());
+                    for(size_t i = 0; i < l; i ++) {
+                        // A wrapper differs, won't invalidate
+                        if( lv.m_wrappers[i] != val.m_wrappers[i] )
+                            return false;
+                    }
+                    return true;
+                }
+                break;
             case ValUsage::Read:
                 if( also_read )
                 {
@@ -1988,13 +1991,13 @@ namespace {
             return false;
             };
     }
-    bool check_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& val, bool also_read=false)
+    bool check_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& val, bool is_copy, bool also_read=false)
     {
-        return visit_mir_lvalues(stmt, check_invalidates_lvalue_cb(val, also_read));
+        return visit_mir_lvalues(stmt, check_invalidates_lvalue_cb(val, is_copy, also_read));
     }
-    bool check_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& val, bool also_read=false)
+    bool check_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& val, bool is_copy, bool also_read=false)
     {
-        return visit_mir_lvalues(term, check_invalidates_lvalue_cb(val, also_read));
+        return visit_mir_lvalues(term, check_invalidates_lvalue_cb(val, is_copy, also_read));
     }
 }
 
@@ -2114,8 +2117,8 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 // TODO: What if the set location is a call?
                 bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, slot.use_loc,
                         // TODO: What about a mutable borrow?
-                        [&](auto loc, const auto& stmt)->bool{ return stmt.is_Drop() || check_invalidates_lvalue(stmt, dst, /*also_read=*/true); },
-                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst, /*also_read=*/true); }
+                        [&](auto loc, const auto& stmt)->bool{ return stmt.is_Drop() || check_invalidates_lvalue(stmt, dst, false, /*also_read=*/true); },
+                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst, false, /*also_read=*/true); }
                         );
                 if( !invalidated )
                 {
@@ -2185,15 +2188,17 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
             {
                 auto& set_stmt = set_bb.statements[slot.set_loc.stmt_idx];
                 const auto& src = set_stmt.as_Assign().src.as_Use();
+                bool src_copy = src.m_wrappers.empty() && state.lvalue_is_copy(src);
 
                 // Check if the source of initial assignment is invalidated in the meantime.
                 auto use_loc_inc = slot.use_loc;
                 use_loc_inc.stmt_idx += 1;
                 bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, use_loc_inc,
                         // NOTE: If a mutable borrow happens, assume it invalidates the source
-                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src) || TU_TEST2(stmt, Assign, .src, Borrow, .type != HIR::BorrowType::Shared); },
-                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src); }
+                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src, src_copy) || TU_TEST2(stmt, Assign, .src, Borrow, .type != HIR::BorrowType::Shared); },
+                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src, src_copy); }
                         );
+                DEBUG("invalidated = " << invalidated);
                 // If this is a deref, and there are move ops between definition and use - then invalidate
                 if( !invalidated && std::any_of(src.m_wrappers.begin(), src.m_wrappers.end(), [](const MIR::LValue::Wrapper& w){ return w.is_Deref(); }) )
                 {
@@ -2218,6 +2223,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                         [&](auto loc, const auto& stmt)->bool{ return visit_mir_lvalues(stmt, check_cb); },
                         [&](auto loc, const auto& term)->bool{ return (term.is_Call() && !visit_mir_lvalues(term, [&](const MIR::LValue& lv, ValUsage vu){return lv == this_var;})) || visit_mir_lvalues(term, check_cb); }
                         );
+                    DEBUG("invalidated = " << invalidated);
                 }
                 if( !invalidated )
                 {
@@ -2426,6 +2432,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             continue;
         }
         DEBUG(this_var << " - Borrow of " << src_lv << " at " << slot.set_loc << ", used " << slot.n_deref_read << " times (dropped {" << slot.drop_locs << "})");
+        bool src_copy = state.lvalue_is_copy(src_lv);
 
         // Locate usage sites (by walking forwards) and check for invalidation
         auto cur_loc = slot.set_loc;
@@ -2459,7 +2466,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
                 auto& stmt = cur_bb.statements[cur_loc.stmt_idx];
                 DEBUG(cur_loc << " " << stmt);
                 // Check for invalidation (actual check done before replacement)
-                bool invalidates = check_invalidates_lvalue(stmt, src_lv);
+                bool invalidates = check_invalidates_lvalue(stmt, src_lv, src_copy);
                 if( invalidates )
                 {
                     // Invalidated, stop here.
@@ -2486,7 +2493,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
                 break;
             }
             // Check for invalidation
-            if( check_invalidates_lvalue(cur_bb.terminator, src_lv) )
+            if( check_invalidates_lvalue(cur_bb.terminator, src_lv, src_copy) )
             {
                 DEBUG(this_var << " - Source invalidated @ " << cur_loc << " in " << cur_bb.terminator);
                 stop = true;
@@ -3322,6 +3329,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
     // 3. Search backwards from that point until the referenced local is assigned
     auto get_field = [&](const ::MIR::LValue& slot_lvalue, unsigned field, size_t start_bb_idx, size_t start_stmt_idx)->const ::MIR::LValue* {
         TRACE_FUNCTION_F(slot_lvalue << "." << field << " BB" << start_bb_idx << "/" << start_stmt_idx);
+        bool slot_copy = state.lvalue_is_copy(slot_lvalue);
         // NOTE: An infinite loop is (theoretically) impossible.
         auto bb_idx = start_bb_idx;
         auto stmt_idx = start_stmt_idx;
@@ -3333,7 +3341,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                 if( stmt_idx == bb.statements.size() )
                 {
                     DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
-                    if( check_invalidates_lvalue(bb.terminator, slot_lvalue) ) {
+                    if( check_invalidates_lvalue(bb.terminator, slot_lvalue, slot_copy) ) {
                         return nullptr;
                     }
                     continue ;
@@ -3352,6 +3360,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                         if( !src_param.is_LValue() )
                             return nullptr;
                         const auto& src_lval = src_param.as_LValue();
+                        bool src_copy = state.lvalue_is_copy(src_lval);
                         // Visit all statements between the start and here, checking for mutation of this value.
                         auto end_bb_idx = bb_idx;
                         auto end_stmt_idx = stmt_idx;
@@ -3367,13 +3376,13 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                                 if(stmt_idx == bb.statements.size())
                                 {
                                     DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
-                                    if( check_invalidates_lvalue(bb.terminator, src_lval) ) {
+                                    if( check_invalidates_lvalue(bb.terminator, src_lval, src_copy) ) {
                                         // Invalidated: Return.
                                         return nullptr;
                                     }
                                     continue ;
                                 }
-                                if( check_invalidates_lvalue(bb.statements[stmt_idx], src_lval) ) {
+                                if( check_invalidates_lvalue(bb.statements[stmt_idx], src_lval, src_copy) ) {
                                     // Invalidated: Return.
                                     return nullptr;
                                 }
@@ -3387,7 +3396,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                 }
 
                 // Check if the slot is invalidated (mutated)
-                if( check_invalidates_lvalue(stmt, slot_lvalue) ) {
+                if( check_invalidates_lvalue(stmt, slot_lvalue, slot_copy) ) {
                     return nullptr;
                 }
             }
@@ -5036,7 +5045,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     DEBUG(state << "[find usage] " << stmt2);
 
                     // Check for invalidation (done first, to avoid cases where the source is moved into a struct)
-                    if( check_invalidates_lvalue(stmt2, e.src.as_Use()) ) {
+                    if( check_invalidates_lvalue(stmt2, e.src.as_Use(), false) ) {
                         stop = true;
                         DEBUG("Source invalidated");
                         break;
@@ -5068,7 +5077,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 }
                 if( !stop )
                 {
-                    if( check_invalidates_lvalue(block.terminator, e.src.as_Use()) ) {
+                    if( check_invalidates_lvalue(block.terminator, e.src.as_Use(), false) ) {
                         stop = true;
                         DEBUG("Source invalidated in terminator");
                     }
@@ -5652,7 +5661,7 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             break;
                         }
                     }
-                    if( check_invalidates_lvalue(*it2, src_lv) )
+                    if( check_invalidates_lvalue(*it2, src_lv, false) )
                     {
                         break;
                     }
@@ -5688,7 +5697,7 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             break;
                         }
                     }
-                    if( check_invalidates_lvalue(*it2, src_lv) )
+                    if( check_invalidates_lvalue(*it2, src_lv, false) )
                     {
                         break;
                     }
