@@ -21,11 +21,11 @@ fn statics_and_borrows(arg0: usize) -> usize
 		ASSIGN var5 = & var3;
 		ASSIGN var1 = &::""::lifted_zero_usize;
 		ASSIGN var0 = var5;
-		ASSIGN var2 = EQ(var5*, var1*);
+		ASSIGN var2 = EQ(var5.*, var1.*);
 	} IF var2 => bb1 else bb2;
 	bb1: {
-		ASSIGN var11 = &var0*;
-		ASSIGN var12 = &var1*;
+		ASSIGN var11 = &var0.*;
+		ASSIGN var12 = &var1.*;
 		ASSIGN var6 = & var11;
 		ASSIGN var8 = & var12;
 	} CALL retval = ""( /*var4,*/ var6, var8/*, var13*/ ) => bb3 else bb3;
