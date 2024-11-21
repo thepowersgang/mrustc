@@ -761,6 +761,25 @@ namespace {
                     cap.usage = ::HIR::ValueUsage::Move;
                 }
             }
+            else
+            {
+                for(auto& cap : scope.captured_vars)
+                {
+                    if( cap.usage == ::HIR::ValueUsage::Borrow ) {
+                        ::HIR::TypeRef  tmp_ty;
+                        const auto* cap_ty_p = &m_variable_types.at(cap.root_slot);
+                        for(const auto& n : cap.fields) {
+                            tmp_ty = m_resolve.get_field_type(node.span(), *cap_ty_p, n);
+                            m_resolve.expand_associated_types(node.span(), tmp_ty);
+                            cap_ty_p = &tmp_ty;
+                        }
+                        if( cap_ty_p->data().is_Borrow() && cap_ty_p->data().as_Borrow().type == ::HIR::BorrowType::Shared ) {
+                            DEBUG("> Uprade capture " << cap.root_slot << cap.fields << " to Move, as it's a borrow");
+                            cap.usage = ::HIR::ValueUsage::Move;
+                        }
+                    }
+                }
+            }
 
             // Determine if the closure is `Copy`
             {
