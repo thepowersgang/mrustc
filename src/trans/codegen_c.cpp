@@ -1269,6 +1269,7 @@ namespace {
                 {
                     args.push_back( a.c_str() );
                 }
+                args.push_back("-Wno-psabi");   // Suppress "note: the ABI for passing parameters with 128-byte alignment has changed in GCC 4.6"
                 switch(opt.opt_level)
                 {
                 case 0: break;
@@ -2696,6 +2697,11 @@ namespace {
                     m_of << "\tuint32_t lo, hi;\n";
                     m_of << "\t__asm__ __volatile__ (\"xgetbv\" : \"=a\" (lo), \"=d\" (hi) : \"c\" (arg0) );\n";
                     m_of << "\treturn lo | ((uint64_t)hi << 32);\n";
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.pause" ) {
+                    // Just a `PAUSE` instruciton, which is effectively a nop
+                    m_of << "\t__asm__ __volatile__ (\"pause\");\n";
+                    m_of << "\treturn ;";
                 }
                 // AES functions
                 else if( item.m_linkage.name.rfind("llvm.x86.aesni.", 0) == 0 )
