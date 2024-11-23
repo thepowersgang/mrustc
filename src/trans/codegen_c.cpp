@@ -5255,13 +5255,19 @@ namespace {
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     if( const auto* pe = se.params[i].opt_Reg() ) {
-                        if( const auto* regname_p = pe->spec.opt_Explicit() ) {
+                        if( !pe->input && !pe->output ) {
+                        }
+                        else if( const auto* regname_p = pe->spec.opt_Explicit() ) {
                             arg_mappings[i] = UINT_MAX-1;
                             if( !block_open ) {
                                 block_open = true;
                                 m_of << indent << "{\n";
                             }
-                            m_of << indent << "register uintptr_t asm_" << *regname_p << " asm(\"" << *regname_p << "\");\n";
+                            m_of << indent << "register uintptr_t asm_" << *regname_p << " asm(\"" << *regname_p << "\")";
+                            if( pe->input ) {
+                                m_of << " = (uintptr_t)"; emit_param(*pe->input);
+                            }
+                            m_of << ";\n";
                         }
                     }
                 }
@@ -5273,6 +5279,9 @@ namespace {
                         if( pe->spec.is_Explicit() )
                         {
                             // Ignore, handled explicitly above
+                            if( pe->output ) {
+                                outputs.push_back(pe);
+                            }
                         }
                         else if(!pe->output && !pe->input)
                         {
@@ -5297,9 +5306,12 @@ namespace {
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     if( const auto* pe = se.params[i].opt_Reg() ) {
-                        if( pe->spec.is_Explicit() )
+                        if( pe->spec.opt_Explicit() )
                         {
                             // Ignore, handled explicitly above
+                            if( pe->input ) {
+                                inputs.push_back(&se.params[i]);
+                            }
                         }
                         else if( pe->input && !pe->output )
                         {
@@ -5313,6 +5325,12 @@ namespace {
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     // An explicit register, not "In" and output parameter
+                    if( const auto* pe = se.params[i].opt_Reg() ) {
+                        if( !pe->input && !pe->output && pe->spec.is_Explicit() ) {
+                            const auto& regname = pe->spec.as_Explicit();
+                            clobbers.push_back(regname.c_str());
+                        }
+                    }
                 }
 
                 m_of << indent << "__asm__ ";
@@ -5378,24 +5396,15 @@ namespace {
                         case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                         }
                     TU_ARMA(Explicit, name) {
-                        MIR_BUG(mir_res, "Asm2 GCC - Explicit output should be unrechable");
-                        if(false) {
-                        }
-                        else if( name == "eax" || name == "rax" ) {  m_of << "a";   }
-                        else if( name == "ecx" || name == "rcx" ) {  m_of << "c";   }
-                        else if( name == "edx" || name == "rdx" ) {  m_of << "d";   }
-                        else if( name == "ebx" || name == "rbx" ) {  m_of << "b";   }
-                        else if( name == "edi" || name == "rdi" ) {  m_of << "D";   }
-                        else if( name == "esi" || name == "rsi" ) {  m_of << "S";   }
-                        else {
-                            // TODO: The gcc docs suggest using `register int asm_arg_N asm("regname")`
-                            MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg `" << name << "`: " << stmt);
-                        }
+                        m_of << "r";
                         }
                     }
                     m_of << "\" (";
                     if( !p.output ) {
                         m_of << "asm_anon_" << i;
+                    }
+                    else if( const auto* regname_p = p.spec.opt_Explicit() ) {
+                        m_of << "asm_" << *regname_p;
                     }
                     else {
                         emit_lvalue(*p.output);
@@ -5424,28 +5433,45 @@ namespace {
                             case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                             }
                         TU_ARMA(Explicit, name) {
-                            MIR_BUG(mir_res, "Asm2 GCC - Explicit input should be unrechable");
-                            if(false) {
+                            auto it = ::std::find(outputs.begin(), outputs.end(), &r);
+                            if( it != outputs.end() ) {
+                                m_of << (it - outputs.begin());
                             }
-                            else if( name == "eax" || name == "rax" ) {  m_of << "a";   }
-                            else if( name == "ecx" || name == "rcx" ) {  m_of << "c";   }
-                            else if( name == "edx" || name == "rdx" ) {  m_of << "d";   }
-                            else if( name == "ebx" || name == "rbx" ) {  m_of << "b";   }
-                            else if( name == "edi" || name == "rdi" ) {  m_of << "D";   }
-                            else if( name == "esi" || name == "rsi" ) {  m_of << "S";   }
                             else {
-                                MIR_TODO(mir_res, "Asm2 GCC - Explicit input reg `" << name << "`: " << stmt);
+                                m_of << "r";
                             }
                             }
                         }
                         assert(r.input);
-                        m_of << "\" ("; emit_param(*r.input); m_of << ")";
+                        m_of << "\" (";
+                        if( const auto* regname_p = p.as_Reg().spec.opt_Explicit() ) {
+                            m_of << "asm_" << *regname_p;
+                        }
+                        else {
+                            emit_param(*r.input);
+                        }
+                        m_of << ")";
                         }
                     TU_ARMA(Const, c)   MIR_TODO(mir_res, "Asm2 GCC - Const: " << stmt);
                     TU_ARMA(Sym, c)   MIR_TODO(mir_res, "Asm2 GCC - Sym: " << stmt);
                     }
                 }
+                m_of << ":";
+                for(size_t i = 0; i < clobbers.size(); i ++ ) {
+                    if( i > 0 ) m_of << ",";
+                    m_of << " \"" << clobbers[i] << "\"";
+                }
                 m_of << ");\n";
+                for(size_t i = 0; i < se.params.size(); i ++)
+                {
+                    if( const auto* pe = se.params[i].opt_Reg() ) {
+                        if( const auto* regname_p = pe->spec.opt_Explicit() ) {
+                            if( pe->output ) {
+                                m_of << indent; emit_lvalue(*pe->output); m_of << " = asm_" << *regname_p << ";\n";
+                            }
+                        }
+                    }
+                }
                 if( block_open ) {
                     m_of << indent << "}\n";
                 }
