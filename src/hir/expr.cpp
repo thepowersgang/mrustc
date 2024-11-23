@@ -275,6 +275,22 @@ DEF_VISIT_H(ExprNode_Closure, node) {
         visit_node_ptr(node.m_code);
     }
 }
+namespace HIR {
+::std::ostream& operator<<(::std::ostream& os, const ExprNode_Closure::AvuCache::Capture& x)
+{
+    os << "#" << x.root_slot;
+    for(const auto& n : x.fields) {
+        if( n == RcString() ) {
+            os << ".*";
+        }
+        else {
+            os << "." << n;
+        }
+    }
+    os << "[" << x.usage << "]";
+    return os;
+}
+}
 DEF_VISIT_H(ExprNode_Generator, node) {
     TRACE_FUNCTION_F("_Generator");
     //for(auto& arg : node.m_args) {

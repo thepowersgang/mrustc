@@ -682,6 +682,17 @@ namespace {
                 ASSERT_BUG(sp, l.m_traits.size() == r.m_traits.size(), "");
                 for(size_t i = 0; i < l.m_traits.size(); i ++)
                     this->equate_traitpath(sp, l.m_traits[i], r.m_traits[i]);
+                TU_MATCH_HDRA( (l.m_inner, r.m_inner),{ )
+                TU_ARMA(Known, l_ie, r_ie) {
+                    this->equate_types(sp, l_ie, r_ie);
+                    }
+                TU_ARMA(Fcn, l_ie, r_ie) {
+                    this->equate_paths(sp, l_ie.m_origin, r_ie.m_origin);
+                    }
+                TU_ARMA(Alias, l_ie, r_ie) {
+                    this->equate_pps(sp, l_ie.params, r_ie.params);
+                    }
+                }
                 }
             TU_ARMA(Array, l, r) {
                 this->equate_types(sp, l.inner, r.inner);
@@ -1144,7 +1155,6 @@ namespace {
             HIR::ExprVisitorDef::visit(node);
             // No lifetimes involved.
         }
-
 
         void visit(::HIR::ExprNode_Borrow& node) override {
             HIR::ExprVisitorDef::visit(node);
@@ -1654,7 +1664,7 @@ namespace {
             this->equate_types(node.span(), node.m_cache.m_arg_types.back(), m_resolve.monomorph_expand(node.span(), fcn.m_return, ms));
             this->equate_types(node.span(), node.m_res_type, node.m_cache.m_arg_types.back());
         }
-        
+
         void visit(::HIR::ExprNode_Literal& node) override {
             if( node.m_data.is_String() || node.m_data.is_ByteString() ) {
                 const auto& be = node.m_res_type.data().as_Borrow();
@@ -1916,21 +1926,43 @@ namespace {
         void visit(::HIR::ExprNode_Closure& node) override {
             const Span& sp = node.span();
             m_returns.push_back(&node.m_return);
+            DEBUG("Closure " << &node);
             HIR::ExprVisitorDef::visit(node);
-            if( !node.m_is_move ) {
-                if( node.m_capture_lifetime == HIR::LifetimeRef() ) {
+            if( !node.m_code ) {
+            }
+            else if( !node.m_is_move ) {
+                if( node.m_capture_lifetime == HIR::LifetimeRef() || this->remove_locals ) {
                     node.m_capture_lifetime = m_state.allocate_ivar(sp);
+                    DEBUG("m_capture_lifetime = " << node.m_capture_lifetime);
                 }
 
+                auto l = m_state.allocate_local(node, /**/node);
                 for( const auto& cap : node.m_avu_cache.captured_vars ) {
                     if( cap.usage != ::HIR::ValueUsage::Move ) {
                         HIR::TypeRef    tmp_ty;
                         const auto* cap_ty_p = &m_binding_types_ptr->at(cap.root_slot);
+                        HIR::TypeRef    deref_source;
+                        bool found_borrow = false;
                         for(const auto& n : cap.fields) {
+                            if( n == RcString() ) {
+                                deref_source = cap_ty_p->clone();
+                            }
                             tmp_ty = m_resolve.get_field_type(sp, *cap_ty_p, n);
                             cap_ty_p = &tmp_ty;
                         }
-                        equate_type_lifetimes(node.span(), node.m_capture_lifetime, *cap_ty_p);
+
+                        if( deref_source.data().is_Infer() ) {
+                            auto wrapped_ty = HIR::TypeRef::new_borrow(
+                                cap.usage == HIR::ValueUsage::Mutate ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared,
+                                cap_ty_p->clone(), l
+                                );
+                            DEBUG("Capture " << cap << " -> " << wrapped_ty);
+                            equate_type_lifetimes(node.span(), node.m_capture_lifetime, wrapped_ty);
+                        }
+                        else {
+                            DEBUG("Capture " << cap << " from" << deref_source);
+                            equate_type_lifetimes(node.span(), node.m_capture_lifetime, deref_source);
+                        }
                     }
                 }
             }
@@ -2500,7 +2532,9 @@ namespace {
                     pp = ms.monomorph_path_params(Span(), pp, false);
                 }
                 void visit(HIR::ExprNode_Closure& node) override {
-                    if( !node.m_is_move ) {
+                    if( !node.m_code ) {
+                    }
+                    else if( !node.m_is_move ) {
                         node.m_capture_lifetime = ms.monomorph_lifetime(node.span(), node.m_capture_lifetime);
                     }
                     HIR::ExprVisitorDef::visit(node);

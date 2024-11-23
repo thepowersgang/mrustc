@@ -882,6 +882,7 @@ struct ExprNode_Closure:
 
     NODE_METHODS();
 };
+::std::ostream& operator<<(::std::ostream& os, const ExprNode_Closure::AvuCache::Capture& x);
 
 struct ExprNode_Generator:
     public ExprNode

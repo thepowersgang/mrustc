@@ -1131,6 +1131,10 @@ namespace {
                     }
                 }
 
+                // Add `'a: 'captures` for all captured lifetimes
+                for(size_t i = 0; i < params.m_lifetimes.size(); i++) {
+                    params.m_bounds.push_back(::HIR::GenericBound::make_Lifetime({ HIR::LifetimeRef(params.m_lifetimes.size()), HIR::LifetimeRef(i) }));
+                }
                 params.m_lifetimes.push_back(HIR::LifetimeDef());
                 params.m_lifetimes.back().m_name = RcString::new_interned("captures");
                 DEBUG("Added by-borrow lifetime: #" << ref_capture_lft_idx << " - " << params.fmt_args());
