@@ -689,6 +689,63 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             Span    sp;
             const auto& trait_path = ent.first.m_data.as_UfcsKnown().trait;
             const auto& type = ent.first.m_data.as_UfcsKnown().type;
+            if( trait_path.m_path != HIR::SimplePath() ) {
+                continue;
+            }
+            DEBUG("VTABLE <empty> for " << type);
+
+            ::std::vector<HIR::TypeRef> tuple_tys;
+            tuple_tys.push_back(::HIR::CoreType::Usize);
+            tuple_tys.push_back(::HIR::CoreType::Usize);
+            tuple_tys.push_back(::HIR::CoreType::Usize);    // fn
+            auto vtable_ty = ::HIR::TypeRef(std::move(tuple_tys));
+
+            // Look up the size of the VTable, so we can allocate the right buffer size
+            const auto* repr = Target_GetTypeRepr(sp, state.resolve, vtable_ty);
+            assert(repr);
+
+            HIR::Linkage linkage;
+            linkage.type = HIR::Linkage::Type::Weak;
+            HIR::Static vtable_static( ::std::move(linkage), /*is_mut*/false, mv$(vtable_ty), {} );
+            auto& vtable_data = vtable_static.m_value_res;
+            const auto ptr_bytes = Target_GetPointerBits()/8;
+            vtable_data.bytes.resize( repr->size );
+            size_t ofs = 0;
+            auto push_ptr = [&vtable_data,&ofs,ptr_bytes](HIR::Path p) {
+                DEBUG("@" << ofs << " = " << p);
+                assert(ofs + ptr_bytes <= vtable_data.bytes.size());
+                vtable_data.relocations.push_back(Reloc::new_named( ofs, ptr_bytes, mv$(p) ));
+                vtable_data.write_uint(ofs, ptr_bytes, EncodedLiteral::PTR_BASE);
+                ofs += ptr_bytes;
+                assert(ofs <= vtable_data.bytes.size());
+            };
+            // Drop glue
+            trans_list.m_drop_glue.insert( type.clone() );
+            push_ptr(::HIR::Path(type.clone(), "#drop_glue"));
+            // Size & align
+            {
+                size_t  size, align;
+                // NOTE: Uses the Size+Align version because that doesn't panic on unsized
+                ASSERT_BUG(sp, Target_GetSizeAndAlignOf(sp, state.resolve, type, size, align), "Unexpected generic? " << type);
+                vtable_data.write_uint(ofs, ptr_bytes, size ); ofs += ptr_bytes;
+                vtable_data.write_uint(ofs, ptr_bytes, align); ofs += ptr_bytes;
+            }
+            assert(ofs == vtable_data.bytes.size());
+            vtable_static.m_value_generated = true;
+
+            // Add to list
+            trans_list.m_auto_statics.push_back( box$(vtable_static) );
+            auto* e = trans_list.add_static(ent.first.clone());
+            e->ptr = trans_list.m_auto_statics.back().get();
+        }
+        for(const auto& ent : trans_list.m_vtables)
+        {
+            Span    sp;
+            const auto& trait_path = ent.first.m_data.as_UfcsKnown().trait;
+            const auto& type = ent.first.m_data.as_UfcsKnown().type;
+            if( trait_path.m_path == HIR::SimplePath() ) {
+                continue;
+            }
             DEBUG("VTABLE " << trait_path << " for " << type);
             // TODO: What's the use of `ent.second` here? (it's a `Trans_Params`)
 

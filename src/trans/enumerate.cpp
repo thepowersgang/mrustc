@@ -996,7 +996,18 @@ void Trans_Enumerate_Types(EnumState& state)
         for(const auto& ent : state.rv.m_vtables)
         {
             TRACE_FUNCTION_F("vtable " << ent.first);
+            const auto& ty = ent.first.m_data.as_UfcsKnown().type;
             const auto& gpath = ent.first.m_data.as_UfcsKnown().trait;
+            if( gpath.m_path == HIR::SimplePath() ) {
+                ::std::vector<HIR::TypeRef> tuple_tys;
+                tuple_tys.push_back(::HIR::CoreType::Usize);
+                tuple_tys.push_back(::HIR::CoreType::Usize);
+                tuple_tys.push_back(::HIR::CoreType::Usize);    // fn
+                auto vtable_ty = ::HIR::TypeRef(std::move(tuple_tys));
+                tv.visit_type( ty );
+                tv.visit_type( vtable_ty );
+                continue ;
+            }
             const auto& trait = state.crate.get_trait_by_path(sp, gpath.m_path);
 
             const auto& vtable_ty_spath = trait.m_vtable_path;
@@ -1016,7 +1027,6 @@ void Trans_Enumerate_Types(EnumState& state)
             }
             DEBUG("VTable: " << vtable_ty_spath << vtable_params);
 
-            const auto& ty = ent.first.m_data.as_UfcsKnown().type;
             tv.visit_type( ty );
             tv.visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
 
@@ -1537,6 +1547,10 @@ void Trans_Enumerate_FillFrom_VTable(EnumState& state, ::HIR::Path vtable_path, 
     static Span sp;
     const auto& type = vtable_path.m_data.as_UfcsKnown().type;
     const auto& trait_path = vtable_path.m_data.as_UfcsKnown().trait;
+    if( trait_path == HIR::SimplePath() ) {
+        // TODO: Ensure that the drop glue is available
+        return ;
+    }
     const auto& tr = state.crate.get_trait_by_path(Span(), trait_path.m_path);
 
     ASSERT_BUG(sp, !type.data().is_Slice(), "Getting vtable for unsized type - " << vtable_path);

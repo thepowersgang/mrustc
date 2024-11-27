@@ -741,51 +741,37 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         }
     TU_ARMA(TraitObject, de) {
 
-        auto ty_unit_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit());
+        // Obtain vtable type `::"path"::to::Trait#vtable`
+        auto vtable_ty = de.m_trait.m_path != HIR::SimplePath()
+            ? de.m_trait.m_trait_ptr->get_vtable_type(state.sp, state.m_crate, de)
+            : ::HIR::TypeRef::new_unit();
+        out_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_ty));
 
-        // No data trait, vtable is a null unit pointer.
-        // - Shouldn't the vtable be just unit?
-        // - Codegen assumes it's a pointer.
-        if( de.m_trait.m_path.m_path == ::HIR::SimplePath() )
+        // If the data trait hasn't changed, return the vtable pointer
+        if( const auto* se = src_ty.data().opt_TraitObject() )
         {
-            auto null_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ U128(0u), ::HIR::CoreType::Usize }) );
-            out_meta_ty = ty_unit_ptr.clone();
-            out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_Cast({ mv$(null_lval), mv$(ty_unit_ptr) }) );
-        }
-        else
-        {
-            const auto& trait_path = de.m_trait;
-            const auto& trait = *de.m_trait.m_trait_ptr;
-
-            // Obtain vtable type `::"path"::to::Trait#vtable`
-            auto vtable_ty = trait.get_vtable_type(state.sp, state.m_crate, de);
-            out_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_ty));
-
-            // If the data trait hasn't changed, return the vtable pointer
-            if( const auto* se = src_ty.data().opt_TraitObject() )
+            out_src_is_dst = true;
+            if( se->m_trait.m_trait_ptr != de.m_trait.m_trait_ptr )
             {
-                out_src_is_dst = true;
-                if( se->m_trait.m_trait_ptr != de.m_trait.m_trait_ptr )
-                {
-                    const auto& trait = *se->m_trait.m_trait_ptr;
-                    auto vtable_ty = trait.get_vtable_type(state.sp, state.m_crate, *se);
-                    auto in_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_ty));
+                assert(se->m_trait.m_trait_ptr);
+                const auto& trait = *se->m_trait.m_trait_ptr;
+                auto vtable_ty = trait.get_vtable_type(state.sp, state.m_crate, *se);
+                auto in_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_ty));
 
-                    auto parent_trait_field = trait.get_vtable_parent_index(state.sp, se->m_trait.m_path.m_params, de.m_trait.m_path);
-                    MIR_ASSERT(state, parent_trait_field != 0, "Unable to find parent trait for trait object upcast - " << se->m_trait.m_path << " in " << de.m_trait.m_path);
-                    auto in_meta_val = mutator.in_temporary( mv$(in_meta_ty), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
-                    out_meta_val = MIR::LValue::new_Field( MIR::LValue::new_Deref( mv$(in_meta_val) ), parent_trait_field );
-                }
-                else
-                {
-                    out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
-                }
+                auto parent_trait_field = trait.get_vtable_parent_index(state.sp, se->m_trait.m_path.m_params, de.m_trait.m_path);
+                MIR_ASSERT(state, parent_trait_field != 0, "Unable to find parent trait for trait object upcast - " << se->m_trait.m_path << " in " << de.m_trait.m_path);
+                auto in_meta_val = mutator.in_temporary( mv$(in_meta_ty), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
+                out_meta_val = MIR::LValue::new_Field( MIR::LValue::new_Deref( mv$(in_meta_val) ), parent_trait_field );
             }
             else
             {
-                MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
-                out_meta_val = create_vtable(src_ty.clone(), trait_path);
+                out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
             }
+        }
+        else
+        {
+            MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
+            out_meta_val = create_vtable(src_ty.clone(), de.m_trait);
         }
         return true;
         }

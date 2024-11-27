@@ -3208,6 +3208,10 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         throw "";
         }
     TU_ARM(p.m_data, UfcsKnown, pe) {
+        if( pe.trait.m_path == HIR::SimplePath() && pe.item == "vtable#" ) {
+            DEBUG("Empty trait VTable, return NotYetKnown");
+            return ValuePtr::make_NotYetKnown({});
+        }
         out_params.self_ty = pe.type.clone();
         out_params.pp_impl = &pe.trait.m_params;
         out_params.pp_method = &pe.params;
