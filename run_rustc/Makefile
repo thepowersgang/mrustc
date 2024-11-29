@@ -233,7 +233,9 @@ CARGO_ENV_STAGE3_STD := CARGO_TARGET_DIR=$(OUTDIR)build-std RUSTC=$(abspath rust
 $(LIBDIR)libstd.rlib: $(BINDIR)rustc
 	@mkdir -p $(LIBDIR)
 	@echo [CARGO] $(RUST_SRC_LIBS)test/Cargo.toml '>' $(OUTDIR)build-std2
-ifeq ($(TARGETVER_LEAST_1_39),)
+ifneq ($(TARGETVER_LEAST_1_74),)
+	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)sysroot/Cargo.toml --features panic-unwind
+else ifeq ($(TARGETVER_LEAST_1_39),)
 	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)std/Cargo.toml --features panic-unwind
 	$Vcp --remove-destination $(CARGO_OUTDIR_STAGE3_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE3_STD)deps/*.$(DYLIB_EXT) $(LIBDIR)
 	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml
