@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 export RUSTC_VERSION=1.74.0 MRUSTC_TARGET_VER=1.74 OUTDIR_SUF=-1.74.0
-export MRUSTC_CCACHE=1
+# Turn this on if you have `ccache` installed
+#export MRUSTC_CCACHE=1
 make
 make RUSTCSRC
 make -f minicargo.mk LIBS $@
