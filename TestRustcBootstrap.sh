@@ -19,6 +19,9 @@ elif [[ "$RUSTC_VERSION" == "1.39.0" ]]; then
 elif [[ "$RUSTC_VERSION" == "1.54.0" ]]; then
     RUSTC_VERSION_NEXT=1.55.0
     RUN_RUSTC_SUF=-1.54.0
+elif [[ "$RUSTC_VERSION" == "1.74.0" ]]; then
+    RUSTC_VERSION_NEXT=1.75.0
+    RUN_RUSTC_SUF=-1.74.0
 else
     echo "Unknown rustc version"
 fi
@@ -52,6 +55,7 @@ full-bootstrap = true
 vendor = true
 [llvm]
 ninja = false
+download-ci-llvm = false
 EOF
 echo "--- Running x.py, see ${WORKDIR}mrustc.log for progress"
 (cd ${WORKDIR} && mv mrustc build)
@@ -79,6 +83,7 @@ full-bootstrap = true
 vendor = true
 [llvm]
 ninja = false
+download-ci-llvm = false
 EOF
 echo "--- Running x.py, see ${WORKDIR}official.log for progress"
 (cd ${WORKDIR} && mv official build)
