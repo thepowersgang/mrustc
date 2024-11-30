@@ -707,6 +707,7 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
+    Cfg_SetValue("target_abi", "llvm"); // This is a lie, but hopefully works?
     if(g_target.m_arch.m_atomics.u8)    { Cfg_SetValue("target_has_atomic", "8"  ); Cfg_SetValue("target_has_atomic_load_store", "8"  ); Cfg_SetValue("target_has_atomic_equal_alignment", "8"  ); }
     if(g_target.m_arch.m_atomics.u16)   { Cfg_SetValue("target_has_atomic", "16" ); Cfg_SetValue("target_has_atomic_load_store", "16" ); Cfg_SetValue("target_has_atomic_equal_alignment", "16" ); }
     if(g_target.m_arch.m_atomics.u32)   { Cfg_SetValue("target_has_atomic", "32" ); Cfg_SetValue("target_has_atomic_load_store", "32" ); Cfg_SetValue("target_has_atomic_equal_alignment", "32"); }
