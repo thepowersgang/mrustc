@@ -5242,9 +5242,6 @@ namespace {
         {
             if( const auto* de = dst.data().opt_Function() )
             {
-                auto& node_ptr = *node_ptr_ptr;
-                auto span = node_ptr->span();
-
                 auto ft = context.m_resolve.expand_associated_types(sp, HIR::TypeRef(se->decay(sp)));
                 const auto* se = &ft.data().as_Function();
 
@@ -5263,6 +5260,9 @@ namespace {
 
                 if(context_mut)
                 {
+                    auto& node_ptr = *node_ptr_ptr;
+                    auto span = node_ptr->span();
+
                     auto s_pp = se->hrls.make_empty_params(true);
                     MonomorphHrlsOnly   s_ms(s_pp);
                     auto d_pp = de->hrls.make_empty_params(true);
