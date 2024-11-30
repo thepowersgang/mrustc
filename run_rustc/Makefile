@@ -225,7 +225,7 @@ ifeq ($(RUSTC_VERSION),1.19.0)
 else
 	$V$(call fn_opt_copy,$(CARGO_OUTDIR_RUSTC)$(RUSTC_BINNAME),$(BINDIR)rustc_binary)
 endif
-	$Vprintf '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(OUTDIR)prefix/lib):$(abspath $(LIBDIR))" $$d/rustc_binary $$@' >$@
+	$Vprintf '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(OUTDIR)prefix/lib):$(abspath $(LIBDIR))" $$d/rustc_binary "$$@"' >$@
 	$Vchmod +x $@
 
 CARGO_OUTDIR_STAGE3_STD := $(OUTDIR)build-std/$(RUSTC_TARGET)/release/
