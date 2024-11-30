@@ -2694,14 +2694,26 @@ namespace {
                     m_of << "\treturn rv;\n";
                 }
                 else if( item.m_linkage.name == "llvm.x86.xgetbv" ) {
-                    m_of << "\tuint32_t lo, hi;\n";
-                    m_of << "\t__asm__ __volatile__ (\"xgetbv\" : \"=a\" (lo), \"=d\" (hi) : \"c\" (arg0) );\n";
-                    m_of << "\treturn lo | ((uint64_t)hi << 32);\n";
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        m_of << "\tuint32_t lo, hi;\n";
+                        m_of << "\t__asm__ __volatile__ (\"xgetbv\" : \"=a\" (lo), \"=d\" (hi) : \"c\" (arg0) );\n";
+                        m_of << "\treturn lo | ((uint64_t)hi << 32);\n";
+                        break;
+                    case Compiler::Msvc:
+                        m_of << "\treturn _xgetbv(arg0);\n";
+                        break;
+                    }
                 }
                 else if( item.m_linkage.name == "llvm.x86.sse2.pause" ) {
                     // Just a `PAUSE` instruciton, which is effectively a nop
-                    m_of << "\t__asm__ __volatile__ (\"pause\");\n";
-                    m_of << "\treturn ;";
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc  : m_of << "\t__asm__ __volatile__ (\"pause\");\n";    break;
+                    case Compiler::Msvc : m_of << "\t_mm_pause();\n"; break;
+                    }
+                    m_of << "\treturn ;\n";
                 }
                 // AES functions
                 else if( item.m_linkage.name.rfind("llvm.x86.aesni.", 0) == 0 )
