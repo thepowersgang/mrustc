@@ -53,6 +53,7 @@ cargo = "${PREFIX}bin/cargo"
 rustc = "${PREFIX}bin/rustc"
 full-bootstrap = true
 vendor = true
+extended = true
 [llvm]
 ninja = false
 download-ci-llvm = false
@@ -81,6 +82,7 @@ cat - > ${WORKDIR}official/rustc-${RUSTC_VERSION_NEXT}-src/config.toml <<EOF
 [build]
 full-bootstrap = true
 vendor = true
+extended = true
 [llvm]
 ninja = false
 download-ci-llvm = false
