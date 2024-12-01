@@ -1408,6 +1408,14 @@ void Trans_Enumerate_FillFrom_MIR_Param(MIR::EnumCache& state, const ::MIR::Para
 void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& code)
 {
     TRACE_FUNCTION_F("");
+    for(const auto& ty : code.locals) {
+        visit_ty_with(ty, [&state](const HIR::TypeRef& t)->bool {
+            if( const auto* te = t.data().opt_NamedFunction() ) {
+                state.insert_path(te->path);
+            }
+            return false;
+            });
+    }
     for(const auto& bb : code.blocks)
     {
         for(const auto& stmt : bb.statements)
