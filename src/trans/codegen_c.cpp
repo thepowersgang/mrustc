@@ -2565,13 +2565,23 @@ namespace {
             }
         }
 
-        //void print_escaped_string(const ::std::string& s)
-        template<typename T>
-        void print_escaped_string(const T& s)
+        void print_escaped_string(const std::string& s)
         {
+            print_escaped_string_inner(s.c_str(), s.c_str() + s.size());
+        }
+        void print_escaped_string(const std::vector<uint8_t>& s)
+        {
+            const char* start =  reinterpret_cast<const char*>(s.data());
+            print_escaped_string_inner(start, start + s.size());
+        }
+        void print_escaped_string_inner(const char* start, const char* end)
+        {
+            const unsigned MAX_STRING_LEN = 16380 - 10;
             m_of << "\"" << ::std::hex;
-            for(const auto& v : s)
+            unsigned n_ch = 0;
+            while(start != end)
             {
+                const char& v = *start++;
                 switch(v)
                 {
                 case '"':
@@ -2591,6 +2601,7 @@ namespace {
                             // Trigraph! Needs an escape in it.
                             m_of << v;
                             m_of << "\"\"";
+                            n_ch = 0;
                             break;
                         }
                     }
@@ -2604,9 +2615,15 @@ namespace {
                         else
                             m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v);
                         // If the next character is a hex digit, close/reopen the string.
-                        if( &v < &s.back() && isxdigit(*(&v+1)) )
+                        if( &v < (end-1) && isxdigit(*(&v+1)) ) {
                             m_of << "\"\"";
+                            n_ch = 0;
+                        }
                     }
+                }
+                n_ch ++;
+                if(n_ch == MAX_STRING_LEN) {
+                    m_of << "\"\"";
                 }
             }
             m_of << "\"" << ::std::dec;
@@ -5854,7 +5871,8 @@ namespace {
                             align_needed = true;
                             m_of << "ALIGN_TO(";
                         }
-                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                        const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                        m_of << repr->fields.back().offset << " + ";
                     }
                     emit_param(e.args.at(0)); m_of << ".META * " << item_size;
                     if(align_needed) {
@@ -5866,7 +5884,8 @@ namespace {
                     // TODO: Handle aligning the size if the wrapper's alignment is greater than the object
                     // - Also, how is the final field aligned?
                     if( ! ty.data().is_TraitObject() ) {
-                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                        const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                        m_of << repr->fields.back().offset << " + ";
                     }
                     //auto vtable_path = inner_ty.data().as_TraitObject().m_trait.m_path.clone();
                     //vtable_path.m_path.m_components.back() += "#vtable";
@@ -6180,7 +6199,8 @@ namespace {
                 else {
                     m_of << "s_" << Trans_Mangle(p);
                 }
-                m_of << " mrustc_empty_caller_location = {0,0,{\"\",0}};";
+                //m_of << " mrustc_empty_caller_location = {0,0,{\"\",0}};";
+                m_of << " mrustc_empty_caller_location = {{\"\",0},0,0};";  // NOTE: Depends on the generated layout :(
                 emit_lvalue(e.ret_val); m_of << " = &mrustc_empty_caller_location"; // TODO: Hidden ABI for caller location
             }
             // --- Pointer manipulation
