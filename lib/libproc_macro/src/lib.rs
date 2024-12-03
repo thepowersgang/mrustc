@@ -177,7 +177,10 @@ pub fn main(macros: &[MacroDesc])
     }
     //::env_logger::init();
 
-    let mac_name = ::std::env::args().nth(1).expect("Was not passed a macro name");
+    let mut args = ::std::env::args();
+    let _ = args.next().expect("Should have an executable name");
+    let mac_name = args.next().expect("Was not passed a macro name");
+    let input_path = args.next();
     //eprintln!("Searching for macro {}\r", mac_name);
     for m in macros
     {
@@ -186,8 +189,17 @@ pub fn main(macros: &[MacroDesc])
             ::std::io::stdout().write(&[0]).expect("Stdout write error?");
             ::std::io::stdout().flush().expect("Stdout write error?");
             debug!("Waiting for input\r");
-            let stdin = ::std::io::stdin();
-            let input = crate::serialisation::recv_token_stream(stdin.lock());
+            let mut stdin_raw;
+            let mut fp_raw;
+            let stdin = if let Some(p) = input_path {
+                    fp_raw = ::std::fs::File::open(p).unwrap();
+                    &mut fp_raw as &mut dyn ::std::io::Read
+                }
+                else {
+                    stdin_raw = ::std::io::stdin().lock();
+                    &mut stdin_raw
+                };
+            let input = crate::serialisation::recv_token_stream(stdin);
             debug!("INPUT = `{}`\r", input);
             let output = match m.handler
                 {
@@ -196,7 +208,7 @@ pub fn main(macros: &[MacroDesc])
                     (h)(input)
                     },
                 MacroType::Attribute(h) => {
-                    let input_body = crate::serialisation::recv_token_stream(stdin.lock());
+                    let input_body = crate::serialisation::recv_token_stream(stdin);
                     debug!("INPUT BODY = `{}`\r", input_body);
                     Span::freeze_definitions();
                     (h)(input, input_body)
