@@ -125,6 +125,9 @@ namespace {
                             if(out_path) {
                                 *out_path = AST::AbsolutePath(c.name,{});
                             }
+                            if( c.name == "" ) {
+                                return get_module_ast(crate.m_root_module, path, 1, ignore_last, out_path);
+                            }
                             ASSERT_BUG(sp, crate.m_extern_crates.count(c.name) > 0, "Unable to find crate `" << c.name << "`");
                             return get_module_hir(crate.m_extern_crates.at(c.name).m_hir->m_root_module, path, 1, ignore_last, out_path);
                             }
