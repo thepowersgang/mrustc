@@ -248,16 +248,50 @@ class CHandler_Repr:
             TTStream    lex(sp, ParseState(), mi.data());
             lex.getTokenCheck(TOK_PAREN_OPEN);
 
-            auto repr_str = lex.getTokenCheck(TOK_IDENT).ident().name;
-            if(repr_str == "C") {
-                e->m_markings.repr = ::AST::Union::Markings::Repr::C;
+            do {
+                auto repr_str = lex.getTokenCheck(TOK_IDENT).ident().name;
+                if(repr_str == "C") {
+                    e->m_markings.repr = ::AST::Union::Markings::Repr::C;
+                }
+                else if(repr_str == "transparent") {
+                    e->m_markings.repr = ::AST::Union::Markings::Repr::Transparent;
+                }
+                else if(repr_str == "packed") {
+                    //switch( e->m_markings.repr )
+                    //{
+                    //case AST::Struct::Markings::Repr::C:
+                    //case AST::Struct::Markings::Repr::Rust:
+                    //    break;
+                    //default:
+                    //    // TODO: Error
+                    //    break;
+                    //}
+                    //if( e->m_markings.max_field_align != 0 ) {
+                    //    // TODO: Error
+                    //}
+                    if( lex.getTokenIf(TOK_PAREN_OPEN) )
+                    {
+                        auto n = Expand_ParseAndExpand_ExprVal(crate, mod, lex);
+                        auto* val = dynamic_cast<AST::ExprNode_Integer*>(&*n);
+                        ASSERT_BUG(n->span(), val, "#[repr(packed(...))] - alignment must be an integer");
+                        auto v = val->m_value;
+                        ASSERT_BUG(lex.point_span(), v > U128(0), "#[repr(packed(" << v << "))] - alignment must be non-zero");
+                        ASSERT_BUG(lex.point_span(), (v & (v-1)) == U128(0), "#[repr(packed(" << v << "))] - alignment must be a power of two");
+                        //ASSERT_BUG(lex.point_span(), e->m_markings.align_value == 0, "#[repr(packed(" << v << "))] - conflicts with previous alignment");
+                        // TODO: I believe this should change the internal aligment too?
+                        //e->m_markings.max_field_align = v.truncate_u64();
+                        lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    }
+                    else
+                    {
+                        //e->m_markings.max_field_align = 1;
+                    }
+                }
+                else {
+                    ERROR(lex.point_span(), E0000, "Unknown union repr '" << repr_str << "'");
+                }
             }
-            else if(repr_str == "transparent") {
-                e->m_markings.repr = ::AST::Union::Markings::Repr::Transparent;
-            }
-            else {
-                ERROR(lex.point_span(), E0000, "Unknown union repr '" << repr_str << "'");
-            }
+            while( lex.getTokenIf(TOK_COMMA) );
 
             lex.getTokenCheck(TOK_PAREN_CLOSE);
             lex.getTokenCheck(TOK_EOF);

@@ -168,3 +168,5 @@
 - `async` (functions and blocks)
 - References to `Self` in `impl Foo`
 - Requires zero-sized functions?
+- `#[derive(::core::cmp::PartialEq, ::core::cmp::Eq)]` (in the `windows` crate)
+- `#[repr(C, packed(1))]`

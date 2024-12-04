@@ -524,7 +524,7 @@ namespace {
                     if(out_path) {
                         out_path->nodes.push_back(name);
                     }
-                    DEBUG("Found in ast");
+                    DEBUG("Found in ast (" << i->data.tag_str() << ")");
                     switch(ns)
                     {
                     case ResolveNamespace::Macro:

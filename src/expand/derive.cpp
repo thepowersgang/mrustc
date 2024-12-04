@@ -1944,7 +1944,9 @@ namespace {
         while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
 
             if( lex.getTokenIf(TOK_DOUBLE_COLON) ) {
-                auto item = AST::Path(lex.getTokenCheck(TOK_STRING).str().c_str(), {});
+                auto item = lex.lookahead(0) == TOK_STRING
+                    ? AST::Path(lex.getTokenCheck(TOK_STRING).str().c_str(), {})
+                    : AST::Path((std::string("=") + lex.getTokenCheck(TOK_IDENT).ident().name.c_str()).c_str(), {});
                 lex.getTokenCheck(TOK_DOUBLE_COLON);
                 do {
                     item += AST::PathNode(lex.getTokenCheck(TOK_IDENT).ident().name);
@@ -2019,7 +2021,7 @@ namespace {
 
             TU_MATCH_HDRA( (mac), {)
             TU_ARMA(None, e) {
-                TODO(sp, "Unable to find derive macro for - " << trait_path);
+                // Leave `mac_path` empty, triggering an error in caller
                 }
             TU_ARMA(ExternalProcMacro, ext_proc_mac) {
                 mac_path.push_back(ext_proc_mac->path.m_crate_name);
@@ -2054,7 +2056,6 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         crate.m_ext_cratename_core
         };
 
-    bool    fail = false;
     ::std::vector<AST::Path>   missing_handlers;
     for( const auto& trait_path : derive_items )
     {
@@ -2069,9 +2070,9 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
             }
         }
 
-        std::vector<RcString>   mac_path = find_macro(sp, crate, mod, trait_path);
+        // TODO: Handle full paths to standard library traits
 
-        bool found = false;
+        std::vector<RcString>   mac_path = find_macro(sp, crate, mod, trait_path);
         if( !mac_path.empty() )
         {
             auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, vis, path.nodes.back().c_str(), item);
@@ -2079,21 +2080,34 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
             {
                 lex->parse_state().module = &mod;
                 Parse_ModRoot_Items(*lex, mod);
-                found = true;
             }
             else {
                 ERROR(sp, E0000, "proc_macro derive failed");
             }
+            continue;
         }
-        if( found )
-            continue ;
+
+        // HACK! If the trait path is for `=core` and the last component passes `find_impl`, then assume it's a proper path
+        // This is for the 1.74 crate `windows-0.48.0`, which has `#[derive(::core::cmp::PartialEq, ::core::cmp::Eq)]` for some reason.
+
+        // Absolute path
+        if( const auto* ap = trait_path.m_class.opt_Absolute() ) {
+            // For `::core` (encoded as `=core` due to how it's parsed in `get_derive_items`)
+            if( ap->crate == "=core" ) {
+                // And if the last node (ignore intermediate nodes) returns a valid builtin
+                if(auto dp = find_impl(ap->nodes.back().name())) {
+                    // Use that
+                    mod.add_item(sp, AST::Visibility::make_bare_private(), "", dp->handle_item(sp, opts, item.params(), type, item), {} );
+                    continue ;
+                }
+            }
+        }
 
         DEBUG("> No handler for " << trait_path);
         missing_handlers.push_back( trait_path );
-        fail = true;
     }
 
-    if( fail ) {
+    if( !missing_handlers.empty() ) {
         ERROR(sp, E0000, "Failed to apply #[derive] - Missing handlers for " << missing_handlers);
     }
 }
