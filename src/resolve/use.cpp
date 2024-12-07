@@ -428,7 +428,11 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 BUG(span, "Hit Extern in use resolution");
                 }
             TU_ARMA(Crate, e) {
-                if( e.name != "" )
+                if( ! rv.type.is_Unbound() ) {
+                    // This is a hack for when a crate defines a module with the name `std` (or `core` with `#![no_std]`)
+                    DEBUG("Ignore, already bound");
+                }
+                else if( e.name != "" )
                 {
                     ASSERT_BUG(span, crate.m_extern_crates.count(e.name), "Crate '" << e.name << "' not loaded");
                     rv.type.set( AST::AbsolutePath(e.name, {}), ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) }) );

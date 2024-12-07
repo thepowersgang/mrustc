@@ -2578,10 +2578,13 @@ void Expand(::AST::Crate& crate)
         AST::AttributeName  name;
         name.elems.push_back("macro_use");
         attrs.push_back( AST::Attribute(Span(), mv$(name), {}) );
-        crate.m_root_module.m_items.insert(
-            crate.m_root_module.m_items.begin(),
+        // NOTE: For `macro_use` we want to import this first, but for item lookup, we want it to be last.
+        // - Solution, add to the end - but pre-visit the attributes
+        crate.m_root_module.m_items.push_back(
             box$( AST::Named<AST::Item>(Span(), mv$(attrs), AST::Visibility::make_restricted(AST::Visibility::Ty::Private, AST::AbsolutePath()), std_crate_shortname, AST::Item::make_Crate({std_crate_name}) ) )
             );
+        auto& i = *crate.m_root_module.m_items.back();
+        Expand_Attrs(es, i.attrs, AttrStage::Post, ::AST::AbsolutePath(), crate.m_root_module, i.vis, i.data);
     }
 
     // 2. Module attributes
