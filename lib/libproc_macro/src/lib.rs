@@ -193,7 +193,7 @@ pub fn main(macros: &[MacroDesc])
             let mut fp_raw;
             let stdin = if let Some(p) = input_path {
                     fp_raw = ::std::fs::File::open(p).unwrap();
-                    &mut fp_raw as &mut dyn ::std::io::Read
+                    &mut fp_raw as &mut /*dyn */::std::io::Read
                 }
                 else {
                     stdin_raw = ::std::io::stdin().lock();
