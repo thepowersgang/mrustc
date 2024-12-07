@@ -2576,7 +2576,8 @@ namespace {
         }
         void print_escaped_string_inner(const char* start, const char* end)
         {
-            const unsigned MAX_STRING_LEN = 16380 - 10;
+            // NOTE: the limit for msvc is 16380, divide that by three for escapes
+            const unsigned MAX_STRING_LEN = 16380/3 - 10;
             m_of << "\"" << ::std::hex;
             unsigned n_ch = 0;
             while(start != end)
@@ -2624,6 +2625,7 @@ namespace {
                 n_ch ++;
                 if(n_ch == MAX_STRING_LEN) {
                     m_of << "\"\"";
+                    n_ch = 0;
                 }
             }
             m_of << "\"" << ::std::dec;
@@ -6199,8 +6201,8 @@ namespace {
                 else {
                     m_of << "s_" << Trans_Mangle(p);
                 }
-                //m_of << " mrustc_empty_caller_location = {0,0,{\"\",0}};";
-                m_of << " mrustc_empty_caller_location = {{\"\",0},0,0};";  // NOTE: Depends on the generated layout :(
+                m_of << " mrustc_empty_caller_location = {0,0,{\"\",0}};";
+                //m_of << " mrustc_empty_caller_location = {{\"\",0},0,0};";  // NOTE: Depends on the generated layout :(
                 emit_lvalue(e.ret_val); m_of << " = &mrustc_empty_caller_location"; // TODO: Hidden ABI for caller location
             }
             // --- Pointer manipulation

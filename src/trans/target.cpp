@@ -1017,12 +1017,11 @@ namespace {
         AllButFinal,
         All,
     };
-    // ~~Sort fields with lowest alignment first (and putting smallest fields of equal alignment earlier)~~
-    /// Sort largest alignment and largest field first
-    /// - WHY: libstd 1.74 assumes that Path starts with `Vec<u8>`
+    /// Sort fields with lowest alignment first (and putting smallest fields of equal alignment earlier)
+    /// TODO: Why? It looks like this allows some better niche optimisations
+    /// HOWEVER. It breaks an assumption in 1.74 `std::path::Path` (worked around in `Wtf8Buf` patch)
     bool sortfn_struct_fields(const Ent& a, const Ent& b) {
-        //return a.align != b.align ? a.align < b.align : a.size < b.size;
-        return a.align != b.align ? a.align > b.align : a.size > b.size;
+        return a.align != b.align ? a.align < b.align : a.size < b.size;
     }
     /// Generate a struct representation using the provided entries
     /// 

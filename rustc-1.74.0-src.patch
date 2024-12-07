@@ -58,3 +58,56 @@
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  crate::static_assert_size!(Chunk, 16);
+#
+# HACK! Avoid an unsoundness in `Path` by making `Wtf8Buf` start with `Vec<u8>`
+#
+--- library/std/src/sys_common/wtf8.rs
++++ library/std/src/sys_common/wtf8.rs
+@@ -135,3 +135,4 @@
+ #[derive(Eq, PartialEq, Ord, PartialOrd, Clone)]
++#[cfg_attr(rust_compiler = "mrustc", repr(C))]
+ pub struct Wtf8Buf {
+     bytes: Vec<u8>,
+
+#
+# Size checks without updated sorting
+#
+--- compiler/rustc_ast/src/tokenstream.rs
++++ compiler/rustc_ast/src/tokenstream.rs
+@@ -739,3 +739,3 @@
+ // Some types are used a lot. Make sure they don't unintentionally get bigger.
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ mod size_asserts {
+--- compiler/rustc_middle/src/mir/consts.rs
++++ compiler/rustc_middle/src/mir/consts.rs
+@@ -73,2 +73,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ static_assert_size!(ConstValue<'_>, 24);
+--- compiler/rustc_middle/src/mir/interpret/value.rs
++++ compiler/rustc_middle/src/mir/interpret/value.rs
+@@ -37,2 +37,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ static_assert_size!(Scalar, 24);
+--- compiler/rustc_middle/src/mir/syntax.rs
++++ compiler/rustc_middle/src/mir/syntax.rs
+@@ -1423,3 +1423,3 @@
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ mod size_asserts {
+--- compiler/rustc_middle/src/mir/mod.rs
++++ compiler/rustc_middle/src/mir/mod.rs
+@@ -1617,3 +1617,3 @@
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ mod size_asserts {
+--- compiler/rustc_middle/src/ty/consts/kind.rs
++++ compiler/rustc_middle/src/ty/consts/kind.rs
+@@ -75,2 +75,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ static_assert_size!(Expr<'_>, 24);
