@@ -462,7 +462,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
         if( es.mode == ExpandMode::Final ) {
             ERROR(mi_span, E0000, "Unknown macro " << path);
         }
-        DEBUG("Missing, waiting until another pass");
+        DEBUG("Missing, waiting until another pass (set es.has_missing=true)");
         es.has_missing = true;
     }
     return rv;
@@ -2612,6 +2612,8 @@ void Expand(::AST::Crate& crate)
             Expand_Mod(es, ::AST::AbsolutePath(), crate.m_root_module);
             DEBUG("?(Iter) es.change = " << es.change << ", es.has_missing=" << es.has_missing);
         }
+        //ASSERT_BUG(Span(), !es.has_missing, "Expand too too many attempts");
+        es.has_missing = false;
     }
     es.mode = ExpandMode::Final;
     Expand_Mod(es, ::AST::AbsolutePath(), crate.m_root_module);
