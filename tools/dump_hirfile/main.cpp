@@ -108,11 +108,18 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
                     this->dump_function(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
                 }
             }
+            if( this->filters.types.values )
+            {
+                for(const auto& m : ti.m_constants)
+                {
+                    this->dump_constant(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
+                }
+            }
             ::std::cout << "}" << ::std::endl;
         });
     }
 
-    dump_impl_group(crate.m_type_impls, [&](const auto& i) {
+    dump_impl_group(crate.m_type_impls, [&](const HIR::TypeImpl& i) {
         auto root_ip = ::HIR::ItemPath(i.m_type);
         ::std::cout << "impl" << i.m_params.fmt_args() << " " << i.m_type << "\n";
         ::std::cout << "  where" << i.m_params.fmt_bounds() << "\n";
@@ -122,6 +129,13 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
             for(const auto& m : i.m_methods)
             {
                 this->dump_function(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
+            }
+        }
+        if( this->filters.types.values )
+        {
+            for(const auto& m : i.m_constants)
+            {
+                this->dump_constant(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
             }
         }
         ::std::cout << "}" << ::std::endl;
