@@ -1037,10 +1037,18 @@ namespace {
                     this->push_back(std::move(s));
                 }
                 void push_lib(const char* s) {
+                    // Prevent duplicates (seen on windows)
+                    if( m_ty.size() > 0 && m_ty.back() == Ty::Implicit && std::strcmp(this->get_vec().back(), s) == 0 ) {
+                        return ;
+                    }
                     m_ty.push_back(Ty::Implicit);
                     this->push_back(s);
                 }
                 void push_lib(std::string s) {
+                    // Prevent duplicates (seen on windows)
+                    if( m_ty.size() > 0 && m_ty.back() == Ty::Implicit && s == this->get_vec().back() ) {
+                        return ;
+                    }
                     m_ty.push_back(Ty::Implicit);
                     this->push_back(std::move(s));
                 }
@@ -1201,27 +1209,24 @@ namespace {
                 for( const auto& crate_name : m_crate.m_ext_crates_ordered )
                 {
                     const auto& crate = m_crate.m_ext_crates.at(crate_name);
-                    if( !crate.m_data->m_ext_libs.empty() )
-                    {
-                        if( !crate.m_data->m_link_paths.empty() ) {
-                            libraries_and_dirs.push_border();
+                    if( !crate.m_data->m_ext_libs.empty() || !crate.m_data->m_link_paths.empty() ) {
+                        libraries_and_dirs.push_border();
+                    }
+                    for(const auto& path : crate.m_data->m_link_paths ) {
+                        libraries_and_dirs.push_dir(path.c_str());
+                    }
+                    // NOTE: Does explicit lookup, to provide scoped search directories
+                    // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
+                    for(const auto& lib : crate.m_data->m_ext_libs) {
+                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate_name);
+                        auto path = H::find_library(crate.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
+                        if( path != "" )
+                        {
+                            libraries_and_dirs.push_explicit(std::move(path));
                         }
-                        for(const auto& path : crate.m_data->m_link_paths ) {
-                            libraries_and_dirs.push_dir(path.c_str());
-                        }
-                        // NOTE: Does explicit lookup, to provide scoped search directories
-                        // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
-                        for(const auto& lib : crate.m_data->m_ext_libs) {
-                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate_name);
-                            auto path = H::find_library(crate.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
-                            if( path != "" )
-                            {
-                                libraries_and_dirs.push_explicit(std::move(path));
-                            }
-                            else
-                            {
-                                libraries_and_dirs.push_lib(lib.name.c_str());
-                            }
+                        else
+                        {
+                            libraries_and_dirs.push_lib(lib.name.c_str());
                         }
                     }
                 }
