@@ -5498,7 +5498,10 @@ namespace {
                     if( const auto* pe = se.params[i].opt_Reg() ) {
                         if( const auto* regname_p = pe->spec.opt_Explicit() ) {
                             if( pe->output ) {
-                                m_of << indent; emit_lvalue(*pe->output); m_of << " = asm_" << *regname_p << ";\n";
+                                m_of << indent; emit_lvalue(*pe->output); m_of << " = ";
+                                HIR::TypeRef    tmp;
+                                m_of << "("; emit_ctype(m_mir_res->get_lvalue_type(tmp, *pe->output)); m_of << ")";
+                                m_of << "asm_" << *regname_p << ";\n";
                             }
                         }
                     }
