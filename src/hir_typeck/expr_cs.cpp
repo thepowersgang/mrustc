@@ -343,11 +343,19 @@ namespace {
                     // If either the source or the destination inner tyes are infer - add back rules
                     if( const auto* s_e_i = src_inner.data().opt_Infer() )
                     {
-                        this->context.possible_equate_ivar(sp, s_e_i->index, e.inner, Context::PossibleTypeSource::UnsizeTo);
+                        this->context.possible_equate_ivar(sp, s_e_i->index, ity, Context::PossibleTypeSource::UnsizeTo);
                     }
                     if( const auto* d_e_i = ity.data().opt_Infer() )
                     {
                         this->context.possible_equate_ivar(sp, d_e_i->index, s_e.inner, Context::PossibleTypeSource::UnsizeFrom);
+                    }
+
+                    // If this looks like `&mut [?; N]` -> `*mut ?` then do a possible equate between the two types
+                    if( src_inner.data().is_Array() ) {
+                        if( const auto* s_e_i = this->context.get_type(src_inner.data().as_Array().inner).data().opt_Infer() ) {
+                            this->context.possible_equate_ivar(sp, s_e_i->index, ity, Context::PossibleTypeSource::UnsizeTo);
+                            return ;
+                        }
                     }
 
                     // NOTE: &mut T -> *mut U where T: Unsize<U> is allowed
@@ -358,7 +366,7 @@ namespace {
                         // Either side is infer, keep going
                     }
                     // - NOTE: Crude, and likely to break if ether inner isn't known.
-                    else if( src_inner.data().is_Array() && src_inner.data().as_Array().inner == e.inner )
+                    else if( src_inner.data().is_Array() && src_inner.data().as_Array().inner == ity )
                     {
                         // Allow &[T; n] -> *const T - Convert into two casts
                         auto ty = ::HIR::TypeRef::new_pointer(e.type, src_inner.clone());

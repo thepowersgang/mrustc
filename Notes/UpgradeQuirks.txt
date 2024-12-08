@@ -170,3 +170,4 @@
 - Requires zero-sized functions?
 - `#[derive(::core::cmp::PartialEq, ::core::cmp::Eq)]` (in the `windows` crate)
 - `#[repr(C, packed(1))]`
+- `&mut [] as *mut u16` (in cargo)
