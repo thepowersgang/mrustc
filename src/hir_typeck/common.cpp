@@ -769,7 +769,7 @@ struct CloneTyWith_Monomorph: Monomorphiser {
             return p->m_lifetimes[lft_ref.idx()];
         }
         else {
-            BUG(sp, "Impl parameters were not expected (got " << lft_ref << ")");
+            BUG(sp, "Impl lifetime parameters were not expected (got " << lft_ref << ")");
         }
         break;
     case 1:
@@ -778,7 +778,7 @@ struct CloneTyWith_Monomorph: Monomorphiser {
             return p->m_lifetimes[lft_ref.idx()];
         }
         else {
-            BUG(sp, "Method parameters were not expected (got " << lft_ref << ")");
+            BUG(sp, "Method lifetime parameters were not expected (got " << lft_ref << ")");
         }
         break;
     case 2: // Placeholders, just pass through
@@ -790,7 +790,7 @@ struct CloneTyWith_Monomorph: Monomorphiser {
             return p->m_lifetimes[lft_ref.idx()];
         }
         else {
-            BUG(sp, "Higher-ranked parameters were not expected (got " << lft_ref << ")");
+            BUG(sp, "Higher-ranked lifetime parameters were not expected (got " << lft_ref << ")");
             //DEBUG("No HRBs " << lft_ref);
             //return HIR::LifetimeRef(lft_ref.binding);
         }

@@ -207,6 +207,12 @@ public:
     struct Markings {
         std::vector<unsigned> rustc_legacy_const_generics;
         bool track_caller = false;
+        enum Inline {
+            Auto,   // no annotation
+            Never,  // #[inline(never)]
+            Normal, // #[inline]
+            Always  // #[inline(always)]
+        } inline_type = Inline::Auto;
     } m_markings;
 
     Function()

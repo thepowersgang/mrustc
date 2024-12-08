@@ -209,7 +209,7 @@ struct LowerHIR_ExprNode_Visitor:
                     auto it = mapping.find(pb.m_slot);
                     if( it == mapping.end() ) {
                         ASSERT_BUG(Span(), bindings.size() < this->count, "Miscount of variables in `let-else` - only allocated " << this->count);
-                        auto new_idx = base + bindings.size();
+                        unsigned new_idx = base + bindings.size();
 
                         bindings.push_back( HIR::PatternBinding(pb) );
                         bindings.back().m_type = HIR::PatternBinding::Type::Move;

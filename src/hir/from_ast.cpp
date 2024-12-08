@@ -1673,21 +1673,25 @@ namespace {
     }
 
     bool force_emit = false;
+    HIR::Function::Markings markings;
     switch(f.m_markings.inline_type)
     {
     case ::AST::Function::Markings::Inline::Auto:
+        markings.inline_type = ::HIR::Function::Markings::Inline::Auto;
         break;
     case ::AST::Function::Markings::Inline::Never:
+        markings.inline_type = ::HIR::Function::Markings::Inline::Never;
         break;
     case ::AST::Function::Markings::Inline::Always:
+        markings.inline_type = ::HIR::Function::Markings::Inline::Always;
         force_emit = true;
         break;
     case ::AST::Function::Markings::Inline::Normal:
+        markings.inline_type = ::HIR::Function::Markings::Inline::Normal;
         force_emit = true;
         break;
     }
 
-    HIR::Function::Markings markings;
     // #[rustc_legacy_const_generics] - Used to convert a literal argument into a const generic
     for(auto idx : f.m_markings.rustc_legacy_const_generics)
     {

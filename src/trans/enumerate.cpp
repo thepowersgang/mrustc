@@ -155,8 +155,42 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 }
 
 namespace {
+    void Trans_Enumerate_GenericFunctionItems(EnumState& state, const Span& sp, const ::HIR::Function& e, MonomorphStatePtr ms)
+    {
+        if( e.m_code.m_mir )
+        {
+            const auto& mir_fcn = *e.m_code.m_mir;
+            auto params = e.m_params.make_empty_params(true);
+            ms.pp_method = &params;
+            if( !mir_fcn.trans_enum_state )
+            {
+                auto* esp = new MIR::EnumCache();
+                Trans_Enumerate_FillFrom_MIR(*esp, *e.m_code.m_mir);
+                mir_fcn.trans_enum_state = ::MIR::EnumCachePtr(esp);
+            }
+
+            for(const auto& path : mir_fcn.trans_enum_state->paths)
+            {
+                if( !monomorphise_path_needed(*path, true) ) {
+                    DEBUG("Path " << *path);
+                    MonomorphState  unused_ms;
+                    auto v = state.resolve.get_value(sp, *path, unused_ms, true);
+                    if( v.is_StructConstructor() || v.is_EnumConstructor() ) {
+                    }
+                    else {
+                        Trans_Enumerate_FillFrom_PathMono(state, ms.monomorph_path(sp, *path));
+                    }
+                }
+                else {
+                    DEBUG("Path " << *path << " - Generic");
+                }
+            }
+        }
+    }
     void Trans_Enumerate_ValItem(EnumState& state, const ::HIR::ValueItem& vi, bool is_visible, ::std::function<::HIR::SimplePath()> get_path)
     {
+        TRACE_FUNCTION_F(get_path() << " : " << vi.tag_str());
+        const Span  sp;
         switch(vi.tag())
         {
         case ::HIR::ValueItem::TAGDEAD: throw "";
@@ -166,7 +200,7 @@ namespace {
             {
                 if( ! e.is_variant && e.path.m_crate_name == state.crate.m_crate_name )
                 {
-                    const auto& vi2 = state.crate.get_valitem_by_path(Span(), e.path, false);
+                    const auto& vi2 = state.crate.get_valitem_by_path(sp, e.path, false);
                     Trans_Enumerate_ValItem(state, vi2, is_visible, [&](){ return e.path; });
                 }
             }
@@ -176,6 +210,9 @@ namespace {
         TU_ARM(vi, StructConstructor, e) {
             } break;
         TU_ARM(vi, Constant, e) {
+            if( is_visible ) {
+                Trans_Enumerate_FillFrom_Literal(state, e.m_value_res, Trans_Params());
+            }
             } break;
         TU_ARM(vi, Static, e) {
             if( is_visible && !e.m_params.is_generic() )
@@ -192,7 +229,33 @@ namespace {
             }
             } break;
         TU_ARM(vi, Function, e) {
-            if( !e.m_params.is_generic() )
+            bool is_inline = false;
+            if(is_visible)
+            {
+                switch(e.m_markings.inline_type)
+                {
+                case ::HIR::Function::Markings::Inline::Always:
+                case ::HIR::Function::Markings::Inline::Normal:
+                    // Don't emit, it's going to be emitted by callers
+                    // NOTE: This avoids DLL issues on windows with un-used functions
+                    DEBUG("Don't emit inlined function");
+                    is_inline = true;
+                    break;
+                case ::HIR::Function::Markings::Inline::Auto:
+                case ::HIR::Function::Markings::Inline::Never:
+                    // Should still be emitted, as it won't be emitted downstream
+                    break;
+                }
+            }
+
+            if( e.m_params.is_generic() || (is_inline && is_visible) )
+            {
+                const_cast<::HIR::Function&>(e).m_save_code = true;
+                // Enumerate concrete items used
+                // - These are functions that have to be emitted, even if they're not public themselves
+                Trans_Enumerate_GenericFunctionItems(state, sp, e, MonomorphStatePtr());
+            }
+            else
             {
                 if( is_visible ) {
                     Trans_Params pp;
@@ -200,21 +263,16 @@ namespace {
                     state.enum_fcn(get_path(), e, mv$(pp));
                 }
             }
-            else
-            {
-                const_cast<::HIR::Function&>(e).m_save_code = true;
-                // TODO: If generic, enumerate concrete functions used
-            }
             } break;
         }
     }
     void Trans_Enumerate_Public_Mod(EnumState& state, ::HIR::Module& mod, ::HIR::SimplePath mod_path, bool is_visible)
     {
-        // TODO: Fix the TODO in Function above (scan generics for the concretes they use) and set this to false again
-        const bool EMIT_ALL = true;
+        TRACE_FUNCTION_F(mod_path);
         for(auto& vi : mod.m_value_items)
         {
-            Trans_Enumerate_ValItem(state, vi.second->ent, EMIT_ALL || (is_visible && vi.second->publicity.is_global()), [&](){ return mod_path + vi.first; });
+            bool emit = is_visible && vi.second->publicity.is_global();
+            Trans_Enumerate_ValItem(state, vi.second->ent, emit, [&](){ return mod_path + vi.first; });
         }
 
         for(auto& ti : mod.m_mod_items)
@@ -222,6 +280,18 @@ namespace {
             if(auto* e = ti.second->ent.opt_Module() )
             {
                 Trans_Enumerate_Public_Mod(state, *e, mod_path + ti.first, ti.second->publicity.is_global());
+            }
+            else if( const HIR::Trait* e = ti.second->ent.opt_Trait() )
+            {
+                auto params = e->m_params.make_empty_params(true);
+                MonomorphStatePtr   ms;
+                ms.pp_impl = &params;
+                for(const auto& vi : e->m_values )
+                {
+                    if( const auto* fcn = vi.second.opt_Function() ) {
+                        Trans_Enumerate_GenericFunctionItems(state, Span(), *fcn, ms);
+                    }
+                }
             }
         }
     }
@@ -231,6 +301,10 @@ namespace {
         static Span sp;
         const auto& impl_ty = impl.m_type;
         TRACE_FUNCTION_F("Impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl_ty);
+
+        auto params_impl = impl.m_params.make_empty_params(true);
+        MonomorphStatePtr   ms;
+        ms.pp_impl = &params_impl;
         if( !impl.m_params.is_generic() )
         {
             auto impl_params = impl.m_params.make_empty_params(true);
@@ -292,7 +366,10 @@ namespace {
             for(auto& m : impl.m_methods)
             {
                 if( m.second.data.m_params.is_generic() )
+                {
                     m.second.data.m_save_code = true;
+                    Trans_Enumerate_GenericFunctionItems(state, Span(), m.second.data, ms);
+                }
             }
         }
         else
@@ -300,6 +377,7 @@ namespace {
             for(auto& m : impl.m_methods)
             {
                 m.second.data.m_save_code = true;
+                Trans_Enumerate_GenericFunctionItems(state, Span(), m.second.data, ms);
             }
         }
     }
@@ -339,10 +417,11 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
         static void enumerate_type_impl(EnumState& state, ::HIR::TypeImpl& impl)
         {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-            HIR::PathParams impl_params;
+            HIR::PathParams impl_params = impl.m_params.make_empty_params(/*allow_lifetimes_only=*/true);
+            MonomorphStatePtr   ms;
+            ms.pp_impl = &impl_params;
             if( !impl.m_params.is_generic() )
             {
-                impl_params = impl.m_params.make_empty_params(/*allow_lifetimes_only=*/true);
                 for(auto& fcn : impl.m_methods)
                 {
                     DEBUG("fn " << fcn.first << fcn.second.data.m_params.fmt_args());
@@ -358,6 +437,7 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
                     else
                     {
                         fcn.second.data.m_save_code = true;
+                        Trans_Enumerate_GenericFunctionItems(state, Span(), fcn.second.data, ms);
                     }
                 }
             }
@@ -366,7 +446,14 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
                 for(auto& m : impl.m_methods)
                 {
                     m.second.data.m_save_code = true;
+                    Trans_Enumerate_GenericFunctionItems(state, Span(), m.second.data, ms);
                 }
+            }
+            for(auto& e : impl.m_constants)
+            {
+                Trans_Params    tp;
+                tp.pp_impl = impl.m_params.make_empty_params(/*allow_lifetimes_only=*/true);
+                Trans_Enumerate_FillFrom_Literal(state, e.second.data.m_value_res, std::move(tp));
             }
         }
     };
@@ -384,6 +471,17 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
     for(auto& impl : crate.m_type_impls.generic)
     {
         H1::enumerate_type_impl(state, *impl);
+    }
+
+    // Ensure that the panic handler is emitted
+    {
+        auto it = crate.m_lang_items.find("mrustc-panic_implementation");
+        if( it != crate.m_lang_items.end() ) {
+            HIR::GenericPath p = it->second;
+            const auto& f = crate.get_function_by_path(Span(), p.m_path);
+            p.m_params = f.m_params.make_empty_params(true);
+            Trans_Enumerate_FillFrom_PathMono(state, std::move(p));
+        }
     }
 
     auto rv = Trans_Enumerate_CommonPost(state);
@@ -407,6 +505,7 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
             ++ it;
         }
     }
+
     return rv;
 }
 

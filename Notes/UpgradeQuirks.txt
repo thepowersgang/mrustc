@@ -171,3 +171,4 @@
 - `#[derive(::core::cmp::PartialEq, ::core::cmp::Eq)]` (in the `windows` crate)
 - `#[repr(C, packed(1))]`
 - `&mut [] as *mut u16` (in cargo)
+- `windows` crate references DLLs that don't exist on all versions, requiring proper tree-shaking to avoid it
