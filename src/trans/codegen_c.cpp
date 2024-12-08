@@ -1945,6 +1945,20 @@ namespace {
                 {
                     m_of << "char _d;";
                 }
+                // HACK: MSVC doesn't allow arrays larger than 2^31-1 elements
+                else if( m_compiler == Compiler::Msvc && te.size.as_Known() > 0x7FFF'FFFF )
+                {
+                    //const uint64_t chunk_len = 0x7FFF'FFFF;
+                    const uint64_t chunk_len = 0x4000'0000;
+                    uint64_t len = te.size.as_Known();
+                    emit_ctype(te.inner); m_of << "DATA[" << chunk_len << "];";
+                    unsigned i = 0;
+                    do {
+                        len -= chunk_len;
+                        i ++;
+                        m_of << " "; emit_ctype(te.inner); m_of << "DATA_" << i << "[" << std::min(len, chunk_len) << "];";
+                    } while(len > chunk_len);
+                }
                 else
                 {
                     emit_ctype(te.inner); m_of << " DATA[" << te.size.as_Known() << "];";
