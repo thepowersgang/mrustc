@@ -247,6 +247,11 @@ namespace {
                     break;
                 }
             }
+            if( e.m_linkage.name != "" )
+            {
+                // If a link name is set, force emit
+                is_visible = true;
+            }
 
             if( e.m_params.is_generic() || (is_inline && is_visible) )
             {
@@ -272,7 +277,11 @@ namespace {
         for(auto& vi : mod.m_value_items)
         {
             bool emit = is_visible && vi.second->publicity.is_global();
-            Trans_Enumerate_ValItem(state, vi.second->ent, emit, [&](){ return mod_path + vi.first; });
+            auto p = mod_path + vi.first;
+            if( ::std::any_of(state.crate.m_lang_items.begin(), state.crate.m_lang_items.end(), [&](const auto& e){ return e.second == p; }) ) {
+                emit = true;
+            }
+            Trans_Enumerate_ValItem(state, vi.second->ent, emit, [&](){ return p; });
         }
 
         for(auto& ti : mod.m_mod_items)
