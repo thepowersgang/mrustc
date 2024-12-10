@@ -184,6 +184,12 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
         ::std::vector<::std::string>    paths;
 #define RLIB_SUFFIX ".rlib"
 #define RDYLIB_SUFFIX ".so"
+#ifdef WIN32
+# define EXESUF ".exe"
+#else
+# define EXESUF ""
+#endif
+#define PLUGIN_SUFFIX "-plugin" EXESUF
         auto direct_filename = FMT("lib" << name.c_str() << RLIB_SUFFIX);
         auto direct_filename_so = FMT("lib" << name.c_str() << RDYLIB_SUFFIX);
         auto name_prefix = FMT("lib" << name.c_str() << "-");
@@ -230,6 +236,9 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
                 {
                 }
                 else if( len > (sizeof(RDYLIB_SUFFIX)-1) && strcmp(fname + len - (sizeof(RDYLIB_SUFFIX)-1), RDYLIB_SUFFIX) == 0 )
+                {
+                }
+                else if( len > (sizeof(PLUGIN_SUFFIX)-1) && strcmp(fname + len - (sizeof(PLUGIN_SUFFIX)-1), PLUGIN_SUFFIX) == 0 )
                 {
                 }
                 else

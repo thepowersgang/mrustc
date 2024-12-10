@@ -410,13 +410,21 @@ int main(int argc, char *argv[])
         crate.set_crate_name( crate_name );
 
         if( params.outfile == "" ) {
+        #ifdef WIN32
+        # define EXESUF ".exe"
+        #else
+        # define EXESUF ""
+        #endif
             switch( crate.m_crate_type )
             {
             case ::AST::Crate::Type::RustLib:
                 params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name_set << ".rlib");
                 break;
             case ::AST::Crate::Type::Executable:
-                params.outfile = FMT(params.output_dir << crate.m_crate_name_set);
+                params.outfile = FMT(params.output_dir << crate.m_crate_name_set << EXESUF);
+                break;
+            case ::AST::Crate::Type::ProcMacro:
+                params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name_set << "-plugin" EXESUF);
                 break;
             default:
                 params.outfile = FMT(params.output_dir << crate.m_crate_name_set << ".o");
