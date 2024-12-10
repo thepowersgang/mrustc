@@ -215,6 +215,11 @@ namespace {
             }
             } break;
         TU_ARM(vi, Static, e) {
+            if( e.m_linkage.name != "" || e.m_linkage.section != "" )
+            {
+                // If a link name is set, force emit
+                is_visible = true;
+            }
             if( is_visible && !e.m_params.is_generic() )
             {
                 // HACK: Refuse to emit unused generated statics
@@ -247,7 +252,7 @@ namespace {
                     break;
                 }
             }
-            if( e.m_linkage.name != "" )
+            if( e.m_linkage.name != "" || e.m_linkage.section != "" )
             {
                 // If a link name is set, force emit
                 is_visible = true;
