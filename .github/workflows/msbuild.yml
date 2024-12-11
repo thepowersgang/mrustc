@@ -72,7 +72,7 @@ jobs:
       matrix:
        #rustver: ["1.29", "1.39", "1.19", "1.54"]
        # Note: Only run 1.54, to save on time
-       rustver: ["1.54"]
+       rustver: ["1.54", "1.74"]
     runs-on: windows-2019   # need compiler for C codegen, might as well use the same
     env:
      RUSTC_VERSION: ${{ matrix.rustver }}.0
@@ -102,3 +102,4 @@ jobs:
       run: |
         cd vsproject
         .\run_hello_Pick.cmd ${{ matrix.rustver }}
+        .\run_local_tests_Pick.cmd ${{ matrix.rustver }}
