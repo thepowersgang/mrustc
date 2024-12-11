@@ -529,6 +529,15 @@ namespace {
                     {
                     case ResolveNamespace::Macro:
                         if(const auto* mac = i->data.opt_Macro()) {
+                            if( i->attrs.get("rustc_builtin_macro") ) {
+                                auto* rv = Expand_FindProcMacro(name);
+                                if( rv ) {
+                                    return ResolveItemRef_Macro(rv);
+                                }
+                                // HACK: Ignore, as there's references to the `Debug` macro... but mrustc doesn't do things that way
+                                // - Probably should have derives be in the same namespace as macros
+                                //ASSERT_BUG(sp, rv, "Unable to find rustc_builtin_macro: " << name);
+                            }
                             return ResolveItemRef_Macro(&**mac);
                         }
                         DEBUG("- Ignoring macro");
