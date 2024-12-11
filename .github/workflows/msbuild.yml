@@ -97,7 +97,7 @@ jobs:
     - name: Extract rust source
       shell: cmd
       run: |
-        "c:\Program Files\7-Zip\7z.exe" x rustc-1.54.0-src.tar.gz -so | "c:\Program Files\7-Zip\7z.exe" x -aoa -si -ttar
+        "c:\Program Files\7-Zip\7z.exe" x rustc-${{ matrix.rustver }}.0-src.tar.gz -so | "c:\Program Files\7-Zip\7z.exe" x -aoa -si -ttar
     - name: Build
       run: |
         cd vsproject
