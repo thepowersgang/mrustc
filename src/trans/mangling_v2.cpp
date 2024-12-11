@@ -243,6 +243,7 @@ public:
     // - TraitObject: 'D' <data:GenericPath> <nmarker> [markers: <GenericPath> ...] <naty> [<TypeRef> ...]    TODO: Does this need to include the ATY name?
     // - Borrow: 'B' ('s'|'u'|'o') <TypeRef>
     // - RawPointer: 'P' ('s'|'u'|'o') <TypeRef>
+    // - Named Function: 'f' <Path>
     // - Function: 'F' (|'u') (| 'e' <abi:RcString>) <nargs> [args: <TypeRef> ...] <ret:TypeRef>
     // - Primitives::
     //   - u8  : 'C' 'a'
@@ -303,6 +304,11 @@ public:
             m_os << e.m_markers.size();
             for(const auto& p : e.m_markers)
                 this->fmt_generic_path(p);
+            }
+        TU_ARMA(NamedFunction, e) {
+            // - Named function: 'f' <path>
+            m_os << "f";
+            this->fmt_path(e.path);
             }
         TU_ARMA(Function, e) {
             // - Function: 'F' <abi:RcString> <nargs> [args: <TypeRef> ...] <ret:TypeRef>

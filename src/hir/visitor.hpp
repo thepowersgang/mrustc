@@ -13,12 +13,16 @@
 #include <hir/hir.hpp>
 #include <hir/item_path.hpp>
 
+class StaticTraitResolve;
+
 namespace HIR {
 
 // TODO: Split into Visitor and ItemVisitor
 class Visitor
 {
+    StaticTraitResolve*    m_resolve;
 public:
+    Visitor(::StaticTraitResolve* resolve=nullptr): m_resolve(resolve) {}
     virtual ~Visitor();
 
     virtual void visit_crate(::HIR::Crate& crate);

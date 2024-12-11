@@ -75,6 +75,9 @@ namespace {
             }
             m_os << indent() << "{\n";
             inc_indent();
+            for(auto& ent : impl.m_types) {
+                m_os << indent() << "type " << ent.first << " = " << ent.second.data << "\n";
+            }
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             dec_indent();
             m_os << indent() << "}\n";
@@ -112,6 +115,13 @@ namespace {
             if( ! item.m_params.m_bounds.empty() )
             {
                 m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
+            }
+            if( !item.m_all_parent_traits.empty() ) {
+                m_os << indent() << "/* All parent traits:\n";
+                for(const auto& t : item.m_all_parent_traits) {
+                    m_os << indent() << t << "\n";
+                }
+                m_os << indent() << "*/\n";
             }
             m_os << indent() << "{\n";
             inc_indent();
@@ -364,6 +374,11 @@ namespace {
             dec_indent();
             m_os << indent() << "}";
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override
+        {
+            m_os << "const ";
+            node.m_inner->visit(*this);
+        }
 
         void visit(::HIR::ExprNode_Asm& node) override
         {
@@ -432,9 +447,16 @@ namespace {
                     m_os << " | " << arm.m_patterns[i];
                 }
 
-                if( arm.m_cond ) {
+                if( arm.m_guards.size() > 0 )
+                {
                     m_os << " if ";
-                    this->visit_node_ptr(arm.m_cond);
+                    for(auto& c : arm.m_guards)
+                    {
+                        if( &c == &arm.m_guards.front() )
+                            m_os << " && ";
+                        m_os << "let " << c.pat << " = ";
+                        this->visit_node_ptr(c.val);
+                    }
                 }
                 m_os << " => ";
                 inc_indent();

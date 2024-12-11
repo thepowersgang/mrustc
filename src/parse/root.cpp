@@ -58,15 +58,12 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
         GET_TOK(tok, lex);
         return tok.take_frag_vis();
     }
-    if( LOOK_AHEAD(lex) == TOK_RWORD_CRATE )
+    if( lex.getTokenIf(TOK_RWORD_CRATE) )
     {
-        // TODO: Return a path that indicates the entire current crate
-        GET_TOK(tok, lex);
-        return true;
+        return AST::Visibility::make_restricted(AST::Visibility::Ty::Crate, AST::AbsolutePath("", {}));
     }
-    if( LOOK_AHEAD(lex) == TOK_RWORD_PUB )
+    if( lex.getTokenIf(TOK_RWORD_PUB) )
     {
-        GET_TOK(tok, lex);
         if( LOOK_AHEAD(lex) == TOK_PAREN_OPEN )
         {
             // HACK: tuple structs have a parsing ambiguity around `pub (self::Type,)`
@@ -81,9 +78,9 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
                 else if( lex.lookahead(1) == TOK_RWORD_SELF && lex.lookahead(2) == TOK_PAREN_CLOSE )
                     ;
                 else
-                    return true;
+                    return AST::Visibility::make_global();
             }
-            auto    path = AST::Path("", {});
+            auto    path = AST::AbsolutePath("", {});
             // Restricted publicity.
             GET_TOK(tok, lex);  // '('
 
@@ -91,50 +88,85 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
             {
             case TOK_RWORD_CRATE:
                 // Crate visibility
-                break;
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return AST::Visibility::make_restricted(AST::Visibility::Ty::PubCrate, std::move(path));
             case TOK_RWORD_SELF:
                 // Private!
-                path = AST::Path( lex.parse_state().get_current_mod().path() );
-                break;
+                path = lex.parse_state().get_current_mod().path();
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return AST::Visibility::make_restricted(AST::Visibility::Ty::PubSelf, std::move(path));
             case TOK_RWORD_SUPER:
-                path = AST::Path( lex.parse_state().get_current_mod().path() );
-                path.nodes().pop_back();
+                path = lex.parse_state().get_current_mod().path();
+                path.nodes.pop_back();
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return AST::Visibility::make_restricted(AST::Visibility::Ty::PubSuper, std::move(path));
+                #if 0
                 while( lex.lookahead(0) == TOK_DOUBLE_COLON && lex.lookahead(1) == TOK_RWORD_SUPER )
                 {
                     GET_TOK(tok, lex);
                     GET_TOK(tok, lex);
-                    path.nodes().pop_back();
+                    path.nodes.pop_back();
                 }
-                if( lex.lookahead(0) != TOK_DOUBLE_COLON )
-                    break;
-                GET_TOK(tok, lex);
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                path.nodes().push_back( AST::PathNode(tok.ident().name) );
-                while( LOOK_AHEAD(lex) == TOK_DOUBLE_COLON )
+                while( lex.getTokenIf(TOK_DOUBLE_COLON) )
                 {
-                    GET_TOK(tok, lex);
                     GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                    path.nodes().push_back( AST::PathNode(tok.ident().name) );
+                    path.nodes.push_back( tok.ident().name );
                 }
+                #endif
                 break;
-            case TOK_RWORD_IN:
-                path = Parse_Path(lex, PATH_GENERIC_NONE);
-                //TU_MATCH_HDRA( (path.m_class), {)
-                //TU_ARMA(Super, e) {
-                //    e.count
-                //    }
-                //}
-                break;
+            case TOK_RWORD_IN: {
+                AST::Path ast_path;
+                switch(GET_TOK(tok, lex))
+                {
+                case TOK_DOUBLE_COLON:
+                    ast_path = AST::Path("", {});
+                    PUTBACK(tok, lex);
+                    break;
+                case TOK_IDENT:
+                    ast_path = AST::Path::new_relative({}, {});
+                    ast_path.nodes().push_back( tok.ident().name );
+                    path.nodes.push_back( tok.ident().name );
+                    break;
+                case TOK_RWORD_CRATE:
+                    ast_path = AST::Path("", {});
+                    break;
+                case TOK_RWORD_SELF:
+                    ast_path = AST::Path::new_self({});
+                    path = lex.parse_state().get_current_mod().path();
+                    break;
+                case TOK_RWORD_SUPER:
+                    ast_path = AST::Path::new_super(1, {});
+                    path = lex.parse_state().get_current_mod().path();
+                    path.nodes.pop_back();
+                    while( lex.lookahead(0) == TOK_DOUBLE_COLON && lex.lookahead(1) == TOK_RWORD_SUPER )
+                    {
+                        GET_TOK(tok, lex);
+                        GET_TOK(tok, lex);
+                        path.nodes.pop_back();
+                        ast_path.m_class.as_Super().count += 1;
+                    }
+                    break;
+                default:
+                    throw ParseError::Unexpected(lex, tok);
+                }
+                while( lex.getTokenIf(TOK_DOUBLE_COLON) )
+                {
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    path.nodes.push_back( tok.ident().name );
+                    ast_path.nodes().push_back( tok.ident().name );
+                }
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return AST::Visibility::make_restricted(std::move(path), std::move(ast_path));
+                }
             default:
                 throw ParseError::Unexpected(lex, tok);
             }
-            GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
         }
-        return true;
+        return AST::Visibility::make_global();
     }
     else
     {
-        return false;
+        return AST::Visibility::make_restricted(AST::Visibility::Ty::Private, lex.parse_state().get_current_mod().path());
     }
 }
 
@@ -287,10 +319,15 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 bound_start = ret.m_bounds.size();
-                do {
-                    GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-                    ret.add_bound(AST::GenericBound::make_Lifetime({ AST::LifetimeRef(ref), get_LifetimeRef(lex, mv$(tok)) }));
-                } while( GET_TOK(tok, lex) == TOK_PLUS );
+                if( lex.lookahead(0) == TOK_LIFETIME ) {
+                    do {
+                        GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
+                        ret.add_bound(AST::GenericBound::make_Lifetime({ AST::LifetimeRef(ref), get_LifetimeRef(lex, mv$(tok)) }));
+                    } while( GET_TOK(tok, lex) == TOK_PLUS );
+                }
+                else {
+                    GET_TOK(tok, lex);
+                }
                 bound_end = ret.m_bounds.size();
             }
             ret.add_lft_param(::AST::LifetimeParam(lex.point_span(), ::std::move(attrs), param_name ), bound_start, bound_end);
@@ -302,8 +339,19 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             auto ty = Parse_Type(lex);
 
-            ret.add_value_param(lex.point_span(), mv$(attrs), mv$(param_name), mv$(ty));
-            GET_TOK(tok, lex);
+            AST::Expr  val;
+            if( GET_TOK(tok, lex) == TOK_EQUAL )
+            {
+                if( lex.lookahead(0) == TOK_BRACE_OPEN ) {
+                    val = Parse_ExprBlock(lex);
+                }
+                else {
+                    val = Parse_ExprVal(lex);
+                }
+                GET_TOK(tok, lex);
+            }
+
+            ret.add_value_param(lex.point_span(), mv$(attrs), mv$(param_name), mv$(ty), mv$(val));
         }
         else
         {
@@ -408,7 +456,7 @@ AST::Function::Arg Parse_Function_Arg(TokenStream& lex, bool expect_named)
 }
 
 /// Parse a function definition (after the 'fn <name>')
-AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_self, bool can_be_prototype,  bool is_unsafe, bool is_const)
+AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_prototype, std::string abi, AST::Function::Flags flags)
 {
     TRACE_FUNCTION;
     ProtoSpan   ps = lex.start_span();
@@ -561,13 +609,13 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         PUTBACK(tok, lex);
     }
 
-    return AST::Function(lex.end_span(ps), mv$(params), mv$(abi), is_unsafe, is_const, is_variadic, mv$(ret_type), mv$(args));
+    return AST::Function(lex.end_span(ps), mv$(abi), mv$(flags), mv$(params), mv$(ret_type), mv$(args), is_variadic);
 }
 
-AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, bool allow_self, bool is_unsafe, bool is_const)
+AST::Function Parse_FunctionDefWithCode(TokenStream& lex, bool allow_self, std::string abi, AST::Function::Flags flags)
 {
     Token   tok;
-    auto ret = Parse_FunctionDef(lex, abi, allow_self, false,  is_unsafe, is_const);
+    auto ret = Parse_FunctionDef(lex, allow_self, /*can_be_prototype=*/false, std::move(abi), flags);
     GET_TOK(tok, lex);
     if( tok == TOK_BRACE_OPEN ) {
     }
@@ -619,12 +667,9 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
     if( tok.type() == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        if(GET_TOK(tok, lex) == TOK_RWORD_WHERE)
-        {
-            Parse_WhereClause(lex, params);
-            tok = lex.getToken();
-        }
+        tok = lex.getToken();
     }
+
     if(tok.type() == TOK_PAREN_OPEN)
     {
         // Tuple structs
@@ -634,9 +679,9 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
             auto item_attrs = Parse_ItemAttrs(lex);
             SET_ATTRS(lex, item_attrs);
 
-            bool    is_pub = Parse_Publicity(lex, /*allow_restricted=*/false);  // HACK: Disable `pub(restricted)` syntax in tuple structs, due to ambiguity
+            auto vis = Parse_Publicity(lex, /*allow_restricted=*/false);  // HACK: Disable `pub(restricted)` syntax in tuple structs, due to ambiguity
 
-            refs.push_back( AST::TupleItem( mv$(item_attrs), is_pub, Parse_Type(lex) ) );
+            refs.push_back( AST::TupleItem( mv$(item_attrs), vis, Parse_Type(lex) ) );
             if( GET_TOK(tok, lex) != TOK_COMMA ) {
                 PUTBACK(tok, lex);
                 break;
@@ -654,7 +699,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
         //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Name();' ... ning-nong");
         return AST::Struct(mv$(params), mv$(refs));
     }
-    else if(tok.type() == TOK_RWORD_WHERE || tok.type() == TOK_SEMICOLON)
+    else
     {
         // Unit-like struct
         if(tok.type() == TOK_RWORD_WHERE)
@@ -662,38 +707,42 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
             Parse_WhereClause(lex, params);
             tok = lex.getToken();
         }
-        CHECK_TOK(tok, TOK_SEMICOLON);
-        return AST::Struct(mv$(params));
-    }
-    else if(tok.type() == TOK_BRACE_OPEN)
-    {
-        ::std::vector<AST::StructItem>  items;
-        while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+
+        if( tok.type() == TOK_SEMICOLON )
         {
-            PUTBACK(tok, lex);
-
-            auto item_attrs = Parse_ItemAttrs(lex);
-            SET_ATTRS(lex, item_attrs);
-
-            bool is_pub = Parse_Publicity(lex);
-
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.ident().name;
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            TypeRef type = Parse_Type(lex);
-
-            items.push_back( AST::StructItem( mv$(item_attrs), is_pub, mv$(name), mv$(type) ) );
-            if(GET_TOK(tok, lex) == TOK_BRACE_CLOSE)
-                break;
-            CHECK_TOK(tok, TOK_COMMA);
+            CHECK_TOK(tok, TOK_SEMICOLON);
+            return AST::Struct(mv$(params));
         }
-        //if( items.size() == 0 )
-        //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Nam { };' ... ning-nong");
-        return AST::Struct(mv$(params), mv$(items));
-    }
-    else
-    {
-        throw ParseError::Unexpected(lex, tok);
+        else if(tok.type() == TOK_BRACE_OPEN)
+        {
+            ::std::vector<AST::StructItem>  items;
+            while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+            {
+                PUTBACK(tok, lex);
+
+                auto item_attrs = Parse_ItemAttrs(lex);
+                SET_ATTRS(lex, item_attrs);
+
+                auto vis = Parse_Publicity(lex);
+
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                auto name = tok.ident().name;
+                GET_CHECK_TOK(tok, lex, TOK_COLON);
+                TypeRef type = Parse_Type(lex);
+
+                items.push_back( AST::StructItem( mv$(item_attrs), vis, mv$(name), mv$(type) ) );
+                if(GET_TOK(tok, lex) == TOK_BRACE_CLOSE)
+                    break;
+                CHECK_TOK(tok, TOK_COMMA);
+            }
+            //if( items.size() == 0 )
+            //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Nam { };' ... ning-nong");
+            return AST::Struct(mv$(params), mv$(items));
+        }
+        else
+        {
+            throw ParseError::Unexpected(lex, tok);
+        }
     }
 }
 
@@ -710,7 +759,7 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         ::AST::MacroInvocation  inv;
         if( Parse_MacroInvocation_Opt(lex, inv) )
         {
-            return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(item_attrs), false, "", ::AST::Item( mv$(inv) ) };
+            return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(item_attrs), AST::Visibility::make_global(), "", ::AST::Item( mv$(inv) ) };
         }
     }
 
@@ -723,9 +772,8 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
     // TODO: Mark specialisation
     (void)is_specialisable;
 
-    bool fn_is_const = false;
-    bool fn_is_unsafe = false;
-    ::std::string   abi = ABI_RUST;
+    std::string abi = ABI_RUST;
+    AST::Function::Flags    fn_flags;
 
     RcString    name;
     ::AST::Item   rv;
@@ -764,17 +812,15 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         break; }
     // Associated type
     case TOK_RWORD_TYPE: {
-        auto atype_params = ::AST::GenericParams { };
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         name = tok.ident().name;
+        auto type_params = Parse_GenericParamsOpt(lex);
+        AST::GenericParams  bounds;
         if( GET_TOK(tok, lex) == TOK_COLON )
         {
             // Bounded associated type
-            Parse_TypeBound(lex, atype_params, TypeRef(lex.point_span(), "Self", 0xFFFF));
+            Parse_TypeBound(lex, bounds, TypeRef(lex.point_span(), "Self", 0xFFFF));
             GET_TOK(tok, lex);
-        }
-        if( tok.type() == TOK_RWORD_WHERE ) {
-            throw ParseError::Todo(lex, "Where clause on associated type");
         }
 
         TypeRef default_type = TypeRef( lex.point_span() );
@@ -782,31 +828,40 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
             default_type = Parse_Type(lex);
             GET_TOK(tok, lex);
         }
+        if( tok.type() == TOK_RWORD_WHERE ) {
+            Parse_WhereClause(lex, type_params);
+            GET_TOK(tok, lex);
+        }
 
         CHECK_TOK(tok, TOK_SEMICOLON);
-        rv = ::AST::TypeAlias( mv$(atype_params), mv$(default_type) );
+        rv = ::AST::TypeAlias::new_associated_type( mv$(type_params), mv$(bounds), mv$(default_type) );
         break; }
 
     // Functions (possibly unsafe)
     case TOK_RWORD_UNSAFE:
-        fn_is_unsafe = true;
-        if( GET_TOK(tok, lex) == TOK_RWORD_EXTERN )
+        fn_flags.is_unsafe = true;
+        if( lex.getTokenIf(TOK_RWORD_ASYNC) )
+    case TOK_RWORD_ASYNC:
+        {
+            fn_flags.is_async = true;
+        }
+        if( lex.getTokenIf(TOK_RWORD_EXTERN) )
     case TOK_RWORD_EXTERN:
         {
-            abi = "C";
-            if( GET_TOK(tok, lex) == TOK_STRING )
+            if( GET_TOK(tok, lex) == TOK_STRING ) {
                 abi = tok.str();
-            else
+            }
+            else {
+                abi = "C";
                 PUTBACK(tok, lex);
-
-            GET_TOK(tok, lex);
+            }
         }
-        CHECK_TOK(tok, TOK_RWORD_FN);
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
     case TOK_RWORD_FN: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         name = tok.ident().name;
         // Self allowed, prototype-form allowed (optional names and no code)
-        auto fcn = Parse_FunctionDef(lex, abi, /*allow_self*/true, /*can_be_proto*/true,  fn_is_unsafe, fn_is_const);
+        auto fcn = Parse_FunctionDef(lex, /*allow_self*/true, /*can_be_proto*/true, std::move(abi), fn_flags);
         if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
         {
             PUTBACK(tok, lex);
@@ -829,7 +884,7 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         throw ParseError::Unexpected(lex, tok);
     }
 
-    return ::AST::Named<::AST::Item>( lex.end_span(ps), mv$(item_attrs), true, mv$(name), mv$(rv) );
+    return ::AST::Named<::AST::Item>( lex.end_span(ps), mv$(item_attrs), AST::Visibility::make_global(), mv$(name), mv$(rv) );
 }
 
 AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items, AST::GenericParams params)
@@ -918,7 +973,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
         // Tuple-like variants
         if( GET_TOK(tok, lex) == TOK_PAREN_OPEN )
         {
-            ::std::vector<TypeRef>  types;
+            ::std::vector<AST::TupleItem>  items;
             // Get type list
             do
             {
@@ -929,13 +984,12 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
                 }
 
                 auto field_attrs = Parse_ItemAttrs(lex);
-                (void)field_attrs;  // TODO: Store field_attrs
-
-                types.push_back( Parse_Type(lex) );
+                auto ty = Parse_Type(lex);
+                items.emplace_back( std::move(field_attrs), AST::Visibility::make_global(), std::move(ty) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             GET_TOK(tok, lex);
-            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(types)) );
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(items)) );
         }
         // Struct-like variants
         else if( tok.type() == TOK_BRACE_OPEN )
@@ -955,7 +1009,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
                 auto name = tok.ident().name;
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 auto ty = Parse_Type(lex);
-                fields.push_back( ::AST::StructItem(mv$(field_attrs), true, mv$(name), mv$(ty)) );
+                fields.push_back( ::AST::StructItem(mv$(field_attrs), AST::Visibility::make_global(), mv$(name), mv$(ty)) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_BRACE_CLOSE);
             GET_TOK(tok, lex);
@@ -1013,7 +1067,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
         auto item_attrs = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, item_attrs);
 
-        bool is_pub = Parse_Publicity(lex);
+        auto vis = Parse_Publicity(lex);
 
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto name = tok.ident().name;
@@ -1021,7 +1075,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
 
         auto ty = Parse_Type(lex);
 
-        variants.push_back( ::AST::StructItem( mv$(item_attrs), is_pub, mv$(name), mv$(ty) ) );
+        variants.push_back( ::AST::StructItem( mv$(item_attrs), mv$(vis), mv$(name), mv$(ty) ) );
 
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
@@ -1099,6 +1153,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
         attr_data = TokenTree(lex.get_edition(), lex.get_hygiene(), std::move(tt));
         } break;
     case TOK_PAREN_OPEN:
+    case TOK_SQUARE_OPEN:   // 1.74 - openssl v0.10.57
         PUTBACK(tok, lex);
         attr_data = Parse_TT(lex, false);
         break;
@@ -1223,7 +1278,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
 
     auto ps = lex.start_span();
 
-    bool is_public = Parse_Publicity(lex);
+    auto vis = Parse_Publicity(lex);
     GET_TOK(tok, lex);
 
     bool is_specialisable = false;
@@ -1233,26 +1288,29 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     }
 
     ::std::string   abi = ABI_RUST;
-    bool fn_is_unsafe = false;
-    bool fn_is_const = false;
+    AST::Function::Flags    fn_flags;
     switch(tok.type())
     {
     case TOK_RWORD_TYPE: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto name = tok.ident().name;
+        auto atype_params = Parse_GenericParamsOpt(lex);
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
         auto ty = Parse_Type(lex);
+        if( lex.getTokenIf(TOK_RWORD_WHERE) ) {
+            Parse_WhereClause(lex, atype_params);
+        }
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-        impl.add_type(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, name, mv$(ty));
+        impl.add_type(lex.end_span(ps), mv$(item_attrs), vis, is_specialisable, name, mv$(atype_params), mv$(ty));
         break; }
     case TOK_RWORD_UNSAFE:
-        fn_is_unsafe = true;
+        fn_flags.is_unsafe = true;
         GET_TOK(tok, lex);
         if( tok.type() == TOK_RWORD_CONST )
     case TOK_RWORD_CONST:
         {
             GET_TOK(tok, lex);
-            if( tok.type() != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE && !fn_is_unsafe )
+            if( tok.type() != TOK_RWORD_FN && tok.type() != TOK_RWORD_UNSAFE && !fn_flags.is_unsafe )
             {
                 CHECK_TOK(tok, TOK_IDENT);
                 auto name = tok.ident().name;
@@ -1263,38 +1321,44 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
                 GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
                 auto i = ::AST::Static(AST::Static::CONST, mv$(ty), mv$(val));
-                impl.add_static( lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, mv$(name),  mv$(i) );
+                impl.add_static( lex.end_span(ps), mv$(item_attrs), vis, is_specialisable, mv$(name),  mv$(i) );
                 break ;
             }
             else if( tok.type() == TOK_RWORD_UNSAFE )
             {
-                fn_is_unsafe = true;
+                fn_flags.is_unsafe = true;
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             }
-            fn_is_const = true;
+            fn_flags.is_const = true;
         }
         if( tok.type() == TOK_RWORD_EXTERN )
         // FALL
     case TOK_RWORD_EXTERN:
         {
-            abi = "C";
-            if( GET_TOK(tok, lex) == TOK_STRING )
+            if( GET_TOK(tok, lex) == TOK_STRING ) {
                 abi = tok.str();
-            else
-                PUTBACK(tok, lex);
-
+                GET_TOK(tok, lex);
+            }
+            else {
+                abi = "C";
+            }
+        }
+        // FALL
+        if( tok.type() == TOK_RWORD_ASYNC )
+    case TOK_RWORD_ASYNC:
+        {
+            fn_flags.is_async = true;
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_RWORD_FN);
-        // FALL
     case TOK_RWORD_FN: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         // TODO: Hygine on function names? - Not in impl blocks?
         auto name = tok.ident().name;
         DEBUG("Function " << name);
         // - Self allowed, can't be prototype-form
-        auto fcn = Parse_FunctionDefWithCode(lex, abi, true,  fn_is_unsafe, fn_is_const);
-        impl.add_function(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, mv$(name), mv$(fcn));
+        auto fcn = Parse_FunctionDefWithCode(lex, /*allow_self=*/true,  std::move(abi), fn_flags);
+        impl.add_function(lex.end_span(ps), mv$(item_attrs), vis, is_specialisable, mv$(name), mv$(fcn));
         break; }
 
     default:
@@ -1319,7 +1383,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
 
         auto ps = lex.start_span();
 
-        bool is_public = Parse_Publicity(lex);
+        auto vis = Parse_Publicity(lex);
         switch( GET_TOK(tok, lex) )
         {
         case TOK_RWORD_FN: {
@@ -1327,10 +1391,10 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             auto name = tok.ident().name;
             // parse function as prototype
             // - no self, is prototype, is unsafe and not const
-            auto i = ::AST::Item( Parse_FunctionDef(lex, abi, false, true,  true,false) );
+            auto i = ::AST::Item( Parse_FunctionDef(lex, /*allow_self*/false, /*can_be_prototype=*/true, abi, AST::Function::Flags::make_unsafe()) );
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
-            rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), is_public, mv$(name), mv$(i) } );
+            rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), vis, mv$(name), mv$(i) } );
             break; }
         case TOK_RWORD_STATIC: {
             bool is_mut = false;
@@ -1345,7 +1409,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
             auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  mv$(type), ::AST::Expr() ));
-            rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), is_public,  mv$(name), mv$(i) } );
+            rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), vis,  mv$(name), mv$(i) } );
             break; }
         case TOK_RWORD_TYPE: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -1354,7 +1418,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             auto sp = lex.end_span(ps);
             //TODO(sp, "Extern type");
             auto i = ::AST::Item(::AST::TypeAlias( ::AST::GenericParams(), ::TypeRef(sp) ));
-            rv.add_item( AST::Named<AST::Item> { mv$(sp), mv$(meta_items), is_public, mv$(name), mv$(i) } );
+            rv.add_item( AST::Named<AST::Item> { mv$(sp), mv$(meta_items), vis, mv$(name), mv$(i) } );
             break; }
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC, TOK_RWORD_TYPE});
@@ -1473,6 +1537,12 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break; }
     case TOK_RWORD_CRATE:
+        if( lex.lookahead(0) == TOK_RWORD_AS ) {
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+            auto name = get_optional_ident(lex);
+            entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
+            return;
+        }
         // 1.29 absolute path
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break;
@@ -1501,7 +1571,7 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
                 }
                 else
                 {
-                    name = path.m_class.as_Absolute().crate;
+                    name = path.m_class.as_Absolute().crate.c_str() + 1;
                 }
 
                 // TODO: Get a span covering the final node.
@@ -1515,6 +1585,17 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
         }
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break;
+    case TOK_INTERPOLATED_TYPE: {
+        if( !tok.frag_type().is_path() ) {
+            throw ParseError::Unexpected(lex, tok);
+        }
+        auto& p = tok.frag_type().path();
+        if( p.m_class.is_UFCS() ) {
+            throw ParseError::Unexpected(lex, tok);
+        }
+        path = std::move(tok.frag_type().path());
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        } break;
     case TOK_INTERPOLATED_PATH:
         path = mv$(tok.frag_path());
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
@@ -1749,14 +1830,14 @@ namespace {
         ::AST::MacroInvocation  inv;
         if( Parse_MacroInvocation_Opt(lex, inv) )
         {
-            return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(meta_items), false, "", ::AST::Item( mv$(inv) ) };
+            return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(meta_items), AST::Visibility::make_global(), "", ::AST::Item( mv$(inv) ) };
         }
     }
 
     RcString item_name;
     ::AST::Item item_data;
 
-    bool    is_public = Parse_Publicity(lex);
+    auto vis = Parse_Publicity(lex);
 
     switch( GET_TOK(tok, lex) )
     {
@@ -1778,7 +1859,7 @@ namespace {
             case TOK_RWORD_FN: {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 item_name = tok.ident().name;
-                item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  false,false) );
+                item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  abi, AST::Function::Flags()) );
                 break; }
             // `extern "ABI" {`
             case TOK_BRACE_OPEN:
@@ -1793,7 +1874,7 @@ namespace {
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, "C", false,  false,false) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  "C", AST::Function::Flags()) );
             break;
 
         // NOTE: `extern { ...` is handled in caller
@@ -1883,20 +1964,20 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  true,true/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  abi, AST::Function::Flags().set_const().set_unsafe()) );
             break; }
         case TOK_RWORD_EXTERN: {
             auto abi = lex.lookahead(0) == TOK_STRING ? lex.getToken().str() : "C";
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  false,true/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  abi, AST::Function::Flags().set_const()) );
             break; }
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
             // - self not allowed, not prototype
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  false,true/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  ABI_RUST, AST::Function::Flags().set_const()) );
             break;
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_UNDERSCORE, TOK_RWORD_UNSAFE, TOK_RWORD_FN});
@@ -1942,14 +2023,14 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  true,false/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  abi, AST::Function::Flags().set_unsafe()) );
             break; }
         // `unsafe fn`
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
             // - self not allowed, not prototype
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  true,false/*unsafe,const*/) );
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  ABI_RUST, AST::Function::Flags().set_unsafe()) );
             break;
         // `unsafe trait`
         case TOK_RWORD_TRAIT: {
@@ -1971,7 +2052,7 @@ namespace {
             else {
                 BUG(lex.point_span(), "Parse_Impl returned a variant other than Impl or NegImpl");
             }
-            return ::AST::Named< ::AST::Item> { Span(), {}, false, "", mv$(impl) };
+            return ::AST::Named< ::AST::Item> { Span(), {}, AST::Visibility::make_global(), "", mv$(impl) };
             }
         // `unsafe auto trait`
         case TOK_IDENT:
@@ -1991,12 +2072,19 @@ namespace {
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
         }
         break;
+    case TOK_RWORD_ASYNC:
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        item_name = tok.ident().name;
+        // - self not allowed, not prototype
+        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  ABI_RUST, AST::Function::Flags().set_async()) );
+        break;
     // `fn`
     case TOK_RWORD_FN:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = tok.ident().name;
         // - self not allowed, not prototype
-        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  false,false/*unsafe,const*/) );
+        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  ABI_RUST, AST::Function::Flags()) );
         break;
     // `type`
     case TOK_RWORD_TYPE:
@@ -2040,7 +2128,7 @@ namespace {
 
     // `impl`
     case TOK_RWORD_IMPL:
-        return ::AST::Named< ::AST::Item> { Span(), {}, false, "", Parse_Impl(lex, mv$(meta_items)) };
+        return ::AST::Named< ::AST::Item> { Span(), {}, AST::Visibility::make_global(), "", Parse_Impl(lex, mv$(meta_items)) };
     // `trait`
     case TOK_RWORD_TRAIT: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -2095,6 +2183,7 @@ namespace {
                 mp.crate = "";
                 mp.ents = mod_path.nodes;
                 mrp->m_hygiene.set_mod_path(::std::move(mp));
+                mrp->m_is_macro_item = true;
             }
 
             item_name = name;
@@ -2198,23 +2287,38 @@ namespace {
             }
             else if( path_attr.size() == 0 && ! mod_fileinfo.controls_dir )
             {
-                // TODO: Also search for curmod/submod.rs
-                ::std::string newpath_file = (mod_path.nodes.size() >= 1 ? dirname(mod_fileinfo.path) / mod_path.nodes[mod_path.nodes.size()-1].c_str() / name.c_str() + ".rs" : "");
-                DEBUG("newpath_file = '" << newpath_file << "' " << mod_fileinfo.path << " " << mod_path);
-                ::std::ifstream ifs_file(newpath_file);
-                if( ifs_file.is_open() )
-                {
-                    submod.m_file_info.path = newpath_file;
+                ASSERT_BUG(lex.point_span(), mod_path.nodes.size() >= 1, "Crate root should control its directory?");
+                // Look for `curdir/curmod/submod.rs` or `curdir/curmod/submod/mod.rs`
+                ::std::string newpath_file_direct = dirname(mod_fileinfo.path) / mod_path.nodes.back().c_str() / name.c_str() + ".rs";
+                ::std::string newpath_file_mod    = dirname(mod_fileinfo.path) / mod_path.nodes.back().c_str() / name.c_str() / "mod.rs";
+                DEBUG(mod_fileinfo.path << " " << mod_path);
+                DEBUG("newpath_file_direct = '" << newpath_file_direct << "'");
+                DEBUG("newpath_file_mod = '" << newpath_file_mod << "'");
+
+                ::std::ifstream ifs_file(newpath_file_direct);
+                ::std::ifstream ifs_dir(newpath_file_mod);
+
+                if( ifs_dir.is_open() && ifs_file.is_open() ) {
+                    // Collision
+                    ERROR(lex.point_span(), E0000, "Both modname.rs and modname/mod.rs exist");
+                }
+                else if( ifs_dir.is_open() ) {
+                    // Load from dir
+                    submod.m_file_info.path = newpath_file_mod;
+                    submod.m_file_info.controls_dir = true;
+                }
+                else if( ifs_file.is_open() ) {
+                    submod.m_file_info.path = newpath_file_direct;
                     submod.m_file_info.controls_dir = false;
-                    DEBUG("- path = " << submod.m_file_info.path);
-                    Lexer sub_lex(submod.m_file_info.path, lex.get_edition(), lex.parse_state());
-                    Parse_ModRoot(sub_lex, submod, meta_items);
-                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                 }
-                else
-                {
-                    ERROR(lex.point_span(), E0000, "Can't load from files outside of mod.rs or crate root");
+                else {
+                    // Can't find file
+                    ERROR(lex.point_span(), E0000, "Can't find file for '" << name << "' in '" << mod_fileinfo.path << "'");
                 }
+                DEBUG("- path = " << submod.m_file_info.path);
+                Lexer sub_lex(submod.m_file_info.path, lex.get_edition(), lex.parse_state());
+                Parse_ModRoot(sub_lex, submod, meta_items);
+                GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
             }
             else
             {
@@ -2264,7 +2368,7 @@ namespace {
         throw ParseError::Unexpected(lex, tok);
     }
 
-    return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(meta_items), is_public, mv$(item_name), mv$(item_data) };
+    return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(meta_items), vis, mv$(item_name), mv$(item_data) };
 }
 
 void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::AttributeList meta_items)

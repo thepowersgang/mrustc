@@ -22,8 +22,6 @@ public:
     TTStream(Span parent, ParseState ps, const TokenTree& input_tt);
     ~TTStream();
 
-    TTStream& operator=(const TTStream& x) { m_stack = x.m_stack; return *this; }
-
     Position getPosition() const override;
     Span outerSpan() const override { return m_parent_span; }
 
@@ -45,10 +43,9 @@ class TTStreamO:
     const Ident::Hygiene*   m_hygiene_ptr = nullptr;
 public:
     TTStreamO(Span parent, ParseState ps, TokenTree input_tt);
-    TTStreamO(TTStreamO&& x) = default;
     ~TTStreamO();
 
-    TTStreamO& operator=(const TTStreamO& x) { m_stack = x.m_stack; return *this; }
+    TTStreamO(TTStreamO&& x) = default;
     TTStreamO& operator=(TTStreamO&& x) = default;
 
     Position getPosition() const override;

@@ -298,6 +298,9 @@ namespace {
                     type_assign(de[i], se[i]);
                 }
                 }
+            TU_ARMA(NamedFunction, de, se) {
+                MIR_TODO(state, "NamedFunction MIR borrowcheck");
+                }
             TU_ARMA(Function, de, se) {
                 MIR_ASSERT(state, de.m_arg_types.size() == se.m_arg_types.size(), "Arg count error");
                 for(size_t i = 0; i < de.m_arg_types.size(); i ++)

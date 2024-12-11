@@ -117,10 +117,14 @@
             for(const auto& i : s)
                 serialise(i);
         }
+        void serialise(const ::HIR::Publicity& pub)
+        {
+            m_out.write_bool(pub.is_global());
+        }
         template<typename T>
         void serialise(const ::HIR::VisEnt<T>& e)
         {
-            m_out.write_bool(e.publicity.is_global());  // At this stage, we only care if the item is visible outside the crate or not
+            serialise(e.publicity);
             serialise(e.ent);
         }
         template<typename T>
@@ -209,6 +213,7 @@
                 }
             TU_ARMA(Path, e) {
                 serialise_path(e.path);
+                serialise_generics(e.hrtbs);
                 }
             TU_ARMA(Generic, e) {
                 serialise(e);
@@ -219,9 +224,10 @@
                 serialise(e.m_lifetime);
                 }
             TU_ARMA(ErasedType, e) {
-                serialise_path(e.m_origin);
-                m_out.write_count(e.m_index);
-                
+                TODO(Span(), "Serialse ErasedType?");
+                //serialise_path(e.m_origin);
+                //m_out.write_count(e.m_index);
+
                 m_out.write_bool(e.m_is_sized);
                 serialise_vec(e.m_traits);
                 serialise_vec(e.m_lifetimes);
@@ -245,9 +251,13 @@
                 m_out.write_tag(static_cast<int>(e.type));
                 serialise_type(e.inner);
                 }
+            TU_ARMA(NamedFunction, e) {
+                serialise_path(e.path);
+                }
             TU_ARMA(Function, e) {
                 serialise_generics(e.hrls);
                 m_out.write_bool(e.is_unsafe);
+                m_out.write_bool(e.is_variadic);
                 m_out.write_string(e.m_abi);
                 serialise_type(e.m_rettype);
                 serialise_vec(e.m_arg_types);
@@ -276,10 +286,6 @@
         void serialise_genericpath(const ::HIR::GenericPath& path)
         {
             TRACE_FUNCTION_F(path);
-            m_out.write_bool( static_cast<bool>(path.m_hrls) );
-            if(path.m_hrls) {
-                serialise_generics(*path.m_hrls);
-            }
             serialise_simplepath(path.m_path);
             serialise_pathparams(path.m_params);
         }
@@ -287,6 +293,10 @@
         void serialise_traitpath(const ::HIR::TraitPath& path)
         {
             auto _ = m_out.open_object("HIR::TraitPath");
+            m_out.write_bool( static_cast<bool>(path.m_hrtbs) );
+            if(path.m_hrtbs) {
+                serialise_generics(*path.m_hrtbs);
+            }
             serialise_genericpath(path.m_path);
             serialise_strmap(path.m_type_bounds);
             serialise_strmap(path.m_trait_bounds);
@@ -560,9 +570,11 @@
         void serialise(const ::MacroRules& mac)
         {
             //m_exported: IGNORE, should be set
-            assert(mac.m_rules.size() > 0);
-            serialise_vec(mac.m_rules);
             m_out.write_string(mac.m_source_crate);
+            m_out.write_tag(static_cast<unsigned int>(mac.m_edition));
+            assert(mac.m_rules.size() > 0);
+            m_out.write_bool(mac.m_is_macro_item);
+            serialise_vec(mac.m_rules);
             serialise(mac.m_hygiene);
         }
         void serialise(const ::MacroPatEnt& pe) {
@@ -681,6 +693,13 @@
                 }
             }
         }
+        void serialise(const ::HIR::ConstGeneric_Unevaluated& v)
+        {
+            ASSERT_BUG(v.expr->span(), v.expr->m_mir, "Encountered non-translated value in ConstGeneric");
+            serialise_pathparams(v.params_impl);
+            serialise_pathparams(v.params_item);
+            serialise(*v.expr);
+        }
         void serialise(const ::HIR::ConstGeneric& v)
         {
             m_out.write_tag(v.tag());
@@ -688,7 +707,6 @@
             TU_ARMA(Infer, e) {
                 }
             TU_ARMA(Unevaluated, e) {
-                ASSERT_BUG(e->span(), e->m_mir, "Encountered non-translated value in ConstGeneric");
                 serialise(*e);
                 }
             TU_ARMA(Generic, e)
@@ -842,8 +860,8 @@
                 ),
             (If,
                 serialise(e.cond);
-                m_out.write_count(e.bb0);
-                m_out.write_count(e.bb1);
+                m_out.write_count(e.bb_true);
+                m_out.write_count(e.bb_false);
                 ),
             (Switch,
                 serialise(e.val);
@@ -1024,6 +1042,9 @@
                 ),
             (Generic,
                 serialise(e);
+                ),
+            (Function,
+                serialise_path(*e.p);
                 ),
             (ItemAddr,
                 serialise_path(*e);
@@ -1332,6 +1353,7 @@
             serialise_strmap( item.m_values );
             serialise_strmap( item.m_value_indexes );
             serialise_strmap( item.m_type_indexes );
+            m_out.write_count(item.m_vtable_parent_traits_start);
             serialise_vec( item.m_all_parent_traits );
             serialise( item.m_vtable_path );
         }
@@ -1355,6 +1377,7 @@
         }
         void serialise(const ::HIR::AssociatedType& at)
         {
+            serialise_generics(at.m_generics);
             m_out.write_bool(at.is_sized);
             serialise(at.m_lifetime_bound);
             serialise_vec(at.m_trait_bounds);

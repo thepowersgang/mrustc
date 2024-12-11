@@ -34,10 +34,10 @@ bool Ident::Hygiene::is_visible(const Hygiene& src) const
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Ident::Hygiene& x) {
-    os << "{" << x->contexts;
+    os << "/*" << x->contexts;
     if( x->search_module )
         os << " " << *x->search_module;
-    os << "}";
+    os << "*/";
     return os;
 }
 

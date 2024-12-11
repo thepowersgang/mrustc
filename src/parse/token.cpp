@@ -57,9 +57,10 @@ Token::Token(enum eTokenType type, Ident i):
     m_data(mv$(i))
 {
 }
-Token::Token(enum eTokenType type, ::std::string str):
-    m_type(type),
-    m_data(Data::make_String(mv$(str)))
+Token::Token(enum eTokenType type, ::std::string str, Ident::Hygiene h)
+    : m_type(type)
+    , m_data(Data::make_String(mv$(str)))
+    , m_hygiene(std::move(h))
 {
 }
 Token::Token(U128 val, enum eCoreType datatype):
@@ -121,7 +122,7 @@ Token::Token(const InterpolatedFragment& frag)
         m_type = TOK_INTERPOLATED_ITEM;
         const auto& named = *reinterpret_cast<const AST::Named<AST::Item>*>(frag.m_ptr);
         auto item = named.data.clone();
-        m_data = new AST::Named<AST::Item>( named.span, named.attrs.clone(), named.is_pub, named.name, mv$(item) );
+        m_data = new AST::Named<AST::Item>( named.span, named.attrs.clone(), named.vis, named.name, mv$(item) );
         break; }
     }
 }
@@ -175,9 +176,10 @@ Token::Token(TagTakeIP, InterpolatedFragment frag)
 }
 
 Token::Token(const Token& t):
-    m_type(t.m_type),
-    m_data( Data::make_None({}) ),
-    m_pos( t.m_pos )
+    m_type(t.m_type)
+    , m_data( Data::make_None({}) )
+    , m_pos( t.m_pos )
+    , m_hygiene(t.m_hygiene)
 {
     assert( t.m_data.tag() != Data::TAGDEAD );
     TU_MATCH_HDRA( (t.m_data), {)
@@ -195,6 +197,7 @@ Token Token::clone() const
 {
     Token   rv(m_type);
     rv.m_pos = m_pos;
+    rv.m_hygiene = m_hygiene;
 
     assert( m_data.tag() != Data::TAGDEAD );
     TU_MATCH(Data, (m_data), (e),
@@ -251,6 +254,12 @@ Token Token::clone() const
     return rv;
 }
 
+AST::ExprNode& Token::frag_node()
+{
+    assert( m_type == TOK_INTERPOLATED_EXPR || m_type == TOK_INTERPOLATED_STMT || m_type == TOK_INTERPOLATED_BLOCK );
+    auto ptr = m_data.as_Fragment();
+    return*reinterpret_cast<AST::ExprNode*>( ptr );
+}
 ::std::unique_ptr<AST::ExprNode> Token::take_frag_node()
 {
     assert( m_type == TOK_INTERPOLATED_EXPR || m_type == TOK_INTERPOLATED_STMT || m_type == TOK_INTERPOLATED_BLOCK );
@@ -358,19 +367,33 @@ struct EscapedString {
     case TOK_INTERPOLATED_ITEM: return "/*:item*/";
     case TOK_INTERPOLATED_VIS: {
         ::std::stringstream ss;
-        ss << (*reinterpret_cast<const ::AST::Visibility*>(m_data.as_Fragment()) ? "pub" : "/*priv*/");
+        ss << *reinterpret_cast<const ::AST::Visibility*>(m_data.as_Fragment());
         return ss.str();
         }
     // Value tokens
     case TOK_IDENT:     return m_data.as_Ident().name.c_str();
     case TOK_LIFETIME:  return FMT("'" << m_data.as_Ident().name.c_str());
-    case TOK_INTEGER:
-        if( m_data.as_Integer().m_datatype == CORETYPE_ANY ) {
+    case TOK_INTEGER: {
+        auto v = m_data.as_Integer().m_intval;
+        switch(m_data.as_Integer().m_datatype)
+        {
+        case CORETYPE_CHAR:
+            if( v >= 0x20 && v < 128 ) {
+                switch(v.truncate_u64())
+                {
+                case '\'': return "'\\''";
+                case '\\': return "'\\\\'";
+                default:
+                    return FMT("'" << (char)v.truncate_u64() << "'");
+                }
+            }
+            return FMT("'\\u{" << ::std::hex << v << ::std::dec << "}'");
+        case CORETYPE_ANY:
             return FMT(m_data.as_Integer().m_intval);
+        default:
+            return FMT(m_data.as_Integer().m_intval << "_" << coretype_name(m_data.as_Integer().m_datatype));
         }
-        else {
-            return FMT(m_data.as_Integer().m_intval << "_" << m_data.as_Integer().m_datatype);
-        }
+        break; }
     case TOK_CHAR:      return FMT("'\\u{"<< ::std::hex << m_data.as_Integer().m_intval << "}");
     case TOK_FLOAT:
         if( m_data.as_Float().m_datatype == CORETYPE_ANY ) {
@@ -379,7 +402,7 @@ struct EscapedString {
         else {
             return FMT(m_data.as_Float().m_floatval << "_" << m_data.as_Float().m_datatype);
         }
-    case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"");
+    case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"" << m_hygiene);
     case TOK_BYTESTRING:return FMT("b\"" << m_data.as_String() << "\"");
     case TOK_HASH:  return "#";
     case TOK_UNDERSCORE:return "_";
@@ -526,6 +549,8 @@ struct EscapedString {
             ;
         else
             os << "?inner?";
+        os << tok.m_hygiene;
+        break;
     case TOK_IDENT:
     case TOK_LIFETIME:
         if( tok.m_data.is_Ident() )

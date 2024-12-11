@@ -17,6 +17,7 @@ namespace HIR {
 
     class Function;
     class Static;
+    class GlobalAssembly;
 }
 namespace MIR {
     class FunctionPointer;
@@ -36,20 +37,22 @@ public:
     virtual void emit_type_id(const ::HIR::TypeRef& ) {}
 
     // Called when a TypeRef::Path is encountered (after visiting inner types)
-    virtual void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) {}
-    virtual void emit_union(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Union& item) {}
-    virtual void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) {}
+    virtual void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) = 0;
+    virtual void emit_union(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Union& item) = 0;
+    virtual void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) = 0;
 
-    virtual void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) {}
-    virtual void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Struct& item) {}
+    virtual void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) = 0;
+    virtual void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Struct& item) = 0;
 
     virtual void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}
     virtual void emit_static_proto(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}
-    virtual void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params, const EncodedLiteral& val) {}
+    virtual void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params, const EncodedLiteral& val) = 0;
 
     virtual void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) {}
     virtual void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def) {}
-    virtual void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) {}
+    virtual void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) = 0;
+
+    virtual void emit_global_asm(const ::HIR::GlobalAssembly& ) = 0;
 };
 
 extern ::std::unique_ptr<CodeGenerator> Trans_Codegen_GetGeneratorC(const ::HIR::Crate& crate, const ::std::string& outfile);

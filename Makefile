@@ -58,6 +58,7 @@ CXXFLAGS += -Wno-misleading-indentation
 #CXXFLAGS += -Wno-unknown-warning-option
 
 CXXFLAGS += -Werror=return-type
+CXXFLAGS += -Werror=switch
 
 # Force the use of `bash` as the shell
 SHELL = bash
@@ -97,6 +98,7 @@ OBJ +=  expand/proc_macro.o
 OBJ +=  expand/assert.o expand/compile_error.o
 OBJ +=  expand/codegen.o expand/doc.o expand/lints.o expand/misc_attrs.o expand/stability.o
 OBJ +=  expand/panic.o
+OBJ +=  expand/rustc_box.o
 OBJ += expand/test_harness.o
 OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o resolve/common.o

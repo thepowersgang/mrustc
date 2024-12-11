@@ -405,22 +405,27 @@ namespace {
             {
                 for(auto& lft : e->m_lifetimes)
                     visit_lifetime(sp, lft);
-                if( e->m_origin == ::HIR::SimplePath() )
+                if( auto* ee = e->m_inner.opt_Fcn() )
                 {
                     DEBUG("Set origin of ErasedType - " << ty);
+                    DEBUG("&ty.data() = " << &ty.data());
                     // If not, figure out what to do with it
 
                     // If the function path is set, we're processing the return type of a function
                     // - Add this to the list of erased types associated with the function
-                    if( m_fcn_path )
+                    if( ee->m_origin != HIR::SimplePath() )
+                    {
+                        // Already set, somehow (maybe we're visiting the function after expansion)
+                    }
+                    else if( m_fcn_path )
                     {
                         assert(m_fcn_ptr);
                         DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
 
                         ::HIR::PathParams    params = m_fcn_ptr->m_params.make_nop_params(1);
                         // Populate with function path
-                        e->m_origin = m_fcn_path->get_full_path();
-                        TU_MATCH_HDRA( (e->m_origin.m_data), {)
+                        ee->m_origin = m_fcn_path->get_full_path();
+                        TU_MATCH_HDRA( (ee->m_origin.m_data), {)
                         TU_ARMA(Generic, e2) {
                             e2.m_params = mv$(params);
                             }
@@ -437,7 +442,7 @@ namespace {
                             throw "";
                             }
                         }
-                        e->m_index = m_fcn_erased_count++;
+                        ee->m_index = m_fcn_erased_count++;
                     }
                     // If the function _pointer_ is set (but not the path), then we're in the function arguments
                     // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
@@ -447,12 +452,24 @@ namespace {
                         auto name = RcString::new_interned(FMT("erased$" << idx));
                         auto new_ty = ::HIR::TypeRef( name, 256 + idx );
                         m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), e->m_is_sized });
-                        for( const auto& trait : e->m_traits )
+                        for( auto& trait : e->m_traits )
                         {
+                            struct M: MonomorphiserNop {
+                                const HIR::TypeRef& new_ty;
+                                M(const HIR::TypeRef& ty): new_ty(ty) {}
+                                ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
+                                    if( ty.binding == GENERIC_ErasedSelf ) {
+                                        return new_ty.clone();
+                                    }
+                                    return HIR::TypeRef(ty);
+                                }
+                            } m { new_ty };
+                            // TODO: Monomorph the trait to replace `Self` with this generic?
+                            // - Except, that should it be?
                             m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                                nullptr,    
+                                nullptr,
                                 new_ty.clone(),
-                                trait.clone()
+                                m.monomorph_traitpath(sp, trait, false)
                                 }));
                         }
                         for(const auto& lft : e->m_lifetimes)
@@ -466,6 +483,8 @@ namespace {
                     }
                     else
                     {
+                        // TODO: If we're in a top-level `type`, then it must be used as the return type of a function.
+                        // https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html#type-alias
                         ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
                     }
                 }
@@ -548,7 +567,7 @@ namespace {
         {
             auto& e = pd.as_UfcsUnknown();
             const auto& type = e.type;
-            return this->crate.find_trait_impls(trait_path.m_path, type, [](const auto& x)->const auto&{return x;}, [&](const auto& impl) {
+            return this->crate.find_trait_impls(trait_path.m_path, type, HIR::ResolvePlaceholdersNop(), [&](const auto& impl) {
                 DEBUG("FOUND impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
                 // TODO: Check bounds
                 for(const auto& bound : impl.m_params.m_bounds) {
@@ -633,7 +652,7 @@ namespace {
             }
             else {
                 // 1. Search for applicable inherent methods (COMES FIRST!)
-                if( this->crate.find_type_impls(e.type, [](const auto& ty)->const auto&{return ty;}, [&](const auto& impl) {
+                if( this->crate.find_type_impls(e.type, HIR::ResolvePlaceholdersNop(), [&](const auto& impl) {
                     DEBUG("- matched inherent impl " << e.type);
                     // Search for item in this block
                     switch( pc )
@@ -710,7 +729,7 @@ namespace {
             (UfcsKnown,
                 this->visit_type(e.type);
                 m_self_types.push_back(&e.type);
-                this->visit_generic_path(e.trait, pc);
+                this->visit_generic_path(e.trait, ::HIR::Visitor::PathContext::TRAIT);
                 m_self_types.pop_back();
                 // TODO: Locate impl block and check parameters
                 ),
@@ -898,12 +917,12 @@ namespace {
                 {
                     auto _ = m_resolve.set_item_generics(e.second.data.m_params);
 
-                    const auto& vi = trait.m_values.at(e.first);
-                    if(!vi.is_Function()) {
+                    const auto v_it = trait.m_values.find(e.first);
+                    if( v_it == trait.m_values.end() || !v_it->second.is_Function() ) {
                         ERROR(sp, E0000, "Trait " << trait_path << " doesn't have a method named " << e.first);
                     }
                     auto& impl_fcn = e.second.data;
-                    const auto& trait_fcn = vi.as_Function();
+                    const auto& trait_fcn = v_it->second.as_Function();
 
                     auto fcn_params = impl_fcn.m_params.make_nop_params(1);
                     MonomorphStatePtr   ms { &impl.m_type, &impl.m_trait_args, &fcn_params };
@@ -975,7 +994,7 @@ namespace {
                     if( impl_fcn.m_return != exp_ret_ty ) {
                         failures.push_back(FMT("Mismatched return type (expected " << exp_ret_ty << ", got " << impl_fcn.m_return << ")"));
                     }
-                    
+
                     //if( impl_fcn.m_params.m_lifetimes.size() != trait_fcn.m_params.m_lifetimes.size() ) {
                     //    failures.push_back(FMT("Mismatched lifetime param count (expected " << trait_fcn.m_params.m_lifetimes.size() << ", got " << impl_fcn.m_params.m_lifetimes.size() << ")"));
                     //}
@@ -983,23 +1002,25 @@ namespace {
                     if( !failures.empty() ) {
                         ERROR(sp, E0000, "Method " << e.first << " doesn't match trait:\n"
                             << FMT_CB(os, for(const auto& f : failures) os << "- " << f << "\n")
-                            << "Trait: " << FMT_CB(os, {
-                                os << "fn " << e.first << trait_fcn.m_params.fmt_args() << "(";
+                            << "Trait:\n" << FMT_CB(os, {
+                                os << "    fn " << e.first << trait_fcn.m_params.fmt_args() << "(";
                                 for(const auto& a : trait_fcn.m_args)
                                 {
                                     os << a.first << ": " << maybe_monomorph(a.second) << ", ";
                                 }
-                                os << ")";
-                                os << trait_fcn.m_params.fmt_bounds();
+                                os << ")\n";
+                                os << "    -> " << maybe_monomorph(trait_fcn.m_return) << "\n";
+                                os << "    " << trait_fcn.m_params.fmt_bounds();
                                 }) << "\n"
                             << "Impl : " << FMT_CB(os, {
-                                os << "fn " << e.first << impl_fcn.m_params.fmt_args() << "(";
+                                os << "    fn " << e.first << impl_fcn.m_params.fmt_args() << "(";
                                 for(const auto& a : impl_fcn.m_args)
                                 {
                                     os << a.first << ": " << a.second << ", ";
                                 }
-                                os << ")";
-                                os << impl_fcn.m_params.fmt_bounds();
+                                os << ")\n";
+                                os << "    -> " << impl_fcn.m_return << "\n";
+                                os << "    " << impl_fcn.m_params.fmt_bounds();
                                 }) << "\n"
                             << "in impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type
                             );
@@ -1019,7 +1040,7 @@ namespace {
                     for(const auto& b : trait_fcn.m_params.m_bounds) {
                         TU_MATCH_HDRA( (b), { )
                         default:
-                    
+                            break;
                         TU_ARMA(TypeLifetime, be) {
                             impl_fcn.m_params.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({ ms.monomorph_type(sp, be.type), ms.monomorph_lifetime(sp, be.valid_for) }));
                             }
@@ -1103,6 +1124,7 @@ namespace {
         }
 
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
+            TRACE_FUNCTION_F(p);
 
             auto _ = m_resolve.set_item_generics(item.m_params);
             // NOTE: Superfluous... except that it makes the params valid for the return type.
@@ -1118,7 +1140,7 @@ namespace {
             m_cur_params_level = 1;
             for(auto& arg : item.m_args)
             {
-                DEBUG("ARG " << arg);
+                TRACE_FUNCTION_F("ARG " << arg);
                 visit_type(arg.second);
             }
             m_cur_params = nullptr;
@@ -1149,8 +1171,10 @@ namespace {
             // Visit return type (populates path for `impl Trait` in return position
             m_fcn_path = &p;
             m_fcn_erased_count = 0;
-            DEBUG("RET " << item.m_return);
-            visit_type(item.m_return);
+            {
+                TRACE_FUNCTION_F("RET " << item.m_return);
+                visit_type(item.m_return);
+            }
             m_fcn_path = nullptr;
             m_fcn_ptr = nullptr;
 
@@ -1159,6 +1183,9 @@ namespace {
             }
             assert(m_current_lifetime.empty());
 
+            if( item.m_receiver == HIR::Function::Receiver::Custom ) {
+                this->visit_type(item.m_receiver_type);
+            }
             ::HIR::Visitor::visit_function(p, item);
         }
     };

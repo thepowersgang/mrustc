@@ -22,25 +22,21 @@ enum WarningType
 
 class Position;
 struct SpanInner;
+struct SpanInner_Source;
 
-struct ProtoSpan
-{
-    RcString   filename;
-
-    unsigned int start_line;
-    unsigned int start_ofs;
-};
 struct Span
 {
 private:
     SpanInner*  m_ptr;
-    static SpanInner    s_empty_span;
+    //static SpanInner    s_empty_span;
 public:
-    Span():
-        m_ptr(&s_empty_span)
+    Span()
+        //: m_ptr(&s_empty_span)
+        : m_ptr(nullptr)
     {}
     Span(Span parent, RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs);
     Span(Span parent, const Position& position);
+    Span(Span parent, RcString source_crate, RcString macro_name);
     ~Span();
 
     Span(const Span& x);
@@ -63,11 +59,15 @@ public:
         return *this;
     }
 
+    operator bool() const { return m_ptr != nullptr; }
     bool operator==(const Span& x) const { return m_ptr == x.m_ptr; }
     bool operator!=(const Span& x) const { return !(*this == x); }
 
-    const SpanInner& operator*() const { return *m_ptr; }
+    const SpanInner* get() const { return m_ptr; }
+    //const SpanInner& operator*() const { return *m_ptr; }
     const SpanInner* operator->() const { return m_ptr; }
+
+    const SpanInner_Source& get_top_file_span() const;
 
     void bug(::std::function<void(::std::ostream&)> msg) const;
     void error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const;
@@ -75,14 +75,35 @@ public:
     void note(::std::function<void(::std::ostream&)> msg) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Span& sp);
+private:
+    void print_span_message(::std::function<void(::std::ostream&)> tag, ::std::function<void(::std::ostream&)> msg) const;
+};
+struct ProtoSpan
+{
+    // If `span` is populated, then this `ProtoSpan` was from a macro expansion
+    Span    span;
+    RcString   filename;
+
+    unsigned int start_line;
+    unsigned int start_ofs;
 };
 struct SpanInner
 {
     friend struct Span;
-private:
+protected:
     size_t  reference_count;
 public:
     Span    parent_span;
+
+    virtual ~SpanInner() = 0;
+    virtual void fmt(::std::ostream& os) const = 0;
+    virtual RcString crate_name() const = 0;
+};
+struct SpanInner_Source:
+    public SpanInner
+{
+    friend struct Span;
+public:
     RcString    filename;
 
     unsigned int start_line;
@@ -90,9 +111,13 @@ public:
     unsigned int end_line;
     unsigned int end_ofs;
 
+    ~SpanInner_Source() override;
+    void fmt(::std::ostream& os) const override;
+    RcString crate_name() const override { return RcString(); }
+
 private:
     static SpanInner* alloc(Span parent, RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs) {
-        auto* rv = new SpanInner();
+        auto* rv = new SpanInner_Source();
         rv->reference_count = 1;
         rv->parent_span = parent;
         rv->filename = ::std::move(filename);
@@ -102,6 +127,20 @@ private:
         rv->end_ofs = end_ofs;
         return rv;
     }
+};
+struct SpanInner_Macro:
+    public SpanInner
+{
+    friend struct Span;
+    RcString    crate;
+    RcString    macro;
+
+    ~SpanInner_Macro() override;
+    void fmt(::std::ostream& os) const override;
+    RcString crate_name() const override { return crate; }
+
+private:
+    static SpanInner* alloc(Span parent, RcString crate, RcString macro);
 };
 
 template<typename T>

@@ -10,9 +10,17 @@
 
 /// Binding index for a Generic that indicates "Self"
 #define GENERIC_Self    0xFFFF
+/// `Self` in the context of an erased type
+#define GENERIC_ErasedSelf  0xFFFE
 
 namespace HIR {
 
+enum GenericGroup {
+    GENERIC_Impl,
+    GENERIC_Item,
+    GENERIC_Placeholder,
+    GENERIC_Hrtb,
+};
 
 struct GenericRef
 {
@@ -24,6 +32,12 @@ struct GenericRef
         : name(::std::move(name))
         , binding(binding)
     {
+    }
+    GenericRef(RcString name, GenericGroup group, uint16_t idx)
+        : name(::std::move(name))
+        , binding(group * 256 + idx)
+    {
+        assert(idx < 256);
     }
     static GenericRef new_self() {
         return GenericRef("Self", GENERIC_Self);
@@ -40,15 +54,21 @@ struct GenericRef
     }
 
     bool is_placeholder() const {
-        return (binding >> 8) == 2;
+        return (binding >> 8) == GENERIC_Placeholder;
     }
 
 
     Ordering ord(const GenericRef& x) const {
-        return ::ord(binding, x.binding);
+        auto rv = ::ord(binding, x.binding);
+        if(rv)  return rv;
+        if(group() == GENERIC_Placeholder ) {
+            return ::ord(name, x.name); // names matter for placeholders
+        }
+        return rv;
     }
     bool operator==(const GenericRef& x) const { return this->ord(x) == OrdEqual; }
     bool operator!=(const GenericRef& x) const { return this->ord(x) != OrdEqual; }
+    bool operator<(const GenericRef& x) const { return this->ord(x) == OrdLess; }
 
     void fmt(::std::ostream& os) const;
 

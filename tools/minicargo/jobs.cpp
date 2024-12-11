@@ -18,7 +18,6 @@
 #include "os.hpp"
 #include <iomanip>
 
-#include <unordered_set>
 #include <cassert>
 #include <algorithm>
 
@@ -37,6 +36,11 @@ void JobList::add_job(::std::unique_ptr<Job> job)
 
 bool JobList::run_all(size_t num_jobs, bool dry_run)
 {
+    // Sort jobs by name, to provide a consistent execution order
+    ::std::sort(waiting_jobs.begin(), waiting_jobs.end(), [](const std::unique_ptr<Job>& a, const std::unique_ptr<Job>& b) {
+        return a->name() < b->name();
+    });
+
     auto jobserver = (dry_run || num_jobs == 1) ? ::std::unique_ptr<JobServer>()    // Dry run or being forced to a single build task? force no jobserver
             : num_jobs == 0 ? JobServer::create(0)  // If no `-j` option is passed, try and get a jobserver client but don't create a server
             : JobServer::create(num_jobs-1) // `-j` was passed with a non-1 count, allow `JobServer` to create a server (keeping one job for ourselves)
@@ -62,7 +66,9 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
         ::std::cerr
             << " ("
             << std::fixed << std::setprecision(1) << (100 * static_cast<double>(num_complete) / total_job_count) << "% " 
-            << this->running_jobs.size() << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t"
+            << this->running_jobs.size() << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b"
+            << "," << num_complete << "c"
+            << "/" << total_job_count << "t"
             << "):"
             ;
         for(const auto& rj : this->running_jobs) {
@@ -72,6 +78,44 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
         }
         ::std::cerr << "\n";
     };
+
+    #if 0
+    // HACK: Consume jobs that don't need to be run
+    while( !this->waiting_jobs.empty() || !this->runnable_jobs.empty() || !this->running_jobs.empty() )
+    {
+        // Update the runnable list.
+        for(auto& slot : this->waiting_jobs)
+        {
+            assert(slot);
+            const auto& deps = slot->dependencies();
+            if( std::all_of(deps.begin(), deps.end(), [&](const std::string& s){ return completed_jobs.count(s) > 0; }) && slot->is_runnable() )
+            {
+                this->runnable_jobs.push_back(std::move(slot));
+            }
+        }
+        auto new_end = std::remove_if(waiting_jobs.begin(), waiting_jobs.end(), [](const job_t& j){ return !j; });
+        waiting_jobs.erase(new_end, waiting_jobs.end());
+
+        ::std::sort(runnable_jobs.begin(), runnable_jobs.end(), [](const std::unique_ptr<Job>& a, const std::unique_ptr<Job>& b) {
+            return a->name() < b->name();
+        });
+
+        if( this->runnable_jobs.empty() ) {
+            break;
+        }
+        if( !this->runnable_jobs.front()->is_already_complete() ) {
+            break;
+        }
+        this->runnable_jobs.pop_front();
+    }
+    #else
+    // Remove previously completed jobs after sorting
+    {
+        auto new_end = std::remove_if(this->waiting_jobs.begin(), this->waiting_jobs.end(),
+            [](const std::unique_ptr<Job>& a) { return a->is_already_complete(); });
+        this->waiting_jobs.erase(new_end, this->waiting_jobs.end());
+    }
+    #endif
 
     while( !this->waiting_jobs.empty() || !this->runnable_jobs.empty() || !this->running_jobs.empty() )
     {
@@ -117,6 +161,10 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
         }
         auto new_end = std::remove_if(waiting_jobs.begin(), waiting_jobs.end(), [](const job_t& j){ return !j; });
         waiting_jobs.erase(new_end, waiting_jobs.end());
+
+        ::std::sort(runnable_jobs.begin(), runnable_jobs.end(), [](const std::unique_ptr<Job>& a, const std::unique_ptr<Job>& b) {
+            return a->name() < b->name();
+        });
 
         // Is nothing runnable?
         if( this->runnable_jobs.empty() ) {
@@ -176,7 +224,9 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
             auto num_complete = total_job_count - this->runnable_jobs.size() - (1+this->running_jobs.size()) - this->waiting_jobs.size();
             ::std::cout << " ("
                 << std::fixed << std::setprecision(1) << (100 * static_cast<double>(num_complete) / total_job_count) << "% " 
-                << this->running_jobs.size()+1 << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t)";
+                << this->running_jobs.size()+1 << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b"
+                << "," << num_complete << "c"
+                << "/" << total_job_count << "t)";
             ::std::cout << std::endl;
         }
 

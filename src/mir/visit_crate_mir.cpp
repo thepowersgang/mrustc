@@ -22,7 +22,7 @@ void MIR::OuterVisitor::visit_type(::HIR::TypeRef& ty)
         DEBUG("Array size " << ty);
         if( auto* se1 = e->size.opt_Unevaluated() ) {
             if( auto* se = se1->opt_Unevaluated() ) {
-                m_cb(m_resolve, ::HIR::ItemPath(""), **se, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+                m_cb(m_resolve, ::HIR::ItemPath(""), *(*se)->expr, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
             }
         }
     }
@@ -50,6 +50,7 @@ void MIR::OuterVisitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)
 }
 void MIR::OuterVisitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 {
+    auto _ = this->m_resolve.set_item_generics(item.m_params);
     if( item.m_value ) {
         DEBUG("`const` value " << p);
         m_cb(m_resolve, p, item.m_value, {}, item.m_type);

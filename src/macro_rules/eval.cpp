@@ -77,14 +77,25 @@ public:
     }
     void insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data);
 
-    InterpolatedFragment* get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    /// <summary>
+    /// Get the replacement fragment for a given loop iteration (or `nullptr`) if out of bounds
+    /// </summary>
+    InterpolatedFragment* get(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 
-    unsigned int get_loop_repeats(const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const;
+    /// <summary>
+    /// Given a current iteration and a loop index, return how many times this loop will run
+    /// </summary>
+    unsigned int get_loop_repeats(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const;
+
+    /// <summary>
+    /// Return the number of times this level of a given name/variable will loop
+    /// </summary>
+    unsigned int get_variable_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const;
 
     /// Increment the number of times a particular fragment will be used
-    void inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    void inc_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
     /// Decrement the number of times a particular fragment is used (returns true if there are still usages remaining)
-    bool dec_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    bool dec_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 
 
     friend ::std::ostream& operator<<(::std::ostream& os, const CapturedVal& x) {
@@ -104,7 +115,7 @@ public:
     }
 
 private:
-    CapturedVal& get_cap(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    CapturedVal& get_cap(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 };
 
 class MacroPatternStream
@@ -216,7 +227,7 @@ void ParameterMappings::insert(unsigned int name_index, const ::std::vector<unsi
     layer->as_Vals().push_back( CapturedVal { 0,0, mv$(data) } );
 }
 
-ParameterMappings::CapturedVal& ParameterMappings::get_cap(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+ParameterMappings::CapturedVal& ParameterMappings::get_cap(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
     DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
     auto& e = m_mappings.at(name_idx);
@@ -224,37 +235,37 @@ ParameterMappings::CapturedVal& ParameterMappings::get_cap(const ::std::vector<u
     auto* layer = &e.top_layer;
 
     // - If the top layer is a 1-sized set of values, unconditionally return it
-    TU_IFLET(CaptureLayer, (*layer), Vals, e,
-        if( e.size() == 1 ) {
-            return e[0];
+    if( auto* e = layer->opt_Vals() ) {
+        if( e->size() == 1 ) {
+            return (*e)[0];
         }
-        if( e.size() == 0 ) {
-            BUG(Span(), "Attempting to get binding for empty capture - #" << name_idx);
+        if( e->size() == 0 ) {
+            BUG(sp, "Attempting to get binding for empty capture - #" << name_idx);
         }
-    )
+    }
 
     for(const auto iter : iterations)
     {
-        TU_MATCH(CaptureLayer, (*layer), (e),
-        (Vals,
-            ASSERT_BUG(Span(), iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (values)");
+        TU_MATCH_HDRA( (*layer), { )
+        TU_ARMA(Vals, e) {
+            ASSERT_BUG(sp, iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (values)");
             return e.at(iter);
-            ),
-        (Nested,
-            ASSERT_BUG(Span(), iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (nest)");
+            }
+        TU_ARMA(Nested, e) {
+            ASSERT_BUG(sp, iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (nest)");
             layer = &e.at(iter);
-            )
-        )
+            }
+        }
     }
 
-    ERROR(Span(), E0000, "Variable #" << name_idx << " is still repeating at this level (" << iterations.size() << ")");
+    ERROR(sp, E0000, "Variable #" << name_idx << " is still repeating at this level (" << iterations.size() << ")");
 }
 
-InterpolatedFragment* ParameterMappings::get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+InterpolatedFragment* ParameterMappings::get(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
-    return &get_cap(iterations, name_idx).frag;
+    return &get_cap(sp, iterations, name_idx).frag;
 }
-unsigned int ParameterMappings::get_loop_repeats(const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const
+unsigned int ParameterMappings::get_loop_repeats(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const
 {
     const auto& list = m_loop_counts.at(loop_idx);
     // Iterate the list, find the first prefix match of `iterations`
@@ -268,18 +279,58 @@ unsigned int ParameterMappings::get_loop_repeats(const ::std::vector<unsigned in
             return e.second;
         }
     }
-    BUG(Span(), "Loop " << loop_idx << " cannot find an iteration count for path [" << iterations << "]");
+    BUG(sp, "Loop " << loop_idx << " cannot find an iteration count for path [" << iterations << "]");
+}
+unsigned int ParameterMappings::get_variable_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const
+{
+    DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
+    auto& e = m_mappings.at(name_idx);
+    //DEBUG("- e = " << e);
+    auto* layer = &e.top_layer;
+
+    // - If the top layer is a 1-sized set of values, unconditionally return it
+    if( auto* e = layer->opt_Vals() ) {
+        if( e->size() == 1 ) {
+            return 1;
+        }
+        if( e->size() == 0 ) {
+            BUG(sp, "Attempting to get binding for empty capture - #" << name_idx);
+        }
+    }
+
+    for(const auto iter : iterations)
+    {
+        TU_MATCH_HDRA( (*layer), { )
+        TU_ARMA(Vals, e) {
+            ASSERT_BUG(sp, iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (values)");
+            return 1;
+            }
+        TU_ARMA(Nested, e) {
+            ASSERT_BUG(sp, iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (nest)");
+            layer = &e.at(iter);
+            }
+        }
+    }
+    TU_MATCH_HDRA( (*layer), { )
+    TU_ARMA(Vals, e) {
+        return e.size();
+        }
+    TU_ARMA(Nested, e) {
+        return e.size();
+        }
+    }
+    throw "";
 }
 
-void ParameterMappings::inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+void ParameterMappings::inc_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
-    auto& cap = get_cap(iterations, name_idx);
+    auto& cap = get_cap(sp, iterations, name_idx);
     assert(cap.num_used == 0);
     cap.num_uses += 1;
 }
-bool ParameterMappings::dec_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+bool ParameterMappings::dec_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
-    auto& cap = get_cap(iterations, name_idx);
+    auto& cap = get_cap(sp, iterations, name_idx);
     assert(cap.num_used < cap.num_uses);
     cap.num_used += 1;
     return (cap.num_used < cap.num_uses);
@@ -418,8 +469,7 @@ class MacroExpander:
     static unsigned s_next_log_index;
     unsigned m_log_index;
 
-    const RcString  m_macro_filename;
-
+    Span    m_this_span;
     const RcString  m_crate_name;
     Span m_invocation_span;
     AST::Edition    m_invocation_edition;
@@ -430,6 +480,7 @@ class MacroExpander:
     Token   m_next_token;   // used for inserting a single token into the stream
     ::std::unique_ptr<TTStreamO> m_ttstream;
     AST::Edition    m_source_edition;
+    bool m_is_macro_item;
     Ident::Hygiene  m_hygiene;
 
 public:
@@ -439,6 +490,7 @@ public:
         const ::std::string& macro_name,
         const Span& sp,
         AST::Edition edition,
+        bool is_macro_item,
         const Ident::Hygiene& parent_hygiene,
         const ::std::vector<MacroExpansionEnt>& contents,
         ParameterMappings mappings,
@@ -447,13 +499,14 @@ public:
     ):
         TokenStream(ParseState()),
         m_log_index(s_next_log_index++),
-        m_macro_filename( FMT("Macro:" << macro_name) ),
+        m_this_span(sp, crate_name, macro_name.c_str()),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( sp ),
         m_invocation_edition( edition ),
         m_mappings( mv$(mappings) ),
         m_state( contents, m_mappings ),
         m_source_edition( source_edition ),
+        m_is_macro_item(is_macro_item),
         m_hygiene( Ident::Hygiene::new_scope_chained(parent_hygiene) )
     {
     }
@@ -487,7 +540,9 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
             PUTBACK(tok, lex);
         return InterpolatedFragment( Parse_TT(lex, false) );
     case MacroPatEnt::PAT_PAT:
-        return InterpolatedFragment( Parse_Pattern(lex, AllowOrPattern::No) );
+        // TODO: Is this edition check correct? Or should it be uncondiitonally "Yes"?
+        //return InterpolatedFragment( Parse_Pattern(lex, lex.edition_after(AST::Edition::Rust2021) ? AllowOrPattern::Yes : AllowOrPattern::No) );
+        return InterpolatedFragment( Parse_Pattern(lex, AllowOrPattern::Yes) );
     case MacroPatEnt::PAT_TYPE:
         return InterpolatedFragment( Parse_Type(lex) );
     case MacroPatEnt::PAT_EXPR:
@@ -521,6 +576,20 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         return InterpolatedFragment( TokenTree(lex.get_edition(), lex.get_hygiene(), tok) );
     case MacroPatEnt::PAT_LITERAL:
         GET_TOK(tok, lex);
+        if(tok.type() == TOK_DASH) {
+            std::vector<TokenTree>  toks;
+            switch(lex.lookahead(0)) {
+            case TOK_INTEGER:
+            case TOK_FLOAT:
+                toks.push_back(tok);
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT});
+            }
+            GET_TOK(tok, lex);
+            toks.push_back(tok);
+            return InterpolatedFragment( TokenTree(lex.get_edition(), lex.get_hygiene(), std::move(toks)) );
+        }
         switch(tok.type())
         {
         case TOK_INTEGER:
@@ -542,6 +611,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 ::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, const AST::Crate& crate, AST::Module& mod)
 {
     TRACE_FUNCTION_F("'" << name << "', " << input);
+    DEBUG("rules.m_source_crate = " << rules.m_source_crate);
     DEBUG("rules.m_hygiene = " << rules.m_hygiene);
 
     ParameterMappings   bound_tts;
@@ -560,8 +630,8 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
 
     TokenStream* ret_ptr = new MacroExpander(
-        name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate == "" ? crate.m_crate_name_real : rules.m_source_crate,
-        rules.m_source_crate == "" ? crate.m_edition : crate.m_extern_crates.at(rules.m_source_crate).m_hir->m_edition
+        name, sp, crate.m_edition, rules.m_is_macro_item, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate == "" ? crate.m_crate_name_real : rules.m_source_crate,
+        rules.m_edition
         );
 
     return ::std::unique_ptr<TokenStream>( ret_ptr );
@@ -702,6 +772,7 @@ namespace
             return m_consume_count;
         }
     };
+    bool consume_type(TokenStreamRO& lex);
 
     // Consume an entire TT
     bool consume_tt(TokenStreamRO& lex)
@@ -820,7 +891,7 @@ namespace
             break;
         case TOK_IDENT:
             lex.consume();
-            if( type_mode && (lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT) )
+            if( type_mode && (lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT || lex.next() == TOK_PAREN_OPEN) )
                 ;
             // Allow a lone ident
             else if( lex.next() != TOK_DOUBLE_COLON )
@@ -871,6 +942,16 @@ namespace
                 return false;
             }
         }
+        // Handles `Fn()`
+        if( type_mode && lex.next() == TOK_PAREN_OPEN )
+        {
+            if( !consume_tt(lex) )
+                return false;
+            if( lex.consume_if(TOK_THINARROW) ) {
+                if( !consume_type(lex) )
+                    return false;
+            }
+        }
         return true;
     }
     bool consume_type(TokenStreamRO& lex)
@@ -891,6 +972,7 @@ namespace
             if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" )
                 lex.consume();
             if(0)
+        case TOK_RWORD_IMPL:
         case TOK_RWORD_DYN:
             lex.consume();
         case TOK_RWORD_CRATE:
@@ -951,7 +1033,7 @@ namespace
             return false;
         }
     }
-    bool consume_pat(TokenStreamRO& lex)
+    bool consume_pat(TokenStreamRO& lex, bool allow_or=true)
     {
         TRACE_FUNCTION;
 
@@ -968,40 +1050,69 @@ namespace
         if( lex.consume_if(TOK_INTERPOLATED_PATTERN) )
             return true;
 
+        if( allow_or ) {
+            lex.consume_if(TOK_PIPE);
+        }
         for(;;)
         {
-            if( lex.consume_if(TOK_UNDERSCORE) )
-                return true;
             switch(lex.next())
             {
+            case TOK_UNDERSCORE:
+                lex.consume();
+                if( allow_or && lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_IDENT:
             case TOK_RWORD_SUPER:
             case TOK_RWORD_SELF:
+            case TOK_RWORD_CRATE:
             case TOK_DOUBLE_COLON:
             case TOK_INTERPOLATED_PATH:
                 consume_path(lex);
                 if( lex.next() == TOK_BRACE_OPEN ) {
-                    return consume_tt(lex);
+                    if( !consume_tt(lex) )
+                        return false;
                 }
                 else if( lex.next() == TOK_PAREN_OPEN ) {
-                    return consume_tt(lex);
+                    if( !consume_tt(lex) )
+                        return false;
                 }
                 else if( lex.next() == TOK_EXCLAM ) {
                     lex.consume();
-                    return consume_tt(lex);
+                    if( !consume_tt(lex) )
+                        return false;
                 }
-                break;
+                else {
+                    // Fall through to the range handling
+                    break;
+                }
+                if( allow_or && lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_RWORD_BOX:
                 lex.consume();
-                return consume_pat(lex);
+                if( !consume_pat(lex, allow_or) )
+                    return false;
+                if( allow_or && lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_AMP:
             case TOK_DOUBLE_AMP:
                 lex.consume();
                 lex.consume_if(TOK_RWORD_MUT);
-                return consume_pat(lex);
+                if( !consume_pat(lex, allow_or) )
+                    return false;
+                if( allow_or && lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_PAREN_OPEN:
             case TOK_SQUARE_OPEN:
-                return consume_tt(lex);
+                if( !consume_tt(lex) )
+                    return false;
+                if( allow_or && lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
+            case TOK_BYTESTRING:
             case TOK_STRING:
             case TOK_INTEGER:
             case TOK_FLOAT:
@@ -1033,6 +1144,8 @@ namespace
                     return false;
                 }
             }
+            if(allow_or && lex.consume_if(TOK_PIPE))
+                continue;
             return true;
         }
     }
@@ -1041,6 +1154,13 @@ namespace
     {
         TRACE_FUNCTION;
         bool cont;
+
+        while( lex.next() == TOK_HASH )
+        {
+            lex.consume();
+            lex.consume_if(TOK_EXCLAM);
+            consume_tt(lex);
+        }
 
         // Closures
         if( lex.next() == TOK_RWORD_MOVE || lex.next() == TOK_PIPE || lex.next() == TOK_DOUBLE_PIPE )
@@ -1052,7 +1172,7 @@ namespace
                 {
                     if( lex.next() == TOK_PIPE )
                         break;
-                    consume_pat(lex);
+                    consume_pat(lex, /*allow_or=*/false);
                     if(lex.consume_if(TOK_COLON))
                     {
                         consume_type(lex);
@@ -1086,6 +1206,7 @@ namespace
                 case TOK_RWORD_BOX: // Box
                     lex.consume();
                     break;
+                case TOK_DOUBLE_AMP:
                 case TOK_AMP:
                     lex.consume();
                     lex.consume_if(TOK_RWORD_MUT);
@@ -1429,9 +1550,34 @@ namespace
                 return true;
             }
             static bool maybe_where(TokenStreamRO& lex) {
-                if(lex.next() == TOK_RWORD_WHERE)
+                if(lex.consume_if(TOK_RWORD_WHERE))
                 {
-                    TODO(Span(), "where in macro eval");
+                    do {
+                        if( lex.next() == TOK_BRACE_OPEN || lex.next() == TOK_SEMICOLON )
+                            break;
+                        if( lex.consume_if(TOK_LIFETIME) ) {
+                            if( !lex.consume_if(TOK_COLON) )
+                                return false;
+
+                            if( !lex.consume_if(TOK_LIFETIME) )
+                                return false;
+                        }
+                        else {
+                            if( !consume_type(lex) )
+                                return false;
+                            if( !lex.consume_if(TOK_COLON) )
+                                return false;
+                            do {
+                                if( lex.consume_if(TOK_LIFETIME) ) {
+                                }
+                                else {
+                                    lex.consume_if(TOK_QMARK);
+                                    if( !consume_path(lex, true) )
+                                        return false;
+                                }
+                            } while( lex.consume_if(TOK_PLUS) );
+                        }
+                    } while( lex.consume_if(TOK_COMMA) );
                 }
                 return true;
             }
@@ -1662,6 +1808,17 @@ namespace
 
             if( !H::maybe_generics(lex) )
                 return false;
+            if( lex.consume_if(TOK_COLON) ) {
+                do {
+                    if( lex.consume_if(TOK_LIFETIME) ) {
+                    }
+                    else {
+                        if( !consume_path(lex, true) )
+                            return false;
+                    }
+                }
+                while( lex.consume_if(TOK_PLUS) );
+            }
             if(lex.next() != TOK_BRACE_OPEN)
                 return false;
             if( !consume_tt(lex) )
@@ -1772,7 +1929,8 @@ namespace
         case MacroPatEnt::PAT_STMT:
             return consume_stmt(lex);
         case MacroPatEnt::PAT_PAT:
-            return consume_pat(lex);
+            //return consume_pat(lex, lex.edition_after(AST::Edition::Rust2021));
+            return consume_pat(lex, true);
         case MacroPatEnt::PAT_META:
             if( lex.next() == TOK_INTERPOLATED_META ) {
                 lex.consume();
@@ -1804,9 +1962,23 @@ namespace
         case MacroPatEnt::PAT_LITERAL:
             switch(lex.next())
             {
+            case TOK_DASH: {
+                auto tmp = lex.clone();
+                tmp.consume();
+                switch(tmp.next()) {
+                case TOK_INTEGER:
+                case TOK_FLOAT:
+                    lex.consume();
+                    lex.consume();
+                    return true;
+                default:
+                    return false;
+                }
+                } break;
             case TOK_INTEGER:
             case TOK_FLOAT:
             case TOK_STRING:
+            case TOK_BYTESTRING:
             case TOK_RWORD_TRUE:
             case TOK_RWORD_FALSE:
                 lex.consume();
@@ -1959,7 +2131,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
                 DEBUG(i << " ExpectTok(" << *e << ") == " << tok);
                 if( tok != *e )
                 {
-                    ERROR(sp, E0000, "Expected token " << *e << " in match arm, got " << tok);
+                    ERROR(sp, E0000, "Expected token " << *e << " in macro arm, got " << tok);
                     break;
                 }
             }
@@ -1996,21 +2168,26 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
     while(const auto* ent_ptr = state.next_ent())
     {
         DEBUG(*ent_ptr);
-        TU_IFLET(MacroExpansionEnt, (*ent_ptr), NamedValue, e,
-            if( e >> 30 ) {
-            }
-            else {
+        if(const auto* e = ent_ptr->opt_NamedValue()) {
+            switch(*e & ~NAMEDVALUE_VALMASK)
+            {
+            case 0:
+            case NAMEDVALUE_TY_IGNORE:
                 // Increment a counter in `bound_tts`
-                bound_tts.inc_count(state.iterations(), e);
+                bound_tts.inc_count(Span(), state.iterations(), *e & NAMEDVALUE_VALMASK);
+                break;
+            case NAMEDVALUE_TY_MAGIC:
+            default:
+                break;
             }
-        )
+        }
     }
 }
 
 Position MacroExpander::getPosition() const
 {
     // TODO: Return the attached position of the last fetched token
-    return Position(m_macro_filename, 0, m_state.top_pos());
+    return Position(m_this_span);
 }
 AST::Edition MacroExpander::realGetEdition() const
 {
@@ -2065,7 +2242,7 @@ Token MacroExpander::realGetToken()
                 // Rewrite the hygiene of an ident such that idents in the macro explicitly are unique for each expansion
                 // - Appears to be a valid option.
                 auto ident = e.ident();
-                if( ident.hygiene == m_hygiene.get_parent() )
+                if( ident.hygiene == m_hygiene.get_parent() || m_is_macro_item )
                 {
                     ident.hygiene = m_hygiene;
                 }
@@ -2073,17 +2250,41 @@ Token MacroExpander::realGetToken()
                 DEBUG("[" << m_log_index << "] Updated hygine: " << rv);
                 return rv;
                 break; }
+            case TOK_BYTESTRING:
+            case TOK_STRING: {
+                auto h = e.str_hygiene();
+                if( h == m_hygiene.get_parent() || m_is_macro_item )
+                {
+                    h = m_hygiene;
+                }
+                auto rv = Token(e.type(), e.str(), std::move(h));
+                DEBUG("[" << m_log_index << "] Updated hygine: " << rv);
+                return rv;
+                }
             default:
                 DEBUG("[" << m_log_index << "] Raw token: " << e);
                 return e.clone();
             }
             }
         TU_ARMA(NamedValue, e) {
-            if( e >> 30 ) {
-                switch( e & 0x3FFFFFFF )
+            switch(e & ~NAMEDVALUE_VALMASK)
+            {
+            default:
+                BUG(this->point_span(), "Unknown macro metavar - 0x" << std::hex << e);
+            case NAMEDVALUE_TY_COUNT: { // `${count(VarName)}`
+                auto count = m_mappings.get_variable_count(this->point_span(), m_state.iterations(), e & NAMEDVALUE_VALMASK);
+                return Token(U128(count), CORETYPE_ANY);
+                break; }
+            case NAMEDVALUE_TY_IGNORE: {    // `${ignore(VarName)}`
+                auto* frag = m_mappings.get(this->point_span(), m_state.iterations(), e & NAMEDVALUE_VALMASK);
+                ASSERT_BUG(this->point_span(), frag, "Cannot find '" << (e & NAMEDVALUE_VALMASK) << "' for " << m_state.iterations());
+                // - Ignore
+                break; }
+            case NAMEDVALUE_TY_MAGIC: // NAMEDVALUE_TY_MAGIC
+                switch( e )
                 {
                 // - XXX: Hack for $crate special name
-                case 0:
+                case NAMEDVALUE_MAGIC_CRATE:
                     DEBUG("[" << m_log_index << "] Crate name hack");
                     if( m_crate_name == "" )
                     {
@@ -2094,19 +2295,22 @@ Token MacroExpander::realGetToken()
                     }
                     else
                     {
-                        m_next_token = Token(TOK_STRING, ::std::string(m_crate_name.c_str()));
+                        m_next_token = Token(TOK_STRING, ::std::string(m_crate_name.c_str()), {});
                         return Token(TOK_DOUBLE_COLON);
                     }
                     break;
+                case NAMEDVALUE_MAGIC_INDEX:
+                    ASSERT_BUG(this->point_span(), !m_state.iterations().empty(), "${index()} with no active loop");
+                    return Token(U128(m_state.iterations().back()), CORETYPE_ANY);
                 default:
-                    BUG(Span(), "Unknown macro metavar");
+                    BUG(this->point_span(), "Unknown macro metavar - 0x" << std::hex << e);
                 }
-            }
-            else {
-                auto* frag = m_mappings.get(m_state.iterations(), e);
+                break;
+            case 0: {
+                auto* frag = m_mappings.get(this->point_span(), m_state.iterations(), e);
                 ASSERT_BUG(this->point_span(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
 
-                bool can_steal = ( m_mappings.dec_count(m_state.iterations(), e) == false );
+                bool can_steal = ( m_mappings.dec_count(this->point_span(), m_state.iterations(), e) == false );
                 DEBUG("[" << m_log_index << "] Insert replacement #" << e << " = " << *frag);
                 if( frag->m_type == InterpolatedFragment::TT )
                 {
@@ -2126,6 +2330,7 @@ Token MacroExpander::realGetToken()
                         return Token( *frag );
                     }
                 }
+                } break;
             }
             }
         TU_ARMA(Loop, e) {
@@ -2167,13 +2372,13 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
                 }
             TU_ARMA(Loop, e) {
                 assert( !e.controlling_input_loops.empty() );
-                unsigned int num_repeats = m_mappings.get_loop_repeats(m_iterations, *e.controlling_input_loops.begin());
+                unsigned int num_repeats = m_mappings.get_loop_repeats(Span(), m_iterations, *e.controlling_input_loops.begin());
                 for(auto loop_ident : e.controlling_input_loops)
                 {
                     if( loop_ident == *e.controlling_input_loops.begin() )
                         continue ;
 
-                    unsigned int this_repeats = m_mappings.get_loop_repeats(m_iterations, loop_ident);
+                    unsigned int this_repeats = m_mappings.get_loop_repeats(Span(), m_iterations, loop_ident);
                     if( this_repeats != num_repeats ) {
                         // TODO: Get the variables involved, or the pattern+output spans
                         ERROR(Span(), E0000, "Mismatch in loop iterations: " << this_repeats << " != " << num_repeats);

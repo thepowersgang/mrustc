@@ -124,13 +124,26 @@ public:
     // (helper) Add ivars to path parameters
     void add_ivars_params(::HIR::PathParams& params);
 
-    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> callback_resolve_infer() const {
-        return [&](const auto& ty)->const auto& {
-                if( ty.data().is_Infer() )
-                    return this->get_type(ty);
-                else
-                    return ty;
-            };
+    struct ResolvePlaceholders: public HIR::ResolvePlaceholders {
+        const HMTypeInferrence& m_parent;
+        ResolvePlaceholders(const HMTypeInferrence& parent): m_parent(parent) {
+        }
+
+        const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const override {
+            if( ty.data().is_Infer() )
+                return m_parent.get_type(ty);
+            else
+                return ty;
+        }
+        const ::HIR::ConstGeneric& get_val(const Span& sp, const HIR::ConstGeneric& v) const override {
+            if( v.is_Infer() )
+                return m_parent.get_value(v);
+            else
+                return v;
+        }
+    };
+    ResolvePlaceholders callback_resolve_infer() const {
+        return ResolvePlaceholders(*this);
     }
 
     // Mutation
@@ -161,8 +174,8 @@ public:
     void expand_ivars_params(::HIR::PathParams& params);
 
     // Helpers
-    bool pathparams_contain_ivars(const ::HIR::PathParams& pps) const;
-    bool type_contains_ivars(const ::HIR::TypeRef& ty) const;
+    bool pathparams_contain_ivars(const ::HIR::PathParams& pps, bool only_unbound) const;
+    bool type_contains_ivars(const ::HIR::TypeRef& ty, bool only_unbound=false) const;
     bool pathparams_equal(const ::HIR::PathParams& pps_l, const ::HIR::PathParams& pps_r) const;
     bool types_equal(const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const;
 private:
@@ -175,7 +188,9 @@ class TraitResolution:
     const HIR::SimplePath&  m_lang_Deref;
     const HMTypeInferrence& m_ivars;
 
+public:
     const ::HIR::SimplePath&    m_vis_path;
+private:
     const ::HIR::GenericPath*   m_current_trait_path;
     const ::HIR::Trait* m_current_trait_ptr;
 
@@ -194,6 +209,9 @@ public:
         prep_indexes(Span());
     }
 
+    const ::HIR::GenericPath* current_trait_path() const {
+        return m_current_trait_path;
+    }
     ::HIR::Compare compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const;
 
     void compact_ivars(HMTypeInferrence& m_ivars);
@@ -226,12 +244,13 @@ public:
     /// Searches for a trait impl that matches the provided trait name and type
     bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback, bool magic_trait_impls=true) const;
 
+    typedef ::std::function<bool(const ::HIR::TraitPath&)> t_cb_find_trait;
     /// Locate a named trait in the provied trait (either itself or as a parent trait)
     bool find_named_trait_in_trait(const Span& sp,
             const ::HIR::SimplePath& des, const ::HIR::PathParams& params,
             const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
             const ::HIR::TypeRef& self_type,
-            t_cb_trait_impl callback
+            t_cb_find_trait callback
             ) const;
     /// Search for a trait implementation in current bounds
     bool find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;

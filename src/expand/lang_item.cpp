@@ -152,6 +152,48 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
             H::add("unwind_safe", Handler(ITEM_TRAIT, handle_save));    // 1.54 - UnwindSafe trait
             H::add("ref_unwind_safe", Handler(ITEM_TRAIT, handle_save));    // 1.54 - RefUnwindSafe trait
         }
+        if( TARGETVER_LEAST_1_74 )
+        {
+            H::add("transmute_trait", Handler(ITEM_TRAIT, handle_save));    // 1.74 - `BikeshedIntrinsicFrom` trait
+            // - Markers
+            H::add("destruct"       , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `Destruct` trait
+            H::add("tuple_trait"    , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `Tuple` trait (must be implemented for all tuples)
+            H::add("pointer_like"   , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `PointerLike` trait
+            H::add("const_param_ty" , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `ConstParamTy` trait
+            H::add("fn_ptr_trait"   , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `FnPtr` trait
+
+            // Structs
+            H::add("transmute_opts" , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `Assume` struct
+            H::add("ptr_unique"     , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::ptr::Unique`
+            H::add("CStr"           , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::ffi::CStr` - Why? (miri?)
+            H::add("String"         , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::alloc::string::String` - Why? (miri?)
+
+            H::add("from_yeet"      , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::try_trait::from_yeet`
+            H::add("panic_nounwind" , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic`
+            H::add("panic_display"  , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_display`
+            H::add("panic_bounds_check", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_bounds_check`
+            H::add("panic_misaligned_pointer_dereference", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_misaligned_pointer_dereference`
+            H::add("panic_cannot_unwind", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_cannot_unwind`
+            H::add("panic_in_cleanup", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_in_cleanup `
+            H::add("const_panic_fmt", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::const_panic_fmt`
+
+            // Enums
+            H::add("c_void"         , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::ffi::c_void` - Why? (miri?)
+            H::add("Option"         , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::option::Option`
+
+            // - Formatting
+            H::add("format_arguments"  , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::fmt::Arguments`
+            H::add("format_placeholder", Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::fmt::rt::Placeholder`
+            H::add("format_argument"   , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::fmt::rt::Argument`
+            H::add("format_unsafe_arg" , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::fmt::rt::UnsafeArg`
+            H::add("format_alignment"  , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::fmt::rt::Alignment`
+            H::add("format_count"      , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::fmt::rt::Count`
+
+            // - Futures
+            H::add("ResumeTy"  , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::future::ResumeTy`
+            H::add("Poll"      , Handler(ITEM_ENUM  , handle_save));   // 1.74 - `::core::task::poll::Poll`
+            H::add("Context"   , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::task::wake::Context`
+        }
     }
     const char* real_name = nullptr;    // For when lang items have their name changed
     auto it = g_handlers.find(name.c_str());
@@ -276,7 +318,7 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         auto v = attr.parse_equals_string(crate, mod);
         TU_MATCH_HDRA( (i), {)
@@ -320,7 +362,7 @@ public:
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const override {
         // TODO: Enum variants (sub-item of other lang items)
     }
-    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: lang items on associated items (e.g. functions - `RangeFull::new`)
     }
 
@@ -373,7 +415,7 @@ class Decorator_Main:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() ) {
             // Ignore.
@@ -397,7 +439,7 @@ class Decorator_Start:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_None())
         {
@@ -422,7 +464,7 @@ class Decorator_PanicImplementation:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {
@@ -444,7 +486,7 @@ class Decorator_PanicHandler:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {
@@ -466,7 +508,7 @@ class Decorator_RustcStdInternalSymbol:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         // Attribute that acts as like `#[no_mangle]` `#[linkage="external"]`
     }
@@ -477,7 +519,7 @@ class Decorator_AllocErrorHandler:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {

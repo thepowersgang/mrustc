@@ -30,6 +30,9 @@ extern void Debug_Print(dbg_cb_t cb);
 #endif
 #define TODO(fmt)   do { ::std::cerr << "TODO: " << fmt << ::std::endl; abort(); } while(0)
 
+template<typename T>
+::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T>& v);
+
 namespace {
     static inline void format_to_stream(::std::ostream& os) {
     }

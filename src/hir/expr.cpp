@@ -39,6 +39,10 @@ DEF_VISIT_H(ExprNode_Block, node) {
     if( node.m_value_node )
         visit_node_ptr(node.m_value_node);
 }
+DEF_VISIT_H(ExprNode_ConstBlock, node) {
+    TRACE_FUNCTION_F("_ConstBlock");
+    visit_node_ptr(node.m_inner);
+}
 DEF_VISIT_H(ExprNode_Asm, node) {
     TRACE_FUNCTION_F("_Asm");
     for(auto& v : node.m_outputs)
@@ -101,8 +105,10 @@ DEF_VISIT_H(ExprNode_Match, node) {
     {
         for(auto& pat : arm.m_patterns)
             visit_pattern(node.span(), pat);
-        if( arm.m_cond )
-            visit_node_ptr(arm.m_cond);
+        for(auto& c : arm.m_guards) {
+            visit_pattern(node.span(), c.pat);
+            visit_node_ptr(c.val);
+        }
         visit_node_ptr(arm.m_code);
     }
 }
@@ -269,6 +275,22 @@ DEF_VISIT_H(ExprNode_Closure, node) {
         visit_node_ptr(node.m_code);
     }
 }
+namespace HIR {
+::std::ostream& operator<<(::std::ostream& os, const ExprNode_Closure::AvuCache::Capture& x)
+{
+    os << "#" << x.root_slot;
+    for(const auto& n : x.fields) {
+        if( n == RcString() ) {
+            os << ".*";
+        }
+        else {
+            os << "." << n;
+        }
+    }
+    os << "[" << x.usage << "]";
+    return os;
+}
+}
 DEF_VISIT_H(ExprNode_Generator, node) {
     TRACE_FUNCTION_F("_Generator");
     //for(auto& arg : node.m_args) {
@@ -277,6 +299,7 @@ DEF_VISIT_H(ExprNode_Generator, node) {
     //}
     visit_type(node.m_return);
     visit_type(node.m_yield_ty);
+    visit_type(node.m_resume_ty);
     if(node.m_code)
     {
         visit_node_ptr(node.m_code);
@@ -382,9 +405,18 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (ErasedType,
-        this->visit_path(::HIR::Visitor::PathContext::TYPE, e.m_origin);
         for(auto& trait : e.m_traits) {
             this->visit_trait_path(trait);
+        }
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Known, ee) {
+            this->visit_type(ee);
+            }
+        TU_ARMA(Fcn, ee) {
+            this->visit_path(::HIR::Visitor::PathContext::TYPE, ee.m_origin);
+            }
+        TU_ARMA(Alias, ee) {
+            }
         }
         ),
     (Array,
@@ -403,6 +435,9 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         ),
     (Pointer,
         this->visit_type( e.inner );
+        ),
+    (NamedFunction,
+        this->visit_path(::HIR::Visitor::PathContext::VALUE, e.path);
         ),
     (Function,
         for(auto& t : e.m_arg_types) {

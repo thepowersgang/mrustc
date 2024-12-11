@@ -475,7 +475,10 @@ TAGGED_UNION_EX(Constant, (), Int, (
     // words, compared to 4 for MIR::Constant without it)
     (Const, struct { ::std::unique_ptr<::HIR::Path> p; }),   // `const`
     (Generic, ::HIR::GenericRef),
-    (ItemAddr, ::std::unique_ptr<::HIR::Path>) // address of a value
+    // ZST function type, NOT its address
+    (Function, struct { ::std::unique_ptr<::HIR::Path> p; }),
+    // Address of a value
+    (ItemAddr, ::std::unique_ptr<::HIR::Path>)
     ), (), (), (
         friend ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
         ::Ordering ord(const Constant& b) const;
@@ -615,8 +618,8 @@ TAGGED_UNION(Terminator, Incomplete,
     (Panic, struct { BasicBlockId dst; }),  // ?
     (If, struct {
         LValue cond;
-        BasicBlockId    bb0;    // true
-        BasicBlockId    bb1;    // false
+        BasicBlockId    bb_true;
+        BasicBlockId    bb_false;
         }),
     (Switch, struct {
         LValue val;

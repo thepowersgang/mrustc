@@ -170,6 +170,7 @@
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
       <AdditionalOptions>/WHOLEARCHIVE:mrustc_lib.lib %(AdditionalOptions)</AdditionalOptions>
       <Profile>true</Profile>
+      <StackReserveSize>4194304</StackReserveSize>
     </Link>
     <ProjectReference />
     <ProjectReference>

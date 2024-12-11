@@ -88,7 +88,7 @@ struct AbsolutePath
     bool operator!=(const AbsolutePath& x) const { return !(*this == x); }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const AbsolutePath& x) {
-        if(x.crate == "") {
+        if(x.crate != "") {
             os << "::\"" << x.crate << "\"";
         }
         else {

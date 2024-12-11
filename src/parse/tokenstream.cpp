@@ -129,6 +129,7 @@ ProtoSpan TokenStream::start_span() const
 {
     auto p = this->getPosition();
     return ProtoSpan {
+        p.span,
         p.filename,
         p.line, p.ofs
         };
@@ -136,9 +137,26 @@ ProtoSpan TokenStream::start_span() const
 Span TokenStream::end_span(ProtoSpan ps) const
 {
     auto p = this->getPosition();
+    if( ps.span && p.span ) {
+        if( ps.span == p.span ) {
+            return ps.span;
+        }
+    }
+    if( ps.filename == "" ) {
+        assert( this->outerSpan() );
+        return this->outerSpan();
+    }
     return Span( this->outerSpan(), ::std::move(ps.filename),  ps.start_line, ps.start_ofs,  p.line, p.ofs );
 }
 Span TokenStream::point_span() const
 {
-    return Span( this->outerSpan(), this->getPosition() );
+    auto p = this->getPosition();
+    if( p.span ) {
+        return p.span;
+    }
+    if( p.filename == "" ) {
+        assert( this->outerSpan() );
+        return this->outerSpan();
+    }
+    return Span( this->outerSpan(), p );
 }

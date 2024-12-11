@@ -758,20 +758,13 @@ namespace {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
 
-        void visit_type(::HIR::TypeRef& ty) override
+        void visit_constgeneric(::HIR::ConstGeneric& c) override
         {
-            if(auto* e = ty.data_mut().opt_Array())
+            HIR::Visitor::visit_constgeneric(c);
+            if( auto* e = c.opt_Unevaluated() )
             {
-                this->visit_type( e->inner );
-                DEBUG("Array size " << ty);
-                if( auto* cg = e->size.opt_Unevaluated() ) {
-                    ExprVisitor_Mutate  ev(m_crate);
-                    if(cg->is_Unevaluated())
-                        ev.visit_node_ptr( *cg->as_Unevaluated() );
-                }
-            }
-            else {
-                ::HIR::Visitor::visit_type(ty);
+                ExprVisitor_Mutate  ev(m_crate);
+                ev.visit_node_ptr( *(*e)->expr );
             }
         }
         // ------

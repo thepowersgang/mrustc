@@ -268,10 +268,10 @@ namespace MIR {
             os << "Goto(" << e << ")";
             ),
         (Panic,
-            os << "Panic(" << e.dst << ";)";
+            os << "Panic(" << e.dst << ")";
             ),
         (If,
-            os << "If( " << e.cond << " : " << e.bb0 << ", " << e.bb1 << ")";
+            os << "If( " << e.cond << " goto " << e.bb_true << " else " << e.bb_false << ")";
             ),
         (Switch,
             os << "Switch( " << e.val << " : ";
@@ -666,9 +666,9 @@ namespace MIR {
         (If,
             if( ae.cond != be.cond )
                 return false;
-            if( ae.bb0 != be.bb0 )
+            if( ae.bb_true != be.bb_true )
                 return false;
-            if( ae.bb1 != be.bb1 )
+            if( ae.bb_false != be.bb_false )
                 return false;
             ),
         (Switch,

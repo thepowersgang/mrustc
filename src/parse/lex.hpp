@@ -48,6 +48,7 @@ class Lexer:
     AST::Edition    m_edition;
     Ident::Hygiene m_hygiene;
 public:
+    Lexer(::std::istringstream& ss, AST::Edition edition, ParseState ps);
     Lexer(const ::std::string& filename, AST::Edition edition, ParseState ps);
 
     Position getPosition() const override;

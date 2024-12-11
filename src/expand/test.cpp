@@ -18,7 +18,7 @@ class CTestHandler:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }   // Expand early so tests are removed before inner expansion
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[test] can only be put on functions - found on " << i.tag_str());
         }
@@ -26,6 +26,7 @@ class CTestHandler:
         if( crate.m_test_harness )
         {
             ::AST::TestDesc td;
+            td.span = sp;
             for(const auto& node : path.nodes)
             {
                 td.name += "::";
@@ -46,7 +47,7 @@ class CTestHandler_SP:
 {
     AttrStage   stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[should_panic] can only be put on functions - found on " << i.tag_str());
         }
@@ -102,7 +103,7 @@ class CTestHandler_Ignore:
 {
     AttrStage   stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[ignore] can only be put on functions - found on " << i.tag_str());
         }

@@ -12,6 +12,7 @@
 #include "cfg.hpp"
 #include <ast/expr.hpp> // Needed to clear a ExprNodeP
 #include <ast/crate.hpp>
+#include <ast/attrs.hpp>
 #include <parse/parseerror.hpp>
 
 #include <map>
@@ -112,6 +113,8 @@ namespace {
             }
             else if( name == "not" ) {
                 bool rv = check_cfg_inner(lex);
+                // Allow a trailing comma
+                lex.getTokenIf(TOK_COMMA);
                 GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                 return !rv;
             }
@@ -133,6 +136,10 @@ namespace {
 
             break;
         default:
+            auto its = g_cfg_values.equal_range(name.c_str());
+            for(auto it = its.first; it != its.second; ++it) {
+                return true;
+            }
             // Flag
             auto it = g_cfg_flags.find(name.c_str());
             return (it != g_cfg_flags.end());
@@ -157,6 +164,18 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi)
 {
     TTStream    lex(sp, ParseState(), mi.data());
     return check_cfg_stream(lex);
+}
+bool check_cfg_attrs(const ::AST::AttributeList& attrs)
+{
+    for( auto& a : attrs.m_items )
+    {
+        if( a.name() == "cfg" ) {
+            if( !check_cfg(a.span(), a) ) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 std::vector<AST::Attribute> check_cfg_attr(const ::AST::Attribute& mi)
 {
@@ -212,7 +231,7 @@ class CCfgHandler:
             crate.m_root_module.m_items.clear();
         }
     }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
         if( check_cfg(sp, mi) ) {
             // Leave
@@ -221,7 +240,7 @@ class CCfgHandler:
             i = AST::Item::make_None({});
         }
     }
-    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
         if( check_cfg(sp, mi) ) {
             // Leave

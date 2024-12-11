@@ -11,23 +11,27 @@
 #include <parse/lex.hpp>
 #include <common.hpp>
 
-SpanInner Span::s_empty_span;
-
 Span::Span(Span parent, RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs):
-    m_ptr(SpanInner::alloc( parent, ::std::move(filename), start_line, start_ofs, end_line, end_ofs ))
+    m_ptr(SpanInner_Source::alloc( parent, ::std::move(filename), start_line, start_ofs, end_line, end_ofs ))
 {}
 Span::Span(Span parent, const Position& pos):
-    m_ptr(SpanInner::alloc( parent, pos.filename, pos.line,pos.ofs, pos.line,pos.ofs ))
+    m_ptr(SpanInner_Source::alloc( parent, pos.filename, pos.line,pos.ofs, pos.line,pos.ofs ))
+{
+}
+Span::Span(Span parent, RcString source_crate, RcString macro_name)
+    : m_ptr(SpanInner_Macro::alloc(parent, source_crate, macro_name))
 {
 }
 Span::Span(const Span& x):
     m_ptr(x.m_ptr)
 {
-    m_ptr->reference_count += 1;
+    if( m_ptr ) {
+        m_ptr->reference_count += 1;
+    }
 }
 Span::~Span()
 {
-    if(m_ptr && m_ptr != &s_empty_span)
+    if(m_ptr)
     {
         m_ptr->reference_count --;
         if( m_ptr->reference_count == 0 )
@@ -37,29 +41,42 @@ Span::~Span()
         m_ptr = nullptr;
     }
 }
-
-namespace {
-    void print_span_message(const Span& sp, ::std::function<void(::std::ostream&)> tag, ::std::function<void(::std::ostream&)> msg)
+const SpanInner_Source& Span::get_top_file_span() const {
+    auto* top_span = this;
+    while(top_span->get() && (*top_span)->parent_span != Span())
     {
-        auto& sink = ::std::cerr;
-        sink << sp << " ";
-        //sink << sp->filename << ":" << sp->start_line << ": ";
-        tag(sink);
-        sink << ":";
-        msg(sink);
-        sink << ::std::endl;
-        
+        top_span = &(*top_span)->parent_span;
+    }
+    if( const auto* ts = dynamic_cast<const SpanInner_Source*>( top_span->get() ) ) {
+        return *ts;
+    }
+    TODO(*this, "Top span isn't source?");
+}
+
+void Span::print_span_message(::std::function<void(::std::ostream&)> tag, ::std::function<void(::std::ostream&)> msg) const
+{
+    const Span& sp = *this;
+    auto& sink = ::std::cerr;
+    sink << sp << " ";
+    //sink << sp->filename << ":" << sp->start_line << ": ";
+    tag(sink);
+    sink << ":";
+    msg(sink);
+    sink << ::std::endl;
+    
+    if( sp.get() )
+    {
         for(auto parent = sp->parent_span; parent != Span(); parent = parent->parent_span)
         {
-            sink << parent->filename << ":" << parent->start_line << ": note: From here" << ::std::endl;
+            sink << parent << ": note: From here" << ::std::endl;
         }
-
-        sink << ::std::flush;
     }
+
+    sink << ::std::flush;
 }
 void Span::bug(::std::function<void(::std::ostream&)> msg) const
 {
-    print_span_message(*this, [](auto& os){os << "BUG";}, msg);
+    print_span_message([](auto& os){os << "BUG";}, msg);
 #ifndef _WIN32
     abort();
 #else
@@ -68,7 +85,7 @@ void Span::bug(::std::function<void(::std::ostream&)> msg) const
 }
 
 void Span::error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const {
-    print_span_message(*this, [&](auto& os){os << "error:" << tag;}, msg);
+    print_span_message([&](auto& os){os << "error:" << tag;}, msg);
 #ifndef _WIN32
     abort();
 #else
@@ -76,23 +93,57 @@ void Span::error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) cons
 #endif
 }
 void Span::warning(WarningType tag, ::std::function<void(::std::ostream&)> msg) const {
-    print_span_message(*this, [&](auto& os){os << "warn:" << tag;}, msg);
+    print_span_message([&](auto& os){os << "warn:" << tag;}, msg);
 }
 void Span::note(::std::function<void(::std::ostream&)> msg) const {
-    print_span_message(*this, [](auto& os){os << "note";}, msg);
+    print_span_message([](auto& os){os << "note";}, msg);
+}
+
+SpanInner::~SpanInner()
+{
+}
+
+SpanInner_Source::~SpanInner_Source()
+{
+}
+void SpanInner_Source::fmt(::std::ostream& os) const
+{
+    os << this->filename;
+    if( this->start_line != this->end_line ) {
+        os << ":" << this->start_line << "-" << this->end_line;
+    }
+    else if( this->start_ofs != this->end_ofs ) {
+        os << ":" << this->start_line << ":" << this->start_ofs << "-" << this->end_ofs;
+    }
+    else {
+        os << ":" << this->start_line << ":" << this->start_ofs;
+    }
+}
+
+SpanInner_Macro::~SpanInner_Macro()
+{
+}
+void SpanInner_Macro::fmt(::std::ostream& os) const
+{
+    os << "MACRO<::\"" << this->crate << "\"::" << this->macro << ">";
+}
+/*static*/ SpanInner* SpanInner_Macro::alloc(Span parent, RcString crate, RcString macro)
+{
+    auto rv = new SpanInner_Macro;
+    rv->reference_count = 1;
+    rv->parent_span = std::move(parent);
+    rv->crate = std::move(crate);
+    rv->macro = std::move(macro);
+    return rv;
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Span& sp)
 {
-    os << sp->filename;
-    if( sp->start_line != sp->end_line ) {
-        os << ":" << sp->start_line << "-" << sp->end_line;
-    }
-    else if( sp->start_ofs != sp->end_ofs ) {
-        os << ":" << sp->start_line << ":" << sp->start_ofs << "-" << sp->end_ofs;
+    if( sp.m_ptr ) {
+        sp.m_ptr->fmt(os);
     }
     else {
-        os << ":" << sp->start_line << ":" << sp->start_ofs;
+        os << "<null>";
     }
     return os;
 }

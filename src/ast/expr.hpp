@@ -21,6 +21,7 @@
 
 namespace AST {
 
+class Pattern;
 class NodeVisitor;
 
 class ExprNode
@@ -53,21 +54,26 @@ public:
 struct ExprNode_Block:
     public ExprNode
 {
-    bool m_is_unsafe;
+    enum class Type {
+        Bare,
+        Unsafe,
+        Const,
+    };
+    Type m_block_type;
     bool m_yields_final_value;
     Ident   m_label;
     ::std::shared_ptr<AST::Module> m_local_mod;
     ::std::vector<ExprNodeP>    m_nodes;
 
     ExprNode_Block(::std::vector<ExprNodeP> nodes={}):
-        m_is_unsafe(false),
+        m_block_type(Type::Bare),
         m_yields_final_value(true),
         m_label(""),
         m_local_mod(),
         m_nodes( mv$(nodes) )
     {}
-    ExprNode_Block(bool is_unsafe, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::shared_ptr<AST::Module> local_mod):
-        m_is_unsafe(is_unsafe),
+    ExprNode_Block(Type type, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::shared_ptr<AST::Module> local_mod):
+        m_block_type(type),
         m_yields_final_value(yields_final_value),
         m_label(""),
         m_local_mod( move(local_mod) ),
@@ -180,6 +186,8 @@ struct ExprNode_Flow:
         YIELD,
         CONTINUE,
         BREAK,
+        // `do yeet value` - a failed `?`
+        YEET,
     } m_type;
     Ident   m_target;
     ExprNodeP    m_value;
@@ -199,11 +207,15 @@ struct ExprNode_LetBinding:
     Pattern m_pat;
     TypeRef m_type;
     ExprNodeP    m_value;
+    ExprNodeP    m_else;
+    /// Allocated binding slots/indexes for the pattern in `let-else`
+    ::std::pair<unsigned,unsigned>  m_letelse_slots;
 
-    ExprNode_LetBinding(Pattern pat, TypeRef type, ExprNodeP value):
-        m_pat( move(pat) ),
-        m_type( move(type) ),
-        m_value( move(value) )
+    ExprNode_LetBinding(Pattern pat, TypeRef type, ExprNodeP value, ExprNodeP else_arm={})
+        : m_pat( move(pat) )
+        , m_type( move(type) )
+        , m_value( move(value) )
+        , m_else( move(else_arm) )
     {
     }
 
@@ -283,7 +295,6 @@ struct ExprNode_Loop:
     enum Type {
         LOOP,
         WHILE,
-        WHILELET,
         FOR,
     } m_type;
     Ident   m_label;
@@ -307,12 +318,39 @@ struct ExprNode_Loop:
         m_cond( ::std::move(cond) ),
         m_code( ::std::move(code) )
     {}
-    ExprNode_Loop(Ident label, Type type, AST::Pattern pattern, ExprNodeP val, ExprNodeP code):
-        m_type(type),
+    ExprNode_Loop(Ident label, AST::Pattern pattern, ExprNodeP val, ExprNodeP code):
+        m_type(FOR),
         m_label( ::std::move(label) ),
         m_pattern( ::std::move(pattern) ),
         m_cond( ::std::move(val) ),
         m_code( ::std::move(code) )
+    {}
+    NODE_METHODS();
+private:
+    ExprNode_Loop(Type type, Ident label, AST::Pattern pattern, ExprNodeP val, ExprNodeP code)
+        : m_type( type )
+        , m_label( ::std::move(label) )
+        , m_pattern( ::std::move(pattern) )
+        , m_cond( ::std::move(val) )
+        , m_code( ::std::move(code) )
+    {}
+};
+struct IfLet_Condition
+{
+    ::std::unique_ptr<AST::Pattern> opt_pat;
+    ExprNodeP    value;
+};
+struct ExprNode_WhileLet:
+    public ExprNode
+{
+    Ident   m_label;
+    std::vector<IfLet_Condition> m_conditions;
+    ExprNodeP    m_code;
+
+    ExprNode_WhileLet(Ident label, std::vector<IfLet_Condition> conditions, ExprNodeP code)
+        : m_label( ::std::move(label) )
+        , m_conditions( ::std::move(conditions) )
+        , m_code( ::std::move(code) )
     {}
     NODE_METHODS();
 };
@@ -321,16 +359,16 @@ struct ExprNode_Match_Arm
 {
     AttributeList   m_attrs;
     ::std::vector<Pattern>  m_patterns;
-    ExprNodeP    m_cond;
+    std::vector<IfLet_Condition> m_guard;
 
     ExprNodeP    m_code;
 
 
     ExprNode_Match_Arm()
     {}
-    ExprNode_Match_Arm(::std::vector<Pattern> patterns, ExprNodeP cond, ExprNodeP code):
+    ExprNode_Match_Arm(::std::vector<Pattern> patterns, std::vector<IfLet_Condition> guard, ExprNodeP code):
         m_patterns( mv$(patterns) ),
-        m_cond( mv$(cond) ),
+        m_guard( mv$(guard) ),
         m_code( mv$(code) )
     {}
 };
@@ -367,18 +405,22 @@ struct ExprNode_If:
 struct ExprNode_IfLet:
     public ExprNode
 {
-    std::vector<AST::Pattern>   m_patterns;
-    ExprNodeP    m_value;
+    std::vector<IfLet_Condition>   m_conditions;
     ExprNodeP    m_true;
     ExprNodeP    m_false;
 
-    ExprNode_IfLet(std::vector<AST::Pattern> patterns, ExprNodeP cond, ExprNodeP true_code, ExprNodeP false_code):
-        m_patterns( ::std::move(patterns) ),
-        m_value( ::std::move(cond) ),
-        m_true( ::std::move(true_code) ),
-        m_false( ::std::move(false_code) )
+    ExprNode_IfLet(std::vector<IfLet_Condition> conditions, ExprNodeP true_code, ExprNodeP false_code)
+        : m_conditions( ::std::move(conditions) )
+        , m_true( ::std::move(true_code) )
+        , m_false( ::std::move(false_code) )
     {
     }
+    NODE_METHODS();
+};
+/// Represents `_` in expression position
+struct ExprNode_WildcardPattern:
+    public ExprNode
+{
     NODE_METHODS();
 };
 // Literal integer
@@ -429,9 +471,12 @@ struct ExprNode_String:
     public ExprNode
 {
     ::std::string   m_value;
+    /// Hygiene for format strings
+    Ident::Hygiene  m_hygiene;
 
-    ExprNode_String(::std::string value):
-        m_value( ::std::move(value) )
+    ExprNode_String(::std::string value, Ident::Hygiene h={})
+        : m_value( ::std::move(value) )
+        , m_hygiene( ::std::move(h) )
     {}
 
     NODE_METHODS();
@@ -489,6 +534,22 @@ struct ExprNode_StructLiteral:
         m_path( move(path) ),
         m_base_value( move(base_value) ),
         m_values( move(values) )
+    {}
+
+    NODE_METHODS();
+};
+// Struct literal pattern only
+// This implicitly has a `..` in it
+struct ExprNode_StructLiteralPattern:
+    public ExprNode
+{
+    typedef ::std::vector<ExprNode_StructLiteral::Ent> t_values;
+    Path    m_path;
+    t_values    m_values;
+
+    ExprNode_StructLiteralPattern(Path path, t_values&& values)
+        : m_path( move(path) )
+        , m_values( move(values) )
     {}
 
     NODE_METHODS();
@@ -666,6 +727,7 @@ struct ExprNode_UniOp:
         INVERT, // '!<expr>'
         NEGATE, // '-<expr>'
         QMARK, // '<expr>?'
+        AWait,  // `.await`
     };
 
     enum Type   m_type;
@@ -707,10 +769,12 @@ public:
     NT(ExprNode_CallMethod);
     NT(ExprNode_CallObject);
     NT(ExprNode_Loop);
+    NT(ExprNode_WhileLet);
     NT(ExprNode_Match);
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
 
+    NT(ExprNode_WildcardPattern);
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
@@ -718,6 +782,7 @@ public:
     NT(ExprNode_ByteString);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
+    NT(ExprNode_StructLiteralPattern);
     NT(ExprNode_Array);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
@@ -756,10 +821,12 @@ public:
     NT(ExprNode_CallMethod);
     NT(ExprNode_CallObject);
     NT(ExprNode_Loop);
+    NT(ExprNode_WhileLet);
     NT(ExprNode_Match);
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
 
+    NT(ExprNode_WildcardPattern);
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
@@ -767,6 +834,7 @@ public:
     NT(ExprNode_ByteString);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
+    NT(ExprNode_StructLiteralPattern);
     NT(ExprNode_Array);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);

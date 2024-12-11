@@ -966,8 +966,8 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
             ),
         (If,
             state.ensure_lvalue_valid(mir_res, te.cond);
-            todo_queue.push_back( ::std::make_pair(te.bb0, state.clone()) );
-            todo_queue.push_back( ::std::make_pair(te.bb1, mv$(state)) );
+            todo_queue.push_back( ::std::make_pair(te.bb_true, state.clone()) );
+            todo_queue.push_back( ::std::make_pair(te.bb_false, mv$(state)) );
             ),
         (Switch,
             state.ensure_lvalue_valid(mir_res, te.val);

@@ -1,6 +1,10 @@
+//! mrustc's libproc_macro protocol - interface between the compiler and the macro process
+//!
+//! See also [crate::serialisation], which uses this to convert to public types
 
 pub enum Token
 {
+    EndOfStream,
     Symbol(String),
     Ident(String),
     Lifetime(String),
@@ -10,6 +14,22 @@ pub enum Token
     Unsigned(u128, u8),
     Signed(i128, u8),
     Float(f64, u8),
+
+    /// A reference to a span
+    SpanRef(usize),
+    /// The definition of a span
+    SpanDef(SpanDef),
+}
+pub struct SpanDef {
+    pub idx: usize,
+    pub parent_idx: usize,
+
+    pub path: String,
+    pub is_path_real: bool,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub start_ofs: usize,
+    pub end_ofs: usize,
 }
 
 pub struct Reader<R>
@@ -35,27 +55,44 @@ impl<R: ::std::io::Read> Reader<R>
         // TODO: leading span
         Some(match hdr_b
         {
-        0 => Token::Symbol(self.get_string()),
-        1 => Token::Ident(self.get_string()),
-        2 => Token::Lifetime(self.get_string()),
-        3 => Token::String(self.get_string()),
-        4 => Token::ByteString(self.get_byte_vec()),
-        5 => Token::Char(::std::char::from_u32(self.get_i128v() as u32).expect("char lit")),
-        6 => {
+        0 => Token::EndOfStream,
+        1 => Token::Symbol(self.get_string()),
+        2 => Token::Ident(self.get_string()),
+        3 => Token::Lifetime(self.get_string()),
+        4 => Token::String(self.get_string()),
+        5 => Token::ByteString(self.get_byte_vec()),
+        6 => Token::Char({
+            let v = self.get_u128v();
+            assert!(v < 0x10FFFF, "Protocol error: malformed char literal {:#x}", v);
+            let v = v as u32;
+            ::std::char::from_u32(v).expect("protocol: char lit invalid")
+            }),
+        7 => {
             let ty = self.getb().expect("getb int ty");
             let val = self.get_u128v();
             Token::Unsigned(val, ty)
             },
-        7 => {
+        8 => {
             let ty = self.getb().expect("getb int ty");
             let val = self.get_i128v();
             Token::Signed(val, ty)
             },
-        8 => {
+        9 => {
             let ty = self.getb().expect("getb int ty");
             let val = self.get_f64();
             Token::Float(val, ty)
             },
+        10 => Token::SpanRef(self.get_u128v() as usize),
+        11 => Token::SpanDef(SpanDef {
+            idx: self.get_u128v() as usize,
+            parent_idx: self.get_u128v() as usize,
+            path: self.get_string(),
+            is_path_real: self.getb().expect("getb span path_is_real") != 0,
+            start_line: self.get_u128v() as usize,
+            end_line: self.get_u128v() as usize,
+            start_ofs: self.get_u128v() as usize,
+            end_ofs: self.get_u128v() as usize,
+            }),
         _ => panic!("Unknown tag byte: {:#x}", hdr_b),
         })
     }
@@ -141,26 +178,40 @@ impl<T: ::std::io::Write> Writer<T>
     {
         match t
         {
-        Token::Symbol(v)       => { self.putb(0); self.put_bytes(v.as_bytes()); },
-        Token::Ident(v)        => { self.putb(1); self.put_bytes(v.as_bytes()); },
-        Token::Lifetime(v)     => { self.putb(2); self.put_bytes(v.as_bytes()); },
-        Token::String(v)       => { self.putb(3); self.put_bytes(v.as_bytes()); },
-        Token::ByteString(v)   => { self.putb(4); self.put_bytes(&v[..]); },
-        Token::Char(v)         => { self.putb(5); self.put_u128v(v as u32 as u128); },
-        Token::Unsigned(v, sz) => { self.putb(6); self.putb(sz); self.put_u128v(v); },
-        Token::Signed(v, sz)   => { self.putb(7); self.putb(sz); self.put_i128v(v); },
-        Token::Float(v, sz)    => { self.putb(8); self.putb(sz); self.put_f64(v); },
+        Token::EndOfStream     => { self.putb(0); },
+        Token::Symbol(v)       => { self.putb(1); self.put_bytes(v.as_bytes()); },
+        Token::Ident(v)        => { self.putb(2); self.put_bytes(v.as_bytes()); },
+        Token::Lifetime(v)     => { self.putb(3); self.put_bytes(v.as_bytes()); },
+        Token::String(v)       => { self.putb(4); self.put_bytes(v.as_bytes()); },
+        Token::ByteString(v)   => { self.putb(5); self.put_bytes(&v[..]); },
+        Token::Char(v)         => { self.putb(6); self.put_u128v(v as u32 as u128); },
+        Token::Unsigned(v, sz) => { self.putb(7); self.putb(sz); self.put_u128v(v); },
+        Token::Signed(v, sz)   => { self.putb(8); self.putb(sz); self.put_i128v(v); },
+        Token::Float(v, sz)    => { self.putb(9); self.putb(sz); self.put_f64(v); },
+
+        Token::SpanRef(idx) => { self.putb(10); self.put_u128v(idx as u128); },
+        Token::SpanDef(sd) => {
+            self.putb(11);
+            self.put_u128v(sd.idx as u128);
+            self.put_u128v(sd.parent_idx as u128);
+            self.put_bytes(sd.path.as_bytes());
+            self.putb(sd.is_path_real as u8);
+            self.put_u128v(sd.start_line as u128);
+            self.put_u128v(sd.end_line   as u128);
+            self.put_u128v(sd.start_ofs as u128);
+            self.put_u128v(sd.end_ofs   as u128);
+            },
         }
     }
     pub fn write_sym(&mut self, v: &[u8])
     {
-        self.putb(0);   // "Symbol"
+        self.putb(1);   // "Symbol"
         self.put_bytes(v);
     }
     pub fn write_sym_1(&mut self, ch: char)
     {
-        self.putb(0);   // "Symbol"
-        self.putb(1);   // Length
+        self.putb(1);   // "Symbol"
+        self.putb(1);   // Length = 1 byte
         self.putb(ch as u8);
     }
 

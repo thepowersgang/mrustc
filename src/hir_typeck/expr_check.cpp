@@ -54,11 +54,14 @@ namespace {
             ret_type = clone_ty_with(sp, real_ret_type, [&](const auto& tpl, auto& rv)->bool {
                 if( const auto* e = tpl.data().opt_ErasedType() )
                 {
-                    ASSERT_BUG(sp, e->m_index < node_ptr.m_erased_types.size(),
-                        "Erased type index OOB - " << e->m_origin << " " << e->m_index << " >= " << node_ptr.m_erased_types.size());
-                    // TODO: Check that erased type bounds are still met
-                    rv = node_ptr.m_erased_types[e->m_index].clone();
-                    return true;
+                    if( const auto* ee = e->m_inner.opt_Fcn() )
+                    {
+                        ASSERT_BUG(sp, ee->m_index < node_ptr.m_erased_types.size(),
+                            "Erased type index OOB - " << ee->m_origin << " " << ee->m_index << " >= " << node_ptr.m_erased_types.size());
+                        // TODO: Check that erased type bounds are still met
+                        rv = node_ptr.m_erased_types[ee->m_index].clone();
+                        return true;
+                    }
                 }
                 return false;
                 });
@@ -81,6 +84,12 @@ namespace {
                 node.m_value_node->visit(*this);
                 check_types_equal(node.span(), node.m_res_type, node.m_value_node->m_res_type);
             }
+        }
+        void visit(::HIR::ExprNode_ConstBlock& node) override
+        {
+            TRACE_FUNCTION_F(&node << " const { ... }");
+            node.m_inner->visit(*this);
+            check_types_equal(node.span(), node.m_res_type, node.m_inner->m_res_type);
         }
         void visit(::HIR::ExprNode_Asm& node) override
         {
@@ -387,10 +396,16 @@ namespace {
                     //    ERROR(sp, E0000, "Invalid cast to fat pointer " << dst_ty << " from " << src_ty);
                     //}
                     }
-                TU_ARMA(Function, se) {
-                    if( de.inner != ::HIR::TypeRef::new_unit() && de.inner != ::HIR::CoreType::U8 && de.inner != ::HIR::CoreType::I8 ) {
-                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
+                    break;
+                case ::HIR::TypeData::TAG_Function:
+                case ::HIR::TypeData::TAG_NamedFunction:
+                    if( de.inner == ::HIR::TypeRef::new_unit() || de.inner == ::HIR::CoreType::U8 || de.inner == ::HIR::CoreType::I8 ) {
                     }
+                    else if( m_resolve.type_is_sized(sp, de.inner) ) {
+                        // Allow it.
+                    }
+                    else {
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     }
                 TU_ARMA(Borrow, se) {
                     this->check_types_equal(sp, de.inner, se.inner);
@@ -405,6 +420,9 @@ namespace {
                 default:
                     ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     break;
+                TU_ARMA(NamedFunction, se) {
+                    // TODO: Check?
+                    }
                 TU_ARMA(Function, se) {
                     if( se.is_unsafe != de.is_unsafe && se.is_unsafe )
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - removing unsafe");
@@ -650,7 +668,7 @@ namespace {
 
                 DEBUG(name << " : " << des_ty_r);
                 if( monomorphise_type_needed(des_ty_r) ) {
-                    ASSERT_BUG( node.span(), des_ty_cache != ::HIR::TypeRef(), name );
+                    ASSERT_BUG( node.span(), des_ty_cache != ::HIR::TypeRef(), "Type " << des_ty_r << " needs monomorph, but isn't in cache: Field " << name );
                     des_ty_cache = ms.monomorph_type(node.span(), des_ty_r);
                     m_resolve.expand_associated_types(node.span(), des_ty_cache);
                     des_ty = &des_ty_cache;
@@ -740,7 +758,7 @@ namespace {
             TU_ARMA(UfcsInherent, e) {
                 // - Locate function (and impl block)
                 const ::HIR::TypeImpl* impl_ptr = nullptr;
-                m_resolve.m_crate.find_type_impls(e.type, [&](const auto& ty)->const ::HIR::TypeRef& { return ty; },
+                m_resolve.m_crate.find_type_impls(e.type, HIR::ResolvePlaceholdersNop(),
                     [&](const auto& impl) {
                         DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         auto it = impl.m_methods.find(e.item);
@@ -771,6 +789,7 @@ namespace {
 
             assert( fcn_ptr );
             const auto& fcn = *fcn_ptr;
+            monomorph_cb.set_consteval_state(m_resolve.m_crate, HIR::ItemPath(path));
 
             // --- Monomorphise the argument/return types (into current context)
             cache.m_arg_types.clear();
@@ -784,8 +803,8 @@ namespace {
             // Replace ErasedType and monomorphise
             cache.m_arg_types.push_back( monomorph_cb.monomorph_type(sp, fcn.m_return, false) );
             visit_ty_with_mut(cache.m_arg_types.back(), [&](HIR::TypeRef& ty)->bool {
-                if( this->expand_erased_types && ty.data().is_ErasedType() ) {
-                    const auto& e = ty.data().as_ErasedType();
+                if( this->expand_erased_types && ty.data().is_ErasedType() && ty.data().as_ErasedType().m_inner.is_Fcn() ) {
+                    const auto& e = ty.data().as_ErasedType().m_inner.as_Fcn();
 
                     // Check the origin, because monomorph might end up introducing other erased types
                     if(e.m_origin == path) {
@@ -814,11 +833,13 @@ namespace {
                 TU_ARMA(TypeLifetime, be) {
                     }
                 TU_ARMA(TraitBound, be) {
+                    HIR::GenericParams  empty_hrtb;
+                    auto _ = cache.m_monomorph->push_hrb(be.hrtbs ? *be.hrtbs : empty_hrtb);
+                    DEBUG("Bound " << be.type << ":  " << be.trait);
                     auto real_type = cache.m_monomorph->monomorph_type(sp, be.type);
                     m_resolve.expand_associated_types(sp, real_type);
                     auto real_trait = cache.m_monomorph->monomorph_traitpath(sp, be.trait, false);
                     m_resolve.expand_associated_types_tp(sp, real_trait);
-                    DEBUG("Bound " << be.type << ":  " << be.trait);
                     DEBUG("= (" << real_type << ": " << real_trait << ")");
                     const auto& trait_params = real_trait.m_path.m_params;
 
@@ -874,13 +895,20 @@ namespace {
 
             const auto& val_ty = node.m_value->m_res_type;
 
-            if( const auto* e = val_ty.data().opt_Function() )
+            if( val_ty.data().is_Function() || val_ty.data().is_NamedFunction() )
             {
                 DEBUG("- Function pointer: " << val_ty);
-                if( node.m_args.size() != e->m_arg_types.size() ) {
+                ::HIR::TypeRef  tmp_ft;
+                const auto* e = val_ty.data().opt_Function();
+                if( !e ) {
+                    tmp_ft = ::HIR::TypeRef( val_ty.data().as_NamedFunction().decay(node.span()) );
+                    m_resolve.expand_associated_types(node.span(), tmp_ft);
+                    e = &tmp_ft.data().as_Function();
+                }
+                if( e->is_variadic ? node.m_args.size() < e->m_arg_types.size() : node.m_args.size() != e->m_arg_types.size() ) {
                     ERROR(node.span(), E0000, "Incorrect number of arguments to call via " << val_ty);
                 }
-                for( unsigned int i = 0; i < node.m_args.size(); i ++ )
+                for( unsigned int i = 0; i < e->m_arg_types.size(); i ++ )
                 {
                     check_types_equal(node.m_args[i]->span(), e->m_arg_types[i], node.m_args[i]->m_res_type);
                 }
@@ -1127,7 +1155,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override
         {
-            TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
+            TRACE_FUNCTION_F(&node << " /*gen w*/ |...| ...");
 
             if( node.m_code )
             {
@@ -1149,6 +1177,25 @@ namespace {
         }
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
+            struct Resolve: HIR::ResolvePlaceholders {
+                mutable ::HIR::TypeRef  tmp;
+                const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const override {
+                    //ASSERT_BUG(sp, ty.data().is_Infer(), "Unexpected ivar");
+                    if( const auto* e = ty.data().opt_ErasedType() )
+                    {
+                        if( const auto* ee = e->m_inner.opt_Alias() )
+                        {
+                            if( ee->inner->type != HIR::TypeRef() ) {
+                                return tmp = MonomorphStatePtr(nullptr, &ee->params, nullptr).monomorph_type(sp, ee->inner->type);
+                            }
+                        }
+                    }
+                    return ty;
+                }
+                const ::HIR::ConstGeneric& get_val(const Span& sp, const HIR::ConstGeneric& v) const override {
+                    return v;
+                }
+            } get_types;
             // TODO: Recurse when an erased type is encountered
             //if( const auto* e = l.data().opt_ErasedType() )
             //{
@@ -1163,7 +1210,7 @@ namespace {
                 // Diverge, matches everything.
                 // TODO: Is this always true?
             }
-            else if( l != r ) {
+            else if( l.compare_with_placeholders(sp, r, get_types) != HIR::Compare::Equal ) {
                 ERROR(sp, E0000, "Type mismatch\n - " << l << "\n!= " << r);
             }
             else {
@@ -1173,22 +1220,14 @@ namespace {
         void check_associated_type(const Span& sp,
                 const ::HIR::TypeRef& res,  // Expected result
                 const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& ity, const char* name
+                // TODO: Does this need params for the ATY??
             ) const
         {
             DEBUG(sp << " - " << res << " == < " << ity << " as " << trait << params << " >::" << name);
-            //if( trait == m_lang_Index && ity.data().is_Array() ) {
-            //    if(name && params.m_types.)
-            //    {
-            //        if( res != ity.data().as_Array().inner ) {
-            //            ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << ity.data().as_Array().inner);
-            //        }
-            //    }
-            //    return ;
-            //}
             bool found = m_resolve.find_impl(sp, trait, &params, ity, [&](auto impl, bool fuzzy) {
                 if( name )
                 {
-                    auto atyv = impl.get_type(name);
+                    auto atyv = impl.get_type(name, {});
                     m_resolve.expand_associated_types(sp, atyv);
                     if( atyv == ::HIR::TypeRef() )
                     {
@@ -1335,7 +1374,7 @@ namespace {
                         t_args  tmp;
                         auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
                         ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
-                        ev.visit_root( **se );
+                        ev.visit_root( *(*se)->expr );
                     }
                 }
             }

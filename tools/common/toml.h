@@ -114,23 +114,25 @@ struct TomlValue
     ::std::string   m_str_value;
     ::std::vector<TomlValue>    m_sub_values;
 
-    TomlValue():
-        m_type(Type::String)
+    TomlValue()
+        : m_type(Type::String)
+        , m_int_value(0)
     {
     }
-    TomlValue(::std::string s):
-        m_type( Type::String ),
-        m_str_value(::std::move(s))
+    TomlValue(::std::string s)
+        : m_type( Type::String )
+        , m_int_value(0)
+        , m_str_value(::std::move(s))
     {
     }
-    TomlValue(int64_t v):
-        m_type(Type::Integer),
-        m_int_value(v)
+    TomlValue(int64_t v)
+        : m_type(Type::Integer)
+        , m_int_value(v)
     {
     }
-    TomlValue(bool v) :
-        m_type(Type::Boolean),
-        m_int_value(v ? 1 : 0)
+    TomlValue(bool v)
+        : m_type(Type::Boolean)
+        , m_int_value(v ? 1 : 0)
     {
     }
 
@@ -171,7 +173,24 @@ struct TomlValue
             os << "]";
             break;
         case Type::String:
-            os << "\"" << x.m_str_value << "\"";
+            os << "\"";
+            for(uint8_t c : x.m_str_value) {
+                switch(c)
+                {
+                case '\n':  os << "\\n";    break;
+                case '\r':  os << "\\n";    break;
+                case '\t':  os << "\\t";    break;
+                default:
+                    if( 0x20 <= c && c <= 0x7F ) {
+                        os << c;
+                    }
+                    else {
+                        static const char* H = "0123456789ABCDEF";
+                        os << "\\x" << H[c >> 4] << H[c & 0xF];
+                    }
+                }
+            }
+            os << "\"";
             break;
         }
         return os;

@@ -13,7 +13,7 @@ class TypeRef;
 class TokenTree;
 struct Ident;
 namespace AST {
-    typedef bool Visibility;
+    class Visibility;
     class Pattern;
     class Path;
     class ExprNode;

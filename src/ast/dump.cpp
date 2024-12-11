@@ -37,12 +37,19 @@ public:
     void handle_enum(const AST::Enum& s);
     void handle_trait(const AST::Trait& s);
 
-    void handle_function(bool is_pub, const RcString& name, const AST::Function& f);
+    void handle_function(const AST::Visibility& vis, const RcString& name, const AST::Function& f);
 
     virtual bool is_const() const override { return true; }
     virtual void visit(AST::ExprNode_Block& n) override {
-        if( n.m_is_unsafe ) {
+        switch(n.m_block_type) {
+        case AST::ExprNode_Block::Type::Bare:
+            break;
+        case AST::ExprNode_Block::Type::Unsafe:
             m_os << "unsafe ";
+            break;
+        case AST::ExprNode_Block::Type::Const:
+            m_os << "const ";
+            break;
         }
         m_os << "{";
         inc_indent();
@@ -61,6 +68,9 @@ public:
                 m_os << ";";
             }
             m_os << "\n";
+            if( child ) {
+                this->print_attrs(child->attrs());
+            }
             m_os << indent();
             m_expr_root = true;
             if( !child.get() )
@@ -78,9 +88,30 @@ public:
         m_os << "try ";
         AST::NodeVisitor::visit(n.m_inner);
     }
+    void dump_token(const Token& t) {
+        m_os << t.to_str() << " ";
+    }
+    void dump_tokentree(const TokenTree& tt) {
+        if( tt.is_token() ) {
+            dump_token(tt.tok());
+        }
+        else {
+            for(size_t i = 0; i < tt.size(); i ++)
+            {
+                dump_tokentree(tt[i]);
+            }
+        }
+    }
     virtual void visit(AST::ExprNode_Macro& n) override {
         m_expr_root = false;
-        m_os << n.m_path << "!( /* TODO: Macro TT */ )";
+        m_os << n.m_path << "!";
+        if( n.m_ident != "" ) {
+            m_os << " ";
+            m_os << n.m_ident;
+        }
+        m_os << (n.m_is_braced ? "{" : "(");
+        dump_tokentree(n.m_tokens);
+        m_os << (n.m_is_braced ? "}" : ")");
     }
     virtual void visit(AST::ExprNode_Asm& n) override {
         m_os << "asm!( \"" << n.m_text << "\"";
@@ -156,6 +187,7 @@ public:
         case AST::ExprNode_Flow::YIELD:     m_os << "yield ";  break;
         case AST::ExprNode_Flow::BREAK:     m_os << "break ";  break;
         case AST::ExprNode_Flow::CONTINUE:  m_os << "continue ";  break;
+        case AST::ExprNode_Flow::YEET:      m_os << "do yeet ";  break;
         }
         AST::NodeVisitor::visit(n.m_value);
     }
@@ -165,8 +197,11 @@ public:
         print_pattern(n.m_pat, false);
         m_os << ": ";
         print_type(n.m_type);
-        m_os << " = ";
-        AST::NodeVisitor::visit(n.m_value);
+        if( n.m_value ) {
+            m_os << " = ";
+            AST::NodeVisitor::visit(n.m_value);
+        }
+        m_os << ";";
     }
     virtual void visit(AST::ExprNode_Assign& n) override {
         m_expr_root = false;
@@ -254,20 +289,45 @@ public:
             m_os << "while ";
             AST::NodeVisitor::visit(n.m_cond);
             break;
-        case AST::ExprNode_Loop::WHILELET:
-            m_os << "while let ";
-            print_pattern(n.m_pattern, true);
-            m_os << " = ";
-            AST::NodeVisitor::visit(n.m_cond);
-            break;
         case AST::ExprNode_Loop::FOR:
-            m_os << "while for ";
+            m_os << "for ";
             print_pattern(n.m_pattern, true);
             m_os << " in ";
             AST::NodeVisitor::visit(n.m_cond);
             break;
         }
 
+        if( expr_root )
+        {
+            m_os << "\n";
+            m_os << indent();
+        }
+        else
+        {
+            m_os << " ";
+        }
+
+        AST::NodeVisitor::visit(n.m_code);
+    }
+    void visit_iflet_conditions(std::vector<AST::IfLet_Condition>& conds) {
+        for(size_t i = 0; i < conds.size(); i ++) {
+            if(i != 0) m_os << " && ";
+            if(conds[i].opt_pat) {
+                if( i > 0 ) m_os << "let ";
+                print_pattern(*conds[i].opt_pat, true);
+                m_os << " = ";
+            }
+            m_os << "(";
+            AST::NodeVisitor::visit(conds[i].value);
+            m_os << ")";
+        }
+    }
+    void visit(AST::ExprNode_WhileLet& n) override {
+        bool expr_root = m_expr_root;
+        m_expr_root = false;
+
+        m_os << "while let ";
+        visit_iflet_conditions(n.m_conditions);
         if( expr_root )
         {
             m_os << "\n";
@@ -307,10 +367,9 @@ public:
                 is_first = false;
                 print_pattern(pat, true);
             }
-            if( arm.m_cond )
-            {
+            if( !arm.m_guard.empty() ) {
                 m_os << " if ";
-                AST::NodeVisitor::visit(arm.m_cond);
+                visit_iflet_conditions(arm.m_guard);
             }
             m_os << " => ";
             // Increase indent, but don't print. Causes nested blocks to be indented above the match
@@ -342,14 +401,7 @@ public:
         bool expr_root = m_expr_root;
         m_expr_root = false;
         m_os << "if let ";
-        for(const auto& pat : n.m_patterns)
-        {
-            if(&pat != &n.m_patterns.front())
-                m_os << " | ";
-            print_pattern(pat, /*is_refutable=*/true);
-        }
-        m_os << " = ";
-        AST::NodeVisitor::visit(n.m_value);
+        visit_iflet_conditions(n.m_conditions);
 
         visit_if_common(expr_root, n.m_true, n.m_false);
     }
@@ -404,8 +456,12 @@ public:
         }
         m_os << "| ->";
         print_type(n.m_return);
-        m_os << " ";
+        m_os << " { ";
         AST::NodeVisitor::visit(n.m_code);
+        m_os << " }";
+    }
+    virtual void visit(AST::ExprNode_WildcardPattern& n) override {
+        m_os << "_";
     }
     virtual void visit(AST::ExprNode_Integer& n) override {
         m_expr_root = false;
@@ -419,7 +475,20 @@ public:
             m_os << "0x" << ::std::hex << n.m_value << ::std::dec << "_/*bool/str*/";
             break;
         case CORETYPE_CHAR:
-            m_os << "'\\u{" << ::std::hex << n.m_value << ::std::dec << "}'";
+            //if( 0x20 <= n.m_value && n.m_value < 128 ) {
+            if( n.m_value >= 0x20 && n.m_value < 128 ) {
+                switch(n.m_value.truncate_u64())
+                {
+                case '\'':  m_os << "'\\''";    break;
+                case '\\':  m_os << "'\\\\'";   break;
+                default:
+                    m_os << "'" << (char)n.m_value.truncate_u64() << "'";
+                    break;
+                }
+            }
+            else {
+                m_os << "'\\u{" << ::std::hex << n.m_value << ::std::dec << "}'";
+            }
             break;
         case CORETYPE_F32:
         case CORETYPE_F64:
@@ -496,6 +565,21 @@ public:
         m_os << indent() << "}";
         dec_indent();
     }
+    virtual void visit(AST::ExprNode_StructLiteralPattern& n) override {
+        m_expr_root = false;
+        m_os << n.m_path << " {\n";
+        inc_indent();
+        for( auto& i : n.m_values )
+        {
+            // TODO: Attributes
+            m_os << indent() << i.name << ": ";
+            AST::NodeVisitor::visit(i.value);
+            m_os << ",\n";
+        }
+        m_os << indent() << "..\n";
+        m_os << indent() << "}";
+        dec_indent();
+    }
     virtual void visit(AST::ExprNode_Array& n) override {
         m_expr_root = false;
         m_os << "[";
@@ -556,13 +640,15 @@ public:
     }
     virtual void visit(AST::ExprNode_Cast& n) override {
         m_expr_root = false;
+        m_os << "(";
         AST::NodeVisitor::visit(n.m_value);
-        m_os << " as " << n.m_type;
+        m_os << ") as " << n.m_type;
     }
     virtual void visit(AST::ExprNode_TypeAnnotation& n) override {
         m_expr_root = false;
+        m_os << "(";
         AST::NodeVisitor::visit(n.m_value);
-        m_os << ": " << n.m_type;
+        m_os << ") : " << n.m_type;
     }
     virtual void visit(AST::ExprNode_BinOp& n) override {
         m_expr_root = false;
@@ -618,6 +704,7 @@ public:
         case AST::ExprNode_UniOp::RawBorrow:    m_os << "&raw const "; break;
         case AST::ExprNode_UniOp::RawBorrowMut: m_os << "&raw mut "; break;
         case AST::ExprNode_UniOp::QMARK: break;
+        case AST::ExprNode_UniOp::AWait: break;
         }
 
         if( IS(*n.m_value, AST::ExprNode_BinOp) )
@@ -628,6 +715,7 @@ public:
         switch(n.m_type)
         {
         case AST::ExprNode_UniOp::QMARK: m_os << "?"; break;
+        case AST::ExprNode_UniOp::AWait: m_os << ".await";  break;
         default:    break;
         }
     }
@@ -651,13 +739,6 @@ private:
     RepeatLitStr indent();
     void dec_indent();
 };
-
-void Dump_Rust(const char *filename, const AST::Crate& crate)
-{
-    ::std::ofstream os(filename);
-    RustPrinter printer(os);
-    printer.handle_module(crate.root_module());
-}
 
 void RustPrinter::print_attrs(const AST::AttributeList& attrs)
 {
@@ -683,7 +764,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         if( i_data.entries.empty() ) {
             continue ;
         }
-        m_os << indent() << (i.is_pub ? "pub " : "") << "use ";
+        m_os << indent() << i.vis << "use ";
         if( i_data.entries.size() > 1 ) {
             m_os << "{";
         }
@@ -735,7 +816,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Module();
 
         m_os << "\n";
-        m_os << indent() << (item.is_pub ? "pub " : "") << "mod " << item.name << "\n";
+        m_os << indent() << item.vis << "mod " << item.name << "\n";
         m_os << indent() << "{\n";
         inc_indent();
         handle_module(e);
@@ -755,7 +836,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
             need_nl = false;
         }
         print_attrs(item.attrs);
-        m_os << indent() << (item.is_pub ? "pub " : "") << "type " << item.name;
+        m_os << indent() << item.vis << "type " << item.name;
         print_params(e.params());
         m_os << " = " << e.type();
         print_bounds(e.params());
@@ -771,7 +852,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
 
         m_os << "\n";
         print_attrs(item.attrs);
-        m_os << indent() << (item.is_pub ? "pub " : "") << "struct " << item.name;
+        m_os << indent() << item.vis << "struct " << item.name;
         handle_struct(e);
     }
 
@@ -783,7 +864,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
 
         m_os << "\n";
         print_attrs(item.attrs);
-        m_os << indent() << (item.is_pub ? "pub " : "") << "enum " << item.name;
+        m_os << indent() << item.vis << "enum " << item.name;
         handle_enum(e);
     }
 
@@ -795,7 +876,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
 
         m_os << "\n";
         print_attrs(item.attrs);
-        m_os << indent() << (item.is_pub ? "pub " : "") << "trait " << item.name;
+        m_os << indent() << item.vis << "trait " << item.name;
         handle_trait(e);
     }
 
@@ -810,7 +891,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
             need_nl = false;
         }
         print_attrs(item.attrs);
-        m_os << indent() << (item.is_pub ? "pub " : "");
+        m_os << indent() << item.vis;
         switch( e.s_class() )
         {
         case AST::Static::CONST:  m_os << "const ";   break;
@@ -830,7 +911,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
 
         m_os << "\n";
         print_attrs(item.attrs);
-        handle_function(item.is_pub, item.name, e);
+        handle_function(item.vis, item.name, e);
     }
 
     for( const auto& ip : mod.m_items )
@@ -879,7 +960,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
                 m_os << indent() << "type " << it.name << " = " << e.type() << ";\n";
                 ),
             (Function,
-                handle_function(it.is_pub, it.name, e);
+                handle_function(it.vis, it.name, e);
                 )
             )
         }
@@ -887,6 +968,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << indent() << "}\n";
     }
 
+    // HACK: Assume that anon modules have been printed already, so don't include them here.
+    // - Needed, because this code is used for proc macro output, which doen't like the `#<n>` syntax
+    #if 0
     for(const auto& m : mod.anon_mods())
     {
         if(!m) {
@@ -899,6 +983,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         dec_indent();
         m_os << indent() << "}\n";
     }
+    #endif
 }
 
 void RustPrinter::print_params(const AST::GenericParams& params)
@@ -916,7 +1001,6 @@ void RustPrinter::print_params(const AST::GenericParams& params)
                 m_os << "/*-*/";
                 }
             TU_ARMA(Lifetime, p) {
-                //m_os << p.attrs();
                 m_os << p;
                 }
             TU_ARMA(Type, p) {
@@ -940,14 +1024,21 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
 {
     if( !params.m_bounds.empty() )
     {
-        m_os << indent() << "where\n";
         inc_indent();
         bool is_first = true;
 
         for( const auto& b : params.m_bounds )
         {
-            if( !is_first )
+            if( b.is_None() ) {
+                m_os << "/*-*/";
+                continue ;
+            }
+            if( !is_first ) {
                 m_os << ",\n";
+            }
+            else {
+                m_os << indent() << "where\n";
+            }
             is_first = false;
 
             m_os << indent();
@@ -956,10 +1047,10 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
                 m_os << "/*-*/";
                 ),
             (Lifetime,
-                m_os << "'" << ent.test << ": '" << ent.bound;
+                m_os << ent.test << ": " << ent.bound;
                 ),
             (TypeLifetime,
-                m_os << ent.type << ": '" << ent.bound;
+                m_os << ent.type << ": " << ent.bound;
                 ),
             (IsTrait,
                 m_os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;
@@ -1059,13 +1150,16 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         ),
     (Struct, {
         const auto& v = p.data().as_Struct();
-        m_os << v.path << "(";
+        m_os << v.path << "{";
         for(const auto& sp : v.sub_patterns) {
             m_os << sp.name << ": ";
             print_pattern(sp.pat, is_refutable);
             m_os << ",";
         }
-        m_os << ")";
+        if( v.is_exhaustive ) {
+            m_os << "..";
+        }
+        m_os << "}";
         }),
     (Tuple,
         m_os << "(";
@@ -1074,14 +1168,17 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         ),
     (Slice,
         m_os << "[";
-        m_os << v.sub_pats;
+        for(const auto& sp : v.sub_pats) {
+            print_pattern(sp, is_refutable);
+            m_os << ", ";
+        }
         m_os << "]";
         ),
     (SplitSlice,
         m_os << "[";
         bool needs_comma = false;
-        if(v.leading.size()) {
-            m_os << v.leading;
+        for(const auto& sp : v.leading) {
+            print_pattern(sp, is_refutable);
             m_os << ", ";
         }
 
@@ -1110,14 +1207,19 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             if( needs_comma ) {
                 m_os << ", ";
             }
-            m_os << v.trailing;
+            for(const auto& sp : v.trailing) {
+                print_pattern(sp, is_refutable);
+                m_os << ", ";
+            }
         }
         m_os << "]";
         ),
     (Or,
         m_os << "(";
-        for(const auto& e : v)
-            m_os << (&e == &v.front() ? "" : " | ") << e;
+        for(const auto& e : v) {
+            m_os << (&e == &v.front() ? "" : " | ");
+            print_pattern(e, is_refutable);
+        }
         m_os << ")";
         )
     )
@@ -1140,8 +1242,9 @@ void RustPrinter::handle_struct(const AST::Struct& s)
         ),
     (Tuple,
         m_os << "(";
-        for( const auto& i : e.ents )
-            m_os << (i.m_is_public ? "pub " : "") << i.m_type << ", ";
+        for( const auto& i : e.ents ) {
+            m_os << i.m_vis << i.m_type << ", ";
+        }
         m_os << ")\n";
         print_bounds(s.params());
         m_os << indent() << ";\n";
@@ -1154,7 +1257,7 @@ void RustPrinter::handle_struct(const AST::Struct& s)
         inc_indent();
         for( const auto& i : e.ents )
         {
-            m_os << indent() << (i.m_is_public ? "pub " : "") << i.m_name << ": " << i.m_type.print_pretty() << "\n";
+            m_os << indent() << i.m_vis << i.m_name << ": " << i.m_type.print_pretty() << ",\n";
         }
         dec_indent();
         m_os << indent() << "}\n";
@@ -1181,8 +1284,8 @@ void RustPrinter::handle_enum(const AST::Enum& s)
             ),
         (Tuple,
             m_os << "(";
-            for( const auto& t : e.m_sub_types )
-                m_os << t.print_pretty() << ", ";
+            for( const auto& t : e.m_items )
+                m_os << t.m_type.print_pretty() << ", ";
             m_os << ")";
             ),
         (Struct,
@@ -1233,7 +1336,7 @@ void RustPrinter::handle_trait(const AST::Trait& s)
             m_os << indent() << "type " << i.name << ";\n";
             ),
         (Function,
-            handle_function(false, i.name, e);
+            handle_function(AST::Visibility::make_bare_private(), i.name, e);
             )
         )
     }
@@ -1243,14 +1346,16 @@ void RustPrinter::handle_trait(const AST::Trait& s)
     m_os << "\n";
 }
 
-void RustPrinter::handle_function(bool is_pub, const RcString& name, const AST::Function& f)
+void RustPrinter::handle_function(const AST::Visibility& vis, const RcString& name, const AST::Function& f)
 {
     m_os << indent();
-    m_os << (is_pub ? "pub " : "");
+    m_os << vis;
     if( f.is_const() )
         m_os << "const ";
     if( f.is_unsafe() )
         m_os << "unsafe ";
+    if( f.is_async() )
+        m_os << "async ";
     if( f.abi() != ABI_RUST )
         m_os << "extern \"" << f.abi() << "\" ";
     m_os << "fn " << name;
@@ -1300,4 +1405,16 @@ RepeatLitStr RustPrinter::indent()
 void RustPrinter::dec_indent()
 {
     m_indent_level --;
+}
+
+void Dump_Rust(const char *filename, const AST::Crate& crate)
+{
+    ::std::ofstream os(filename);
+    RustPrinter printer(os);
+    printer.handle_module(crate.root_module());
+}
+void DumpAST_Node(::std::ostream& os, const AST::ExprNode& node)
+{
+    RustPrinter printer(os);
+    const_cast<AST::ExprNode&>( node ).visit(printer);
 }

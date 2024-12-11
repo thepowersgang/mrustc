@@ -49,7 +49,7 @@ struct RunState
         return m_compiler_path.basename() == "rustc" || m_compiler_path.basename() == "rustc.exe";
     }
 
-    std::string get_key(const PackageManifest& p, bool build, bool is_host) const {
+    std::string get_key(const PackageManifest& p, bool build, bool is_host, const PackageTarget* target=nullptr) const {
         auto rv = ::format(p.name(), " v", p.version());
         if(p.has_library() && p.get_library().m_is_proc_macro ) {
             is_host = true;
@@ -61,6 +61,24 @@ struct RunState
             rv += " (host)";
         }
         else {
+        }
+        if( target ) {
+            switch( target->m_type )
+            {
+            case PackageTarget::Type::Lib:
+                break;
+            case PackageTarget::Type::Bin:
+                rv += " [bin "; if(0)
+            case PackageTarget::Type::Test:
+                rv += " [test "; if(0)
+            case PackageTarget::Type::Bench:
+                rv += " [bench "; if(0)
+            case PackageTarget::Type::Example:
+                rv += " [example ";
+                rv += target->m_name;
+                rv += "]";
+                break;
+            }
         }
         return rv;
     }
@@ -94,6 +112,7 @@ protected:
 
     ::std::string   m_name;
 public:
+    bool m_is_dirty;
     ::std::vector<std::string>  m_dependencies;
 
 protected:
@@ -101,12 +120,16 @@ protected:
         : parent(parent)
         , m_manifest(manifest)
         , m_name(::std::move(name))
+        , m_is_dirty(true)
     {
     }
 
     void push_args_common(StringList& args, const helpers::path& outfile, bool is_for_host) const;
 
 public:
+    bool is_already_complete() const override {
+        return !m_is_dirty;
+    }
     const std::string& name() const override {
         return m_name;
     }
@@ -126,7 +149,7 @@ class Job_BuildTarget: public Job_Build
 
 public:
     Job_BuildTarget(RunState& parent, const PackageManifest& manifest, const PackageTarget& target, bool is_host)
-        : Job_Build(parent, manifest, parent.get_key(manifest, false, is_host))
+        : Job_Build(parent, manifest, parent.get_key(manifest, false, is_host, &target))
         , m_target(target)
         , m_is_for_host(is_host)
     {
@@ -155,14 +178,20 @@ class Job_RunScript: public Job
     // Populated on `start`
     helpers::path   m_script_exe_abs;
 public:
+    bool m_is_dirty;
+
     Job_RunScript(const RunState& parent, const PackageManifest& manifest)
         : parent(parent)
         , m_manifest(manifest)
         , m_name(parent.get_key(manifest, false, false)+" (script run)")
+        , m_is_dirty(false)
     {
     }
     ::std::vector<std::string>  m_dependencies;
 
+    bool is_already_complete() const override {
+        return !m_is_dirty;
+    }
     const char* verb() const override {
         return "RUNNING";
     }
@@ -175,7 +204,7 @@ public:
     bool is_runnable() const override {
         return true;
     }
-    
+
     RunnableJob start() override;
     bool complete(bool was_success) override;
 
@@ -237,7 +266,15 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         }
         void sort_list()
         {
-            ::std::sort(m_list.begin(), m_list.end(), [](const auto& a, const auto& b){ return a.level > b.level; });
+            ::std::sort(m_list.begin(), m_list.end(), [](const Ent& a, const Ent& b){
+                if(a.level != b.level)
+                    return a.level > b.level;
+                if(a.package->name() != b.package->name())
+                    return a.package->name() > b.package->name();
+                if(a.package->version() != b.package->version())
+                    return a.package->version() > b.package->version();
+                return false;
+                });
 
             // Needed to deduplicate after sorting (`add_package` doesn't fully dedup)
             for(auto it = m_list.begin(); it != m_list.end(); )
@@ -275,7 +312,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     }
 
     b.sort_list();
-    
+
     // Move the contents of the above list to this class's list
     m_list.reserve(b.m_list.size());
     for(const auto& e : b.m_list)
@@ -323,6 +360,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 DEBUG("Clean " << job->name());
                 // Add as not-built
                 items_notbuilt.insert(std::make_pair(job->name(), ts));
+                joblist.add_job(std::move(job));
             }
         }
 
@@ -345,7 +383,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 else
                 {
                     auto job_bs_build = ::std::make_unique<Job_BuildScript>(run_state, p);
-                    
+
                     auto script_ts = Timestamp::for_file(job_bs_build->get_outfile());
                     bool bs_is_dirty = run_state.outfile_needs_rebuild(job_bs_build->get_outfile());
                     p.iter_build_dependencies([&](const PackageRef& dep) {
@@ -357,6 +395,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                         }
                     });
                     auto name_bs_build = job_bs_build->name();
+                    job_bs_build->m_is_dirty = bs_is_dirty;
                     this->add_job(std::move(job_bs_build), script_ts, bs_is_dirty);
 
                     auto job_bs_run = ::std::make_unique<Job_RunScript>(run_state, p);
@@ -398,6 +437,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                     });
                     bool bs_needs_run = bs_is_dirty || output_ts < script_ts;
                     auto rv = bs_needs_run ? job_bs_run->name() : ::std::string();
+                    job_bs_run->m_is_dirty = bs_needs_run;
                     this->add_job(std::move(job_bs_run), output_ts, bs_needs_run);
                     // If the script is not being run, then it still needs to be loaded
                     if(!bs_needs_run)
@@ -413,10 +453,14 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
             }
         }
     } convert_state(runner);
-    
+
     for(const auto& e : m_list)
     {
         const auto& p = *e.package;
+        if( p.is_std_magic() ) {
+            convert_state.items_notbuilt.insert(std::make_pair( run_state.get_key(p, false, e.is_host), Timestamp::infinite_past() ));
+            continue ;
+        }
 
         auto job = ::std::make_unique<Job_BuildTarget>(run_state, p, p.get_library(), e.is_host);
         DEBUG("> Considering " << job->name());
@@ -438,6 +482,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 is_dirty |= convert_state.handle_dep(job->m_dependencies, output_ts, k);
             }
         });
+        job->m_is_dirty = is_dirty;
         convert_state.add_job(std::move(job), output_ts, is_dirty);
     }
 
@@ -466,6 +511,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 }
             });
         }
+        job->m_is_dirty = is_dirty;
         convert_state.add_job(std::move(job), output_ts, is_dirty);
     };
 
@@ -486,7 +532,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
         break;
     //case BuildOptions::Mode::Examples:
     }
-    
+
     return runner.run_all(num_jobs, dry_run);
 }
 
@@ -637,6 +683,10 @@ namespace {
         case Edition::Rust2018:
             args.push_back("--edition");
             args.push_back("2018");
+            break;
+        case Edition::Rust2021:
+            args.push_back("--edition");
+            args.push_back("2021");
             break;
         }
     }
@@ -829,7 +879,7 @@ RunnableJob Job_BuildTarget::start()
     auto depfile = outfile + ".d";
 
     StringList  args;
-    args.push_back(::helpers::path(m_manifest.manifest_path()).parent() / ::helpers::path(m_target.m_path));
+    args.push_back(m_manifest.directory() / ::helpers::path(m_target.m_path));
     push_args_common(args, outfile, m_is_for_host);
     args.push_back("--crate-name"); args.push_back(m_target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back(crate_type);
@@ -891,6 +941,9 @@ RunnableJob Job_BuildTarget::start()
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
+            if( !m.has_library() ) {
+                return ;
+            }
             auto path = parent.get_crate_path(m, m.get_library(), m_is_for_host || (m.has_library() && m.get_library().m_is_proc_macro), nullptr, nullptr);
             args.push_back("--extern");
             if( dep.key() != m.name() ) {
@@ -907,6 +960,9 @@ RunnableJob Job_BuildTarget::start()
             if( ! dep.is_disabled() )
             {
                 const auto& m = dep.get_package();
+                if( !m.has_library() ) {
+                    return ;
+                }
                 auto path = parent.get_crate_path(m, m.get_library(), m_is_for_host, nullptr, nullptr);
                 args.push_back("--extern");
                 args.push_back(::format(escape_dashes(dep.key()), "=", path));
@@ -938,7 +994,7 @@ RunnableJob Job_BuildScript::start()
     auto outfile = get_outfile();
 
     StringList  args;
-    args.push_back( ::helpers::path(m_manifest.manifest_path()).parent() / ::helpers::path(m_manifest.build_script()) );
+    args.push_back( m_manifest.directory() / ::helpers::path(m_manifest.build_script()) );
     push_args_common(args, outfile, /*is_for_host=*/true);
     args.push_back("--crate-name"); args.push_back("build");
     args.push_back("--crate-type"); args.push_back("bin");
@@ -948,6 +1004,9 @@ RunnableJob Job_BuildScript::start()
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
+            if( !m.has_library() ) {
+                return ;
+            }
             auto path = parent.get_crate_path(m, m.get_library(), true, nullptr, nullptr);   // Dependencies for build scripts are always for the host (because it is)
             args.push_back("--extern"); args.push_back(::format(m.get_library().m_name, "=", path));
         }
@@ -1074,6 +1133,13 @@ bool Job_RunScript::complete(bool was_success)
     //if( manifest.version() != PackageVersion() ) 
     {
         crate_suffix = ::format("-", manifest.version());
+        {
+            // Strip the free text (after "+") from the crate version
+            auto p = crate_suffix.find('+');
+            if(p != std::string::npos) {
+                crate_suffix.resize(p);
+            }
+        }
         for(auto& v : crate_suffix)
             if(v == '.')
                 v = '_';

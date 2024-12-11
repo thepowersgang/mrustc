@@ -48,6 +48,7 @@
 #define TU_DISP15(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5    )   TU_DISP5(n, a1,a2,a3,a4,a5) TU_DISP5(n, b1,b2,b3,b4,b5) TU_DISP5(n, c1,c2,c3,c4,c5)
 #define TU_DISP16(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5, d1)   TU_DISP5(n, a1,a2,a3,a4,a5) TU_DISP5(n, b1,b2,b3,b4,b5) TU_DISP5(n, c1,c2,c3,c4,c5) TU_DISP1(n, d1)
 #define TU_DISP17(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5, d1,d2) TU_DISP5(n, a1,a2,a3,a4,a5) TU_DISP5(n, b1,b2,b3,b4,b5) TU_DISP5(n, c1,c2,c3,c4,c5) TU_DISP2(n, d1,d2)
+#define TU_DISP18(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5, d1,d2,d3) TU_DISP5(n, a1,a2,a3,a4,a5) TU_DISP5(n, b1,b2,b3,b4,b5) TU_DISP5(n, c1,c2,c3,c4,c5) TU_DISP3(n, d1,d2,d3)
 
 #define TU_DISPO0(n)
 #define TU_DISPO1(n, _1)   n(_1)
@@ -67,6 +68,7 @@
 #define TU_DISPO15(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5)   TU_DISPO5(n, a1,a2,a3,a4,a5) TU_DISPO5(n, b1,b2,b3,b4,b5) TU_DISPO5(n, c1,c2,c3,c4,c5)
 #define TU_DISPO16(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5, d1)   TU_DISPO5(n, a1,a2,a3,a4,a5) TU_DISPO5(n, b1,b2,b3,b4,b5) TU_DISPO5(n, c1,c2,c3,c4,c5) TU_DISPO1(n, d1)
 #define TU_DISPO17(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5, d1,d2) TU_DISPO5(n, a1,a2,a3,a4,a5) TU_DISPO5(n, b1,b2,b3,b4,b5) TU_DISPO5(n, c1,c2,c3,c4,c5) TU_DISPO2(n, d1,d2)
+#define TU_DISPO18(n, a1,a2,a3,a4,a5, b1,b2,b3,b4,b5, c1,c2,c3,c4,c5, d1,d2,d3) TU_DISPO5(n, a1,a2,a3,a4,a5) TU_DISPO5(n, b1,b2,b3,b4,b5) TU_DISPO5(n, c1,c2,c3,c4,c5) TU_DISPO4(n, d1,d2,d3)
 
 #define TU_DISPA(n, a)   n a
 #define TU_DISPA1(n, a, _1)   TU_DISPA(n, (TU_EXP a, TU_EXP _1))
@@ -86,11 +88,12 @@
 #define TU_DISPA15(n, a, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4, d1,d2,d3) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA4(n,a, b1,b2,b3,b4) TU_DISPA4(n,a, c1,c2,c3,c4) TU_DISPA3(n,a, d1,d2,d3)
 #define TU_DISPA16(n, a, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4, d1,d2,d3,d4) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA4(n,a, b1,b2,b3,b4) TU_DISPA4(n,a, c1,c2,c3,c4) TU_DISPA4(n,a, d1,d2,d3,d4)
 #define TU_DISPA17(n, a, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4, d1,d2,d3,d4, e1) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA4(n,a, b1,b2,b3,b4) TU_DISPA4(n,a, c1,c2,c3,c4) TU_DISPA4(n,a, d1,d2,d3,d4) TU_DISPA1(n,a, e1)
+#define TU_DISPA18(n, a, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3,c4, d1,d2,d3,d4, e1,e2) TU_DISPA4(n,a, a1,a2,a3,a4) TU_DISPA4(n,a, b1,b2,b3,b4) TU_DISPA4(n,a, c1,c2,c3,c4) TU_DISPA4(n,a, d1,d2,d3,d4) TU_DISPA2(n,a, e1, e2)
 
 // Macro to obtain a numbered macro for argument counts
 // - Raw variant
-#define TU_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,COUNT,...) SUF##COUNT
-#define TU_GM(SUF,...) TU_EXP1( TU_GM_I(SUF, __VA_ARGS__,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0) )
+#define TU_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,COUNT,...) SUF##COUNT
+#define TU_GM(SUF,...) TU_EXP1( TU_GM_I(SUF, __VA_ARGS__,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0) )
 // - _DISP based variant (for iteration)
 #define TU_GMX(...) TU_EXP1( TU_GM(TU_DISP, __VA_ARGS__) )
 #define TU_GMO(...) TU_EXP1( TU_GM(TU_DISPO, __VA_ARGS__) )

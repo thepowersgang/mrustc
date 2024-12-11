@@ -113,6 +113,8 @@ public:
     const Span& span() const { return m_span; }
     const AttributeName& name() const { return m_name; }
     const TokenTree& data() const { return m_data; }
+    
+    TokenTree& data_mut() { return m_data; }
 
 
     /// Parses the data as a `="string"` and returns the string

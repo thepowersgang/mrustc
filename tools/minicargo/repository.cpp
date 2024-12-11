@@ -104,7 +104,7 @@ void Repository::load_vendored(const ::helpers::path& path)
     auto it = m_path_cache.find(path);
     if(it == m_path_cache.end())
     {
-        ::std::shared_ptr<PackageManifest> rv ( new PackageManifest(PackageManifest::load_from_toml(path)) );
+        ::std::shared_ptr<PackageManifest> rv ( new PackageManifest(PackageManifest::load_from_toml(path, m_workspace_manifest)) );
 
         m_path_cache.insert( ::std::make_pair(::std::move(path), rv) );
 
@@ -119,7 +119,7 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
 {
     auto manifest_path = path / "Cargo.toml";
 
-    auto loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(manifest_path)) );
+    auto loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(manifest_path, m_workspace_manifest)) );
 
     Entry   cache_ent;
     cache_ent.manifest_path = manifest_path;
@@ -128,9 +128,21 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
     m_cache.insert(::std::make_pair( package_name, ::std::move(cache_ent) ));
     // TODO: If there's other packages with the same name, check for compatability (or otherwise ensure that this is the chosen version)
 }
+void Repository::blacklist_dependency(const PackageManifest* dep_ptr)
+{
+    auto itp = m_cache.equal_range(dep_ptr->name());
+    for(auto i = itp.first; i != itp.second; ++i)
+    {
+        if( i->second.loaded_manifest.get() == dep_ptr ) {
+            i->second.blacklisted = true;
+            return;
+        }
+    }
+    // Warning?
+}
 ::std::shared_ptr<PackageManifest> Repository::find(const ::std::string& name, const PackageVersionSpec& version)
 {
-    DEBUG("FIND " << name << " matching " << version);
+    TRACE_FUNCTION_F("FIND " << name << " matching " << version);
     auto itp = m_cache.equal_range(name);
 
     Entry* best = nullptr;
@@ -138,10 +150,17 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
     {
         if( version.accepts(i->second.version) )
         {
-            DEBUG("Accept " << i->second.version);
-            if( !best || best->version < i->second.version )
+            if( i->second.blacklisted )
             {
+                DEBUG("Blacklisted " << i->second.version);
+            }
+            else if( !best || i->second.version > best->version )
+            {
+                DEBUG("Accept " << i->second.version);
                 best = &i->second;
+            }
+            else {
+                DEBUG("Matched " << i->second.version);
             }
         }
         else
@@ -152,6 +171,7 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
 
     if( best )
     {
+        DEBUG("USING " << name << " " << best->version);
         if( !best->loaded_manifest )
         {
             if( best->manifest_path == "" )
@@ -160,7 +180,7 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
             }
             try
             {
-                best->loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(best->manifest_path)) );
+                best->loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(best->manifest_path, m_workspace_manifest)) );
             }
             catch(const ::std::exception& e)
             {

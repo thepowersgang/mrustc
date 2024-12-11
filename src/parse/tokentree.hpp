@@ -18,7 +18,7 @@ namespace  AST {
 
 class TokenTree
 {
-    AST::Edition    m_edition;
+    AST::Edition    m_edition = (AST::Edition)0;  // 2015
     Ident::Hygiene m_hygiene;
     Token   m_tok;
     ::std::vector<TokenTree>    m_subtrees;

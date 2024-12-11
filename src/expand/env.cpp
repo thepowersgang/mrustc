@@ -43,7 +43,7 @@ class CExpanderEnv:
         if( !var_val_cstr ) {
             ERROR(sp, E0000, "Environment variable '" << varname << "' not defined");
         }
-        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(TOK_STRING, ::std::string(var_val_cstr)))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(TOK_STRING, ::std::string(var_val_cstr), {}))) );
     }
 };
 
@@ -70,7 +70,7 @@ class CExpanderOptionEnv:
             rv.reserve(4);
             rv.push_back( Token(TOK_IDENT, RcString::new_interned("Some")) );
             rv.push_back( Token(TOK_PAREN_OPEN) );
-            rv.push_back( Token(TOK_STRING, ::std::string(var_val_cstr)) );
+            rv.push_back( Token(TOK_STRING, ::std::string(var_val_cstr), {}) );
             rv.push_back( Token(TOK_PAREN_CLOSE) );
         }
         return box$( TTStreamO(sp, ParseState(), TokenTree( AST::Edition::Rust2015, {}, mv$(rv) )) );

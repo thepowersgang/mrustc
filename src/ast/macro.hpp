@@ -22,6 +22,7 @@ class MacroInvocation
     AST::Path   m_macro_path;
     RcString   m_ident;
     TokenTree   m_input;
+    bool    m_is_expanded = false;
 public:
     MacroInvocation(MacroInvocation&&) = default;
     MacroInvocation& operator=(MacroInvocation&&) = default;
@@ -50,6 +51,9 @@ public:
 
     const Span& span() const { return m_span; }
     const AST::Path& path() const { return m_macro_path; }
+
+    bool is_expanded() const { return m_is_expanded; }
+    void set_expanded() { m_is_expanded = true; }
 
     const RcString& input_ident() const { return m_ident; }
     const TokenTree& input_tt() const { return m_input; }

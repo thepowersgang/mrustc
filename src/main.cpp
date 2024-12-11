@@ -83,6 +83,9 @@ struct ProgramParams
     ::std::set< ::std::string> features;
 
     struct {
+        /// Testing hack: Pause just after startup (to allow a debugger to attach)
+        bool pause = false;
+
         bool disable_mir_optimisations = false;
         bool full_validate = false;
         bool full_validate_early = false;
@@ -238,6 +241,12 @@ int main(int argc, char *argv[])
 {
     init_debug_list();
     ProgramParams   params(argc, argv);
+
+    if(params.debug.pause) {
+        char c;
+        ::std::cerr << "Pausing to attach a debugger\nType any text to continue" << std::endl;
+        ::std::cin >> c;
+    }
 
     // Set up cfg values
     CompilePhaseV("Setup", [&]() {
@@ -401,13 +410,21 @@ int main(int argc, char *argv[])
         crate.set_crate_name( crate_name );
 
         if( params.outfile == "" ) {
+        #ifdef WIN32
+        # define EXESUF ".exe"
+        #else
+        # define EXESUF ""
+        #endif
             switch( crate.m_crate_type )
             {
             case ::AST::Crate::Type::RustLib:
                 params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name_set << ".rlib");
                 break;
             case ::AST::Crate::Type::Executable:
-                params.outfile = FMT(params.output_dir << crate.m_crate_name_set);
+                params.outfile = FMT(params.output_dir << crate.m_crate_name_set << EXESUF);
+                break;
+            case ::AST::Crate::Type::ProcMacro:
+                params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name_set << "-plugin" EXESUF);
                 break;
             default:
                 params.outfile = FMT(params.output_dir << crate.m_crate_name_set << ".o");
@@ -904,6 +921,20 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+namespace {
+    const char* target_version_str(TargetVersion tv) {
+        switch(tv)
+        {
+        case TargetVersion::Rustc1_19:  return "1.19";
+        case TargetVersion::Rustc1_29:  return "1.29";
+        case TargetVersion::Rustc1_39:  return "1.39";
+        case TargetVersion::Rustc1_54:  return "1.54";
+        case TargetVersion::Rustc1_74:  return "1.74";
+        }
+        return "?";
+    }
+}
+
 ProgramParams::ProgramParams(int argc, char *argv[])
 {
     if( const auto* a = getenv("MRUSTC_TARGET_VER") )
@@ -919,6 +950,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         }
         else if( strcmp(a, "1.54") == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_54;
+        }
+        else if( strcmp(a, "1.74") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_74;
         }
         else {
         }
@@ -937,14 +971,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         // The following imitates rustc's version output (which the crate `rustc_version` tries to parse)
         // - Very much a hack
         if( strcmp(arg, "-vV") == 0 ) {
-            const char* rustc_target = "unknown";
-            switch(gTargetVersion)
-            {
-            case TargetVersion::Rustc1_19:  rustc_target = "1.19";  break;
-            case TargetVersion::Rustc1_29:  rustc_target = "1.29";  break;
-            case TargetVersion::Rustc1_39:  rustc_target = "1.39";  break;
-            case TargetVersion::Rustc1_54:  rustc_target = "1.54";  break;
-            }
+            const char* rustc_target = target_version_str(gTargetVersion);
 
             ::std::cout << "rustc " << rustc_target << ".100 (mrustc " << Version_GetString() << ")" << ::std::endl;
             ::std::cout << "binary: rustc" << ::std::endl;
@@ -1123,6 +1150,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                         exit(1);
                     }
                 }
+                else if( optname == "pause-after-start" ) {
+                    this->debug.pause = true;
+                }
                 else if( optname == "print-cfgs") {
                     no_optval();
                     this->print_cfgs = true;
@@ -1187,14 +1217,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 exit(0);
             }
             else if( strcmp(arg, "--version" ) == 0 ) {
-                const char* rustc_target = "unknown";
-                switch(gTargetVersion)
-                {
-                case TargetVersion::Rustc1_19:  rustc_target = "1.19";  break;
-                case TargetVersion::Rustc1_29:  rustc_target = "1.29";  break;
-                case TargetVersion::Rustc1_39:  rustc_target = "1.39";  break;
-                case TargetVersion::Rustc1_54:  rustc_target = "1.54";  break;
-                }
+                const char* rustc_target = target_version_str(gTargetVersion);
                 // NOTE: Starts the version with "rustc 1.29.100" so build scripts don't get confused
                 ::std::cout << "rustc " << rustc_target << ".100 (mrustc " << Version_GetString() << ")" << ::std::endl;
                 ::std::cout << "release: " << rustc_target << ".100" << ::std::endl;    // `autoconfig` looks for this line

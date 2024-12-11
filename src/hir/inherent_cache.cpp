@@ -15,14 +15,17 @@ void HIR::InherentCache::Lowest::insert(const Span& sp, const HIR::TypeImpl& imp
     const auto& type = impl.m_type;
     if(const auto* path = type.get_sort_path())
     {
+        //DEBUG(this->name << " named[" << *path << "] += impl" << impl.m_params.fmt_args() << " " << impl.m_type);
         this->named[*path].push_back(&impl);
     }
     else if( type.data().is_Path() || type.data().is_Generic() )
     {
+        //DEBUG(this->name << " generic += impl" << impl.m_params.fmt_args() << " " << impl.m_type);
         this->generic.push_back(&impl);
     }
     else
     {
+        //DEBUG(this->name << " non_named += impl" << impl.m_params.fmt_args() << " " << impl.m_type);
         this->non_named.push_back(&impl);
     }
 }
@@ -106,13 +109,15 @@ void HIR::InherentCache::Inner::insert(const Span& sp, const HIR::TypeRef& cur_t
         ASSERT_BUG(sp, te.path.m_data.is_Generic(), "Receiver path not a generic path - " << cur_ty);
         const auto& gp = te.path.m_data.as_Generic();
         ASSERT_BUG(sp, gp.m_params.m_types.size() > 0, "Receiver path has no type params (needs at least one) - " << cur_ty);
+        DEBUG("m_path[" << gp.m_path << "] += " << gp.m_params.m_types.at(0) << " impl" << impl.m_params.fmt_args() << " " << impl.m_type);
         m_path[gp.m_path].insert(sp, gp.m_params.m_types.at(0), impl);
         }
     }
 }
 void HIR::InherentCache::Inner::find(const Span& sp, const HIR::TypeRef& cur_ty_act, t_cb_resolve_type ty_res, InherentCache::inner_callback_t& cb) const
 {
-    const auto& cur_ty = ty_res(cur_ty_act);
+    const auto& cur_ty = ty_res.get_type(sp, cur_ty_act);
+    TRACE_FUNCTION_F("[Inner] " << cur_ty);
     m_byvalue.iterate(cur_ty, cb);
 
     const Inner* inner = nullptr;
@@ -157,7 +162,11 @@ void HIR::InherentCache::Inner::find(const Span& sp, const HIR::TypeRef& cur_ty_
 
     if(inner) {
         assert(inner_ty);
+        DEBUG("inner_ty = " << *inner_ty);
         inner->find(sp, *inner_ty, ty_res, cb);
+    }
+    else {
+        DEBUG("no wrapper");
     }
 }
 
@@ -167,6 +176,7 @@ void HIR::InherentCache::insert_all(const Span& sp, const HIR::TypeImpl& impl, c
     {
         const auto& name = m.first;
         const auto& fcn = m.second.data;
+        DEBUG(name << " " << fcn.m_receiver_type);
         struct H {
             static Inner& g(std::unique_ptr<Inner>& slot) {
                 if(!slot)   slot = std::make_unique<Inner>();
@@ -202,7 +212,6 @@ void HIR::InherentCache::insert_all(const Span& sp, const HIR::TypeImpl& impl, c
 void HIR::InherentCache::find(const Span& sp, const RcString& name, const HIR::TypeRef& ty, t_cb_resolve_type ty_res, callback_t cb) const
 {
     TRACE_FUNCTION_F(name << ", " << ty);
-    auto cb_resolve = [](const HIR::TypeRef& t)->const HIR::TypeRef& { return t; };
     // Callback that ensures that a potential impl fully matches the required receiver type
     inner_callback_t inner_cb = [&](const HIR::TypeRef& rough_self_ty, const HIR::TypeImpl& impl) {
         DEBUG("- " << rough_self_ty);
@@ -224,7 +233,7 @@ void HIR::InherentCache::find(const Span& sp, const RcString& name, const HIR::T
         }   getself;
 
         if( fcn.m_receiver == HIR::Function::Receiver::Custom ) {
-            if( fcn.m_receiver_type.match_test_generics(sp, ty, cb_resolve, getself) ) {
+            if( fcn.m_receiver_type.match_test_generics(sp, ty, ResolvePlaceholdersNop(), getself) ) {
                 ASSERT_BUG(sp, getself.detected_self_ty, "Unable to determine receiver type when matching " << fcn.m_receiver_type << " and " << ty);
                 cb(*getself.detected_self_ty, impl);
             }

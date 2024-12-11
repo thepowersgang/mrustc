@@ -107,6 +107,7 @@ static ManifestOverrides    s_overrides;
 namespace
 {
     void target_edit_from_kv(ErrorHandler& eh, PackageTarget& target, const TomlKeyValue& kv, unsigned base_idx);
+    void parse_edition(Edition& dst, ErrorHandler& eh, const TomlValue& value);
 }
 
 void Manifest_LoadOverrides(const ::std::string& s)
@@ -114,15 +115,140 @@ void Manifest_LoadOverrides(const ::std::string& s)
     s_overrides.load_from_toml(s);
 }
 
+WorkspaceManifest::WorkspaceManifest()
+{
+}
+WorkspaceManifest WorkspaceManifest::load_from_toml(const ::helpers::path& workspace_manifest_path)
+{
+    WorkspaceManifest   rv;
+    TomlFile    toml_file(workspace_manifest_path);
+    ErrorHandlerLex eh(toml_file.lexer());
+
+    auto dir = workspace_manifest_path.parent();
+
+    for(auto key_val : toml_file)
+    {
+        if( key_val.path[0] == "patch" )
+        {
+            DEBUG(key_val.path << " = " << key_val.value);
+            if( key_val.path.size() < 4 ) {
+                eh.error("Too-short path ", key_val.path);
+                continue ;
+            }
+            const auto& repo_name = key_val.path[1];
+            const auto& package_name = key_val.path[2];
+            // This is a dependency section
+            if( key_val.path[3] == "path" )
+            {
+                if( key_val.path.size() != 4 ) {
+                    eh.error(key_val.path, ": Wrong-length path ", key_val.path);
+                    continue ;
+                }
+                if( key_val.value.m_type != TomlValue::Type::String ) {
+                    eh.error(key_val.path, ": Incorrect type ", key_val.value);
+                    continue ;
+                }
+                if( repo_name == "crates-io" )
+                {
+                    // Kinda hacky to do overrides in the repository, but it works
+                    auto p = workspace_manifest_path.parent() / key_val.value.as_string();
+                    DEBUG("Override " << package_name << " = path " << p);
+                    rv.m_patches.emplace( package_name, std::move(p) );
+                }
+                else
+                {
+                    DEBUG("TODO: Handle patching other types of dependencies");
+                }
+            }
+            else
+            {
+                TODO("Handle workspace patch dependency frag '" << key_val.path[3] << "'");
+            }
+        }
+        else if( key_val.path[0] == "replace" )
+        {
+            DEBUG(key_val.path << " = " << key_val.value);
+            TODO(toml_file.lexer() << ": Handle [replace]");
+        }
+        else if( key_val.path[0] == "profile" )
+        {
+            // Igonore for now
+            DEBUG(key_val.path << " = " << key_val.value);
+        }
+        else if( key_val.path[0] == "workspace" )
+        {
+            DEBUG(key_val.path << " = " << key_val.value);
+            assert(key_val.path.size() > 1);
+            const auto& key = key_val.path[1];
+            if( key == "resolver" )
+            {
+                // Resolver version, doesn't really matter for minicargo?
+            }
+            else if( key == "members" || key == "exclude" )
+            {
+                // Ignore members list, for now.
+            }
+            else if( key == "package" )
+            {
+                // Default values for packages
+                assert(key_val.path.size() > 2);
+                const auto& key = key_val.path[2];
+                if( key == "edition" ) {
+                    parse_edition(rv.m_edition, eh, key_val.value);
+                }
+                else if( key == "rust-version" ) {
+                    // Ignore, that's future-me's problem
+                }
+                else if( key == "license" ) {
+                    // Documentation metdata
+                }
+                else {
+                    eh.error("Unknown item in [workspace.package] : `", key, "`");
+                }
+            }
+            else if( key == "dependencies" ) {
+                auto& dep_group = rv.m_dependencies;
+                ::std::vector<PackageRef>& dep_list =
+                    key == "dependencies" ? dep_group.main :
+                    key == "build-dependencies" ? dep_group.build :
+                    /*key == "dev-dependencies" ? */ dep_group.dev /*:
+                                                                               throw ""*/
+                    ;
+
+                assert(key_val.path.size() > 2);
+                const auto& depname = key_val.path[2];
+
+                // Find/create dependency descriptor
+                auto it = ::std::find_if(dep_list.begin(), dep_list.end(), [&](const auto& x) { return x.m_key == depname; });
+                bool was_added = (it == dep_list.end());
+                if( was_added )
+                {
+                    it = dep_list.insert(it, PackageRef{ depname });
+                }
+
+                it->fill_from_kv(eh, was_added, key_val, 3, nullptr, dir);
+            }
+            else {
+                eh.error("Unknown item in [workspace] `", key, "`");
+            }
+        }
+        else
+        {
+        }
+    }
+
+    return rv;
+}
+
 PackageManifest::PackageManifest()
 {
 }
 
-PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
+PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const WorkspaceManifest* wm/*=nullptr*/)
 {
     PackageManifest rv;
-    rv.m_manifest_path = path;
     auto package_dir = ::helpers::path(path).parent();
+    rv.m_manifest_dir = package_dir;
 
     TomlFile    toml_file(path);
     ErrorHandlerLex error_handler(toml_file.lexer());
@@ -142,7 +268,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
         DEBUG(key_val.path << " = " << key_val.value);
 
-        rv.fill_from_kv(error_handler, key_val);
+        rv.fill_from_kv(error_handler, wm, key_val);
     }
     if(overrides)
     {
@@ -151,13 +277,36 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             assert(key_val.path.size() > 0);
             DEBUG("ADD " << key_val.path << " = " << key_val.value);
 
-            rv.fill_from_kv(error_handler, key_val);
+            rv.fill_from_kv(error_handler, wm, key_val);
         }
     }
 
     if( rv.m_name == "" )
     {
         throw ::std::runtime_error(format("Manifest file ", path, " doesn't specify a package name"));
+    }
+
+    if( rv.m_enable_implicit_optional_dep_features )
+    {
+        auto cb2 = [&](const PackageRef& dep) {
+            rv.m_features[dep.key()].push_back( "dep:" + dep.key() );
+            };
+        auto cb = [&](const PackageManifest::Dependencies& deps) {
+            for(const auto& dep : deps.main) {
+                cb2(dep);
+            }
+            for(const auto& dep : deps.build) {
+                cb2(dep);
+            }
+            for(const auto& dep : deps.dev) {
+                cb2(dep);
+            }
+            };
+
+        cb(rv.m_dependencies);
+        for(const auto& td : rv.m_target_dependencies) {
+            cb(td.second);
+        }
     }
 
     // Default targets
@@ -282,8 +431,14 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
     return rv;
 }
 
+PackageManifest PackageManifest::magic_manifest(const char* name)
+{
+    PackageManifest rv;
+    rv.m_name = std::string("rustc-std-workspace-") + name;
+    return rv;
+}
 
-void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val)
+void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm, const TomlKeyValue& key_val)
 {
     auto& rv = *this;
 
@@ -359,6 +514,10 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             {
                 // Unknown.
             }
+            else if( key == "rust-version" )
+            {
+                // Minimum supported rust version, don't care?
+            }
             else if( key == "links" )
             {
                 if(rv.m_links != "" )
@@ -384,27 +543,27 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             }
             else if( key == "workspace" )
             {
-                if( rv.m_workspace_manifest.is_valid() )
-                {
-                    eh.warning("Duplicate workspace specification");
-                }
-                else
-                {
-                    rv.m_workspace_manifest = key_val.value.as_string();
-                }
+                // Handled in `main.cpp`
             }
             else if( key == "edition" )
             {
-                assert(key_val.path.size() == 2);
-                assert(key_val.value.m_type == TomlValue::Type::String);
-                if(key_val.value.as_string() == "2015") {
-                    rv.m_edition = Edition::Rust2015;
+                if( key_val.path.size() == 3 && key_val.path[2] == "workspace" ) {
+                    if( !wm ) {
+                        eh.error("Using edition.workspace with no workspace");
+                    }
+                    else if( key_val.value.as_bool() ) {
+                        if( wm->edition() == Edition::Unspec ) {
+                            eh.error("Using edition.workspace with workspace-specified edition");
+                        }
+                        rv.m_edition = wm->edition();
+                    }
                 }
-                else if(key_val.value.as_string() == "2018") {
-                    rv.m_edition = Edition::Rust2018;
+                else if( key_val.path.size() != 2 ) {
+                    // Can be `edition.workspace = true`
+                    eh.error("Malformed `edition`?");
                 }
                 else {
-                    eh.error("Unknown edition value ", key_val.value);
+                    parse_edition(rv.m_edition, eh, key_val.value);
                 }
             }
             else
@@ -474,7 +633,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                 section == "dependencies" ? dep_group.main :
                 section == "build-dependencies" ? dep_group.build :
                 /*section == "dev-dependencies" ? */ dep_group.dev /*:
-                                                                           throw ""*/
+                throw ""*/
                 ;
             assert(key_val.path.size() > 1);
 
@@ -488,7 +647,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                 it = dep_list.insert(it, PackageRef{ depname });
             }
 
-            it->fill_from_kv(eh, was_added, key_val, 2);
+            it->fill_from_kv(eh, was_added, key_val, 2, wm, m_manifest_dir);
         }
         else if( section == "patch" )
         {
@@ -509,13 +668,10 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             const auto& real_section = key_val.path[2];
             // Check if `cfg` currently applies.
             // - It can be a target spec, or a cfg(foo) same as rustc
-#if 1
-            auto& dep_group = rv.m_target_dependencies[cfg];
-#else
-            bool success;
+            // Parse and validate early
             if( cfg.substr(0, 4) == "cfg(" ) {
                 try {
-                    success = Cfg_Check(cfg.c_str());
+                    Cfg_Check(cfg.c_str(), {});
                 }
                 catch(const std::exception& e)
                 {
@@ -524,13 +680,10 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             }
             else {
                 // It's a target name
-                success = (cfg == TARGET_NAME);
             }
-            auto& dep_group = rv.m_dependencies;
 
-            // If so, parse as if the path was `real_section....`
-            if( success )
-#endif
+            auto& dep_group = rv.m_target_dependencies[cfg];
+
             {
                 if( real_section == "dependencies"
                     || real_section == "dev-dependencies" 
@@ -555,7 +708,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                         it = dep_list.insert(it, PackageRef{ depname });
                     }
 
-                    it->fill_from_kv(eh, was_added, key_val, 4);
+                    it->fill_from_kv(eh, was_added, key_val, 4, wm, m_manifest_dir);
                 }
                 else
                 {
@@ -579,20 +732,23 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             for(const auto& sv : key_val.value.m_sub_values)
             {
                 list->push_back( sv.as_string() );
+                if( list->back().compare(0, 4, "dep:") == 0 ) {
+                    //rv.m_enable_implicit_optional_dep_features = false;
+                }
             }
         }
         else if( section == "workspace" )
         {
-            // NOTE: This will be parsed in full by other code?
-            if( ! rv.m_workspace_manifest.is_valid() )
-            {
-                // TODO: if the workspace was specified via `[package] workspace` then error
-                rv.m_workspace_manifest = rv.m_manifest_path;
-            }
+            // NOTE: This is parsed in WorkspaceManifest::load_from_toml
         }
         // crates.io metadata
         else if( section == "badges" )
         {
+        }
+        else if( section == "cargo-features" )
+        {
+            //assert(key_val.path.size() == 1);
+            //key_val.value.m_sub_values;
         }
         else
         {
@@ -601,7 +757,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             // TODO: Prevent this from firing multiple times in a row.
         }
     }
-    }
+}
 
 namespace
 {
@@ -643,7 +799,7 @@ namespace
             assert(kv.path.size() == base_idx + 1);
             target.m_is_plugin = kv.value.as_bool();
         }
-        else if( key == "proc-macro" )
+        else if( key == "proc-macro" || key == "proc_macro" /* rustc-1.74.0-src/vendor/unic-langid-macros-impl/Cargo.toml */ )
         {
             assert(kv.path.size() == base_idx + 1);
             target.m_is_proc_macro = kv.value.as_bool();
@@ -656,16 +812,7 @@ namespace
         else if( key == "edition" )
         {
             assert(kv.path.size() == base_idx + 1);
-            assert(kv.value.m_type == TomlValue::Type::String);
-            if(kv.value.as_string() == "2015") {
-                target.m_edition = Edition::Rust2015;
-            }
-            else if(kv.value.as_string() == "2018") {
-                target.m_edition = Edition::Rust2018;
-            }
-            else {
-                eh.error("Unknown edition value ", kv.value);
-            }
+            parse_edition(target.m_edition, eh, kv.value);
         }
         else if( key == "crate-type" )
         {
@@ -698,15 +845,65 @@ namespace
                 target.m_required_features.push_back( sv.as_string() );
             }
         }
+        else if( key == "doc-scrape-examples" ) {
+        }
         else
         {
             eh.error("TODO: Handle target option `", key, "`");
         }
     }
+
+    void parse_edition(Edition& dst, ErrorHandler& eh, const TomlValue& value)
+    {
+        assert(value.m_type == TomlValue::Type::String);
+        if(value.as_string() == "2015") {
+            dst = Edition::Rust2015;
+        }
+        else if(value.as_string() == "2018") {
+            dst = Edition::Rust2018;
+        }
+        else if(value.as_string() == "2021") {
+            dst = Edition::Rust2021;
+        }
+        else {
+            eh.error("Unknown edition value ", value);
+        }
+    }
 }
 
-void PackageRef::fill_from_kv(ErrorHandler& eh, bool was_added, const TomlKeyValue& key_val, size_t base_idx)
+void PackageRef::fill_from_kv(
+    ErrorHandler& eh, bool was_added, const TomlKeyValue& key_val, size_t base_idx,
+    const WorkspaceManifest* wm, const ::helpers::path& base_dir
+    )
 {
+
+    if( key_val.path.size() >= base_idx+1 && key_val.path[base_idx] == "workspace" ) {
+        assert(base_idx >= 2);
+        //const auto& section = key_val.path[base_idx-2];
+        const auto& depname = key_val.path[base_idx-1];
+        if( key_val.value.as_bool() ) {
+            if( !wm ) {
+                eh.error("Using workspace depdency with no loaded workspace");
+            }
+            if( !was_added ) {
+                eh.warning("Workspace dependency already added?");
+            }
+            const auto& src_deps = wm->dependencies();
+            //const auto& src_deps =
+            //    section == "dependencies" ? wm->dependencies() :
+            //    section == "build-dependencies" ? wm->build_dependencies() :
+            //    /*section == "dev-dependencies" ? */ wm->dev_dependencies() /*:
+            //    throw ""*/
+            //    ;
+            auto s_it = ::std::find_if(src_deps.begin(), src_deps.end(), [&](const auto& x) { return x.m_key == depname; });
+            if( s_it == src_deps.end() ) {
+                eh.error("Unable to find dependency `", depname, "` in workspace");
+            }
+            *this = *s_it;
+        }
+        return ;
+    }
+
     if( key_val.path.size() == base_idx )
     {
         // Shorthand, picks a version from the package repository
@@ -734,7 +931,12 @@ void PackageRef::fill_from_kv(ErrorHandler& eh, bool was_added, const TomlKeyVal
         {
             assert(key_val.path.size() == base_idx+1);
             // Set path specification of the named depenency
-            this->m_path = key_val.value.as_string();
+            if( key_val.value.as_string() == "" ) {
+                this->m_path = base_dir;
+            }
+            else {
+                this->m_path = base_dir / key_val.value.as_string();
+            }
         }
         else if( attr == "git" )
         {
@@ -764,6 +966,11 @@ void PackageRef::fill_from_kv(ErrorHandler& eh, bool was_added, const TomlKeyVal
             assert(key_val.path.size() == base_idx+1);
             this->m_optional = key_val.value.as_bool();
         }
+        else if( attr == "public" )
+        {
+            assert(key_val.path.size() == base_idx+1);
+            this->m_public = key_val.value.as_bool();
+        }
         else if( attr == "default-features" || attr == "default_features" ) // Huh, either is valid?
         {
             assert(key_val.path.size() == base_idx+1);
@@ -784,7 +991,7 @@ void PackageRef::fill_from_kv(ErrorHandler& eh, bool was_added, const TomlKeyVal
         else
         {
             // TODO: Error
-            eh.error("ERROR: Unkown dependency attribute `", attr, "` on dependency `", this->m_name, "`");
+            eh.error("ERROR: Unknown dependency attribute `", attr, "` on dependency `", this->m_name, "`");
         }
     }
 }
@@ -794,8 +1001,7 @@ void PackageManifest::dump(std::ostream& os) const
     os
         << "PackageManifest {\n"
         << "  '" << m_name << "' v" << m_version << (m_links != "" ? " links=" : "") << m_links << "\n"
-        << "  m_manifest_path = " << m_manifest_path << "\n"
-        << "  m_workspace_manifest = " << m_workspace_manifest << "\n"
+        << "  m_manifest_dir = " << m_manifest_dir << "\n"
         << "  m_edition = " << (int)m_edition << "\n"
         << "  m_dependencies = [\n";
     this->iter_main_dependencies([&](const PackageRef& dep) {
@@ -877,9 +1083,12 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
         {
             auto it = ::std::find(m_active_features.begin(), m_active_features.end(), feat);
             if(it != m_active_features.end()) {
+                DEBUG("`" << feat << "` already active");
                 continue ;
             }
+            DEBUG("`" << feat << "` activated");
             m_active_features.push_back(feat);
+            m_dependencies_loaded = false;
         }
     }
 
@@ -889,7 +1098,9 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
             DEBUG("`" << feat << "` already active");
         }
         else {
+            DEBUG("`" << feat << "` activated");
             m_active_features.push_back(feat);
+            m_dependencies_loaded = false;
         }
         };
     for(const auto& feat : features)
@@ -923,11 +1134,19 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                 auto slash_pos = sub_feat.find('/');
                 if( slash_pos != ::std::string::npos ) {
                     ::std::string depname = sub_feat.substr(0, slash_pos);
+                    bool enable_optional = true;
+                    if( depname.back() == '?' ) {
+                        depname.pop_back();
+                        enable_optional = false;
+                    }
+                    else {
+                        add_feature(depname);
+                    }
                     ::std::string depfeat = sub_feat.substr(slash_pos+1);
                     DEBUG("Activate feature '" << depfeat << "' from dependency '" << depname << "'");
                     iter_all_deps([&](PackageRef& dep) {
                         if(dep.m_key == depname) {
-                            dep.m_optional_enabled = true;
+                            dep.m_optional_enabled |= enable_optional;
                             dep.m_features.push_back(depfeat);
                             // TODO: Does this need to call `set_features` again?
                         }
@@ -940,7 +1159,7 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
         }
 
         iter_all_deps([&](PackageRef& dep) {
-            if(dep.m_key == featname) {
+            if( "dep:"+dep.m_key == featname ) {
                 dep.m_optional_enabled = true;
             }
             });
@@ -952,8 +1171,12 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
 void PackageManifest::load_dependencies(Repository& repo, bool include_build, bool include_dev)
 {
     TRACE_FUNCTION_F(m_name);
+    if( m_dependencies_loaded ) {
+        DEBUG("Skip loading depencencies for " << m_name);
+        return ;
+    }
+    m_dependencies_loaded = true;
     DEBUG("Loading depencencies for " << m_name);
-    auto base_path = ::helpers::path(m_manifest_path).parent();
 
     // 2. Recursively load dependency manifests
     iter_main_dependencies([&](const PackageRef& dep_c) {
@@ -963,11 +1186,11 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build, bo
             return ;
         }
         try {
-            dep.load_manifest(repo, base_path, include_build);
+            dep.load_manifest(repo, m_manifest_dir, include_build);
         }
         catch(const std::exception& )
         {
-            std::cerr << "While processing " << this->manifest_path() << std::endl;
+            std::cerr << "While processing " << this->m_manifest_dir << std::endl;
             throw ;
         }
     });
@@ -983,11 +1206,11 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build, bo
                 return ;
             }
             try {
-                dep.load_manifest(repo, base_path, include_build);
+                dep.load_manifest(repo, m_manifest_dir, include_build);
             }
             catch(const std::exception& )
             {
-                std::cerr << "While processing build deps " << this->manifest_path() << std::endl;
+                std::cerr << "While processing build deps " << this->m_manifest_dir << std::endl;
                 throw ;
             }
         });
@@ -1003,11 +1226,11 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build, bo
                 return ;
             }
             try {
-                dep.load_manifest(repo, base_path, include_build);
+                dep.load_manifest(repo, m_manifest_dir, include_build);
             }
             catch(const std::exception& )
             {
-                std::cerr << "While processing dev deps " << this->manifest_path() << std::endl;
+                std::cerr << "While processing dev deps " << m_manifest_dir << std::endl;
                 throw ;
             }
         });
@@ -1018,7 +1241,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
 {
     ::std::ifstream is( path );
     if( !is.good() )
-        throw ::std::runtime_error(format("Unable to open build script file '" + path + "' for ", this->m_manifest_path));
+        throw ::std::runtime_error(format("Unable to open build script file '" + path + "' for ", this->m_manifest_dir));
 
     BuildScriptOutput   rv;
 
@@ -1133,61 +1356,80 @@ void PackageManifest::load_build_script(const ::std::string& path)
     m_build_script_output = rv;
 }
 
+std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo, const ::helpers::path& base_path)
+{
+    if( m_manifest ) {
+        return m_manifest;
+    }
+    // If the path isn't set, check for:
+    // - Git (checkout and use)
+    // - Version and repository (check vendored, check cache, download into cache)
+    if( this->has_git() )
+    {
+        DEBUG("Load dependency " << this->name() << " from git");
+        throw "TODO: Git";
+    }
+
+    if( !this->get_version().m_bounds.empty() )
+    {
+        DEBUG("Load dependency " << this->name() << " from repo");
+        auto rv = repo.find(this->name(), this->get_version());
+        if( rv ) {
+            return rv;
+        }
+    }
+
+    // NOTE: kernel32-sys specifies both a path and a version for its `winapi` dep
+    // - Ideally, path would be processed first BUT the path in this case points at the workspace (which isn't handled well)
+    if( !m_manifest && this->has_path() )
+    {
+        DEBUG("Load dependency " << m_name << " from path " << m_path);
+        // Search for a copy of this already loaded
+        //auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
+        auto path = ::helpers::path(m_path) / "Cargo.toml";
+        if( ::std::ifstream(path.str()).good() )
+        {
+            try
+            {
+                m_manifest = repo.from_path(path);
+            }
+            catch(const ::std::exception& e)
+            {
+                throw ::std::runtime_error( format("Error loading manifest '", path, "' - ", e.what()) );
+            }
+        }
+        else
+        {
+            throw ::std::runtime_error(format("Cannot open manifest ", path, " for ", this->name()));
+        }
+    }
+
+    if( !(this->has_git() || !this->get_version().m_bounds.empty() || this->has_path()) )
+    {
+        //DEBUG("Load dependency " << this->name() << " from repo");
+        //m_manifest = repo.find(this->name(), this->get_version());
+        throw ::std::runtime_error(format("No source for ", this->name()));
+    }
+
+    if( !m_manifest )
+    {
+        if( m_name == "rustc-std-workspace-alloc" )
+        {
+            static std::shared_ptr<PackageManifest> s_manifest_alloc = std::make_shared<PackageManifest>(PackageManifest::magic_manifest("alloc"));
+            m_manifest = s_manifest_alloc;
+        }
+    }
+
+    return m_manifest;
+}
 void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps)
 {
     TRACE_FUNCTION_F(this->m_name);
-    if( !m_manifest )
-    {
-        // If the path isn't set, check for:
-        // - Git (checkout and use)
-        // - Version and repository (check vendored, check cache, download into cache)
-        if( this->has_git() )
-        {
-            DEBUG("Load dependency " << this->name() << " from git");
-            throw "TODO: Git";
-        }
-
-        if( !this->get_version().m_bounds.empty() )
-        {
-            DEBUG("Load dependency " << this->name() << " from repo");
-            m_manifest = repo.find(this->name(), this->get_version());
-        }
-
-        // NOTE: kernel32-sys specifies both a path and a version for its `winapi` dep
-        // - Ideally, path would be processed first BUT the path in this case points at the workspace (which isn't handled well)
-        if( !m_manifest && this->has_path() )
-        {
-            DEBUG("Load dependency " << m_name << " from path " << m_path);
-            // Search for a copy of this already loaded
-            auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
-            if( ::std::ifstream(path.str()).good() )
-            {
-                try
-                {
-                    m_manifest = repo.from_path(path);
-                }
-                catch(const ::std::exception& e)
-                {
-                    throw ::std::runtime_error( format("Error loading manifest '", path, "' - ", e.what()) );
-                }
-            }
-            else
-            {
-                throw ::std::runtime_error(format("Cannot open manifest ", path, " for ", this->name()));
-            }
-        }
-
-        if( !(this->has_git() || !this->get_version().m_bounds.empty() || this->has_path()) )
-        {
-            //DEBUG("Load dependency " << this->name() << " from repo");
-            //m_manifest = repo.find(this->name(), this->get_version());
-            throw ::std::runtime_error(format("No source for ", this->name()));
-        }
-
-        if( !m_manifest )
-        {
-            throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));
-        }
+    if( !m_manifest ) {
+        m_manifest = load_manifest_raw(repo, base_path);
+    }
+    if( !m_manifest ) {
+        throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));
     }
 
     m_manifest->set_features(this->m_features, this->m_use_default_features);
@@ -1230,6 +1472,7 @@ std::ostream& operator<<(std::ostream& os, const PackageRef& pr)
 PackageVersion PackageVersion::from_string(const ::std::string& s)
 {
     PackageVersion  rv;
+    rv.patch_set = false;
     ::std::istringstream    iss { s };
     iss >> rv.major;
     iss.get();
@@ -1244,6 +1487,13 @@ PackageVersion PackageVersion::from_string(const ::std::string& s)
         rv.patch = 0;
         rv.patch_set = false;
     }
+    if(iss.peek() == '+') {
+        iss.get();
+        iss >> rv.free_text;
+    }
+    //if( iss.peek() != EOF ) {
+    //    throw ::std::invalid_argument(::format("Failed to parse `", s, "`, stray data after end - got ", iss.peek()));
+    //}
     return rv;
 }
 
@@ -1327,16 +1577,28 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
         if( pos == s.size() )
             throw ::std::runtime_error("Bad version string - Expected version number");
 
-        PackageVersion  v;
-        v.major = H::parse_i(s, pos);
+        PackageVersion  v { H::parse_i(s, pos) };
         if( s[pos] == '.' )
         {
             pos ++;
+            if( s[pos] == '*' ) {
+                pos ++;
+                // `0.*` means anything from 0.x, encode that as `>=` and a `<`
+                rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::GreaterEqual, v });
+                rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::Less, PackageVersion { v.major + 1} });
+
+                while( pos < s.size() && isblank(s[pos]) )
+                    pos ++;
+                if(pos == s.size())
+                    break ;
+                continue ;
+            }
             v.minor = H::parse_i(s, pos);
             if(s[pos] == '.')
             {
                 pos ++;
                 v.patch = H::parse_i(s, pos);
+                v.patch_set = true;
 
                 if( pos < s.size() && s[pos] == '-' )
                 {
@@ -1352,6 +1614,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             else
             {
                 v.patch = 0;
+                v.patch_set = false;
             }
         }
         else
@@ -1361,6 +1624,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
                 ty = PackageVersionSpec::Bound::Type::Compatible;
             v.minor = 0;
             v.patch = 0;
+            v.patch_set = false;
         }
 
         rv.m_bounds.push_back(PackageVersionSpec::Bound { ty, v });
@@ -1380,16 +1644,16 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
     {
         switch(b.ty)
         {
-        case Bound::Type::Compatible:
+        case Bound::Type::Compatible: {
             // ^ rules are >= specified, and < next major/breaking
-            if( !(v >= b.ver) )
+            if( !(v >= b.ver.prev_compat()) )
                 return false;
             if( !(v < b.ver.next_breaking()) )
                 return false;
-            break;
+            break; }
         case Bound::Type::MinorCompatible:
             // ~ rules are >= specified, and < next minor
-            if( !(v >= b.ver) )
+            if( !(v >= b.ver.prev_compat()) )
                 return false;
             if( !(v < b.ver.next_minor()) )
                 return false;

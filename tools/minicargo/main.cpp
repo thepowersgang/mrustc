@@ -9,6 +9,7 @@
 #include <iostream>
 #include <cstring>  // strcmp
 #include <map>
+#include <set>
 #include <debug.h>
 #include "manifest.h"
 #include <helpers.h>
@@ -78,6 +79,7 @@ int main(int argc, const char* argv[])
         Debug_DisablePhase("Load Overrides");
         Debug_DisablePhase("Load Root");
         Debug_DisablePhase("Load Workspace");
+        Debug_DisablePhase("Resolve Dependencies");
         Debug_DisablePhase("Load Dependencies");
         Debug_DisablePhase("Enumerate Build");
         Debug_DisablePhase("Run Build");
@@ -100,6 +102,7 @@ int main(int argc, const char* argv[])
         }
 
         auto bs_override_dir = opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path();
+        auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
 
         Cfg_SetTarget(opts.target);
 
@@ -109,23 +112,11 @@ int main(int argc, const char* argv[])
             Manifest_LoadOverrides(opts.manifest_overrides);
         }
 
-        // 1. Load the Cargo.toml file from the passed directory
-        Debug_SetPhase("Load Root");
-        auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
-        auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
-        m.set_features(opts.features, !opts.no_default_features);
-
-        if(false)
-        {
-            m.dump(std::cout);
-        }
-
         Debug_SetPhase("Load Workspace");
-        auto workspace_manifest_path = m.workspace_path();
-        if( !workspace_manifest_path.is_valid() )
+        WorkspaceManifest   workspace_manifest;
+        ::helpers::path workspace_manifest_path;
         {
-            auto p = helpers::path( m.manifest_path() );
-            p.pop_component();  // remove `Cargo.toml`
+            auto p = dir / ".";
             // Search parent dir and up (pop current dir and then start checking)
             while( p.pop_component() )
             {
@@ -143,6 +134,15 @@ int main(int argc, const char* argv[])
                         if( key_val.path[0] == "workspace" )
                         {
                             is_workspace = true;
+                            workspace_manifest_path = pp;
+                            break;
+                        }
+                        if( key_val.path[0] == "package" && key_val.path[1] == "workspace" )
+                        {
+                            // TODO: Is this only valid when `p == dir`?
+                            is_workspace = true;
+                            workspace_manifest_path = key_val.value.as_string();
+                            workspace_manifest_path /= "Cargo.toml";
                             break;
                         }
                     }
@@ -150,7 +150,6 @@ int main(int argc, const char* argv[])
 
                 if( is_workspace )
                 {
-                    workspace_manifest_path = pp;
                     break;
                 }
             }
@@ -162,58 +161,150 @@ int main(int argc, const char* argv[])
         else
         {
             DEBUG("Workspace manifest " << workspace_manifest_path);
-            TomlFile    toml_file(workspace_manifest_path);
+            workspace_manifest = WorkspaceManifest::load_from_toml(workspace_manifest_path);
+            DEBUG("- Applying patches");
+            for(const auto& p : workspace_manifest.patches()) {
+                repo.add_patch_path(p.first, p.second);
+            }
+            repo.set_workspace(workspace_manifest);
+        }
 
-            for(auto key_val : toml_file)
+        // 1. Load the Cargo.toml file from the passed directory
+        Debug_SetPhase("Load Root");
+        auto m = PackageManifest::load_from_toml( dir / "Cargo.toml", &workspace_manifest );
+        m.set_features(opts.features, !opts.no_default_features);
+
+        if(false)
+        {
+            m.dump(std::cout);
+        }
+
+        // Resolve dependencies to ensure only one version of each semver line exists
+        {
+            Debug_SetPhase("Resolve Dependencies");
+            struct SemverRelease {
+                unsigned level;
+                unsigned version;
+                static SemverRelease for_package(const PackageVersion& ver) {
+                    if( ver.major != 0 ) {
+                        return SemverRelease { 0, ver.major };
+                    }
+                    if( ver.minor != 0 ) {
+                        return SemverRelease { 1, ver.minor };
+                    }
+                    return SemverRelease { 2, ver.patch };
+                }
+                int ord(const SemverRelease& x) const {
+                    if( level != x.level )  return level < x.level ? -1 : 1;
+                    if( version != x.version )  return version < x.version ? -1 : 1;
+                    return 0;
+                }
+                bool operator==(const SemverRelease& x) const {
+                    return ord(x) == 0;
+                }
+                bool operator<(const SemverRelease& x) const {
+                    return ord(x) == -1;
+                }
+            };
+            struct Rule {
+                std::string package;
+                SemverRelease   ver;
+
+                static Rule for_manifest(const PackageManifest& m) {
+                    return Rule { m.name(), SemverRelease::for_package(m.version()) };
+                }
+                int ord(const Rule& x) const {
+                    if( package != x.package )  return package < x.package ? -1 : 1;
+                    return ver.ord(x.ver);
+                }
+                bool operator==(const Rule& x) const {
+                    return ord(x) == 0;
+                }
+                bool operator<(const Rule& x) const {
+                    return ord(x) == -1;
+                }
+            };
+            // a list of rules added whenever there's a conflict
+            //std::map<Rule, std::vector<PackageVersionSpec>>   rules;
+            struct LockfileEnumState {
+                const PackageManifest&  root;
+                /// Package seen/selected for each semver version line
+                std::map<Rule, const PackageManifest*> selected_versions;
+                /// Which manfiests have been seen so far
+                std::set<const PackageManifest*> seen_manifests;
+                /// Stack of packages to visit
+                std::vector<const PackageManifest*> visit_stack;
+
+                LockfileEnumState(const PackageManifest& root): root(root) {
+                    reset();
+                }
+                void reset() {
+                    selected_versions.clear();
+                    seen_manifests.clear();
+                    visit_stack.clear();
+                    visit_stack.push_back(&root);
+                }
+                const PackageManifest* pop() {
+                    if( visit_stack.empty() ) {
+                        return nullptr;
+                    }
+                    else {
+                        auto rv = visit_stack.back();
+                        visit_stack.pop_back();
+                        return rv;
+                    }
+                }
+            } s(m);
+            while(const auto* cur_manifest = s.pop())
             {
-                if( key_val.path[0] == "patch" )
+                auto base_path = cur_manifest->directory();
+                TRACE_FUNCTION_F(cur_manifest->name() << " " << cur_manifest->version() << " (" << base_path << ")");
+
+                // Enumerate all non-dev dependencies (don't care about features in this stage)
+                ::std::vector<const PackageRef*>    deps;
+                cur_manifest->iter_main_dependencies([&](const PackageRef& dep_c) { deps.push_back(&dep_c); });
+                cur_manifest->iter_build_dependencies([&](const PackageRef& dep_c) { deps.push_back(&dep_c); });
+
+                for(const auto* dep_ref : deps)
                 {
-                    if( key_val.path.size() < 4 ) {
-                        DEBUG("Too-short path " << key_val.path);
+                    bool is_repo = !dep_ref->get_version().m_bounds.empty();
+                    const auto* dep = const_cast<PackageRef&>(*dep_ref).load_manifest_raw(repo, base_path).get();
+                    if( !dep ) {
+                        DEBUG("Failed to load dependency: " << *dep_ref);
                         continue ;
                     }
-                    const auto& repo_name = key_val.path[1];
-                    const auto& package_name = key_val.path[2];
-                    // This is a dependency section
-                    if( key_val.path[3] == "path" )
+                    if( s.seen_manifests.insert(dep).second )
                     {
-                        if( key_val.path.size() != 4 ) {
-                            DEBUG("Wrong-length path " << key_val.path);
-                            continue ;
-                        }
-                        if( key_val.value.m_type != TomlValue::Type::String ) {
-                            DEBUG("Incorrect type " << key_val.value);
-                            continue ;
-                        }
-                        if( repo_name == "crates-io" )
+                        s.visit_stack.push_back(dep);
+
+                        // If this is from the repository (i.e. not a path/git dependency)
+                        if( is_repo )
                         {
-                            // Kinda hacky to do overrides in the repository, but it works
-                            auto p = workspace_manifest_path.parent() / key_val.value.as_string();
-                            DEBUG("Override " << package_name << " = path " << p);
-                            repo.add_patch_path(package_name, p);
-                        }
-                        else
-                        {
-                            DEBUG("TODO: Handle patching other types of dependencies");
+                            // Then check if it conflicts with a previously-selected dependency
+                            auto r = s.selected_versions.insert(std::make_pair( Rule::for_manifest(*dep), dep ));
+                            const auto* prev_dep = r.first->second;
+                            if( prev_dep != dep )
+                            {
+                                // Uh-oh, conflict
+                                // - Check if the existing one is a lower version, if it is then no issue
+                                // - Otherwise, we need to blacklist `r.first->second` and restart
+                                if( prev_dep->version() < dep->version() ) {
+                                    repo.blacklist_dependency(dep);
+                                    // No need to restart
+                                }
+                                else {
+                                    repo.blacklist_dependency(prev_dep);
+                                    // Reset the enumeration state, but keep the blacklist
+                                    s.reset();
+                                    break;
+                                }
+                            }
                         }
                     }
-                    else
-                    {
-                        TODO("Handle workspace patch dependency frag '" << key_val.path[3] << "'");
-                    }
-                }
-                else if( key_val.path[0] == "replace" )
-                {
-                    TODO(toml_file.lexer() << ": Handle [replace]");
-                }
-                else if( key_val.path[0] == "profile" )
-                {
-                    // Igonore for now
-                }
-                else
-                {
                 }
             }
+
+            // TODO: Save the contents of `s.selected_versions` into a lockfile?
         }
 
         // 2. Load all dependencies

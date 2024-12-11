@@ -73,11 +73,13 @@ public:
         }
     };
 private:
+    const char* m_start;
     const char* m_pos;
     Tok m_cur;
 
 public:
     CfgParseLexer(const char* s):
+        m_start(s),
         m_pos(s),
         m_cur(nullptr,nullptr)
     {
@@ -306,7 +308,7 @@ bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& fea
 {
     auto name_tok = p.consume();
     if( name_tok.ty() != CfgParseLexer::Tok::Ident )
-        throw ::std::runtime_error("Expected an identifier");
+        throw ::std::runtime_error(format("Failed to parse cfg: Expected an identifier"));
     auto name = name_tok.to_string();
     // Combinators
     if( p.consume_if('(') ) {
@@ -318,17 +320,19 @@ bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& fea
         }
         else if( name == "all" ) {
             rv = true;
-            do
-            {
-                rv &= check_cfg(p, features);
-            } while(p.consume_if(','));
+            if( p.cur() != ')' ) {
+                do {
+                    rv &= check_cfg(p, features);
+                } while(p.consume_if(','));
+            }
         }
         else if( name == "any" ) {
             rv = false;
-            do
-            {
-                rv |= check_cfg(p, features);
-            } while(p.consume_if(','));
+            if( p.cur() != ')' ) {
+                do {
+                    rv |= check_cfg(p, features);
+                } while(p.consume_if(','));
+            }
         }
         else {
             throw std::runtime_error(format("Unknown operator in cfg `", name, "`"));

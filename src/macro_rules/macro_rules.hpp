@@ -36,6 +36,12 @@ TAGGED_UNION(MacroExpansionEnt, Token,
         })
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x);
+static const unsigned int NAMEDVALUE_VALMASK = ((1<<30) - 1);
+static const unsigned int NAMEDVALUE_TY_MAGIC = 1<<30;
+static const unsigned int NAMEDVALUE_MAGIC_CRATE = NAMEDVALUE_TY_MAGIC | 0;
+static const unsigned int NAMEDVALUE_MAGIC_INDEX = NAMEDVALUE_TY_MAGIC | 1;
+static const unsigned int NAMEDVALUE_TY_IGNORE = 2<<30;
+static const unsigned int NAMEDVALUE_TY_COUNT = 3<<30;
 
 /// Matching pattern entry
 struct MacroPatEnt
@@ -182,16 +188,21 @@ public:
     /// Marks if this macro should be exported from the defining crate
     bool m_exported = false;
 
+    bool m_is_macro_item = false;
+
     /// Crate that defined this macro
     /// - Populated on deserialise if not already set
     RcString   m_source_crate;
+    AST::Edition m_edition;
 
     Ident::Hygiene  m_hygiene;
 
     /// Expansion rules
     ::std::vector<MacroRulesArm>  m_rules;
 
-    MacroRules()
+    MacroRules(RcString source_crate, AST::Edition edition)
+        : m_source_crate(std::move(source_crate))
+        , m_edition(edition)
     {
     }
     virtual ~MacroRules();

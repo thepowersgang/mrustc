@@ -99,6 +99,11 @@ namespace {
                 }
             }
             }
+        TU_ARMA(Function, ce) {
+            return ::MIR::Constant::make_Function({
+                box$(params.monomorph(resolve, *ce.p))
+                });
+            }
         TU_ARMA(ItemAddr, ce) {
             if(!ce)
                 return ::MIR::Constant::make_ItemAddr({});
@@ -349,7 +354,7 @@ namespace {
         (If,
             terminator = ::MIR::Terminator::make_If({
                 monomorph_LValue(resolve, params, e.cond),
-                e.bb0, e.bb1
+                e.bb_true, e.bb_false
                 });
             ),
         (Switch,
@@ -420,7 +425,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             }
         } nvs;
         auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
-        eval.resolve.set_both_generics_raw(pp.gdef_impl, nullptr);
+        eval.resolve.set_both_generics_raw(pp.gdef_impl, &c.m_params);
         MonomorphState   ms;
         ms.self_ty = pp.self_type.clone();
         ms.pp_impl = &pp.pp_impl;

@@ -707,6 +707,7 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
+    Cfg_SetValue("target_abi", "llvm"); // This is a lie, but hopefully works?
     if(g_target.m_arch.m_atomics.u8)    { Cfg_SetValue("target_has_atomic", "8"  ); Cfg_SetValue("target_has_atomic_load_store", "8"  ); Cfg_SetValue("target_has_atomic_equal_alignment", "8"  ); }
     if(g_target.m_arch.m_atomics.u16)   { Cfg_SetValue("target_has_atomic", "16" ); Cfg_SetValue("target_has_atomic_load_store", "16" ); Cfg_SetValue("target_has_atomic_equal_alignment", "16" ); }
     if(g_target.m_arch.m_atomics.u32)   { Cfg_SetValue("target_has_atomic", "32" ); Cfg_SetValue("target_has_atomic_load_store", "32" ); Cfg_SetValue("target_has_atomic_equal_alignment", "32"); }
@@ -898,6 +899,12 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         }
         return true;
         }
+    TU_ARMA(NamedFunction, te) {
+        // Zero size
+        out_size = 0;
+        out_align = 1;
+        return true;
+        }
     TU_ARMA(Function, te) {
         // Pointer size
         out_size = g_target.m_arch.m_pointer_bits / 8;
@@ -1010,7 +1017,9 @@ namespace {
         AllButFinal,
         All,
     };
-    // Sort fields with lowest alignment first (and putting smallest fields of equal alignment earlier)
+    /// Sort fields with lowest alignment first (and putting smallest fields of equal alignment earlier)
+    /// TODO: Why? It looks like this allows some better niche optimisations
+    /// HOWEVER. It breaks an assumption in 1.74 `std::path::Path` (worked around in `Wtf8Buf` patch)
     bool sortfn_struct_fields(const Ent& a, const Ent& b) {
         return a.align != b.align ? a.align < b.align : a.size < b.size;
     }
@@ -1207,7 +1216,9 @@ namespace {
             } break;
         TU_ARM(ty.data(), Borrow, _te) { (void)_te;
             //out_path.sub_fields.push_back(0);
-            Target_GetSizeOf(sp, resolve, ty, out_path.size);
+            // TODO: Only return a single-pointer size
+            //Target_GetSizeOf(sp, resolve, ty, out_path.size);
+            out_path.size = Target_GetPointerBits() / 8;
             return true;
             } break;
         TU_ARM(ty.data(), Function, _te) (void)_te;
@@ -1509,7 +1520,7 @@ namespace {
                 for(const auto& var : e)
                 {
                     variants.push_back({ monomorph(var.type), {} });
-                    TRACE_FUNCTION_F("");
+                    TRACE_FUNCTION_F("Variant #" << (&var - e.data()));
                     if( var.type == ::HIR::TypeRef::new_unit() ) {
                         continue ;
                     }
@@ -1523,12 +1534,24 @@ namespace {
                 if( enm.m_tag_repr == ::HIR::Enum::Repr::Auto )
                 {
                     // Non-zero optimisation
-                    if( rv.variants.is_None() )
+                    if( rv.variants.is_None() && variants.size() == 2 )
                     {
-                        if( e.size() == 2 && (e[0].type == ::HIR::TypeRef::new_unit() || e[1].type == ::HIR::TypeRef::new_unit()) )
+                        // If only one variant has a size of 0, then look for a nonzero in the variant list
+                        size_t sizes[2] = {0,0};
+                        for(size_t i = 0; i < 2; i ++) {
+                            for(const auto& ent : variants[i].ents) {
+                                sizes[i] += ent.size;
+                            }
+                        }
+                        DEBUG("sizes = {" << sizes[0] << "," << sizes[1] << "}");
+                        auto min_size = ::std::min(sizes[0],sizes[1]);
+                        auto max_size = ::std::max(sizes[0],sizes[1]);
+                        // If one is zero and one is non-zero
+                        if( min_size == 0 && max_size > 0 )
                         {
                             // Check for a non-zero path in any of those
-                            unsigned nz_var = (e[0].type == ::HIR::TypeRef::new_unit() ? 1 : 0);
+                            unsigned nz_var = (sizes[0] == 0 ? 1 : 0);
+                            DEBUG("Variant #" << nz_var << " is populated, checking for NonZero");
                             for( size_t i = 0; i < variants[nz_var].ents.size(); i ++ )
                             {
                                 TypeRepr::FieldPath nz_path;
@@ -1552,6 +1575,59 @@ namespace {
                                 }
                             }
                         }
+                        // DISABLED: This doesn't work properly
+                        // - Downstream assumes `NonZero` means that one element is zero-sized
+                        // - Calling `Target_GetTypeRepr` generates the variant early - too lazy to reimplement logic
+                        #if 0  
+                        else if( min_size < max_size )
+                        {
+                            unsigned big_var = (sizes[0] == max_size ? 0 : 1);
+                            DEBUG("Variant #" << big_var << " is bigger, checking for usable NonZero");
+                            for( size_t i = 0; i < variants[big_var].ents.size(); i ++ )
+                            {
+                                TypeRepr::FieldPath nz_path;
+                                if( get_nonzero_path(sp, resolve, variants[big_var].ents[i].ty, nz_path) )
+                                {
+                                    nz_path.index = i;
+                                    auto nz_ofs = Target_GetTypeRepr(sp, resolve, variants[big_var].type)->get_offset(sp, resolve, nz_path);
+                                    DEBUG("Found Nonzero @"<<nz_ofs<<"+" << nz_path.size);
+                                    // This optimisation only works if the non-zero field is able to fit either before or after the smaller variant
+                                    if( nz_ofs + nz_path.size + min_size <= max_size || nz_ofs >= min_size )
+                                    {
+                                        bool is_after = nz_ofs >= min_size;
+                                        // If the non-zero field is at the start, then the second field must be offset by that
+                                        auto small_var_ofs = is_after ? 0 : nz_ofs + nz_path.size;
+
+                                        nz_path.sub_fields.push_back(i);
+                                        nz_path.index = big_var;
+                                        ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
+                                        DEBUG("nz_path = " << nz_path.sub_fields);
+
+                                        size_t size0, size1;
+                                        size_t align0, align1;
+                                        Target_GetSizeAndAlignOf(sp, resolve, variants[0].type, size0, align0);
+                                        Target_GetSizeAndAlignOf(sp, resolve, variants[1].type, size1, align1);
+                                        // Ensure that `ofs` is aligned correctly for that variant
+                                        {
+                                            auto ofs_align = (big_var == 0 ? align1 : align0);
+                                            auto err = small_var_ofs % ofs_align;
+                                            if(err != 0) {
+                                                small_var_ofs += ofs_align - err;
+                                            }
+                                        }
+                                        rv.size = max_size;
+                                        rv.align = std::max(align0, align1);
+                                        rv.fields.push_back({ big_var == 0 ? 0 : small_var_ofs, std::move(variants[0].type) });
+                                        rv.fields.push_back({ big_var == 0 ? small_var_ofs : 0, std::move(variants[1].type) });
+                                        rv.variants = TypeRepr::VariantMode::make_NonZero({ nz_path, 1 - big_var });
+                                        assert(rv.fields[0].offset + size0 <= max_size);
+                                        assert(rv.fields[1].offset + size1 <= max_size);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        #endif
                     }   // non-zero
 
                     // Niche optimisation

@@ -27,6 +27,7 @@ public:
         ConstEval,
         TypecheckRequest,
         Typecheck,
+        PostTypecheck,
         SbcRequest,
         Sbc,
         ExpandRequest,

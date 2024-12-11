@@ -128,7 +128,11 @@ TAGGED_UNION(TypeData, None,
         }),
     (Array, struct {
         ::std::unique_ptr<TypeRef> inner;
+        // If `nullptr` - this is an inferred size
         ::std::shared_ptr<AST::ExprNode> size;
+        }),
+    (Slice, struct {
+        ::std::unique_ptr<TypeRef> inner;
         }),
     (Generic, struct {
         RcString name;
@@ -234,7 +238,7 @@ public:
     struct TagUnsizedArray {};
     TypeRef(TagUnsizedArray , Span sp, TypeRef inner_type):
         m_span(mv$(sp)),
-        m_data(TypeData::make_Array({ ::make_unique_ptr(mv$(inner_type)), ::std::shared_ptr<AST::ExprNode>() }))
+        m_data(TypeData::make_Slice({ ::make_unique_ptr(mv$(inner_type)) }))
     {}
 
     struct TagArg {};

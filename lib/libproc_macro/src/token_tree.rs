@@ -26,7 +26,13 @@ impl ::std::fmt::Display for TokenTree
 impl TokenTree
 {
     pub fn span(&self) -> Span {
-        Span {}
+        match self
+        {
+        &TokenTree::Group(ref v) => v.span,
+        &TokenTree::Ident(ref v) => v.span,
+        &TokenTree::Punct(ref v) => v.span,
+        &TokenTree::Literal(ref v) => v.span,
+        }
     }
     pub fn set_span(&mut self, span: Span) {
         let _ = span;
@@ -76,7 +82,7 @@ impl ::std::fmt::Display for Group
         Delimiter::Parenthesis => f.write_str(")")?,
         Delimiter::Brace => f.write_str("}")?,
         Delimiter::Bracket => f.write_str("]")?,
-        Delimiter::None => {},
+        Delimiter::None => f.write_str(" ")?,
         }
         Ok(())
     }
@@ -102,6 +108,12 @@ impl Group {
     }
     pub fn set_span(&mut self, span: Span) {
         let _ = span;
+    }
+    pub fn span_open(&self) -> Span {
+        self.span
+    }
+    pub fn span_close(&self) -> Span {
+        self.span
     }
 }
 
@@ -156,12 +168,12 @@ impl ::std::fmt::Display for Punct
 {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result
     {
+        self.ch.fmt(f)?;
         match self.spacing
         {
-        Spacing::Alone => {},
-        Spacing::Joint => f.write_str(" ")?,
+        Spacing::Alone => f.write_str(" ")?,
+        Spacing::Joint => {},
         }
-        self.ch.fmt(f)?;
         Ok(())
     }
 }
@@ -186,6 +198,16 @@ impl Punct {
         self.span = span;
     }
 }
+impl ::std::cmp::PartialEq<char> for Punct {
+    fn eq(&self, rhs: &char) -> bool {
+        self.ch == *rhs
+    }
+}
+impl ::std::cmp::PartialEq<Punct> for char {
+    fn eq(&self, rhs: &Punct) -> bool {
+        *self == rhs.ch
+    }
+}
 #[derive(Copy,Clone,Debug,PartialEq,Eq)]
 pub enum Spacing {
     Alone,
@@ -196,6 +218,17 @@ pub enum Spacing {
 pub struct Literal {
     pub(crate) span: Span,
     pub(crate) val: LiteralValue,
+}
+impl ::std::str::FromStr for Literal
+{
+    type Err = crate::lex::LexError;
+    fn from_str(v: &str) -> Result<Self,Self::Err> {
+        let mut ts = crate::TokenStream::from_str(v)?.inner;
+        match &mut ts[..] {
+        &mut [TokenTree::Literal(ref mut rv)] => Ok(::std::mem::replace(rv, Literal { span: Span::from_raw(0), val: LiteralValue::CharLit('\0') })),
+        _ => Err(crate::lex::LexError { inner: "Wasn't a literal" }),
+        }
+    }
 }
 impl ::std::fmt::Display for Literal
 {

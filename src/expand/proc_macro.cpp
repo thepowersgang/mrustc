@@ -7,6 +7,7 @@
  */
 #include <synext.hpp>
 #include "../common.hpp"
+#include "cfg.hpp"
 #include <ast/ast.hpp>
 #include <ast/expr.hpp>
 #include <ast/crate.hpp>
@@ -15,6 +16,7 @@
 #include "proc_macro.hpp"
 #include <parse/lex.hpp>
 #include <parse/ttstream.hpp>
+#include <unordered_set>
 #ifdef _WIN32
 # define NOMINMAX
 # define NOGDI  // Don't include GDI functions (defines some macros that collide with mrustc ones)
@@ -36,7 +38,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -50,10 +52,16 @@ public:
         auto trait_name = lex.getTokenCheck(TOK_IDENT).ident().name;
         while(lex.getTokenIf(TOK_COMMA))
         {
+            if( lex.lookahead(0) == TOK_PAREN_CLOSE ) {
+                break;
+            }
             auto k = lex.getTokenCheck(TOK_IDENT).ident().name;
             if( k == "attributes" ) {
                 lex.getTokenCheck(TOK_PAREN_OPEN);
                 do {
+                    if( lex.lookahead(0) == TOK_PAREN_CLOSE ) {
+                        break;
+                    }
                     attributes.push_back( lex.getTokenCheck(TOK_IDENT).ident().name.c_str() );
                 } while(lex.getTokenIf(TOK_COMMA));
                 lex.getTokenCheck(TOK_PAREN_CLOSE);
@@ -73,7 +81,7 @@ class Decorator_ProcMacroAttribute:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -90,7 +98,7 @@ class Decorator_ProcMacro:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -124,7 +132,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     // ```
 
     // ---- main function ----
-    auto main_fn = ::AST::Function { Span(), {}, ABI_RUST, false, false, false, TypeRef(TypeRef::TagUnit(), Span()), {} };
+    auto main_fn = ::AST::Function { Span(), TypeRef(TypeRef::TagUnit(), Span()), {} };
     {
         auto call_node = NEWNODE(_CallPath,
                 ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("main") }),
@@ -178,27 +186,30 @@ void Expand_ProcMacro(::AST::Crate& crate)
     auto newmod = ::AST::Module { ::AST::AbsolutePath("", { "proc_macro#" }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
-    newmod.add_ext_crate(Span(), false, crate.m_ext_cratename_procmacro, "proc_macro", {});
+    auto vis_private = AST::Visibility::make_restricted(AST::Visibility::Ty::Private, newmod.path());
+    newmod.add_ext_crate(Span(), vis_private, crate.m_ext_cratename_procmacro, "proc_macro", {});
 
-    newmod.add_item(Span(), false, "main", mv$(main_fn), {});
-    newmod.add_item(Span(), false, "MACROS", mv$(tests_list), {});
+    newmod.add_item(Span(), vis_private, "main", mv$(main_fn), {});
+    newmod.add_item(Span(), vis_private, "MACROS", mv$(tests_list), {});
 
-    crate.m_root_module.add_item(Span(), false, "proc_macro#", mv$(newmod), {});
+    crate.m_root_module.add_item(Span(), vis_private, "proc_macro#", mv$(newmod), {});
     crate.m_lang_items["mrustc-main"] = ::AST::AbsolutePath("", { "proc_macro#", "main" });
 }
 
 enum class TokenClass
 {
-    Symbol = 0,
-    Ident = 1,
-    Lifetime = 2,
-    String = 3,
-    ByteString = 4, // String
-    CharLit = 5,    // v128
-    UnsignedInt = 6,
-    SignedInt = 7,
-    Float = 8,
-    Fragment = 9,
+    EndOfStream = 0,
+    Symbol      = 1,
+    Ident       = 2,
+    Lifetime    = 3,
+    String      = 4,
+    ByteString  = 5,    // String
+    CharLit     = 6,    // v128
+    UnsignedInt = 7,
+    SignedInt   = 8,
+    Float       = 9,
+    SpanRef  = 10,
+    SpanDef  = 11,
 };
 enum class FragType
 {
@@ -217,10 +228,17 @@ struct ProcMacroInv:
     public TokenStream
 {
     Span    m_parent_span;
+    Span    m_this_span;
     const ::HIR::ProcMacro& m_proc_macro_desc;
     AST::Edition    m_edition;
     ::std::ofstream m_dump_file_out;
     ::std::ofstream m_dump_file_res;
+
+    /// Spans that have had an index assigned
+    ::std::unordered_map<const SpanInner*,size_t>  known_spans;
+    /// Span indexes that have been sent
+    ::std::unordered_set<size_t>  sent_spans;
+    size_t  next_span_index = 2;
 
     struct Handles
     {
@@ -254,16 +272,32 @@ public:
 
     bool check_good();
     void send_done() {
-        send_symbol("");
+        this->send_u8(static_cast<uint8_t>(TokenClass::EndOfStream));
+        m_dump_file_out.flush();
         DEBUG("Input tokens sent");
     }
     void send_symbol(const char* val) {
         this->send_u8(static_cast<uint8_t>(TokenClass::Symbol));
         this->send_bytes(val, ::std::strlen(val));
     }
-    void send_ident(const char* val) {
+    void send_rword(const char* val) {
         this->send_u8(static_cast<uint8_t>(TokenClass::Ident));
         this->send_bytes(val, ::std::strlen(val));
+    }
+    void send_ident(const char* val) {
+        this->send_u8(static_cast<uint8_t>(TokenClass::Ident));
+        if( Lex_FindReservedWord(val, m_edition) != TOK_NULL ) {
+            auto size = ::std::strlen(val);
+            this->send_v128u( 2 + size );
+            this->send_bytes_raw("r#", 2);
+            this->send_bytes_raw(val, size);
+        }
+        else {
+            this->send_bytes(val, ::std::strlen(val));
+        }
+    }
+    void send_ident(const Ident& val) {
+        send_ident(val.name.c_str());
     }
     void send_lifetime(const char* val) {
         this->send_u8(static_cast<uint8_t>(TokenClass::Lifetime));
@@ -324,7 +358,34 @@ public:
         this->send_bytes_raw(&v, sizeof(v));
     }
 
+    void send_span_def(size_t index, const Span& sp) {
+        this->known_spans[sp.get()] = index;
+        this->sent_spans.insert(index);
+
+        this->send_u8(static_cast<uint8_t>(TokenClass::SpanDef));
+        this->send_v128u(index);
+        this->send_v128u(0);    // TODO: Parent span
+        if( const auto* sp_p = dynamic_cast<const SpanInner_Source*>(sp.get()) ) {
+            this->send_bytes(sp_p->filename.c_str(), sp_p->filename.size());
+            this->send_u8(1);   // path_is_real
+            this->send_v128u( sp_p->start_line );
+            this->send_v128u( sp_p->end_line );
+            this->send_v128u( sp_p->start_ofs );
+            this->send_v128u( sp_p->end_ofs );
+        }
+        else {
+            this->send_bytes("MACRO", 5);   // TODO: better filename?
+            this->send_u8(0);   // path_is_real
+            this->send_v128u( 0 );
+            this->send_v128u( 0 );
+            this->send_v128u( 0 );
+            this->send_v128u( 0 );
+        }
+    }
+
     bool attr_is_used(const RcString& n) const {
+        if( n == "repr" )
+            return true;
         return ::std::find(m_proc_macro_desc.attributes.begin(), m_proc_macro_desc.attributes.end(), n) != m_proc_macro_desc.attributes.end();
     }
 
@@ -386,8 +447,9 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     ::std::string   proc_macro_exe_name = ext_crate.m_filename;
 
     // 3. Create ProcMacroInv
-    auto rv = ProcMacroInv(sp, crate.m_edition, proc_macro_exe_name.c_str(), *pmp);
+    auto rv = ProcMacroInv(sp, ext_crate.m_hir->m_edition, proc_macro_exe_name.c_str(), *pmp);
     rv.parse_state().crate = &crate;
+
     return rv;
 
     // NOTE: 1.39 failure_derive (2015) emits `::failure::foo` but `libcargo` doesn't have `failure` in root (it's a 2018 crate)
@@ -401,172 +463,187 @@ namespace {
     {
         const Span& sp;
         ProcMacroInv&   m_pmi;
+        bool emit_all_attrs;
         Visitor(const Span& sp, ProcMacroInv& pmi):
             sp(sp),
             m_pmi(pmi)
+            //,emit_all_attrs(false)
+            ,emit_all_attrs(true)
         {
         }
 
+        void visit_token(const ::Token& tok)
+        {
+            switch(tok.type())
+            {
+            case TOK_NULL:
+                BUG(sp, "Unexpected NUL in token stream");
+            case TOK_EOF:
+                BUG(sp, "Unexpected EOF in token stream");
+
+            case TOK_NEWLINE:
+            case TOK_WHITESPACE:
+            case TOK_COMMENT:
+                BUG(sp, "Unexpected whitepace in tokenstream");
+                break;
+            case TOK_INTERPOLATED_TYPE:
+                visit_type(const_cast<::Token&>(tok).frag_type());
+                break;
+            case TOK_INTERPOLATED_PATH:
+                TODO(sp, "TOK_INTERPOLATED_PATH");
+            case TOK_INTERPOLATED_PATTERN:
+                TODO(sp, "TOK_INTERPOLATED_PATTERN");
+            case TOK_INTERPOLATED_STMT:
+            case TOK_INTERPOLATED_BLOCK:
+            case TOK_INTERPOLATED_EXPR:
+                visit_node( const_cast<::Token&>(tok).frag_node() );
+                break;
+            case TOK_INTERPOLATED_META:
+            case TOK_INTERPOLATED_ITEM:
+            case TOK_INTERPOLATED_VIS:
+                TODO(sp, "TOK_INTERPOLATED_...");
+            // Value tokens
+            case TOK_IDENT:     m_pmi.send_ident(tok.ident().name.c_str());   break;  // TODO: Raw idents
+            case TOK_LIFETIME:  m_pmi.send_lifetime(tok.ident().name.c_str());  break;  // TODO: Hygine?
+            case TOK_INTEGER:
+                if( tok.datatype() == CORETYPE_CHAR ) {
+                    m_pmi.send_char(tok.intval().truncate_u64());
+                }
+                else {
+                    m_pmi.send_int(tok.datatype(), tok.intval());
+                }
+                break;
+            case TOK_CHAR:      m_pmi.send_char(tok.intval().truncate_u64());  break;
+            case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
+            case TOK_STRING:        m_pmi.send_string(tok.str());       break;
+            case TOK_BYTESTRING:    m_pmi.send_bytestring(tok.str());   break;
+
+            case TOK_HASH:      m_pmi.send_symbol("#"); break;
+            case TOK_UNDERSCORE:m_pmi.send_symbol("_"); break;
+
+            // Symbols
+            case TOK_PAREN_OPEN:    m_pmi.send_symbol("("); break;
+            case TOK_PAREN_CLOSE:   m_pmi.send_symbol(")"); break;
+            case TOK_BRACE_OPEN:    m_pmi.send_symbol("{"); break;
+            case TOK_BRACE_CLOSE:   m_pmi.send_symbol("}"); break;
+            case TOK_LT:    m_pmi.send_symbol("<"); break;
+            case TOK_GT:    m_pmi.send_symbol(">"); break;
+            case TOK_SQUARE_OPEN:   m_pmi.send_symbol("["); break;
+            case TOK_SQUARE_CLOSE:  m_pmi.send_symbol("]"); break;
+            case TOK_COMMA:     m_pmi.send_symbol(","); break;
+            case TOK_SEMICOLON: m_pmi.send_symbol(";"); break;
+            case TOK_COLON:     m_pmi.send_symbol(":"); break;
+            case TOK_DOUBLE_COLON:  m_pmi.send_symbol("::"); break;
+            case TOK_STAR:  m_pmi.send_symbol("*"); break;
+            case TOK_AMP:   m_pmi.send_symbol("&"); break;
+            case TOK_PIPE:  m_pmi.send_symbol("|"); break;
+
+            case TOK_FATARROW:  m_pmi.send_symbol("=>"); break;
+            case TOK_THINARROW: m_pmi.send_symbol("->"); break;
+            case TOK_THINARROW_LEFT: m_pmi.send_symbol("<-"); break;
+
+            case TOK_PLUS:  m_pmi.send_symbol("+"); break;
+            case TOK_DASH:  m_pmi.send_symbol("-"); break;
+            case TOK_EXCLAM:    m_pmi.send_symbol("!"); break;
+            case TOK_PERCENT:   m_pmi.send_symbol("%"); break;
+            case TOK_SLASH:     m_pmi.send_symbol("/"); break;
+
+            case TOK_DOT:       m_pmi.send_symbol("."); break;
+            case TOK_DOUBLE_DOT:    m_pmi.send_symbol(".."); break;
+            case TOK_DOUBLE_DOT_EQUAL:  m_pmi.send_symbol("..="); break;
+            case TOK_TRIPLE_DOT:    m_pmi.send_symbol("..."); break;
+
+            case TOK_EQUAL:     m_pmi.send_symbol("="); break;
+            case TOK_PLUS_EQUAL:    m_pmi.send_symbol("+="); break;
+            case TOK_DASH_EQUAL:    m_pmi.send_symbol("-"); break;
+            case TOK_PERCENT_EQUAL: m_pmi.send_symbol("%="); break;
+            case TOK_SLASH_EQUAL:   m_pmi.send_symbol("/="); break;
+            case TOK_STAR_EQUAL:    m_pmi.send_symbol("*="); break;
+            case TOK_AMP_EQUAL:     m_pmi.send_symbol("&="); break;
+            case TOK_PIPE_EQUAL:    m_pmi.send_symbol("|="); break;
+
+            case TOK_DOUBLE_EQUAL:  m_pmi.send_symbol("=="); break;
+            case TOK_EXCLAM_EQUAL:  m_pmi.send_symbol("!="); break;
+            case TOK_GTE:    m_pmi.send_symbol(">="); break;
+            case TOK_LTE:    m_pmi.send_symbol("<="); break;
+
+            case TOK_DOUBLE_AMP:    m_pmi.send_symbol("&&"); break;
+            case TOK_DOUBLE_PIPE:   m_pmi.send_symbol("||"); break;
+            case TOK_DOUBLE_LT:     m_pmi.send_symbol("<<"); break;
+            case TOK_DOUBLE_GT:     m_pmi.send_symbol(">>"); break;
+            case TOK_DOUBLE_LT_EQUAL:   m_pmi.send_symbol("<="); break;
+            case TOK_DOUBLE_GT_EQUAL:   m_pmi.send_symbol(">="); break;
+
+            case TOK_DOLLAR:    m_pmi.send_symbol("$"); break;
+
+            case TOK_QMARK:     m_pmi.send_symbol("?");     break;
+            case TOK_AT:        m_pmi.send_symbol("@");     break;
+            case TOK_TILDE:     m_pmi.send_symbol("~");     break;
+            case TOK_BACKSLASH: m_pmi.send_symbol("\\");    break;
+            case TOK_CARET:     m_pmi.send_symbol("^");     break;
+            case TOK_CARET_EQUAL:   m_pmi.send_symbol("^="); break;
+            case TOK_BACKTICK:  m_pmi.send_symbol("`");     break;
+
+            // Reserved Words
+            case TOK_RWORD_PUB:     m_pmi.send_rword("pub");    break;
+            case TOK_RWORD_PRIV:    m_pmi.send_rword("priv");   break;
+            case TOK_RWORD_MUT:     m_pmi.send_rword("mut");    break;
+            case TOK_RWORD_CONST:   m_pmi.send_rword("const");  break;
+            case TOK_RWORD_STATIC:  m_pmi.send_rword("static"); break;
+            case TOK_RWORD_UNSAFE:  m_pmi.send_rword("unsafe"); break;
+            case TOK_RWORD_EXTERN:  m_pmi.send_rword("extern"); break;
+            case TOK_RWORD_CRATE:   m_pmi.send_rword("crate");  break;
+            case TOK_RWORD_MOD:     m_pmi.send_rword("mod");    break;
+            case TOK_RWORD_STRUCT:  m_pmi.send_rword("struct"); break;
+            case TOK_RWORD_ENUM:    m_pmi.send_rword("enum");   break;
+            case TOK_RWORD_TRAIT:   m_pmi.send_rword("trait");  break;
+            case TOK_RWORD_FN:      m_pmi.send_rword("fn");     break;
+            case TOK_RWORD_USE:     m_pmi.send_rword("use");    break;
+            case TOK_RWORD_IMPL:    m_pmi.send_rword("impl");   break;
+            case TOK_RWORD_TYPE:    m_pmi.send_rword("type");   break;
+            case TOK_RWORD_WHERE:   m_pmi.send_rword("where");  break;
+            case TOK_RWORD_AS:      m_pmi.send_rword("as");     break;
+            case TOK_RWORD_LET:     m_pmi.send_rword("let");    break;
+            case TOK_RWORD_MATCH:   m_pmi.send_rword("match");  break;
+            case TOK_RWORD_IF:      m_pmi.send_rword("if");     break;
+            case TOK_RWORD_ELSE:    m_pmi.send_rword("else");   break;
+            case TOK_RWORD_LOOP:    m_pmi.send_rword("loop");   break;
+            case TOK_RWORD_WHILE:   m_pmi.send_rword("while");  break;
+            case TOK_RWORD_FOR:     m_pmi.send_rword("for");    break;
+            case TOK_RWORD_IN:      m_pmi.send_rword("in");     break;
+            case TOK_RWORD_DO:      m_pmi.send_rword("do");     break;
+            case TOK_RWORD_CONTINUE:m_pmi.send_rword("continue"); break;
+            case TOK_RWORD_BREAK:   m_pmi.send_rword("break");  break;
+            case TOK_RWORD_RETURN:  m_pmi.send_rword("return"); break;
+            case TOK_RWORD_YIELD:   m_pmi.send_rword("yeild");  break;
+            case TOK_RWORD_BOX:     m_pmi.send_rword("box");    break;
+            case TOK_RWORD_REF:     m_pmi.send_rword("ref");    break;
+            case TOK_RWORD_FALSE:   m_pmi.send_rword("false"); break;
+            case TOK_RWORD_TRUE:    m_pmi.send_rword("true");   break;
+            case TOK_RWORD_SELF:    m_pmi.send_rword("self");   break;
+            case TOK_RWORD_SUPER:   m_pmi.send_rword("super");  break;
+            case TOK_RWORD_MOVE:    m_pmi.send_rword("move");   break;
+            case TOK_RWORD_ABSTRACT:m_pmi.send_rword("abstract"); break;
+            case TOK_RWORD_FINAL:   m_pmi.send_rword("final");  break;
+            case TOK_RWORD_OVERRIDE:m_pmi.send_rword("override"); break;
+            case TOK_RWORD_VIRTUAL: m_pmi.send_rword("virtual"); break;
+            case TOK_RWORD_TYPEOF:  m_pmi.send_rword("typeof"); break;
+            case TOK_RWORD_BECOME:  m_pmi.send_rword("become"); break;
+            case TOK_RWORD_UNSIZED: m_pmi.send_rword("unsized"); break;
+            case TOK_RWORD_MACRO:   m_pmi.send_rword("macro");  break;
+
+            // 2018
+            case TOK_RWORD_ASYNC:   m_pmi.send_rword("async");  break;
+            case TOK_RWORD_AWAIT:   m_pmi.send_rword("await");  break;
+            case TOK_RWORD_DYN:     m_pmi.send_rword("dyn");    break;
+            case TOK_RWORD_TRY:     m_pmi.send_rword("try");    break;
+            }
+        }
         void visit_tokentree(const ::TokenTree& tt)
         {
             if( tt.is_token() )
             {
-                const auto& tok = tt.tok();
-                switch(tok.type())
-                {
-                case TOK_NULL:
-                    BUG(sp, "Unexpected NUL in token stream");
-                case TOK_EOF:
-                    BUG(sp, "Unexpected EOF in token stream");
-
-                case TOK_NEWLINE:
-                case TOK_WHITESPACE:
-                case TOK_COMMENT:
-                    BUG(sp, "Unexpected whitepace in tokenstream");
-                    break;
-                case TOK_INTERPOLATED_TYPE:
-                    TODO(sp, "TOK_INTERPOLATED_TYPE");
-                case TOK_INTERPOLATED_PATH:
-                    TODO(sp, "TOK_INTERPOLATED_PATH");
-                case TOK_INTERPOLATED_PATTERN:
-                    TODO(sp, "TOK_INTERPOLATED_PATTERN");
-                case TOK_INTERPOLATED_STMT:
-                case TOK_INTERPOLATED_BLOCK:
-                case TOK_INTERPOLATED_EXPR:
-                    TODO(sp, "TOK_INTERPOLATED_{STMT/EXPR/BLOCK}");
-                case TOK_INTERPOLATED_META:
-                case TOK_INTERPOLATED_ITEM:
-                case TOK_INTERPOLATED_VIS:
-                    TODO(sp, "TOK_INTERPOLATED_...");
-                // Value tokens
-                case TOK_IDENT:     m_pmi.send_ident(tok.ident().name.c_str());   break;  // TODO: Raw idents
-                case TOK_LIFETIME:  m_pmi.send_lifetime(tok.ident().name.c_str());  break;  // TODO: Hygine?
-                case TOK_INTEGER:   m_pmi.send_int(tok.datatype(), tok.intval());   break;
-                case TOK_CHAR:      m_pmi.send_char(tok.intval().truncate_u64());  break;
-                case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
-                case TOK_STRING:        m_pmi.send_string(tok.str());       break;
-                case TOK_BYTESTRING:    m_pmi.send_bytestring(tok.str());   break;
-
-                case TOK_HASH:      m_pmi.send_symbol("#"); break;
-                case TOK_UNDERSCORE:m_pmi.send_symbol("_"); break;
-
-                // Symbols
-                case TOK_PAREN_OPEN:    m_pmi.send_symbol("("); break;
-                case TOK_PAREN_CLOSE:   m_pmi.send_symbol(")"); break;
-                case TOK_BRACE_OPEN:    m_pmi.send_symbol("{"); break;
-                case TOK_BRACE_CLOSE:   m_pmi.send_symbol("}"); break;
-                case TOK_LT:    m_pmi.send_symbol("<"); break;
-                case TOK_GT:    m_pmi.send_symbol(">"); break;
-                case TOK_SQUARE_OPEN:   m_pmi.send_symbol("["); break;
-                case TOK_SQUARE_CLOSE:  m_pmi.send_symbol("]"); break;
-                case TOK_COMMA:     m_pmi.send_symbol(","); break;
-                case TOK_SEMICOLON: m_pmi.send_symbol(";"); break;
-                case TOK_COLON:     m_pmi.send_symbol(":"); break;
-                case TOK_DOUBLE_COLON:  m_pmi.send_symbol("::"); break;
-                case TOK_STAR:  m_pmi.send_symbol("*"); break;
-                case TOK_AMP:   m_pmi.send_symbol("&"); break;
-                case TOK_PIPE:  m_pmi.send_symbol("|"); break;
-
-                case TOK_FATARROW:  m_pmi.send_symbol("=>"); break;
-                case TOK_THINARROW: m_pmi.send_symbol("->"); break;
-                case TOK_THINARROW_LEFT: m_pmi.send_symbol("<-"); break;
-
-                case TOK_PLUS:  m_pmi.send_symbol("+"); break;
-                case TOK_DASH:  m_pmi.send_symbol("-"); break;
-                case TOK_EXCLAM:    m_pmi.send_symbol("!"); break;
-                case TOK_PERCENT:   m_pmi.send_symbol("%"); break;
-                case TOK_SLASH:     m_pmi.send_symbol("/"); break;
-
-                case TOK_DOT:       m_pmi.send_symbol("."); break;
-                case TOK_DOUBLE_DOT:    m_pmi.send_symbol(".."); break;
-                case TOK_DOUBLE_DOT_EQUAL:  m_pmi.send_symbol("..="); break;
-                case TOK_TRIPLE_DOT:    m_pmi.send_symbol("..."); break;
-
-                case TOK_EQUAL:     m_pmi.send_symbol("="); break;
-                case TOK_PLUS_EQUAL:    m_pmi.send_symbol("+="); break;
-                case TOK_DASH_EQUAL:    m_pmi.send_symbol("-"); break;
-                case TOK_PERCENT_EQUAL: m_pmi.send_symbol("%="); break;
-                case TOK_SLASH_EQUAL:   m_pmi.send_symbol("/="); break;
-                case TOK_STAR_EQUAL:    m_pmi.send_symbol("*="); break;
-                case TOK_AMP_EQUAL:     m_pmi.send_symbol("&="); break;
-                case TOK_PIPE_EQUAL:    m_pmi.send_symbol("|="); break;
-
-                case TOK_DOUBLE_EQUAL:  m_pmi.send_symbol("=="); break;
-                case TOK_EXCLAM_EQUAL:  m_pmi.send_symbol("!="); break;
-                case TOK_GTE:    m_pmi.send_symbol(">="); break;
-                case TOK_LTE:    m_pmi.send_symbol("<="); break;
-
-                case TOK_DOUBLE_AMP:    m_pmi.send_symbol("&&"); break;
-                case TOK_DOUBLE_PIPE:   m_pmi.send_symbol("||"); break;
-                case TOK_DOUBLE_LT:     m_pmi.send_symbol("<<"); break;
-                case TOK_DOUBLE_GT:     m_pmi.send_symbol(">>"); break;
-                case TOK_DOUBLE_LT_EQUAL:   m_pmi.send_symbol("<="); break;
-                case TOK_DOUBLE_GT_EQUAL:   m_pmi.send_symbol(">="); break;
-
-                case TOK_DOLLAR:    m_pmi.send_symbol("$"); break;
-
-                case TOK_QMARK:     m_pmi.send_symbol("?");     break;
-                case TOK_AT:        m_pmi.send_symbol("@");     break;
-                case TOK_TILDE:     m_pmi.send_symbol("~");     break;
-                case TOK_BACKSLASH: m_pmi.send_symbol("\\");    break;
-                case TOK_CARET:     m_pmi.send_symbol("^");     break;
-                case TOK_CARET_EQUAL:   m_pmi.send_symbol("^="); break;
-                case TOK_BACKTICK:  m_pmi.send_symbol("`");     break;
-
-                    // Reserved Words
-                case TOK_RWORD_PUB:     m_pmi.send_ident("pub");    break;
-                case TOK_RWORD_PRIV:    m_pmi.send_ident("priv");   break;
-                case TOK_RWORD_MUT:     m_pmi.send_ident("mut");    break;
-                case TOK_RWORD_CONST:   m_pmi.send_ident("const");  break;
-                case TOK_RWORD_STATIC:  m_pmi.send_ident("static"); break;
-                case TOK_RWORD_UNSAFE:  m_pmi.send_ident("unsafe"); break;
-                case TOK_RWORD_EXTERN:  m_pmi.send_ident("extern"); break;
-                case TOK_RWORD_CRATE:   m_pmi.send_ident("crate");  break;
-                case TOK_RWORD_MOD:     m_pmi.send_ident("mod");    break;
-                case TOK_RWORD_STRUCT:  m_pmi.send_ident("struct"); break;
-                case TOK_RWORD_ENUM:    m_pmi.send_ident("enum");   break;
-                case TOK_RWORD_TRAIT:   m_pmi.send_ident("trait");  break;
-                case TOK_RWORD_FN:      m_pmi.send_ident("fn");     break;
-                case TOK_RWORD_USE:     m_pmi.send_ident("use");    break;
-                case TOK_RWORD_IMPL:    m_pmi.send_ident("impl");   break;
-                case TOK_RWORD_TYPE:    m_pmi.send_ident("type");   break;
-                case TOK_RWORD_WHERE:   m_pmi.send_ident("where");  break;
-                case TOK_RWORD_AS:      m_pmi.send_ident("as");     break;
-                case TOK_RWORD_LET:     m_pmi.send_ident("let");    break;
-                case TOK_RWORD_MATCH:   m_pmi.send_ident("match");  break;
-                case TOK_RWORD_IF:      m_pmi.send_ident("if");     break;
-                case TOK_RWORD_ELSE:    m_pmi.send_ident("else");   break;
-                case TOK_RWORD_LOOP:    m_pmi.send_ident("loop");   break;
-                case TOK_RWORD_WHILE:   m_pmi.send_ident("while");  break;
-                case TOK_RWORD_FOR:     m_pmi.send_ident("for");    break;
-                case TOK_RWORD_IN:      m_pmi.send_ident("in");     break;
-                case TOK_RWORD_DO:      m_pmi.send_ident("do");     break;
-                case TOK_RWORD_CONTINUE:m_pmi.send_ident("continue"); break;
-                case TOK_RWORD_BREAK:   m_pmi.send_ident("break");  break;
-                case TOK_RWORD_RETURN:  m_pmi.send_ident("return"); break;
-                case TOK_RWORD_YIELD:   m_pmi.send_ident("yeild");  break;
-                case TOK_RWORD_BOX:     m_pmi.send_ident("box");    break;
-                case TOK_RWORD_REF:     m_pmi.send_ident("ref");    break;
-                case TOK_RWORD_FALSE:   m_pmi.send_ident("false"); break;
-                case TOK_RWORD_TRUE:    m_pmi.send_ident("true");   break;
-                case TOK_RWORD_SELF:    m_pmi.send_ident("self");   break;
-                case TOK_RWORD_SUPER:   m_pmi.send_ident("super");  break;
-                case TOK_RWORD_MOVE:    m_pmi.send_ident("move");   break;
-                case TOK_RWORD_ABSTRACT:m_pmi.send_ident("abstract"); break;
-                case TOK_RWORD_FINAL:   m_pmi.send_ident("final");  break;
-                case TOK_RWORD_OVERRIDE:m_pmi.send_ident("override"); break;
-                case TOK_RWORD_VIRTUAL: m_pmi.send_ident("virtual"); break;
-                case TOK_RWORD_TYPEOF:  m_pmi.send_ident("typeof"); break;
-                case TOK_RWORD_BECOME:  m_pmi.send_ident("become"); break;
-                case TOK_RWORD_UNSIZED: m_pmi.send_ident("unsized"); break;
-                case TOK_RWORD_MACRO:   m_pmi.send_ident("macro");  break;
-
-                // 2018
-                case TOK_RWORD_ASYNC:   m_pmi.send_ident("async");  break;
-                case TOK_RWORD_AWAIT:   m_pmi.send_ident("await");  break;
-                case TOK_RWORD_DYN:     m_pmi.send_ident("dyn");    break;
-                case TOK_RWORD_TRY:     m_pmi.send_ident("try");    break;
-                }
+                visit_token(tt.tok());
             }
             else
             {
@@ -577,6 +654,100 @@ namespace {
             }
         }
 
+        void visit_pattern(const ::AST::Pattern& pat)
+        {
+            for(const auto& b : pat.bindings() ) {
+                if( b.m_mutable ) {
+                    m_pmi.send_rword("mut");
+                }
+                switch(b.m_type)
+                {
+                case ::AST::PatternBinding::Type::MOVE:
+                    break;
+                case ::AST::PatternBinding::Type::REF:
+                    m_pmi.send_rword("ref");
+                    break;
+                case ::AST::PatternBinding::Type::MUTREF:
+                    m_pmi.send_rword("ref");
+                    m_pmi.send_rword("mut");
+                    break;
+                }
+                if( b.m_name == "self" ) {
+                    m_pmi.send_rword("self");
+                    return;
+                }
+                else {
+                    m_pmi.send_ident(b.m_name);
+                }
+                m_pmi.send_symbol("@");
+            }
+            TU_MATCH_HDRA( (pat.data()), { )
+            default:
+                TODO(sp, "visit_pattern " << pat.data().tag_str() << " - " << pat);
+            TU_ARMA(Any, e) {
+                m_pmi.send_symbol("_");
+                }
+            TU_ARMA(MaybeBind, e) {
+                if( e.name == "self" ) {
+                    m_pmi.send_rword("self");
+                }
+                else {
+                    m_pmi.send_ident(e.name);
+                }
+                }
+            TU_ARMA(Tuple, e) {
+                m_pmi.send_symbol("(");
+                visit_tuple_pattern(e);
+                m_pmi.send_symbol(")");
+                }
+            TU_ARMA(Struct, e) {
+                this->visit_path(e.path);
+                m_pmi.send_symbol("{");
+                for(const auto& spe : e.sub_patterns) {
+                    this->visit_attrs(spe.attrs);
+                    m_pmi.send_ident(spe.name);
+                    m_pmi.send_symbol(":");
+                    this->visit_pattern(spe.pat);
+                    m_pmi.send_symbol(",");
+                }
+                if( !e.is_exhaustive ) {
+                    m_pmi.send_symbol("...");
+                }
+                m_pmi.send_symbol("}");
+                }
+            }
+        }
+        void visit_tuple_pattern(const AST::Pattern::TuplePat& v)
+        {
+            for(const auto& p : v.start) {
+                visit_pattern(p);
+                m_pmi.send_symbol(",");
+            }
+            if( v.has_wildcard )
+            {
+                m_pmi.send_symbol("..");
+                m_pmi.send_symbol(",");
+                for(const auto& p : v.end) {
+                    visit_pattern(p);
+                    m_pmi.send_symbol(",");
+                }
+            }
+        }
+        void visit_lifetime(const AST::LifetimeRef& x)
+        {
+            if( x.binding() == AST::LifetimeRef::BINDING_STATIC ) {
+                m_pmi.send_lifetime("static");
+            }
+            else if( x.binding() == AST::LifetimeRef::BINDING_INFER ) {
+                m_pmi.send_lifetime("_");
+            }
+            else if( x.binding() == AST::LifetimeRef::BINDING_UNSPECIFIED ) {
+                // Nothing
+            }
+            else {
+                m_pmi.send_lifetime(x.name().name.c_str());
+            }
+        }
         void visit_type(const ::TypeRef& ty)
         {
             // TODO: Correct handling of visit_type
@@ -595,13 +766,21 @@ namespace {
                 m_pmi.send_symbol(")");
                 ),
             (Macro,
-                TODO(sp, "proc_macro send macro type - " << ty);
+                visit_path(te.inv->path());
+                m_pmi.send_symbol("!");
+                m_pmi.send_symbol("(");
+                visit_tokentree(te.inv->input_tt());
+                m_pmi.send_symbol(")");
                 ),
             (Primitive,
                 TODO(sp, "proc_macro send primitive - " << ty);
                 ),
             (Function,
-                TODO(sp, "proc_macro send function - " << ty);
+                ::std::stringstream ss;
+                ss << ty << " ";
+                DEBUG("STRING: " << ss.str());
+
+                parse_string(ss.str());
                 ),
             (Tuple,
                 m_pmi.send_symbol("(");
@@ -614,26 +793,34 @@ namespace {
                 ),
             (Borrow,
                 m_pmi.send_symbol("&");
+                this->visit_lifetime(te.lifetime);
                 if( te.is_mut )
-                    m_pmi.send_ident("mut");
+                    m_pmi.send_rword("mut");
                 this->visit_type(*te.inner);
                 ),
             (Pointer,
                 m_pmi.send_symbol("*");
                 if( te.is_mut )
-                    m_pmi.send_ident("mut");
+                    m_pmi.send_rword("mut");
                 else
-                    m_pmi.send_ident("const");
+                    m_pmi.send_rword("const");
                 this->visit_type(*te.inner);
                 ),
             (Array,
                 m_pmi.send_symbol("[");
                 this->visit_type(*te.inner);
-                if( te.size )
-                {
-                    m_pmi.send_symbol(";");
+                m_pmi.send_symbol(";");
+                if( te.size ) {
                     this->visit_node(*te.size);
                 }
+                else {
+                    m_pmi.send_symbol("_");
+                }
+                m_pmi.send_symbol("]");
+                ),
+            (Slice,
+                m_pmi.send_symbol("[");
+                this->visit_type(*te.inner);
                 m_pmi.send_symbol("]");
                 ),
             (Generic,
@@ -645,24 +832,40 @@ namespace {
                 ),
             (TraitObject,
                 m_pmi.send_symbol("(");
+                m_pmi.send_rword("dyn");
+                bool needs_plus = false;
                 for(const auto& t : te.traits)
                 {
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
                     this->visit_hrbs(t.hrbs);
                     this->visit_path(*t.path);
-                    m_pmi.send_symbol("+");
                 }
-                // TODO: Lifetimes
+                for(const auto& lft : te.lifetimes) {
+                    if( lft != AST::LifetimeRef() ) {
+                        if(needs_plus)  m_pmi.send_symbol("+");
+                        needs_plus = true;
+                        this->visit_lifetime(lft);
+                    }
+                }
                 m_pmi.send_symbol(")");
                 ),
             (ErasedType,
-                m_pmi.send_ident("impl");
+                m_pmi.send_rword("impl");
+                bool needs_plus = false;
                 for(const auto& t : te.traits)
                 {
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
                     this->visit_hrbs(t.hrbs);
                     this->visit_path(*t.path);
-                    m_pmi.send_symbol("+");
                 }
-                // TODO: Lifetimes
+                for(const auto& lft : te.lifetimes) {
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
+                    m_pmi.send_symbol("+");
+                    this->visit_lifetime(lft);
+                }
                 )
             )
         }
@@ -670,7 +873,7 @@ namespace {
         {
             if( !hrbs.empty() )
             {
-                m_pmi.send_ident("for");
+                m_pmi.send_rword("for");
                 m_pmi.send_symbol("<");
                 for(const auto& v : hrbs.m_lifetimes)
                 {
@@ -696,21 +899,26 @@ namespace {
                 nodes = &pe.nodes;
                 ),
             (Self,
-                m_pmi.send_ident("self");
+                m_pmi.send_rword("self");
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
                 ),
             (Super,
                 for(unsigned i = 0; i < pe.count; i ++)
                 {
-                    m_pmi.send_ident("super");
+                    m_pmi.send_rword("super");
                     m_pmi.send_symbol("::");
                 }
                 nodes = &pe.nodes;
                 ),
             (Absolute,
-                m_pmi.send_symbol("::");
-                m_pmi.send_string(pe.crate.c_str());
+                if( pe.crate == "" ) {
+                    m_pmi.send_rword("crate");
+                }
+                else {
+                    m_pmi.send_symbol("::");
+                    m_pmi.send_string(pe.crate.c_str());
+                }
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
                 ),
@@ -719,7 +927,7 @@ namespace {
                 this->visit_type(*pe.type);
                 if( pe.trait )
                 {
-                    m_pmi.send_ident("as");
+                    m_pmi.send_rword("as");
                     this->visit_path(*pe.trait);
                 }
                 m_pmi.send_symbol(">");
@@ -736,6 +944,15 @@ namespace {
                 m_pmi.send_ident(e.name().c_str());
                 if( ! e.args().is_empty() )
                 {
+                    if( e.args().m_is_paren ) {
+                        auto& t = e.args().m_entries.at(0).as_Type();
+                        this->visit_type(t);    // Should be a tuple
+                        auto& rv = e.args().m_entries.at(1).as_AssociatedTyEqual();
+                        m_pmi.send_symbol("->");
+                        this->visit_type(rv.second);
+                        continue ;
+                    }
+
                     if( is_expr )
                         m_pmi.send_symbol("::");
                     m_pmi.send_symbol("<");
@@ -788,7 +1005,7 @@ namespace {
                     TU_MATCH_HDRA( (param), {)
                     TU_ARMA(None, p) {
                         // Uh... oops?
-                        BUG(Span(), "Enountered GenericParam::None");
+                        BUG(sp, "Enountered GenericParam::None");
                         }
                     TU_ARMA(Lifetime, p) {
                         m_pmi.send_lifetime(p.name().name.c_str());
@@ -800,7 +1017,7 @@ namespace {
                             }
                             TU_MATCH_HDRA((params.m_bounds[i]), {)
                             default:
-                                BUG(Span(), "");
+                                BUG(sp, "");
                             TU_ARMA(None, be) {}
                             TU_ARMA(Lifetime, be) {
                                 m_pmi.send_lifetime(be.test.name().name.c_str());
@@ -819,15 +1036,15 @@ namespace {
                             }
                             TU_MATCH_HDRA((params.m_bounds[i]), {)
                             default:
-                                BUG(Span(), "");
+                                BUG(sp, "Unhandled bound type - " << params.m_bounds[i]);
                             TU_ARMA(None, be) {}
-                            TU_ARMA(Lifetime, be) {
-                                m_pmi.send_lifetime(be.test.name().name.c_str());
+                            TU_ARMA(TypeLifetime, be) {
+                                m_pmi.send_lifetime(be.bound.name().name.c_str());
                                 }
                             TU_ARMA(IsTrait, be) {
                                 assert(be.outer_hrbs.empty());  // Shouldn't be possible in this position
                                 if( !be.inner_hrbs.empty() ) {
-                                    TODO(Span(), "be.inner_hrbs");
+                                    TODO(sp, "be.inner_hrbs");
                                 }
                                 visit_path(be.trait);
                                 }
@@ -845,7 +1062,7 @@ namespace {
                         }
                     TU_ARMA(Value, p) {
                         this->visit_attrs(p.attrs());
-                        m_pmi.send_ident("const");
+                        m_pmi.send_rword("const");
                         m_pmi.send_ident(p.name().name.c_str());
                         m_pmi.send_symbol(":");
                         visit_type(p.type());
@@ -857,11 +1074,23 @@ namespace {
                 m_pmi.send_symbol(">");
             }
         }
+        void visit_hrb(const AST::HigherRankedBounds& hrb)
+        {
+            if( !hrb.empty() ) {
+                m_pmi.send_rword("for");
+                m_pmi.send_symbol("<");
+                for(const auto& lft : hrb.m_lifetimes) {
+                    m_pmi.send_lifetime(lft.name().name.c_str());
+                    m_pmi.send_symbol(",");
+                }
+                m_pmi.send_symbol(">");
+            }
+        }
         void visit_bounds(const AST::GenericParams& params)
         {
             if( !params.m_bounds.empty() )
             {
-                m_pmi.send_ident("where");
+                bool where_sent = false;
 
                 for(const auto& e : params.m_bounds)
                 {
@@ -873,8 +1102,13 @@ namespace {
                         if( p.bounds_start <= i && i < p.bounds_end )
                             already_emitted = true;
                     }
-                    if(already_emitted)
+                    if(already_emitted || e.is_None())
                         continue ;
+
+                    if( !where_sent ) {
+                        m_pmi.send_rword("where");
+                        where_sent = true;
+                    }
                     TU_MATCH_HDRA((e), {)
                     TU_ARMA(None, be)   continue;
                     TU_ARMA(Lifetime, be) {
@@ -888,14 +1122,10 @@ namespace {
                         m_pmi.send_lifetime(be.bound.name().name.c_str());
                         }
                     TU_ARMA(IsTrait, be) {
-                        if( !be.outer_hrbs.empty() ) {
-                            TODO(Span(), "be.inner_hrbs");
-                        }
+                        visit_hrbs(be.outer_hrbs);
                         visit_type(be.type);
                         m_pmi.send_symbol(":");
-                        if( !be.inner_hrbs.empty() ) {
-                            TODO(Span(), "be.inner_hrbs");
-                        }
+                        visit_hrbs(be.inner_hrbs);
                         visit_path(be.trait);
                         }
                     TU_ARMA(MaybeTrait, be) {
@@ -922,7 +1152,29 @@ namespace {
         }
         void visit_node(const ::AST::ExprNode& e)
         {
-            const_cast<::AST::ExprNode&>(e).visit(*this);
+            DEBUG("NODE: " << e);
+            // TODO: Dump to a string, then re-parse into a TT and then send that TT
+            // - Avoids needing to repeat logic
+            ::std::stringstream ss;
+            DumpAST_Node(ss, e);
+            ss << " ";
+            DEBUG("STRING: " << ss.str());
+
+            //const_cast<::AST::ExprNode&>(e).visit(*this);
+            parse_string(ss.str());
+        }
+        void parse_string(const ::std::string& s)
+        {
+            ::std::istringstream    iss { s };
+            Lexer   l { iss, AST::Edition::Rust2021, {} };
+            for(;;) {
+                auto t = l.getToken();
+                if( t == TOK_EOF ) {
+                    break;
+                }
+                // TODO: If this is an ident, then get the comment after it that specifies the hygine info
+                visit_token(t);
+            }
         }
         void visit_nodes(const ::AST::Expr& e)
         {
@@ -931,10 +1183,25 @@ namespace {
 
         // === Expressions ====
         void visit(::AST::ExprNode_Block& node) {
-            if( node.m_is_unsafe )
-                m_pmi.send_ident("unsafe");
+            switch(node.m_block_type) {
+            case AST::ExprNode_Block::Type::Bare:
+                break;
+            case AST::ExprNode_Block::Type::Unsafe:
+                m_pmi.send_rword("unsafe");
+                break;
+            case AST::ExprNode_Block::Type::Const:
+                m_pmi.send_rword("const");
+                break;
+            }
             m_pmi.send_symbol("{");
-            TODO(sp, "");
+            for(const auto& n : node.m_nodes)
+            {
+                this->visit_node(*n);
+                if( node.m_yields_final_value && &n == &node.m_nodes.back() ) {
+                    break;
+                }
+                m_pmi.send_symbol(";");
+            }
             m_pmi.send_symbol("}");
         }
         void visit(::AST::ExprNode_Try& node) {
@@ -970,6 +1237,9 @@ namespace {
         void visit(::AST::ExprNode_Loop& node) {
             TODO(sp, "ExprNode_Loop");
         }
+        void visit(::AST::ExprNode_WhileLet& node) {
+            TODO(sp, "ExprNode_Loop");
+        }
         void visit(::AST::ExprNode_Match& node) {
             TODO(sp, "ExprNode_Match");
         }
@@ -980,6 +1250,9 @@ namespace {
             TODO(sp, "ExprNode_IfLet");
         }
 
+        void visit(::AST::ExprNode_WildcardPattern& node) {
+            m_pmi.send_symbol("_");
+        }
         void visit(::AST::ExprNode_Integer& node) {
             m_pmi.send_int(node.m_datatype, node.m_value);
         }
@@ -1000,6 +1273,9 @@ namespace {
         }
         void visit(::AST::ExprNode_StructLiteral& node) {
             TODO(sp, "ExprNode_StructLiteral");
+        }
+        void visit(::AST::ExprNode_StructLiteralPattern& node) {
+            TODO(sp, "ExprNode_StructLiteralPattern");
         }
         void visit(::AST::ExprNode_Array& node) {
             TODO(sp, "ExprNode_Array");
@@ -1037,28 +1313,34 @@ namespace {
         {
             for(const auto& a : attrs)
             {
-                if( a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial()) )
-                {
-                    DEBUG("Send " << a);
-                    m_pmi.send_symbol("#");
-                    m_pmi.send_symbol("[");
-                    this->visit_meta_item(a);
-                    m_pmi.send_symbol("]");
-                }
+                this->visit_attr(a);
             }
         }
         void visit_attrs(const ::AST::AttributeList& attrs)
         {
             for(const auto& a : attrs.m_items)
             {
-                if( a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial()) )
-                {
-                    DEBUG("Send " << a);
-                    m_pmi.send_symbol("#");
-                    m_pmi.send_symbol("[");
-                    this->visit_meta_item(a);
-                    m_pmi.send_symbol("]");
+                this->visit_attr(a);
+            }
+        }
+        void visit_attr(const ::AST::Attribute& a)
+        {
+            if( a.name() == "cfg_attr" ) {
+                auto new_attrs = check_cfg_attr(a);
+                for(const auto& na : new_attrs) {
+                    this->visit_attr(na);
                 }
+            }
+            if( this->emit_all_attrs || (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial())) )
+            {
+                DEBUG("Send " << a);
+                m_pmi.send_symbol("#");
+                m_pmi.send_symbol("[");
+                this->visit_meta_item(a);
+                m_pmi.send_symbol("]");
+            }
+            else {
+                DEBUG("Skip " << a << " (" << m_pmi.m_proc_macro_desc.attributes << ")");
             }
         }
         void visit_meta_item(const ::AST::Attribute& i)
@@ -1072,14 +1354,50 @@ namespace {
 
             visit_tokentree(i.data());
         }
-
-        void visit_struct(const ::std::string& name, bool is_pub, const ::AST::Struct& str)
+        void visit_vis(const ::AST::Visibility& vis)
         {
-            if( is_pub ) {
-                m_pmi.send_ident("pub");
+            switch(vis.ty())
+            {
+            case ::AST::Visibility::Ty::Private:
+                break;
+            case ::AST::Visibility::Ty::Pub:
+                m_pmi.send_rword("pub");
+                break;
+            case ::AST::Visibility::Ty::Crate:
+                m_pmi.send_rword("crate");
+                break;
+            case ::AST::Visibility::Ty::PubCrate:
+                m_pmi.send_rword("pub");
+                m_pmi.send_symbol("(");
+                m_pmi.send_rword("crate");
+                m_pmi.send_symbol(")");
+                break;
+            case ::AST::Visibility::Ty::PubSuper:
+                m_pmi.send_rword("pub");
+                m_pmi.send_symbol("(");
+                m_pmi.send_rword("super");
+                m_pmi.send_symbol(")");
+                break;
+            case ::AST::Visibility::Ty::PubSelf:
+                m_pmi.send_rword("pub");
+                m_pmi.send_symbol("(");
+                m_pmi.send_rword("self");
+                m_pmi.send_symbol(")");
+                break;
+            case ::AST::Visibility::Ty::PubIn:
+                m_pmi.send_rword("pub");
+                m_pmi.send_symbol("(");
+                m_pmi.send_rword("in");
+                visit_path(vis.in_path());
+                m_pmi.send_symbol(")");
+                break;
             }
+        }
 
-            m_pmi.send_ident("struct");
+        void visit_struct(const ::std::string& name, const AST::Visibility& vis, const ::AST::Struct& str)
+        {
+            this->visit_vis(vis);
+            m_pmi.send_rword("struct");
             m_pmi.send_ident(name.c_str());
             this->visit_params(str.params());
             TU_MATCH(AST::StructData, (str.m_data), (se),
@@ -1092,8 +1410,7 @@ namespace {
                 for( const auto& si : se.ents )
                 {
                     this->visit_attrs(si.m_attrs);
-                    if( si.m_is_public )
-                        m_pmi.send_ident("pub");
+                    this->visit_vis(si.m_vis);
                     this->visit_type(si.m_type);
                     m_pmi.send_symbol(",");
                 }
@@ -1108,8 +1425,7 @@ namespace {
                 for( const auto& si : se.ents )
                 {
                     this->visit_attrs(si.m_attrs);
-                    if( si.m_is_public )
-                        m_pmi.send_ident("pub");
+                    this->visit_vis(si.m_vis);
                     m_pmi.send_ident(si.m_name.c_str());
                     m_pmi.send_symbol(":");
                     this->visit_type(si.m_type);
@@ -1119,13 +1435,11 @@ namespace {
                 )
             )
         }
-        void visit_enum(const ::std::string& name, bool is_pub, const ::AST::Enum& enm)
+        void visit_enum(const ::std::string& name, const AST::Visibility& vis, const ::AST::Enum& enm)
         {
-            if( is_pub ) {
-                m_pmi.send_ident("pub");
-            }
+            this->visit_vis(vis);
 
-            m_pmi.send_ident("enum");
+            m_pmi.send_rword("enum");
             m_pmi.send_ident(name.c_str());
             this->visit_params(enm.params());
             this->visit_bounds(enm.params());
@@ -1144,10 +1458,10 @@ namespace {
                     }
                 TU_ARMA(Tuple, e) {
                     m_pmi.send_symbol("(");
-                    for(const auto& st : e.m_sub_types)
+                    for(const auto& f : e.m_items)
                     {
-                        // TODO: Attributes? (None stored in tuple variants)
-                        this->visit_type(st);
+                        this->visit_attrs(f.m_attrs);
+                        this->visit_type(f.m_type);
                         m_pmi.send_symbol(",");
                     }
                     m_pmi.send_symbol(")");
@@ -1169,24 +1483,98 @@ namespace {
             }
             m_pmi.send_symbol("}");
         }
-        void visit_union(const ::std::string& name, bool is_pub, const ::AST::Union& unn)
+        void visit_union(const ::std::string& name, const AST::Visibility& vis, const ::AST::Union& unn)
         {
             TODO(sp, "visit_union");
         }
-        void visit_item(const ::std::string& name, bool is_pub, const ::AST::Item& item)
+
+        void visit_function(const ::std::string& name, const AST::Visibility& vis, const ::AST::Function& fcn)
+        {
+            this->visit_vis(vis);
+
+            if( fcn.is_unsafe() ) {
+                m_pmi.send_rword("unsafe");
+            }
+            if( fcn.is_const() ) {
+                m_pmi.send_rword("const");
+            }
+            if( fcn.is_async() ) {
+                m_pmi.send_rword("async");
+            }
+            if( fcn.abi() != ABI_RUST ) {
+                m_pmi.send_rword("extern");
+                m_pmi.send_string(fcn.abi());
+            }
+            m_pmi.send_rword("fn");
+            m_pmi.send_ident(name.c_str());
+            this->visit_params(fcn.params());
+            m_pmi.send_symbol("(");
+            for( const auto& arg : fcn.args() ) {
+                this->visit_attrs(arg.attrs);
+                this->visit_pattern(arg.pat);
+                m_pmi.send_symbol(":");
+                this->visit_type(arg.ty);
+                m_pmi.send_symbol(",");
+            }
+            if( fcn.is_variadic() ) {
+                m_pmi.send_symbol("...");
+            }
+            m_pmi.send_symbol(")");
+            //if( fcn.rettype() != TypeRef() ) {
+                m_pmi.send_symbol("->");
+                this->visit_type(fcn.rettype());
+            //}
+            this->visit_bounds(fcn.params());
+            this->visit_nodes(fcn.code());
+        }
+
+        void visit_use(const ::std::string& name, const AST::Visibility& vis, const ::AST::UseItem& item)
+        {
+            this->visit_vis(vis);
+            m_pmi.send_rword("use");
+
+            if( item.entries.size() == 1 ) {
+                visit_path(item.entries[0].path);
+                if( item.entries[0].name == "" ) {
+                    m_pmi.send_symbol("::");
+                    m_pmi.send_symbol("*");
+                }
+                else if( item.entries[0].name != item.entries[0].path.nodes().back().name() ) {
+                    m_pmi.send_rword("as");
+                    m_pmi.send_ident( item.entries[0].name.c_str() );
+                }
+                else {
+                }
+            }
+            else {
+                TODO(sp, "Multiple items");
+            }
+            m_pmi.send_symbol(";");
+        }
+
+        void visit_item(const ::std::string& name, const AST::Visibility& vis, const ::AST::Item& item)
         {
             TU_MATCH_HDRA((item), {)
             default:
                 TODO(sp, "visit_item - " << item.tag_str());
                 break;
+            TU_ARMA(Use, e) {
+                visit_use(name, vis, e);
+                }
+            // Types
             TU_ARMA(Struct, e) {
-                visit_struct(name, is_pub, e);
+                visit_struct(name, vis, e);
                 }
             TU_ARMA(Enum, e) {
-                visit_enum(name, is_pub, e);
+                visit_enum(name, vis, e);
                 }
             TU_ARMA(Union, e) {
-                visit_union(name, is_pub, e);
+                visit_union(name, vis, e);
+                }
+
+            // Values
+            TU_ARMA(Function, e) {
+                visit_function(name, vis, e);
                 }
             }
         }
@@ -1200,7 +1588,18 @@ namespace {
         return ::std::unique_ptr<TokenStream>();
     if( attr_input ) {
         // TODO: Assert that this is a `#[proc_macro_attribute]` macro
-        Visitor(sp, pmi).visit_tokentree(*attr_input);
+        if( attr_input->size() != 0 )
+        {
+            // If the input is non-empty, then it must be a parenthesised token tree
+            ASSERT_BUG(sp, attr_input->size() >= 2, "");
+            ASSERT_BUG(sp, (*attr_input)[0].tok() == TOK_PAREN_OPEN || (*attr_input)[0].tok() == TOK_SQUARE_OPEN, "");
+            Visitor v(sp, pmi);
+            // - Strip the parens when sending
+            for(size_t i = 1; i < attr_input->size() - 1; i++)
+            {
+                v.visit_tokentree( (*attr_input)[i] );
+            }
+        }
         pmi.send_done();
     }
     // 2. Feed item as a token stream.
@@ -1210,35 +1609,41 @@ namespace {
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
-// --- Dervive/attribute inputs
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Struct& i)
+// --- Derive inputs
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Struct& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
-        // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
+        DEBUG("derive on struct");
         v.visit_top_attrs(attrs);
-        v.visit_struct(item_name, false, i);
+        v.visit_struct(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Enum& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Enum& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
-        // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
+        DEBUG("derive on enum");
         v.visit_top_attrs(attrs);
-        v.visit_enum(item_name, false, i);
+        v.visit_enum(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Union& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Union& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
-        // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
+        DEBUG("derive on union");
         v.visit_top_attrs(attrs);
-        v.visit_union(item_name, false, i);
+        v.visit_union(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt, slice<const AST::Attribute> attrs, const ::AST::Item& i)
+// --- attribute
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(
+    const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt,
+    slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Item& i
+    )
 {
     return ProcMacro_Invoke(sp, crate, mac_path, &tt, [&](Visitor& v) {
+        v.emit_all_attrs = true;
         v.visit_top_attrs(attrs);
+        v.visit_item(item_name, vis, i);
         });
 }
 // -- function-like input
@@ -1252,11 +1657,11 @@ namespace {
 ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
     TokenStream(ParseState()),
     m_parent_span(sp),
+    m_this_span( Span( m_parent_span, proc_macro_desc.path.m_crate_name, proc_macro_desc.name ) ),
     m_proc_macro_desc(proc_macro_desc),
     m_edition(edition)
 {
-    // TODO: Optionally dump the data sent to the client.
-    if( getenv("MRUSTC_DUMP_PROCMACRO") )
+    if( getenv("MRUSTC_DUMP_PROCMACRO") && getenv("MRUSTC_DUMP_PROCMACRO")[0] )
     {
         // TODO: Dump both input and output, AND (optionally) dump each invocation
         static unsigned int dump_count = 0;
@@ -1269,7 +1674,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* exe
     }
     else
     {
-        DEBUG("Set MRUSTC_DUMP_PROCMACRO=dump_prefix to dump to `dump_prefix-NNN-{out,res}.bin`");
+        DEBUG("Set MRUSTC_DUMP_PROCMACRO=procmacro_dump to dump to `procmacro_dump-NNN-{out,res}.bin`");
     }
 #ifdef _WIN32
     std::string commandline = std::string{ executable } + " " + proc_macro_desc.name.c_str();
@@ -1362,8 +1767,10 @@ ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* exe
     // Close the ends we don't care about.
     close(stdin_pipes[0]);
     close(stdout_pipes[1]);
-
 #endif
+
+    // Invocation span is #1 (#0 is always empty/undefined)
+    this->send_span_def(1, sp);
 }
 ProcMacroInv::Handles::Handles(Handles&& x):
 #ifdef _WIN32
@@ -1528,7 +1935,7 @@ void ProcMacroInv::recv_bytes_raw(void* out_void, size_t len)
         auto n = read(this->handles.child_stdout, &val[ofs], rem);
 #endif
         if( n == 0 ) {
-            BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
+            BUG(this->m_this_span, "Unexpected EOF while reading from child process");
         }
         if( n < 0 ) {
             BUG(this->m_parent_span, "Error while reading from child process");
@@ -1538,8 +1945,10 @@ void ProcMacroInv::recv_bytes_raw(void* out_void, size_t len)
         rem -= n;
     }
 
-    if( m_dump_file_res.is_open() )
+    if( m_dump_file_res.is_open() ) {
         m_dump_file_res.write( reinterpret_cast<const char*>(out_void), len );
+        m_dump_file_res.flush();
+    }
 }
 uint64_t ProcMacroInv::recv_v128u()
 {
@@ -1571,7 +1980,9 @@ U128 ProcMacroInv::recv_v128u_u128()
 }
 
 Position ProcMacroInv::getPosition() const {
-    return Position();
+    DEBUG("" << m_this_span);
+    //return Position(m_this_span);
+    return Position(m_parent_span);
 }
 Token ProcMacroInv::realGetToken() {
     auto rv = this->realGetToken_();
@@ -1585,6 +1996,13 @@ Token ProcMacroInv::realGetToken_() {
 
     switch( static_cast<TokenClass>(v) )
     {
+    case TokenClass::EndOfStream:
+        TODO(this->m_parent_span, "EndOfStream");
+    case TokenClass::SpanRef:
+        TODO(this->m_parent_span, "SpanDef");
+    case TokenClass::SpanDef:
+        TODO(this->m_parent_span, "SpanDef");
+        break;
     case TokenClass::Symbol: {
         auto val = this->recv_bytes();
         if( val == "" ) {
@@ -1592,14 +2010,17 @@ Token ProcMacroInv::realGetToken_() {
             return Token(TOK_EOF);
         }
         auto t = Lex_FindOperator(val);
-        ASSERT_BUG(this->m_parent_span, t != TOK_NULL, "Unknown symbol from child process - " << val);
+        ASSERT_BUG(this->m_parent_span, t != TOK_NULL, "Unknown symbol from child process - '" << val << "'");
         return t;
         }
     case TokenClass::Ident: {
         auto val = this->recv_bytes();
-        auto t = Lex_FindReservedWord(val, AST::Edition::Rust2015);
+        auto t = Lex_FindReservedWord(val, m_edition);
         if( t != TOK_NULL )
             return t;
+        if(val[0] == 'r' && val[1] == '#' ) {
+            return Token(TOK_IDENT, RcString::new_interned(val.c_str() + 2));
+        }
         return Token(TOK_IDENT, RcString::new_interned(val));
         }
     case TokenClass::Lifetime: {
@@ -1608,11 +2029,11 @@ Token ProcMacroInv::realGetToken_() {
         }
     case TokenClass::String: {
         auto val = this->recv_bytes();
-        return Token(TOK_STRING, mv$(val));
+        return Token(TOK_STRING, mv$(val), this->get_hygiene());
         }
     case TokenClass::ByteString: {
         auto val = this->recv_bytes();
-        return Token(TOK_BYTESTRING, mv$(val));
+        return Token(TOK_BYTESTRING, mv$(val), this->get_hygiene());
         }
     case TokenClass::CharLit: {
         auto val = this->recv_v128u();
@@ -1670,8 +2091,8 @@ Token ProcMacroInv::realGetToken_() {
         this->recv_bytes_raw(&val, sizeof(val));
         return Token::make_float(val, ty);
         }
-    case TokenClass::Fragment:
-        TODO(this->m_parent_span, "Handle ints/floats/fragments from child process");
+    //case TokenClass::Fragment:
+    //    TODO(this->m_parent_span, "Handle ints/floats/fragments from child process");
     }
     BUG(this->m_parent_span, "Invalid token class from child process - " << int(v));
 

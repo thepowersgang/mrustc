@@ -109,6 +109,14 @@ PathBinding_Macro PathBinding_Macro::clone() const
 
 ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
 {
+    if( x.m_is_paren ) {
+        auto& t = x.m_entries.at(0).as_Type();
+        os << t;    // Should be a tuple
+        auto& rv = x.m_entries.at(1).as_AssociatedTyEqual();
+        os << "->";
+        os << rv.second;
+        return os;
+    }
     bool needs_comma = false;
     os << (x.m_is_paren ? "(" : "<");
     for(const auto& e : x.m_entries)
@@ -319,21 +327,6 @@ void Path::bind_variable(unsigned int slot)
 {
     m_bindings.value.set(AST::AbsolutePath(), PathBinding_Value::make_Variable({slot}));
 }
-#if 0
-void Path::bind_enum_var(const Enum& ent, const RcString& name)
-{
-    auto it = ::std::find_if(ent.variants().begin(), ent.variants().end(), [&](const auto& x) { return x.m_name == name; });
-    if( it == ent.variants().end() )
-    {
-        throw ParseError::Generic("Enum variant not found");
-    }
-    unsigned int idx = it - ent.variants().begin();
-
-    DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
-    m_bindings.type = PathBinding_Type::make_EnumVar({ &ent, idx });
-    m_bindings.value = PathBinding_Value::make_EnumVar({ &ent, idx });
-}
-#endif
 
 Path& Path::operator+=(const Path& other)
 {
@@ -436,10 +429,13 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
         }
         }
     TU_ARMA(Absolute, ent) {
-        if( ent.crate != "" )
-            os << "::\"" << ent.crate << "\"";
-        else
+        if( ent.crate == "" )
             os << "crate";
+        else if( ent.crate.c_str()[0] == '=' ) {
+            os << "::" << ent.crate.c_str()+1 << "";
+        }
+        else
+            os << "::\"" << ent.crate << "\"";
         for(const auto& n : ent.nodes)
         {
             os << "::";

@@ -29,9 +29,9 @@
 #include <hir/crate_ptr.hpp>
 #include <hir/encoded_literal.hpp>
 #include <hir/inherent_cache.hpp>
+#include <hir/asm.hpp>
 
-#define ABI_RUST    "Rust"
-#define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
+class Monomorphiser;
 
 namespace HIR {
 
@@ -65,6 +65,9 @@ public:
         return Publicity(none_path);
     }
     static Publicity new_priv(::HIR::SimplePath p) {
+        while( !p.m_components.empty() && p.m_components.back().c_str()[0] == '#' ) {
+            p.m_components.pop_back();
+        }
         return Publicity(::std::make_shared<HIR::SimplePath>(::std::move(p)));
     }
 
@@ -100,6 +103,7 @@ struct Linkage
         Auto,   // Default
         Weak,   // Weak linkage (multiple definitions are allowed
         External, // Force the symbol to be externally visible
+        ExternWeak,   // A reference to a weak symbol
     };
 
     // Linkage type
@@ -203,6 +207,12 @@ public:
     struct Markings {
         std::vector<unsigned> rustc_legacy_const_generics;
         bool track_caller = false;
+        enum Inline {
+            Auto,   // no annotation
+            Never,  // #[inline(never)]
+            Normal, // #[inline]
+            Always  // #[inline(always)]
+        } inline_type = Inline::Auto;
     } m_markings;
 
     Function()
@@ -218,7 +228,7 @@ public:
     {
     }
 
-    //::HIR::TypeRef make_ty(const Span& sp, const ::HIR::PathParams& params) const;
+    ::HIR::TypeRef make_ptr_ty(const Span& sp, const Monomorphiser& ms) const;
 };
 
 // --------------------------------------------------------------------
@@ -237,6 +247,8 @@ struct TraitAlias
 
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
 typedef ::std::vector< ::std::pair< RcString, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
+
+extern HIR::TypeRef fn_ptr_tuple_constructor(const Span& sp, const Monomorphiser& ms, HIR::TypeRef ret_ty, const t_tuple_fields& types);
 
 /// Cache of the state of various language traits on an enum/struct
 struct TraitMarkings
@@ -417,6 +429,7 @@ public:
 
 struct AssociatedType
 {
+    ::HIR::GenericParams    m_generics;
     bool    is_sized;
     LifetimeRef m_lifetime_bound;
     ::std::vector< ::HIR::TraitPath>    m_trait_bounds;
@@ -445,6 +458,8 @@ public:
     ::std::unordered_multimap< RcString, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
     // Indexes in the vtable parameter list for each associated type
     ::std::unordered_map< RcString, unsigned int > m_type_indexes;
+    /// Index of the first vtable entry for parent traits
+    unsigned m_vtable_parent_traits_start;
 
     // Flattend set of parent traits (monomorphised and associated types fixed)
     ::std::vector< ::HIR::TraitPath >  m_all_parent_traits;
@@ -456,10 +471,12 @@ public:
         m_lifetime( mv$(lifetime) ),
         m_parent_traits( mv$(parents) ),
         m_is_marker( false )
+        , m_vtable_parent_traits_start(0)
     {}
 
     ::HIR::TypeRef get_vtable_type(const Span& sp, const ::HIR::Crate& crate, const ::HIR::TypeData::Data_TraitObject& te) const;
     unsigned get_vtable_value_index(const HIR::GenericPath& trait_path, const RcString& name) const;
+    unsigned get_vtable_parent_index(const Span& sp, const HIR::PathParams& this_params, const HIR::GenericPath& trait_path) const;
 };
 
 class ProcMacro
@@ -549,7 +566,7 @@ public:
 
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
-        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+        return matches_type(tr, ResolvePlaceholdersNop());
     }
 };
 
@@ -579,7 +596,7 @@ public:
 
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
-        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+        return matches_type(tr, ResolvePlaceholdersNop());
     }
 
     bool more_specific_than(const TraitImpl& x) const;
@@ -598,8 +615,16 @@ public:
 
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
-        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+        return matches_type(tr, ResolvePlaceholdersNop());
     }
+};
+
+class GlobalAssembly
+{
+public:
+    ::std::vector<AsmCommon::Line>  m_lines;
+    ::std::vector<HIR::Path>    m_symbols;
+    AsmCommon::Options  m_options;
 };
 
 class ExternCrate
@@ -670,6 +695,9 @@ public:
     /// Impl blocks
     ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::TraitImpl>> > m_trait_impls;
     ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::MarkerImpl>> > m_marker_impls;
+
+    /// Global assembly items
+    ::std::vector< ::HIR::GlobalAssembly>   m_global_asm;
 
     /// Merged index versions of the above
     ImplGroup<const ::HIR::TypeImpl*>   m_all_type_impls;

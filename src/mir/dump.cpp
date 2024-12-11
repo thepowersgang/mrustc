@@ -155,7 +155,7 @@ namespace {
                     m_os << "panic bb" << e.dst << ";\n";
                     ),
                 (If,
-                    m_os << "if " << FMT_M(e.cond) << " { goto bb" << e.bb0 << "; } else { goto bb" << e.bb1 << "; }\n";
+                    m_os << "if " << FMT_M(e.cond) << " { goto bb" << e.bb_true << "; } else { goto bb" << e.bb_false << "; }\n";
                     ),
                 (Switch,
                     m_os << "switch " << FMT_M(e.val) << " {";

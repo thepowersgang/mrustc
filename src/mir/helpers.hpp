@@ -430,8 +430,8 @@ namespace visit {
                 }
             TU_ARMA(If, e) {
                 rv |= visit_lvalue(e.cond, ValUsage::Read);
-                rv |= visit_block_id(e.bb0);
-                rv |= visit_block_id(e.bb1);
+                rv |= visit_block_id(e.bb_true);
+                rv |= visit_block_id(e.bb_false);
                 }
             TU_ARMA(Switch, e) {
                 rv |= visit_lvalue(e.val, ValUsage::Read);

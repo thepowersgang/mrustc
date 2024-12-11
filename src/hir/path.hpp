@@ -17,6 +17,7 @@
 #include "expr_ptr.hpp"
 
 struct EncodedLiteral;
+class Monomorphiser;
 
 namespace HIR {
 
@@ -38,11 +39,17 @@ public:
     EncodedLiteral* operator->() { assert(p); return p; }
     const EncodedLiteral* operator->() const { assert(p); return p; }
 };
+struct ConstGeneric_Unevaluated;
 TAGGED_UNION_EX(ConstGeneric, (), Infer, (
-    (Infer, struct {    // To be inferred
-        unsigned index = ~0u;
+    (Infer, struct InferData {    // To be inferred
+        unsigned index;
+        // NOTE: Workaround for VS2014, which can't use initialiser lists when a default is specified
+        InferData(unsigned index=~0u): index(index) {}
         }),
-    (Unevaluated, std::shared_ptr<HIR::ExprPtr>),    // Unevaluated (or evaluation deferred)
+    // NOTE: This is a `unique_ptr` because it contains two PathParams and a shared (2*3 pointers + 2 pointers)
+    // The rest of the variants here are two pointers
+    (Unevaluated, std::unique_ptr<ConstGeneric_Unevaluated>),   // Unevaluated (or evaluation deferred)
+    //(Unevaluated, std::shared_ptr<HIR::ExprPtr>),   // Unevaluated (or evaluation deferred)
     (Generic, GenericRef),  // A single generic reference
     (Evaluated, EncodedLiteralPtr) // A fully known literal
     ),
@@ -170,7 +177,6 @@ struct PathParams
 class GenericPath
 {
 public:
-    std::unique_ptr<GenericParams>  m_hrls;
     SimplePath  m_path;
     PathParams  m_params;
 
@@ -240,6 +246,7 @@ public:
 
     typedef ::std::map< RcString, AtyEqual> assoc_list_t;
 
+    ::std::unique_ptr<GenericParams>    m_hrtbs;
     GenericPath m_path;
     assoc_list_t    m_type_bounds;
     ::std::map< RcString, AtyBound>  m_trait_bounds;
@@ -277,6 +284,7 @@ public:
         GenericPath trait;
         RcString   item;
         PathParams  params;
+        std::unique_ptr<GenericParams>  hrtbs;
         }),
     (UfcsUnknown, struct {
         TypeRef type;
@@ -296,6 +304,7 @@ public:
 
     Path(TypeRef ty, RcString item, PathParams item_params=PathParams());
     Path(TypeRef ty, GenericPath trait, RcString item, PathParams item_params=PathParams());
+    Path(TypeRef ty, GenericParams hrtbs, GenericPath trait, RcString item, PathParams item_params=PathParams());
 
     Path clone() const;
     Compare compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;
@@ -307,6 +316,23 @@ public:
     bool operator<(const Path& x) const { return ord(x) == OrdLess; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);
+};
+
+struct ConstGeneric_Unevaluated {
+    /// Impl-level parameters to the expression
+    HIR::PathParams params_impl;
+    HIR::PathParams params_item;
+    /// HIR/MIR for this unevaluated parameter
+    std::shared_ptr<HIR::ExprPtr>   expr;
+
+    ConstGeneric_Unevaluated(HIR::ExprPtr ep);
+    ConstGeneric_Unevaluated clone() const;
+    ConstGeneric_Unevaluated monomorph(const Span& sp, const Monomorphiser& ms, bool allow_infer=true) const;
+    Ordering ord(const ConstGeneric_Unevaluated& x) const;
+    void fmt(::std::ostream& os) const;
+
+private:
+    ConstGeneric_Unevaluated(){}
 };
 
 }   // namespace HIR

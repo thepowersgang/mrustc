@@ -14,6 +14,7 @@
 #include <functional>
 #include <path.h>
 
+class WorkspaceManifest;
 class PackageManifest;
 class Repository;
 struct TomlKeyValue;
@@ -27,6 +28,16 @@ struct PackageVersion
     unsigned minor;
     unsigned patch;
     bool patch_set;
+    std::string free_text;
+
+    explicit PackageVersion()
+        : major(0), minor(0), patch(0), patch_set(false) {}
+    PackageVersion(unsigned major)
+        : major(major), minor(0), patch(0), patch_set(false) {}
+    PackageVersion(unsigned major, unsigned minor)
+        : major(major), minor(minor), patch(0), patch_set(false) {}
+    PackageVersion(unsigned major, unsigned minor, unsigned patch)
+        : major(major), minor(minor), patch(patch), patch_set(true) {}
 
     static PackageVersion from_string(const ::std::string& s);
 
@@ -35,15 +46,15 @@ struct PackageVersion
         //    return PackageVersion { 0, minor, patch+1 };
         //}
         //else {
-            return PackageVersion { major, minor+1, 0 };
+            return PackageVersion { major, minor+1 };
         //}
     }
     PackageVersion next_breaking() const {
         if(major == 0) {
-            return PackageVersion { 0, minor + 1, 0 };
+            return PackageVersion { 0, minor + 1 };
         }
         else {
-            return PackageVersion { major + 1, 0, 0 };
+            return PackageVersion { major + 1, 0 };
         }
     }
     PackageVersion prev_compat() const {
@@ -60,12 +71,10 @@ struct PackageVersion
     int cmp(const PackageVersion& x) const {
         if( major != x.major )  return (major < x.major) ? -1 : 1;
         if( minor != x.minor )  return (minor < x.minor) ? -1 : 1;
-        if( x.patch_set == patch_set ) {
-            return (patch < x.patch) ? -1 : 1;
+        if( patch_set && x.patch_set ) {
+            if( patch != x.patch )  return (patch < x.patch) ? -1 : 1;
         }
-        else {
-            return 0;
-        }
+        return 0;
     }
 
     bool operator==(const PackageVersion& x) const {
@@ -91,6 +100,9 @@ struct PackageVersion
         os << v.major << "." << v.minor;
         if(v.patch_set)
             os << "." << v.patch;
+        if(v.free_text != "") {
+            os << "+" << v.free_text;
+        }
         return os;
     }
 };
@@ -146,11 +158,13 @@ struct PackageVersionSpec
 class PackageRef
 {
     friend class PackageManifest;
+    friend class WorkspaceManifest;
     ::std::string   m_key;
     ::std::string   m_name;
     PackageVersionSpec  m_version;
 
     bool m_optional = false;
+    bool m_public = false;
     ::std::string   m_path;
 
     // Features requested by this reference
@@ -166,7 +180,11 @@ class PackageRef
     {
     }
 
-    void fill_from_kv(ErrorHandler& eh, bool was_created, const TomlKeyValue& kv, size_t ofs);
+    void fill_from_kv(
+        ErrorHandler& eh,
+        bool was_created, const TomlKeyValue& kv, size_t ofs,
+        const WorkspaceManifest* wm, const ::helpers::path& base_dir
+        );
 
 public:
     const ::std::string& key() const { return m_key; }
@@ -185,6 +203,7 @@ public:
         return *m_manifest;
     }
 
+    std::shared_ptr<PackageManifest> load_manifest_raw(Repository& repo, const ::helpers::path& base_path);
     void load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps);
 
     friend std::ostream& operator<<(std::ostream& os, const PackageRef& pr);
@@ -195,6 +214,7 @@ enum class Edition
     Unspec,
     Rust2015,
     Rust2018,
+    Rust2021,
 };
 struct PackageTarget
 {
@@ -269,10 +289,34 @@ public:
     ::std::vector<::std::pair<::std::string, ::std::string>>    downstream_env;
 };
 
+class WorkspaceManifest
+{
+    ::std::map< ::std::string, ::helpers::path> m_patches;
+
+    Edition m_edition = Edition::Unspec;
+    struct Dependencies {
+        ::std::vector<PackageRef>   main;
+        ::std::vector<PackageRef>   build;
+        ::std::vector<PackageRef>   dev;
+    };
+    Dependencies    m_dependencies;
+
+public:
+    WorkspaceManifest();
+    static WorkspaceManifest load_from_toml(const ::helpers::path& workspace_manifest_path);
+
+    Edition edition() const { return m_edition; }
+    const ::std::map< ::std::string, ::helpers::path>& patches() const { return m_patches; }
+    const ::std::vector<PackageRef>& dependencies() const { return m_dependencies.main; }
+    const ::std::vector<PackageRef>& build_dependencies() const { return m_dependencies.build; }
+    const ::std::vector<PackageRef>& dev_dependencies() const { return m_dependencies.dev; }
+private:
+    void fill_from_kv(ErrorHandler& eh, const TomlKeyValue& kv);
+};
+
 class PackageManifest
 {
-    ::std::string   m_manifest_path;
-    helpers::path   m_workspace_manifest;
+    ::helpers::path m_manifest_dir;
 
     ::std::string   m_name;
     PackageVersion  m_version;
@@ -297,16 +341,25 @@ class PackageManifest
     ::std::map<::std::string, ::std::vector<::std::string>>    m_features;
     ::std::vector<::std::string>    m_default_features;
     ::std::vector<::std::string>    m_active_features;
+    // Set once `load_dependencies` runs, clears when a new feature is activated (as that may activate features in deps)
+    bool m_dependencies_loaded = false;
+
+    // Cleared if any features mention `dep:`
+    bool m_enable_implicit_optional_dep_features = true;
 
     PackageManifest();
 
 public:
-    static PackageManifest load_from_toml(const ::std::string& path);
+    static PackageManifest load_from_toml(const ::std::string& path, const WorkspaceManifest* wm);
+    static PackageManifest magic_manifest(const char* name);
 private:
-    void fill_from_kv(ErrorHandler& eh, const TomlKeyValue& kv);
+    void fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm, const TomlKeyValue& kv);
 
 public:
     const PackageVersion& version() const { return m_version; }
+    bool is_std_magic() const {
+        return m_manifest_dir == ::helpers::path();
+    }
     bool has_library() const;
     const PackageTarget& get_library() const;
 
@@ -326,13 +379,7 @@ public:
     }
 
     const ::helpers::path directory() const {
-        return ::helpers::path(m_manifest_path).parent();
-    }
-    const ::std::string& manifest_path() const {
-        return m_manifest_path;
-    }
-    const ::helpers::path& workspace_path() const {
-        return m_workspace_manifest;
+        return m_manifest_dir;
     }
     const ::std::string& name() const {
         return m_name;
@@ -377,3 +424,4 @@ public:
 
     void load_build_script(const ::std::string& path);
 };
+

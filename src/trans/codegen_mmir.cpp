@@ -95,6 +95,9 @@ namespace
             }
             os << fmt(te.inner);
             }
+        TU_ARMA(NamedFunction, te) {
+            os << "fn " << Trans_Mangle(te.path);
+            }
         TU_ARMA(Function, e) {
             if( e.is_unsafe ) {
                 os << "unsafe ";
@@ -1013,7 +1016,7 @@ namespace
                     m_of << "PANIC " << e.dst << "\n";
                     break;
                 TU_ARM(term, If, e)
-                    m_of << "IF " << fmt(e.cond) << " goto " << e.bb0 << " else " << e.bb1 << "\n";
+                    m_of << "IF " << fmt(e.cond) << " goto " << e.bb_true << " else " << e.bb_false << "\n";
                     break;
                 TU_ARM(term, Switch, e) {
                     m_of << "SWITCH " << fmt(e.val) << " { ";
@@ -1110,6 +1113,11 @@ namespace
 
             m_mir_res = nullptr;
         }
+        
+        void emit_global_asm(const ::HIR::GlobalAssembly& ) override
+        {
+            TODO(Span(), "global_asm! codegen");
+        }
 
 
     private:
@@ -1124,12 +1132,12 @@ namespace
                 {
                     tmp = clone_ty_with(sp, item.m_return, [&](const auto& x, auto& out) {
                         if( const auto* te = x.data().opt_ErasedType() ) {
-                            out = item.m_code.m_erased_types.at(te->m_index).clone();
-                            return true;
+                            if( const auto* e = te->m_inner.opt_Fcn() ) {
+                                out = item.m_code.m_erased_types.at(e->m_index).clone();
+                                return true;
+                            }
                         }
-                        else {
-                            return false;
-                        }
+                        return false;
                         });
                     tmp = params.monomorph_type(Span(), tmp).clone();
                 }

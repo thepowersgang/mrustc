@@ -118,7 +118,6 @@ public:
             {
             case TOK_SQUARE_CLOSE:
             case TOK_PAREN_CLOSE:
-            case TOK_BRACE_CLOSE:
                 ret.push_back( MacroPatEnt(lex.end_span(ps), TOK_DOLLAR) );
                 PUTBACK(tok, lex);
                 break;
@@ -182,7 +181,7 @@ public:
 
                 GET_TOK(tok, lex);  // Joiner or loop type
                 // If the token is a loop type, then it can't be a joiner
-                if( lex.edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
+                if( /*lex.edition_after(AST::Edition::Rust2018) &&*/ tok.type() == TOK_QMARK )
                 {
                     // 2018 added `?` repetition operator
                 }
@@ -382,9 +381,68 @@ struct ContentLoopVariableUse
                 DEBUG("joiner = " << Token(joiner) << ", controlling_loops = {" << controlling_loops << "}, content = " << content);
                 ret.push_back( MacroExpansionEnt::make_Loop({ mv$(content), joiner, mv$(controlling_loops) }) );
             }
+            // - `${operator(args}` - Extensions
+            else if( tok.type() == TOK_BRACE_OPEN )
+            {
+                auto ident = lex.getTokenCheck(TOK_IDENT).ident().name;
+                if( ident == "ignore" ) {
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    GET_TOK(tok, lex);
+                    auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    const auto* ns = state.find_name(name);
+                    if( !ns ) {
+                        TODO(lex.point_span(), "Handle ${ignore(" << name << ")} - Missing");
+                    }
+
+                    DEBUG("$" << name << " #" << ns->idx << " [" << ns->loops << "]");
+
+                    // If the current loop depth is smaller than the stack for this variable, then error
+                    if( loop_depth < ns->loops.size() ) {
+                        ERROR(lex.point_span(), E0000, "Variable $" << name << " is still repeating at this depth (" << loop_depth << " < " << ns->loops.size() << ")");
+                    }
+
+                    if( var_usage_ptr ) {
+                        var_usage_ptr->insert( ::std::make_pair(ns->idx, ContentLoopVariableUse(ns->loops)) );
+                    }
+                    ret.push_back( MacroExpansionEnt(NAMEDVALUE_TY_IGNORE | ns->idx) );
+                }
+                else if( ident == "count" ) {
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    GET_TOK(tok, lex);
+                    auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    const auto* ns = state.find_name(name);
+                    if( !ns ) {
+                        TODO(lex.point_span(), "Handle ${count(" << name << ")} - Missing");
+                    }
+
+                    DEBUG("$" << name << " #" << ns->idx << " [" << ns->loops << "]");
+
+                    // Can still be repeating
+                    //// If the current loop depth is smaller than the stack for this variable, then error
+                    //if( loop_depth < ns->loops.size() ) {
+                    //    ERROR(lex.point_span(), E0000, "Variable $" << name << " is still repeating at this depth (" << loop_depth << " < " << ns->loops.size() << ")");
+                    //}
+
+                    if( var_usage_ptr ) {
+                        var_usage_ptr->insert( ::std::make_pair(ns->idx, ContentLoopVariableUse(ns->loops)) );
+                    }
+                    ret.push_back( MacroExpansionEnt(NAMEDVALUE_TY_COUNT | ns->idx) );
+                }
+                else if( ident == "index" ) {
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    ret.push_back( MacroExpansionEnt(NAMEDVALUE_MAGIC_INDEX) );
+                }
+                else {
+                    TODO(lex.point_span(), "Handle ${" << ident << "...}");
+                }
+                lex.getTokenCheck(TOK_BRACE_CLOSE);
+            }
             else if( tok.type() == TOK_RWORD_CRATE )
             {
-                ret.push_back( MacroExpansionEnt( (1<<30) | 0 ) );
+                ret.push_back( MacroExpansionEnt(NAMEDVALUE_MAGIC_CRATE) );
             }
             else if( tok.type() == TOK_IDENT || Token::type_is_rword(tok.type()) )
             {
@@ -505,6 +563,15 @@ MacroRulesArm Parse_MacroRules_MakeArm(Span pat_sp, ::std::vector<MacroPatEnt> p
     return arm;
 }
 
+namespace {
+    MacroRulesPtr make_mr_ptr(const TokenStream& lex) {
+        auto s = lex.point_span();
+        auto rv = MacroRulesPtr(new MacroRules( s->crate_name(), lex.get_edition() ));
+        rv->m_hygiene = lex.get_hygiene();
+        return rv;
+    }
+}
+
 /// Parse an entire macro_rules! block into a format that exec.cpp can use
 MacroRulesPtr Parse_MacroRules(TokenStream& lex)
 {
@@ -529,9 +596,7 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
         throw ParseError::Unexpected(lex, tok, { TOK_EOF, TOK_BRACE_CLOSE });
     DEBUG("- " << rules.size() << " rules");
 
-    auto rv = MacroRulesPtr(new MacroRules( ));
-    rv->m_hygiene = lex.get_hygiene();
-
+    auto rv = make_mr_ptr(lex);
     // Re-parse the patterns into a unified form
     for(auto& rule : rules)
     {
@@ -556,10 +621,9 @@ MacroRulesPtr Parse_MacroRulesSingleArm(TokenStream& lex)
     // TODO: Pass a flag that annotates all idents with the current module?
     auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, state);
 
-    auto mr = new MacroRules( );
-    mr->m_hygiene = lex.get_hygiene();
-    mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
-    return MacroRulesPtr(mr);
+    auto rv = make_mr_ptr(lex);
+    rv->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
+    return rv;
 }
 
 namespace {

@@ -127,6 +127,8 @@ public:
     ::std::set< ::HIR::GenericPath> m_constructors;
     // Automatic Clone impls
     ::std::set< ::HIR::TypeRef>  auto_clone_impls;
+    // Automatic FnPtr impls
+    ::std::set< ::HIR::TypeRef>  auto_fnptr_impls;
     // Trait methods
     ::std::set< ::HIR::Path>    trait_object_methods;
 

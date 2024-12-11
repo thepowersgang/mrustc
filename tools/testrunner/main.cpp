@@ -414,7 +414,7 @@ int main(int argc, const char* argv[])
         // ---
         const bool SKIP_PASS = (getenv("TESTRUNNER_SKIPPASS") != nullptr);
         const bool NO_COMPILER_DEP = (getenv("TESTRUNNER_NOCOMPILERDEP") != nullptr);
-        const auto compiler_ts = Timestamp::for_file(MRUSTC_PATH);
+        const auto compiler_ts = getenv("MINICARGO_IGNTOOLS") ? Timestamp::infinite_past() : Timestamp::for_file(MRUSTC_PATH);
         unsigned n_skip = 0;
         unsigned n_cfail = 0;
         unsigned n_fail = 0;

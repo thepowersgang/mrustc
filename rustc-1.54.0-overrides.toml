@@ -10,6 +10,12 @@ proc_macro = { path = "../../library/proc_macro" }
 [add.'compiler/rustc_metadata'.dependencies]
 proc_macro = { path = "../../library/proc_macro" }
 
+# Add an exact version of `regex` to account for there being two versions in the `vendor` dir
+# - The higher one depends on a version of of `aho-corasick` that isn't vendored
+[add.'compiler/rustc_driver'.dependencies]
+regex = "=1.4.3"
+[add.'tools/cargo'.dependencies]
+regex = "=1.4.3"
 
 [add.'library/std'.dependencies.compiler_builtins]
 features = ["no-asm"]
