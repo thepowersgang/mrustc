@@ -325,7 +325,6 @@ int main(int argc, char *argv[])
 
         if( params.crate_name != "" ) {
 
-
             // Extract the crate type and name from the crate attributes
             auto crate_type = params.crate_type;
             if( crate_type == ::AST::Crate::Type::Unknown ) {
@@ -378,6 +377,12 @@ int main(int argc, char *argv[])
                 s = 0;
             else
                 s += 1;
+            auto s2 = params.infile.find_last_of('\\');
+            if( s2 == ::std::string::npos )
+                s2 = 0;
+            else
+                s2 += 1;
+            s = max(s, s2);
             auto e = params.infile.find_first_of('.', s);
             if( e == ::std::string::npos )
                 e = params.infile.size() - s;
