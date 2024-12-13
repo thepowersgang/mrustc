@@ -1,4 +1,4 @@
-@call build_std_174.cmd
+@call build_std_154.cmd
 @if %errorlevel% neq 0 exit /b %errorlevel%
 
 @mkdir %OUTDIR%\local_tests\
