@@ -111,3 +111,11 @@
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  static_assert_size!(Expr<'_>, 24);
+
+# MSVC Cannot handle structs larger than 32-bit, so disable this for windows with mrustc
+--- vendor/hex/src/lib.rs
++++ vendor/hex/src/lib.rs
+@@ -239,2 +239,2 @@
+-#[cfg(target_pointer_width = "64")]
++#[cfg(all(target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ from_hex_array_impl! {

@@ -1958,6 +1958,7 @@ namespace {
                         i ++;
                         m_of << " "; emit_ctype(te.inner); m_of << "DATA_" << i << "[" << std::min(len, chunk_len) << "];";
                     } while(len > chunk_len);
+                    // NOTE: The max size of a struct with MSVC is 0xFFFF_FFFF bytes, any field that would make the size larger than that is ignored.
                 }
                 else
                 {
