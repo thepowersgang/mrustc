@@ -35,6 +35,8 @@
 # define NOGDI
 # include <Windows.h>
 # include <DbgHelp.h>
+# undef min
+# undef max
 #endif
 
 TargetVersion	gTargetVersion = TargetVersion::Rustc1_29;
@@ -382,7 +384,7 @@ int main(int argc, char *argv[])
                 s2 = 0;
             else
                 s2 += 1;
-            s = max(s, s2);
+            s = std::max(s, s2);
             auto e = params.infile.find_first_of('.', s);
             if( e == ::std::string::npos )
                 e = params.infile.size() - s;
