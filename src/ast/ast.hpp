@@ -32,6 +32,7 @@
 
 #include <macro_rules/macro_rules_ptr.hpp>
 #include <expand/common.hpp>
+#include "../hir/asm.hpp"
 
 namespace AST {
 
@@ -43,27 +44,25 @@ class Item;
 using ::std::unique_ptr;
 using ::std::move;
 
-typedef bool    Visibility;
-
 struct StructItem
 {
     ::AST::AttributeList   m_attrs;
-    bool    m_is_public;
+    ::AST::Visibility   m_vis;
     RcString   m_name;
     TypeRef m_type;
 
     //StructItem() {}
 
-    StructItem(::AST::AttributeList attrs, bool is_pub, RcString name, TypeRef ty):
+    StructItem(::AST::AttributeList attrs, AST::Visibility vis, RcString name, TypeRef ty):
         m_attrs( mv$(attrs) ),
-        m_is_public(is_pub),
+        m_vis( mv$(vis) ),
         m_name( mv$(name) ),
         m_type( mv$(ty) )
     {
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const StructItem& x) {
-        return os << (x.m_is_public ? "pub " : "") << x.m_name << ": " << x.m_type;
+        return os << x.m_vis << x.m_name << ": " << x.m_type;
     }
 
     StructItem clone() const;
@@ -72,20 +71,20 @@ struct StructItem
 struct TupleItem
 {
     ::AST::AttributeList    m_attrs;
-    bool    m_is_public;
+    ::AST::Visibility   m_vis;
     TypeRef m_type;
 
     //TupleItem() {}
 
-    TupleItem(::AST::AttributeList attrs, bool is_pub, TypeRef ty):
+    TupleItem(::AST::AttributeList attrs, AST::Visibility vis, TypeRef ty):
         m_attrs( mv$(attrs) ),
-        m_is_public(is_pub),
+        m_vis(mv$(vis)),
         m_type( mv$(ty) )
     {
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TupleItem& x) {
-        return os << (x.m_is_public ? "pub " : "") << x.m_type;
+        return os << x.m_vis << x.m_type;
     }
 
     TupleItem clone() const;
@@ -93,20 +92,28 @@ struct TupleItem
 
 class TypeAlias
 {
-    GenericParams  m_params;
-    TypeRef m_type;
 public:
+    /// Normal generic parameter definitions
+    GenericParams  m_params;
+    /// Holds bounds on this type, all bounds encoded as `Self: ...`
+    GenericParams   m_self_bounds;
+    TypeRef m_type;
+
     //TypeAlias() {}
     TypeAlias(GenericParams params, TypeRef type):
         m_params( move(params) ),
         m_type( move(type) )
     {}
+    static TypeAlias new_associated_type(GenericParams params, GenericParams type_bounds, TypeRef default_type) {
+        TypeAlias rv { std::move(params), std::move(default_type) };
+        rv.m_self_bounds = std::move(type_bounds);
+        return rv;
+    }
 
     const GenericParams& params() const { return m_params; }
+          GenericParams& params()       { return m_params; }
     const TypeRef& type() const { return m_type; }
-
-    GenericParams& params() { return m_params; }
-    TypeRef& type() { return m_type; }
+          TypeRef& type()       { return m_type; }
 
     TypeAlias clone() const;
 };
@@ -122,6 +129,17 @@ public:
             rv.traits.push_back(p);
         return rv;
     }
+};
+
+enum class Linkage
+{
+    // no `#[linkage]` specified
+    Default,
+    // "weak" - allow multiple definitions
+    Weak,
+    // "extern_weak" - This external symbol can be missing
+    // - Must be on a `static`
+    ExternWeak,
 };
 
 class Static
@@ -141,7 +159,9 @@ public:
     struct Markings {
         std::string link_name;
         std::string link_section;
+        Linkage linkage = Linkage::Default;
     } m_markings;
+
     Static(Class s_class, TypeRef type, Expr value):
         m_class(s_class),
         m_type( move(type) ),
@@ -175,6 +195,34 @@ public:
         }
     };
     typedef ::std::vector<Arg>   Arglist;
+    struct Flags {
+        bool    is_const;
+        bool    is_unsafe;
+        bool    is_async;
+        Flags()
+            : is_const(false)
+            , is_unsafe(false)
+            , is_async(false)
+        {}
+        static Flags make_unsafe() {
+            return Flags().set_unsafe();
+        }
+        Flags set_unsafe() const {
+            auto rv = *this;
+            rv.is_unsafe = true;
+            return rv;
+        }
+        Flags set_const() const {
+            auto rv = *this;
+            rv.is_const = true;
+            return rv;
+        }
+        Flags set_async() const {
+            auto rv = *this;
+            rv.is_async = true;
+            return rv;
+        }
+    };
 
 private:
     Span    m_span;
@@ -182,11 +230,10 @@ private:
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
+    bool    m_is_variadic;  // extern only
 
     ::std::string   m_abi;
-    bool    m_is_const;
-    bool    m_is_unsafe;
-    bool    m_is_variadic;  // extern only
+    Flags   m_flags;
 public:
     struct Markings {
         enum Inline {
@@ -200,6 +247,7 @@ public:
 
         std::string link_name;
         std::string link_section;
+        Linkage linkage = Linkage::Default;
     } m_markings;
 
 
@@ -208,14 +256,18 @@ public:
     Function(Function&&) = default;
     Function& operator=(Function&&) = default;
 
-    Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args);
+    Function(Span sp, ::std::string abi, Flags flags, GenericParams params, TypeRef ret_type, Arglist args, bool is_variadic);
+    // Helper for derive, defines an ABI_RUST function with no generics
+    Function(Span sp, TypeRef ret_type, Arglist args): Function(sp, ABI_RUST, Flags(), GenericParams(), std::move(ret_type), std::move(args), false) {}
 
     void set_code(Expr code) { m_code = ::std::move(code); }
 
+    const Span& sp() const { return m_span; }
+
     const ::std::string& abi() const { return m_abi; };
-    bool is_const() const { return m_is_const; }
-    bool is_unsafe() const { return m_is_unsafe; }
-    bool is_variadic() const { return m_is_variadic; }
+    bool is_const() const { return m_flags.is_const; }
+    bool is_unsafe() const { return m_flags.is_unsafe; }
+    bool is_async() const { return m_flags.is_async; }
 
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
@@ -225,6 +277,7 @@ public:
           TypeRef& rettype()       { return m_rettype; }
     const Arglist& args() const { return m_args; }
           Arglist& args()       { return m_args; }
+    bool is_variadic() const { return m_is_variadic; }
 
     Function clone() const;
 };
@@ -282,7 +335,7 @@ TAGGED_UNION_EX(EnumVariantData, (), Value,
         ::AST::Expr m_value;
         }),
     (Tuple, struct {
-        ::std::vector<TypeRef>  m_sub_types;
+        ::std::vector<TupleItem>    m_items;
         }),
     (Struct, struct {
         ::std::vector<StructItem>   m_fields;
@@ -311,7 +364,7 @@ struct EnumVariant
     {
     }
 
-    EnumVariant(AttributeList attrs, RcString name, ::std::vector<TypeRef> sub_types):
+    EnumVariant(AttributeList attrs, RcString name, ::std::vector<TupleItem> sub_types):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
         m_data( EnumVariantData::make_Tuple( {mv$(sub_types)} ) )
@@ -333,7 +386,7 @@ struct EnumVariant
             os << " = " << e.m_value;
             ),
         (Tuple,
-            os << "(" << e.m_sub_types << ")";
+            os << "(" << e.m_items << ")";
             ),
         (Struct,
             os << " { " << e.m_fields << " }";
@@ -511,7 +564,7 @@ public:
     struct ImplItem {
         Span    sp;
         AttributeList   attrs;
-        bool    is_pub; // Ignored for trait impls
+        AST::Visibility vis; // Ignored for trait impls
         bool    is_specialisable;
         RcString   name;
 
@@ -533,9 +586,9 @@ public:
     {}
     Impl& operator=(Impl&&) = default;
 
-    void add_function(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Function fcn);
-    void add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, TypeRef type);
-    void add_static(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Static v);
+    void add_function(Span sp, AttributeList attrs, AST::Visibility vis, bool is_specialisable, RcString name, Function fcn);
+    void add_type    (Span sp, AttributeList attrs, AST::Visibility vis, bool is_specialisable, RcString name, GenericParams params, TypeRef type);
+    void add_static  (Span sp, AttributeList attrs, AST::Visibility vis, bool is_specialisable, RcString name, Static v);
     void add_macro_invocation( MacroInvocation inv );
 
     const ImplDef& def() const { return m_def; }
@@ -589,6 +642,13 @@ public:
 
     ExternBlock clone() const;
 };
+class GlobalAsm
+{
+public:
+    ::std::vector<AsmCommon::Line>  lines;
+    ::std::vector<AST::Path>    symbols;
+    AsmCommon::Options  options;
+};
 
 /// Representation of a parsed (and being converted) function
 class Module
@@ -604,7 +664,6 @@ private:
     // --- Runtime caches and state ---
     ::std::vector< ::std::shared_ptr<Module> >  m_anon_modules;
 
-    ::std::vector< Named<MacroRef> >    m_macro_import_res;
     ::std::vector< Named<MacroRulesPtr> >  m_macros;
 
 public:
@@ -623,8 +682,8 @@ public:
     bool    m_insert_prelude = true;    // Set to false by `#[no_prelude]` handler
     char    m_index_populated = 0;  // 0 = no, 1 = partial, 2 = complete
     struct IndexEnt {
-        bool is_pub;    // Used as part of glob import checking
         bool is_import; // Set if this item has a path that isn't `mod->path() + name`
+        ::AST::Visibility   vis;
         ::AST::Path path;
     };
 
@@ -634,14 +693,20 @@ public:
     ::std::unordered_map< RcString, IndexEnt >    m_type_items;
     ::std::unordered_map< RcString, IndexEnt >    m_value_items;
     ::std::unordered_map< RcString, IndexEnt >    m_macro_items;
+    // Imported traits are in a different list, because collisions still apply for method lookup
+    ::std::vector<::AST::AbsolutePath> m_traits;
 
     // List of macros imported from other modules (via #[macro_use], includes proc macros)
     // - First value is an absolute path to the macro (including crate name)
     struct MacroImport {
         bool    is_pub;
         RcString   name;   // Can be different, if `use foo as bar` is used
-        ::std::vector<RcString>    path;   // includes the crate name
-        const MacroRules*   macro_ptr;
+        AST::AbsolutePath   path;
+        MacroRef    ref;
+
+        MacroImport clone() const {
+            return MacroImport { is_pub, name, path, ref.clone() };
+        }
     };
     ::std::vector<MacroImport>  m_macro_imports;
 
@@ -667,15 +732,11 @@ public:
     ::std::shared_ptr<AST::Module> add_anon();
 
     void add_item(Named<Item> item);
-    void add_item(Span sp, bool is_pub, RcString name, Item it, AttributeList attrs);
-    void add_ext_crate(Span sp, bool is_pub, RcString ext_name, RcString imp_name, AttributeList attrs);
+    void add_item(Span sp, Visibility vis, RcString name, Item it, AttributeList attrs);
+    void add_ext_crate(Span sp, Visibility vis, RcString ext_name, RcString imp_name, AttributeList attrs);
     void add_macro_invocation(MacroInvocation item);
 
     void add_macro(bool is_exported, RcString name, MacroRulesPtr macro);
-    void add_macro_import(Span sp, RcString name, MacroRef ref) {
-        m_macro_import_res.push_back( Named<MacroRef>( sp, /*attrs=*/{}, /*is_pub=*/false, mv$(name), std::move(ref)) );
-    }
-    //void add_macro_import(RcString name, const MacroRules& mr);
 
 
 
@@ -690,7 +751,6 @@ public:
 
           NamedList<MacroRulesPtr>&    macros()        { return m_macros; }
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
-    const ::std::vector<Named<MacroRef> >&  macro_imports_res() const { return m_macro_import_res; }
 };
 
 TAGGED_UNION_EX(Item, (), None,
@@ -702,6 +762,7 @@ TAGGED_UNION_EX(Item, (), None,
 
     // Nameless items
     (ExternBlock, ExternBlock),
+    (GlobalAsm, GlobalAsm),
     (Impl, Impl),
     (NegImpl, ImplDef),
 

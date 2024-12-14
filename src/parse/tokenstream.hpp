@@ -31,6 +31,8 @@ public:
 
     // Used for "for/if/while" to handle ambiguity
     bool disallow_struct_literal = false;
+    // Used for match arms to disallow `foo => if false {} (bar) => ...`
+    bool disallow_call_or_index = false;
     // A debugging hook that disables expansion of macros
     bool no_expand_macros = false;
 
@@ -135,4 +137,5 @@ public:
 #define SET_ATTRS(lex, attrs)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().parent_attrs = &(attrs)
 #define SET_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = true
 #define CLEAR_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = false
+#define CLEAR_PARSE_FLAGS_EXPR(lex)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().disallow_struct_literal = false; lex.parse_state().disallow_call_or_index = false
 #define CHECK_PARSE_FLAG(lex, flag) (lex.parse_state().flag == true)

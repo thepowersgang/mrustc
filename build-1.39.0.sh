@@ -6,6 +6,6 @@ make -f minicargo.mk RUSTCSRC $@
 make -f minicargo.mk LIBS $@
 make -f minicargo.mk test $@
 make -f minicargo.mk local_tests $@
-RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk output-1.39.0/rustc $@
-LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk output-1.39.0/cargo $@
+RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk output-1.39.0/rustc $@ -j ${PARLEVEL:-1}
+LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk output-1.39.0/cargo $@ -j ${PARLEVEL:-1}
 ./output-1.39.0/cargo --version

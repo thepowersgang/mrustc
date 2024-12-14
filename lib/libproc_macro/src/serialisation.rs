@@ -6,14 +6,32 @@ use crate::protocol::{Reader,Writer};
 /// Receive a token stream from the compiler
 pub fn recv_token_stream<R: ::std::io::Read>(reader: R) -> TokenStream
 {
+    let mut s = Reader::new(reader);
+    return get_subtree(&mut s, "");
+
     fn get_subtree<R: ::std::io::Read>(s: &mut Reader<R>, end: &'static str) -> TokenStream {
         let mut toks: Vec<TokenTree> = Vec::new();
         while let Some(t) = s.read_ent()
         {
             let tt = match t
                 {
-                Token::Symbol(ref s) if s == end => return TokenStream { inner: toks, } ,
+                Token::SpanRef(_idx) => {
+                    // Ignore - for now
+                    continue
+                    },
+                Token::SpanDef(sd) => {
+                    crate::Span::define(sd.idx,
+                        if sd.parent_idx == 0 { None } else { Some(crate::Span::from_raw(sd.parent_idx - 1)) },
+                        crate::span::SourceFile( sd.path.into(), sd.is_path_real ),
+                        sd.start_line .. sd.end_line,
+                        sd.start_ofs .. sd.end_ofs,
+                        );
+                    continue
+                    },
+                Token::EndOfStream if end == "" => return TokenStream { inner: toks, },
+                Token::Symbol(ref s) if s == end => return TokenStream { inner: toks, },
                 Token::Symbol(ref s) if s == "" => panic!("Unexpected end-of-stream marker"),
+                Token::EndOfStream => panic!("Unexpected end-of-stream marker"),
                 Token::Symbol(sym) => {
                     match &sym[..]
                     {
@@ -66,9 +84,6 @@ pub fn recv_token_stream<R: ::std::io::Read>(reader: R) -> TokenStream
         }
         panic!("Unexpected EOF")
     }
-
-    let mut s = Reader::new(reader);
-    get_subtree(&mut s, "")
 }
 
 // --------------------------------------------------------------------

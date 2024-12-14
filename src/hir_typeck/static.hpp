@@ -125,6 +125,10 @@ public:
         m_item_generics = nullptr;
         prep_indexes();
     }
+    // Used by ResolveUFCS to regenerate
+    void prep_indexes(const Span& sp) {
+        TraitResolveCommon::prep_indexes(sp);
+    }
     /// \}
 
     /// \brief Lookups
@@ -200,7 +204,8 @@ private:
     void expand_associated_types_params(const Span& sp, ::HIR::PathParams& input) const;
     void expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const;
     bool expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse=true) const;
-    bool replace_equalities(::HIR::TypeRef& input) const;
+protected:
+    virtual bool replace_equalities(::HIR::TypeRef& input) const;
 
 public:
     /// \}
@@ -240,6 +245,7 @@ public:
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
     const ::HIR::TypeRef* is_type_phantom_data(const ::HIR::TypeRef& ty) const;
 
+    HIR::TypeRef get_field_type(const Span& sp, const ::HIR::TypeRef& ty, const RcString& name) const;
 
     TAGGED_UNION(ValuePtr, NotFound,
     (NotFound, struct{}),

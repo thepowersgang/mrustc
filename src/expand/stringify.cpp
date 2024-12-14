@@ -24,13 +24,27 @@ class CExpander:
             if(!rv.empty())
                 rv += " ";
             DEBUG(" += " << tok);
-            rv += tok.to_str();
+            if( tok.type() == TOK_IDENT  ) {
+                rv += tok.ident().name.c_str();
+            }
+            else {
+                auto v = tok.to_str();
+                const char* s = v.c_str();
+                // Very hacky strip of hygine information (e.g. from paths)
+                if( s[0] == '{' && s[1] ) {
+                    while( *s != '}' && *s )
+                        s ++;
+                    assert(*s);
+                    s ++;
+                }
+                rv += s;
+            }
         }
 
         // TODO: Strip out any `{...}` sequences that aren't from nested
         // strings.
 
-        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(TOK_STRING, mv$(rv), {}))) );
     }
 };
 

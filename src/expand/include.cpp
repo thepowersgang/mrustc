@@ -84,7 +84,8 @@ class CIncludeExpander:
         auto path = get_string(sp, lex, crate, mod);
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
-        ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+        //::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+        ::std::string file_path = get_path_relative_to(sp.get_top_file_span().filename.c_str(), mv$(path));
         crate.m_extra_files.push_back(file_path);
 
         try {
@@ -122,7 +123,7 @@ class CIncludeBytesExpander:
         ss << is.rdbuf();
 
         ::std::vector<TokenTree>    toks;
-        toks.push_back(Token(TOK_BYTESTRING, mv$(ss.str())));
+        toks.push_back(Token(TOK_BYTESTRING, mv$(ss.str()), {}));
         return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015, Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
@@ -149,7 +150,7 @@ class CIncludeStrExpander:
         ss << is.rdbuf();
 
         ::std::vector<TokenTree>    toks;
-        toks.push_back(Token(TOK_STRING, mv$(ss.str())));
+        toks.push_back(Token(TOK_STRING, mv$(ss.str()), {}));
         return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015, Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };

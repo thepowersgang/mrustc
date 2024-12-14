@@ -28,6 +28,8 @@ class ExternType;
 class Struct;
 class Union;
 class Enum;
+class Function;
+class ItemPath;
 struct ExprNode_Closure;
 struct ExprNode_Generator;
 
@@ -111,6 +113,7 @@ TAGGED_UNION_EX(TypePathBinding, (), Unbound, (
     ), (), (), (
         TypePathBinding clone() const;
 
+        const GenericParams* get_generics() const;
         const TraitMarkings* get_trait_markings() const;
 
         bool operator==(const TypePathBinding& x) const;
@@ -121,6 +124,7 @@ struct TypeData_Path
 {
     ::HIR::Path path;
     TypePathBinding binding;
+    ::HIR::GenericParams    hrtbs;   // HRTBs for vtable paths ONLY
 
     bool is_closure() const {
         return path.m_data.is_Generic()
@@ -142,22 +146,57 @@ struct TypeData_TraitObject
     ::std::vector< ::HIR::GenericPath > m_markers;
     ::HIR::LifetimeRef  m_lifetime;
 };
+struct TypeData_ErasedType_AliasInner
+{
+    HIR::GenericParams  generics;
+    HIR::SimplePath path;
+    HIR::TypeRef    type;
+
+    TypeData_ErasedType_AliasInner(const HIR::ItemPath& p, const HIR::GenericParams& params);
+    bool is_public_to(const HIR::SimplePath& p) const;
+};
+TAGGED_UNION(TypeData_ErasedType_Inner, Alias,
+    (Fcn, struct {
+        ::HIR::Path m_origin;
+        unsigned int m_index;
+        }),
+    (Known, HIR::TypeRef),
+    (Alias, struct {
+        ::HIR::PathParams   params;
+        ::std::shared_ptr<TypeData_ErasedType_AliasInner>   inner;
+        })
+);
+
+} // namespace HIR
+extern Ordering ord(const HIR::TypeData_ErasedType_Inner& a, const HIR::TypeData_ErasedType_Inner& b);
+static inline bool operator==(const HIR::TypeData_ErasedType_Inner& a, const HIR::TypeData_ErasedType_Inner& b) { return ord(a,b) == OrdEqual; }
+static inline bool operator!=(const HIR::TypeData_ErasedType_Inner& a, const HIR::TypeData_ErasedType_Inner& b) { return ord(a,b) != OrdEqual; }
+namespace HIR {
+
 struct TypeData_ErasedType
 {
-    ::HIR::Path m_origin;
-    unsigned int m_index;
     bool m_is_sized;
     ::std::vector< ::HIR::TraitPath>    m_traits;
     ::std::vector< ::HIR::LifetimeRef>  m_lifetimes;
+    TypeData_ErasedType_Inner   m_inner;
 };
 struct TypeData_FunctionPointer
 {
     GenericParams   hrls;   // Higher-ranked lifetimes
     bool    is_unsafe;
+    bool    is_variadic;
     ::std::string   m_abi;
     TypeRef m_rettype;
     ::std::vector<TypeRef>  m_arg_types;
 };
+TAGGED_UNION_EX(TypeData_NamedFunction_Ty, (), Function, (
+    (Function, const ::HIR::Function* ),
+    (EnumConstructor, struct { const ::HIR::Enum* e; size_t v; }),
+    (StructConstructor, const ::HIR::Struct*)
+    ), (), (), (
+        TypeData_NamedFunction_Ty clone() const;
+    )
+);
 
 TAGGED_UNION(TypeData, Diverge,
     (Infer, struct {
@@ -182,7 +221,7 @@ TAGGED_UNION(TypeData, Diverge,
     (Path, TypeData_Path),  // TODO: Pointer wrap
     (Generic, GenericRef),
     (TraitObject, TypeData_TraitObject),  // TODO: Pointer wrap
-    (ErasedType, TypeData_ErasedType),  // TODO: Pointer wrap
+    (ErasedType, /*::std::unique_ptr<*/TypeData_ErasedType),  // TODO: Pointer wrap
     (Array, struct {
         TypeRef inner;
         ArraySize  size;
@@ -199,6 +238,12 @@ TAGGED_UNION(TypeData, Diverge,
     (Pointer, struct {
         ::HIR::BorrowType   type;
         TypeRef inner;
+        }),
+    (NamedFunction, struct {
+        ::HIR::Path path;
+        TypeData_NamedFunction_Ty   def;
+
+        TypeData_FunctionPointer decay(const Span& sp) const;
         }),
     (Function, TypeData_FunctionPointer),   // TODO: Pointer wrap, this is quite large
     (Closure, struct {

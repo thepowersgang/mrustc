@@ -53,6 +53,18 @@ Lexer::Lexer(const ::std::string& filename, AST::Edition edition, ParseState ps)
         }
     }
 }
+Lexer::Lexer(::std::istringstream& ss, AST::Edition edition, ParseState ps)
+    : TokenStream(ps)
+    , m_path("-")
+    , m_line(1)
+    , m_line_ofs(0)
+    , m_istream_fp(nullptr)
+    , m_istream(ss)
+    , m_last_char_valid(false)
+    , m_edition(edition)
+    , m_hygiene( Ident::Hygiene::new_scope() )
+{
+}
 
 
 #define LINECOMMENT -1
@@ -543,7 +555,7 @@ Token Lexer::getTokenInt()
                                 str += ch;
                             }
                         }
-                        return Token(TOK_BYTESTRING, mv$(str));
+                        return Token(TOK_BYTESTRING, mv$(str), realGetHygiene());
                     }
                     // Byte constant
                     else if( ch == '\'' ) {
@@ -624,7 +636,7 @@ Token Lexer::getTokenInt()
                 {
                     //# [ doc = "commment data" ]
                     m_next_tokens.push_back(TOK_SQUARE_CLOSE);
-                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
+                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str), realGetHygiene()));
                     m_next_tokens.push_back(TOK_EQUAL);
                     m_next_tokens.push_back(Token(TOK_IDENT, RcString::new_interned("doc")));
                     m_next_tokens.push_back(TOK_SQUARE_OPEN);
@@ -632,7 +644,7 @@ Token Lexer::getTokenInt()
                         m_next_tokens.push_back(TOK_EXCLAM);
                     return TOK_HASH;
                 }
-                return Token(TOK_COMMENT, str); }
+                return Token(TOK_COMMENT, str, realGetHygiene()); }
             case BLOCKCOMMENT: {
                 ::std::string   str;
                 bool is_doc = false;
@@ -640,12 +652,18 @@ Token Lexer::getTokenInt()
                 ch = this->getc();
                 if( ch == '*' ) {
                     ch = this->getc();
-                    if( ch == '*' )
-                    {
+                    if( ch == '*' ) {
+                        // `/***....` - more than two `*`s is a normal block comment with a bunch of stuff
                         str += "*";
                     }
-                    else
+                    else if( ch == '/' ) {
+                        // `/**/` - an empty block comment
+                        return Token(TOK_COMMENT, str, realGetHygiene());
+                    }
+                    else {
+                        // `/**` - A doc comment
                         is_doc = true;
+                    }
                 }
                 else if( ch == '!' ) {
                     is_pdoc = true;
@@ -687,7 +705,7 @@ Token Lexer::getTokenInt()
                 {
                     //# [ doc = "commment data" ]
                     m_next_tokens.push_back(TOK_SQUARE_CLOSE);
-                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
+                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str), realGetHygiene()));
                     m_next_tokens.push_back(TOK_EQUAL);
                     m_next_tokens.push_back(Token(TOK_IDENT, RcString::new_interned("doc")));
                     m_next_tokens.push_back(TOK_SQUARE_OPEN);
@@ -695,16 +713,19 @@ Token Lexer::getTokenInt()
                         m_next_tokens.push_back(TOK_EXCLAM);
                     return TOK_HASH;
                 }
-                return Token(TOK_COMMENT, str); }
+                return Token(TOK_COMMENT, str, realGetHygiene()); }
             case SINGLEQUOTE: {
                 auto firstchar = this->getc();
                 if( firstchar.v == '\\' ) {
                     // Character constant with an escape code
                     uint32_t val = this->parseEscape('\'');
                     if(this->getc() != '\'') {
-                        throw ParseError::Todo("Proper error for lex failures");
+                        TODO(this->point_span(), "Proper error for lex failures - multi-char const?");
                     }
                     return Token( U128(val), CORETYPE_CHAR);
+                }
+                else if( firstchar.v == '\'' ) {
+                    TODO(this->point_span(), "Proper error for empty char literals");
                 }
                 else {
                     ch = this->getc();
@@ -722,10 +743,10 @@ Token Lexer::getTokenInt()
                             ch = this->getc();
                         }
                         this->ungetc();
-                        return Token(TOK_LIFETIME, Ident(this->get_hygiene(), RcString::new_interned(str)));
+                        return Token(TOK_LIFETIME, Ident(this->realGetHygiene(), RcString::new_interned(str)));
                     }
                     else {
-                        throw ParseError::Todo("Lex Fail - Expected ' after character constant");
+                        TODO(this->point_span(), "Lex Fail - Expected ' after character constant");
                     }
                 }
                 break; }
@@ -746,7 +767,7 @@ Token Lexer::getTokenInt()
                         str += ch;
                     }
                 }
-                return Token(TOK_STRING, mv$(str));
+                return Token(TOK_STRING, mv$(str), realGetHygiene());
                 }
             default:
                 assert(!"bugcheck");
@@ -834,7 +855,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
             }
         }
     }
-    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, mv$(val));
+    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, mv$(val), realGetHygiene());
 }
 Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool parse_reserved_word)
 {
@@ -1095,7 +1116,7 @@ uint32_t Lexer::parseEscape(char enclosing)
         else
             return ch.v;
     default:
-        throw ParseError::Todo( FMT("Unknown escape sequence \\" << ch) );
+        throw ParseError::Todo(*this, FMT("Unknown escape sequence \\" << ch) );
     }
 }
 

@@ -49,7 +49,7 @@ def main():
         
         m = RE_equate_lifetimes.match(line)
         if m is not None:
-            state.links_raw.append( (m[2], m[1], "") )
+            state.links_raw.append( (m.group(2), m.group(1), "") )
             continue
         
         if state.in_iter_0 and 'dump: ' in line and ' -- to=' in line:
@@ -99,7 +99,7 @@ def main():
             print("\"{a}\" -> \"{b}\" {{ label = \"{label}\" }};".format(a=a,b=b, label=label))
         print("}")
 
-    if True:
+    if False:
         import networkx as nx
         import matplotlib.pyplot as plt
         g = nx.DiGraph()
@@ -120,7 +120,7 @@ def main():
         #pos = nx.nx_pydot.graphviz_layout(g)
         nx.draw(g, with_labels=True, arrows=True, pos=pos)
         plt.show()
-    elif True:
+    elif False:
         import graphviz
         g = graphviz.Digraph('borrowck')
         for a,b,label in links:
@@ -129,8 +129,8 @@ def main():
     else:
         print()
         print("digraph borrowck {")
-        for a,b in links:
-            print("\"{a}\" -> \"{b}\";".format(a=a,b=b))
+        for a,b,label in links:
+            print("\"{a}\" -> \"{b}\"; # ".format(a=a,b=b), label)
         print("}")
 
 

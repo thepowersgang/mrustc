@@ -7,6 +7,7 @@
  */
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
+#include <hir_typeck/static.hpp>
 
 ::HIR::Visitor::~Visitor()
 {
@@ -125,6 +126,9 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
 {
     ::HIR::ItemPath    p { impl.m_type };
     TRACE_FUNCTION_F("impl.m_type=" << impl.m_type);
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::Unknown, impl.m_params);
+    }
     this->visit_params(impl.m_params);
     this->visit_type(impl.m_type);
 
@@ -136,11 +140,17 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
         DEBUG("const " << ent.first);
         this->visit_constant(p + ent.first, ent.second.data);
     }
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
+    }
 }
 void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
     ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
     TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type );
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::Unknown, impl.m_params);
+    }
     this->visit_params(impl.m_params);
     // - HACK: Create a generic path to visit (so that proper checks are performed)
     {
@@ -163,32 +173,58 @@ void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR
         this->visit_static(p + ent.first, ent.second.data);
     }
     for(auto& ent : impl.m_types) {
-        DEBUG("type " << ent.first);
+        TRACE_FUNCTION_F("type " << ent.first << " = " << ent.second.data);
         this->visit_type(ent.second.data);
+    }
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
     }
 }
 void ::HIR::Visitor::visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl)
 {
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::Unknown, impl.m_params);
+    }
     this->visit_params(impl.m_params);
     this->visit_path_params(impl.m_trait_args);
     this->visit_type(impl.m_type);
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
+    }
 }
 
 void ::HIR::Visitor::visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item)
 {
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::Unknown, item.m_params);
+    }
     this->visit_params(item.m_params);
     this->visit_type(item.m_type);
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
+    }
 }
 void ::HIR::Visitor::visit_trait_alias(::HIR::ItemPath p, ::HIR::TraitAlias& item)
 {
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::Unknown, item.m_params);
+    }
     this->visit_params(item.m_params);
     for(auto& p : item.m_traits)
         this->visit_trait_path(p);
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
+    }
 }
 void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
 {
-    ::HIR::SimplePath trait_sp = p.get_simple_path();
-    ItemPath    trait_ip(trait_sp);
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::Unknown, item.m_params);
+    }
+    auto trait_sp = p.get_simple_path();
+    auto trait_pp = item.m_params.make_nop_params(0);
+    static HIR::TypeRef ty_Self = ::HIR::TypeRef("Self", GENERIC_Self);
+    ItemPath    trait_ip(ty_Self, trait_sp, trait_pp);
     TRACE_FUNCTION;
 
     this->visit_params(item.m_params);
@@ -221,9 +257,15 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
             )
         )
     }
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
+    }
 }
 void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
 {
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::Unknown, item.m_params);
+    }
     this->visit_params(item.m_params);
     TU_MATCH_HDRA( (item.m_data), {)
     TU_ARMA(Unit, e) {
@@ -239,9 +281,15 @@ void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
         }
         }
     }
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
+    }
 }
 void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::None, item.m_params);
+    }
     this->visit_params(item.m_params);
     TU_MATCH_HDRA( (item.m_data), {)
     TU_ARMA(Value, e) {
@@ -257,13 +305,22 @@ void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
         }
         }
     }
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
+    }
 }
 void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
 {
     TRACE_FUNCTION_F(p);
+    if( m_resolve ) {
+        m_resolve->set_impl_generics_raw(MetadataType::Unknown, item.m_params);
+    }
     this->visit_params(item.m_params);
     for(auto& var : item.m_variants)
         this->visit_type(var.second.ent);
+    if( m_resolve ) {
+        m_resolve->clear_impl_generics();
+    }
 }
 void ::HIR::Visitor::visit_associatedtype(ItemPath p, ::HIR::AssociatedType& item)
 {
@@ -275,6 +332,9 @@ void ::HIR::Visitor::visit_associatedtype(ItemPath p, ::HIR::AssociatedType& ite
 void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 {
     TRACE_FUNCTION_F(p);
+    if( m_resolve ) {
+        m_resolve->set_item_generics_raw(item.m_params);
+    }
     this->visit_params(item.m_params);
     for(auto& arg : item.m_args)
     {
@@ -283,19 +343,34 @@ void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
     }
     this->visit_type(item.m_return);
     this->visit_expr(item.m_code);
+    if( m_resolve ) {
+        m_resolve->clear_item_generics();
+    }
 }
 void ::HIR::Visitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)
 {
     TRACE_FUNCTION_F(p);
+    if( m_resolve ) {
+        m_resolve->set_item_generics_raw(item.m_params);
+    }
     this->visit_type(item.m_type);
     this->visit_expr(item.m_value);
+    if( m_resolve ) {
+        m_resolve->clear_item_generics();
+    }
 }
 void ::HIR::Visitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 {
     TRACE_FUNCTION_F(p);
+    if( m_resolve ) {
+        m_resolve->set_item_generics_raw(item.m_params);
+    }
     this->visit_params(item.m_params);
     this->visit_type(item.m_type);
     this->visit_expr(item.m_value);
+    if( m_resolve ) {
+        m_resolve->clear_item_generics();
+    }
 }
 
 void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
@@ -354,8 +429,18 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         }
         }
     TU_ARMA(ErasedType, e) {
-        if( e.m_origin != ::HIR::SimplePath() ) {
-            this->visit_path(e.m_origin, ::HIR::Visitor::PathContext::VALUE);
+        TU_MATCH_HDRA( (e.m_inner), {)
+        TU_ARMA(Known, ee) {
+            this->visit_type(ee);
+            }
+        TU_ARMA(Alias, ee) {
+            this->visit_path_params(ee.params);
+            }
+        TU_ARMA(Fcn, ee) {
+            if( ee.m_origin != ::HIR::SimplePath() ) {
+                this->visit_path(ee.m_origin, ::HIR::Visitor::PathContext::VALUE);
+            }
+            }
         }
         for(auto& trait : e.m_traits) {
             this->visit_trait_path(trait);
@@ -381,6 +466,9 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
     TU_ARMA(Pointer, e) {
         this->visit_type( e.inner );
         }
+    TU_ARMA(NamedFunction, e) {
+        this->visit_path(e.path, ::HIR::Visitor::PathContext::VALUE);
+        }
     TU_ARMA(Function, e) {
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
@@ -397,7 +485,7 @@ void ::HIR::Visitor::visit_constgeneric(::HIR::ConstGeneric& v)
 {
     if(v.is_Unevaluated())
     {
-        this->visit_expr(*v.as_Unevaluated());
+        this->visit_expr(*v.as_Unevaluated()->expr);
     }
 }
 void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)

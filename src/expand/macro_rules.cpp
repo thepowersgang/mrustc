@@ -41,8 +41,9 @@ class CMacroUseHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
+    bool run_during_iter() const override { return true; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         TRACE_FUNCTION_F("[CMacroUseHandler] path=" << path);
 
@@ -70,6 +71,26 @@ class CMacroUseHandler:
             }
             };
 
+        auto exists = [&mod](const RcString& name, const MacroRef& mr)->bool {
+            for( const auto& imp : mod.m_macro_imports ) {
+                if( imp.name != name )
+                    continue;
+                if( imp.ref.tag() != mr.tag() )
+                    continue ;
+                bool rv;
+                TU_MATCH_HDRA( (imp.ref, mr), {)
+                TU_ARMA(None, a,b) { rv = true; }
+                TU_ARMA(MacroRules, a,b) { rv = (a == b); }
+                TU_ARMA(BuiltinProcMacro, a,b) { rv = (a == b); }
+                TU_ARMA(ExternalProcMacro, a,b) { rv = (a == b); }
+                }
+                if(rv) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
         if(i.is_None()) {
             // Just ignore
         }
@@ -93,6 +114,7 @@ class CMacroUseHandler:
                     continue ;
                 }
 
+                AST::AbsolutePath   path { ec_item->name, {name} };
                 if( const auto* imp = e->ent.opt_Import() )
                 {
                     if( imp->path.m_crate_name == CRATE_BUILTINS ) {
@@ -115,27 +137,20 @@ class CMacroUseHandler:
                     }
                     else {
                     }
+                    path = AST::AbsolutePath(imp->path.m_crate_name, imp->path.m_components);
                 }
 
+                MacroRef    mr;
                 TU_MATCH_HDRA( (e->ent), { )
-                TU_ARMA(Import, imp) {
-                    assert(false);
-                    }
-                TU_ARMA(MacroRules, mac_ptr) {
-                    DEBUG("Imported " << name << "!");
-
-                    auto mi = AST::Module::MacroImport{ false, name, make_vec2(ec_item->name, name), &*mac_ptr };
+                TU_ARMA(Import, imp) { throw "Unexpected"; }
+                TU_ARMA(MacroRules, mac_ptr) { mr = &*mac_ptr; }
+                TU_ARMA(ProcMacro, p) { mr = &p; }
+                }
+                if(!exists(name, mr))
+                {
+                    auto mi = AST::Module::MacroImport{ false, name, std::move(path), std::move(mr) };
+                    DEBUG("Import macro " << mi.path);
                     mod.m_macro_imports.push_back(mv$(mi));
-
-                    mod.add_macro_import( sp, name, &*mac_ptr );
-                    }
-                TU_ARMA(ProcMacro, p) {
-                    DEBUG("Imported " << name << "! (proc macro)");
-                    auto mi = AST::Module::MacroImport{ false, p.path.m_components.back(), p.path.m_components, nullptr };
-                    mi.path.insert(mi.path.begin(), p.path.m_crate_name);
-                    mod.m_macro_imports.push_back(mv$(mi));
-                    mod.add_macro_import( sp, name, &p );
-                    }
                 }
             }
         }
@@ -144,21 +159,28 @@ class CMacroUseHandler:
             const auto& submod = *submod_p;
             for( const auto& mr : submod.macros() )
             {
-                if( !filter_valid(mr.name) )
-                {
+                if( !filter_valid(mr.name) ) {
                     continue;
                 }
                 DEBUG("Imported " << mr.name);
-                mod.add_macro_import( sp, mr.name, &*mr.data );
-            }
-            for( const auto& mri : submod.macro_imports_res() )
-            {
-                if( !filter_valid(mri.name) )
+                if( !exists(mr.name, &*mr.data) )
                 {
+                    auto path = submod.path();
+                    path.nodes.push_back(mr.name);
+                    DEBUG("Import macro " << path);
+                    mod.m_macro_imports.push_back(AST::Module::MacroImport{ false, mr.name, path, &*mr.data });
+                }
+            }
+            for( const auto& mri : submod.m_macro_imports )
+            {
+                if( !filter_valid(mri.name) ) {
                     continue;
                 }
-                DEBUG("Imported " << mri.name << " (propagate)");
-                mod.add_macro_import( sp, mri.name, mri.data.clone() );
+                DEBUG("Imported " << mri.name << " (propagate) = " << mri.path);
+                if( !exists(mri.name, mri.ref) )
+                {
+                    mod.m_macro_imports.push_back(mri.clone());
+                }
             }
         }
         else {
@@ -181,7 +203,7 @@ class CMacroExportHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         // TODO: Flags on the attribute
         // - `local_inner_macros`: Forces macro lookups within the expansion to search within the source crate
@@ -216,13 +238,12 @@ class CMacroExportHandler:
             const auto& name = p.nodes.front().name();
             AST::Module::MacroImport    mi;
             mi.is_pub = true;
-            mi.macro_ptr = nullptr;
             mi.name = u->entries.front().name;
-            mi.path.push_back(p.crate);
-            mi.path.push_back(name);
+            mi.path.crate = p.crate;
+            mi.path.nodes.push_back(name);
             crate.m_root_module.m_macro_imports.push_back(mv$(mi));
 
-            crate.m_root_module.add_item(sp, true, name, i.clone(), {});
+            crate.m_root_module.add_item(sp, AST::Visibility::make_global(), name, i.clone(), {});
         }
         else if( i.is_MacroInv() ) {
             const auto& mac = i.as_MacroInv();
@@ -237,6 +258,9 @@ class CMacroExportHandler:
             ASSERT_BUG(sp, it != mod.macros().end(), "Macro '" << name << "' not defined in this module");
             auto e = mv$(*it);
             mod.macros().erase(it);
+
+            // Leave an alias here, so existing references are valid
+            mod.m_macro_imports.push_back(AST::Module::MacroImport { false, name, AST::AbsolutePath("", {name}), &*e.data });
 
             if( local_inner_macros ) {
                 Ident::ModPath  mp;
@@ -271,7 +295,7 @@ class CMacroReexportHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( !i.is_Crate() ) {
             ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());
@@ -295,7 +319,7 @@ class CBuiltinMacroHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Pre; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         RcString    name;
         if(i.is_MacroInv()) {

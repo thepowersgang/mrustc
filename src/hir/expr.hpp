@@ -92,6 +92,18 @@ struct ExprNode_Block:
 
     NODE_METHODS();
 };
+struct ExprNode_ConstBlock:
+    public ExprNode
+{
+    ExprNodeP   m_inner;
+
+    ExprNode_ConstBlock(Span sp, ExprNodeP inner)
+        : ExprNode(mv$(sp))
+        , m_inner(mv$(inner))
+    {}
+
+    NODE_METHODS();
+};
 struct ExprNode_Asm:
     public ExprNode
 {
@@ -185,10 +197,11 @@ struct ExprNode_Loop:
     bool    m_diverges = false;
     bool    m_require_label = false;
 
-    ExprNode_Loop(Span sp, RcString label, ::HIR::ExprNodeP code):
+    ExprNode_Loop(Span sp, RcString label, ::HIR::ExprNodeP code, bool require_label=false):
         ExprNode(mv$(sp)),
         m_label( mv$(label) ),
         m_code( mv$(code) )
+        , m_require_label(require_label)
     {}
 
     NODE_METHODS();
@@ -232,10 +245,20 @@ struct ExprNode_Let:
 struct ExprNode_Match:
     public ExprNode
 {
+    struct Guard
+    {
+        /// Guard pattern, always set (but might be `true`/`false`)
+        ::HIR::Pattern  pat;
+        /// Guard value
+        ::HIR::ExprNodeP    val;
+    };
     struct Arm
     {
+        // Patterns, must be non-empty
         ::std::vector< ::HIR::Pattern>  m_patterns;
-        ::HIR::ExprNodeP    m_cond;
+        // A chained (&&) list of guards
+        ::std::vector<Guard>    m_guards;
+        // Match arm body, required
         ::HIR::ExprNodeP    m_code;
     };
 
@@ -803,7 +826,7 @@ struct ExprNode_ArraySized:
     ExprNode_ArraySized(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprPtr size):
         ExprNode(mv$(sp)),
         m_val( mv$(val) ),
-        m_size( HIR::ConstGeneric(std::make_shared<HIR::ExprPtr>(mv$(size))) )
+        m_size( HIR::ConstGeneric(std::make_unique<HIR::ConstGeneric_Unevaluated>(mv$(size))) )
     {}
 
     NODE_METHODS();
@@ -829,11 +852,20 @@ struct ExprNode_Closure:
     bool m_is_copy = true;  // Assume that closures are Copy/Clone (for the purposes of typecheck) until AVU is run
 
     // - Cache between the AVU and ExpandClosures passes
-    struct {
+    struct AvuCache {
         ::std::vector<unsigned int> local_vars;
-        ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> > captured_vars;
+        struct Capture {
+            // Variable binding index
+            unsigned int    root_slot;
+            // Fields used to access that variable
+            std::vector<RcString>   fields;
+            ::HIR::ValueUsage   usage;
+        };
+        ::std::vector<Capture>  captured_vars;
     } m_avu_cache;
 
+    // Lifetime for captured borrows, filled by lifetime infer pass
+    ::HIR::LifetimeRef  m_capture_lifetime;
     // - Path to the generated closure type
     const ::HIR::Struct*    m_obj_ptr = nullptr;
     ::HIR::GenericPath  m_obj_path_base;
@@ -850,12 +882,14 @@ struct ExprNode_Closure:
 
     NODE_METHODS();
 };
+::std::ostream& operator<<(::std::ostream& os, const ExprNode_Closure::AvuCache::Capture& x);
 
 struct ExprNode_Generator:
     public ExprNode
 {
     //ExprNode_Closure::args_t    m_args;
     ::HIR::TypeRef  m_return;
+    ::HIR::TypeRef  m_resume_ty;
     ::HIR::TypeRef  m_yield_ty;
     ::HIR::ExprNodeP    m_code;
     bool    m_is_move;
@@ -929,6 +963,8 @@ public:
     #define NV(nt)  virtual void visit(nt& n) = 0;
 
     NV(ExprNode_Block)
+    NV(ExprNode_ConstBlock)
+    //NV(ExprNode_AsyncBlock)
     NV(ExprNode_Asm)
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)
@@ -982,6 +1018,8 @@ public:
     virtual void visit_node_ptr(::std::unique_ptr<ExprNode>& node_ptr) override;
 
     NV(ExprNode_Block)
+    NV(ExprNode_ConstBlock)
+    //NV(ExprNode_AsyncBlock)
     NV(ExprNode_Asm)
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)

@@ -360,17 +360,14 @@ namespace {
         }
         ::MacroRules deserialise_macrorules()
         {
-            ::MacroRules    rv;
+            auto crate_name = m_in.read_istring();
+            auto edition = static_cast<AST::Edition>(m_in.read_tag());
+            ::MacroRules    rv( crate_name, edition );
             // NOTE: This is set after loading.
             //rv.m_exported = true;
+            rv.m_is_macro_item = m_in.read_bool();
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
-            rv.m_source_crate = m_in.read_istring();
             rv.m_hygiene = deserialise_hygine();
-            if(rv.m_source_crate == "")
-            {
-                assert(m_crate_name != "");
-                rv.m_source_crate = m_crate_name;
-            }
             return rv;
         }
         ::SimplePatIfCheck deserialise_simplepatifcheck() {
@@ -504,6 +501,7 @@ namespace {
             }
         }
 
+        ::HIR::ConstGeneric_Unevaluated deserialise_constgeneric_unevaluated();
         ::HIR::ConstGeneric deserialise_constgeneric();
         EncodedLiteral deserialise_encodedliteral();
 
@@ -658,6 +656,7 @@ namespace {
             _(StaticString, m_in.read_string() )
             _(Const,  { box$(deserialise_path()) } )
             _(Generic,  deserialise_genericref())
+            _(Function, { box$(deserialise_path()) } )
             _(ItemAddr, box$(deserialise_path()) )
             #undef _
             default:
@@ -914,6 +913,7 @@ namespace {
         ::HIR::AssociatedType deserialise_associatedtype()
         {
             return ::HIR::AssociatedType {
+                deserialise_genericparams(),
                 m_in.read_bool(),
                 deserialise_lifetimeref(),
                 deserialise_vec< ::HIR::TraitPath>(),
@@ -1079,7 +1079,8 @@ namespace {
             )
         _(Path, {
             deserialise_path(),
-            {}
+            {},
+            deserialise_genericparams()
             })
         _(Generic, deserialise_genericref())
         _(TraitObject, {
@@ -1087,13 +1088,14 @@ namespace {
             deserialise_vec< ::HIR::GenericPath>(),
             deserialise_lifetimeref()
             })
-        _(ErasedType, {
-            deserialise_path(),
-            static_cast<unsigned int>(m_in.read_count()),
-            m_in.read_bool(),
-            deserialise_vec< ::HIR::TraitPath>(),
-            deserialise_vec< ::HIR::LifetimeRef>()
-            })
+        case ::HIR::TypeData::TAG_ErasedType:
+            TODO(Span(), "ErasedType");
+        //_(ErasedType, {
+        //    m_in.read_bool(),
+        //    deserialise_vec< ::HIR::TraitPath>(),
+        //    deserialise_vec< ::HIR::LifetimeRef>(),
+        //    deserialise_type()
+        //    })
         _(Array, {
             deserialise_type(),
             deserialise_arraysize()
@@ -1113,8 +1115,12 @@ namespace {
             static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
             deserialise_type()
             })
+        _(NamedFunction, {
+            deserialise_path()
+            })
         _(Function, {
             deserialise_genericparams(),
+            m_in.read_bool(),
             m_in.read_bool(),
             m_in.read_string(),
             deserialise_type(),
@@ -1157,7 +1163,6 @@ namespace {
     {
         ::HIR::GenericPath  rv;
         TRACE_FUNCTION_FR("", rv);
-        rv.m_hrls = m_in.read_bool() ? box$(deserialise_genericparams()) : std::unique_ptr<HIR::GenericParams>();
         rv.m_path = deserialise_simplepath();
         rv.m_params = deserialise_pathparams();
         return rv;
@@ -1166,10 +1171,11 @@ namespace {
     ::HIR::TraitPath HirDeserialiser::deserialise_traitpath()
     {
         auto _ = m_in.open_object("HIR::TraitPath");
+        auto hrls = m_in.read_bool() ? box$(deserialise_genericparams()) : std::unique_ptr<HIR::GenericParams>();
         auto gpath = deserialise_genericpath();
         auto tys = deserialise_istrmap< ::HIR::TraitPath::AtyEqual>();
         auto bounds = deserialise_istrmap< ::HIR::TraitPath::AtyBound>();
-        return ::HIR::TraitPath { mv$(gpath), mv$(tys), mv$(bounds) };
+        return ::HIR::TraitPath { std::move(hrls), mv$(gpath), mv$(tys), mv$(bounds) };
     }
     ::HIR::Path HirDeserialiser::deserialise_path()
     {
@@ -1368,18 +1374,28 @@ namespace {
         rv.m_values = deserialise_istrumap< ::HIR::TraitValueItem>();
         rv.m_value_indexes = deserialise_istrummap< ::std::pair<unsigned int, ::HIR::GenericPath> >();
         rv.m_type_indexes = deserialise_istrumap< unsigned int>();
+        rv.m_vtable_parent_traits_start = m_in.read_count();
         rv.m_all_parent_traits = deserialise_vec< ::HIR::TraitPath>();
         rv.m_vtable_path = deserialise_simplepath();
         return rv;
     }
-    
+
+    ::HIR::ConstGeneric_Unevaluated HirDeserialiser::deserialise_constgeneric_unevaluated()
+    {
+        auto p_i = deserialise_pathparams();
+        auto p_m = deserialise_pathparams();
+        auto rv = ::HIR::ConstGeneric_Unevaluated(deserialise_exprptr());
+        rv.params_impl = std::move(p_i);
+        rv.params_item = std::move(p_m);
+        return rv;
+    }
     ::HIR::ConstGeneric HirDeserialiser::deserialise_constgeneric()
     {
         switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::HIR::ConstGeneric::TAG_##x:   return ::HIR::ConstGeneric::make_##x(__VA_ARGS__);
         _(Infer, {})
-        _(Unevaluated, std::make_shared<HIR::ExprPtr>(deserialise_exprptr()))
+        _(Unevaluated, std::make_unique<HIR::ConstGeneric_Unevaluated>(deserialise_constgeneric_unevaluated()))
         _(Generic,
             deserialise_genericref()
             )

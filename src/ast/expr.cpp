@@ -105,7 +105,7 @@ NODE(ExprNode_Block, {
     ::std::vector<ExprNodeP>    nodes;
     for(const auto& n : m_nodes)
         nodes.push_back( n->clone() );
-    return NEWNODE(ExprNode_Block, m_is_unsafe, m_yields_final_value, mv$(nodes), m_local_mod);
+    return NEWNODE(ExprNode_Block, m_block_type, m_yields_final_value, mv$(nodes), m_local_mod);
 })
 
 NODE(ExprNode_Try, {
@@ -243,6 +243,7 @@ NODE(ExprNode_Flow, {
     case YIELD:     os << "yield"; break;
     case BREAK:     os << "break"; break;
     case CONTINUE:  os << "continue"; break;
+    case YEET:      os << "do yeet"; break;
     }
     if(m_value)
         os << " " << *m_value;
@@ -253,10 +254,14 @@ NODE(ExprNode_Flow, {
 
 NODE(ExprNode_LetBinding, {
     os << "let " << m_pat << ": " << m_type;
-    if(m_value)
+    if(m_value) {
         os << " = " << *m_value;
+        if( m_else ) {
+            os << " else " << *m_else;
+        }
+    }
 },{
-    return NEWNODE(ExprNode_LetBinding, m_pat.clone(), m_type.clone(), OPT_CLONE(m_value));
+    return NEWNODE(ExprNode_LetBinding, m_pat.clone(), m_type.clone(), OPT_CLONE(m_value), OPT_CLONE(m_else));
 })
 
 NODE(ExprNode_Assign, {
@@ -313,8 +318,47 @@ NODE(ExprNode_Loop, {
         os << " in/= " << *m_cond;
     os << " " << *m_code;
 },{
-    return NEWNODE(ExprNode_Loop, m_label, m_type, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
+    return NEWNODE(ExprNode_Loop, m_type, m_label, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
 })
+
+namespace {
+    void fmt_iflet_conditions(::std::ostream& os, const ::std::vector<AST::IfLet_Condition>& conditions) {
+        for(const auto& cond : conditions) {
+            if( &cond != &conditions.front() ) {
+                os << " && ";
+            }
+            if( cond.opt_pat ) {
+                os << *cond.opt_pat << " = ";
+            }
+            os << "(" << *cond.value << ")";
+        }
+    }
+    ::std::vector<AST::IfLet_Condition> clone_iflet_conditions(const ::std::vector<AST::IfLet_Condition>& conditions) {
+        ::std::vector<AST::IfLet_Condition> new_conds;
+        new_conds.reserve( conditions.size() );
+        for(const auto& cond : conditions) {
+            AST::IfLet_Condition   new_cond;
+            if( cond.opt_pat ) {
+                new_cond.opt_pat = std::make_unique<AST::Pattern>( cond.opt_pat->clone() );
+            }
+            new_cond.value = cond.value->clone();
+            new_conds.push_back(std::move(new_cond));
+        }
+        return new_conds;
+    }
+}
+
+NODE(ExprNode_WhileLet, {
+    if(m_label != "") {
+        os << "'" << m_label << ": ";
+    }
+    os << "while let ";
+    fmt_iflet_conditions(os, m_conditions);
+    os << " { " << *m_code << " }";
+    },{
+        auto new_conds = clone_iflet_conditions(m_conditions);
+        return NEWNODE(ExprNode_WhileLet, m_label, mv$(new_conds), m_code->clone());
+    })
 
 NODE(ExprNode_Match, {
     os << "match ("<<*m_val<<") {";
@@ -322,8 +366,11 @@ NODE(ExprNode_Match, {
     {
         for( const auto& pat : arm.m_patterns )
             os << " " << pat;
-        if( arm.m_cond )
-            os << " if " << *arm.m_cond;
+        if( arm.m_guard.size() > 0 )
+        {
+            os << " if ";
+            fmt_iflet_conditions(os, arm.m_guard);
+        }
 
         os << " => " << *arm.m_code << ",";
     }
@@ -335,7 +382,7 @@ NODE(ExprNode_Match, {
         for( const auto& pat : arm.m_patterns ) {
             patterns.push_back( pat.clone() );
         }
-        arms.push_back( ExprNode_Match_Arm( mv$(patterns), OPT_CLONE(arm.m_cond), arm.m_code->clone() ) );
+        arms.push_back( ExprNode_Match_Arm( mv$(patterns), clone_iflet_conditions(arm.m_guard), arm.m_code->clone() ) );
         arms.back().m_attrs = arm.m_attrs.clone();
     }
     return NEWNODE(ExprNode_Match, m_val->clone(), mv$(arms));
@@ -350,21 +397,19 @@ NODE(ExprNode_If, {
 })
 NODE(ExprNode_IfLet, {
     os << "if let ";
-    for(const auto& pat : m_patterns)
-    {
-        if(&pat != &m_patterns.front())
-            os << " | ";
-        os << pat;
-    }
-    os << " = (" << *m_value << ") { " << *m_true << " }";
+    fmt_iflet_conditions(os, m_conditions);
+    os << " { " << *m_true << " }";
     if(m_false) os << " else { " << *m_false << " }";
 },{
-    decltype(m_patterns)    new_pats;
-    for(const auto& pat : m_patterns)
-        new_pats.push_back(pat.clone());
-    return NEWNODE(ExprNode_IfLet, mv$(new_pats), m_value->clone(), m_true->clone(), OPT_CLONE(m_false));
+    auto new_conds = clone_iflet_conditions(m_conditions);
+    return NEWNODE(ExprNode_IfLet, mv$(new_conds), m_true->clone(), OPT_CLONE(m_false));
 })
 
+NODE(ExprNode_WildcardPattern, {
+    os << "_";
+},{
+    return NEWNODE(ExprNode_WildcardPattern);
+})
 NODE(ExprNode_Integer, {
     if( m_datatype == CORETYPE_CHAR )
         os << "'\\u{" << ::std::hex << m_value << ::std::dec << "}'";
@@ -392,7 +437,7 @@ NODE(ExprNode_Bool, {
 NODE(ExprNode_String, {
     os << "\"" << m_value << "\"";
 },{
-    return NEWNODE(ExprNode_String, m_value);
+    return NEWNODE(ExprNode_String, m_value, m_hygiene);
 })
 NODE(ExprNode_ByteString, {
     os << "b\"" << m_value << "\"";
@@ -440,6 +485,22 @@ NODE(ExprNode_StructLiteral, {
     }
 
     return NEWNODE(ExprNode_StructLiteral, AST::Path(m_path), OPT_CLONE(m_base_value), mv$(vals) );
+})
+NODE(ExprNode_StructLiteralPattern, {
+    os << m_path << " /*pat*/ { ";
+    for(const auto& v : m_values)
+    {
+        os << v.name << ": " << *v.value << ", ";
+    }
+    os << ".. }";
+},{
+    ExprNode_StructLiteral::t_values    vals;
+
+    for(const auto& v : m_values) {
+        vals.push_back({ v.attrs.clone(), v.name, v.value->clone() });
+    }
+
+    return NEWNODE(ExprNode_StructLiteralPattern, AST::Path(m_path), mv$(vals) );
 })
 
 NODE(ExprNode_Array, {
@@ -576,6 +637,7 @@ NODE(ExprNode_UniOp, {
     case RawBorrow: os << "(&raw const "; break;
     case RawBorrowMut: os << "(&raw mut "; break;
     case QMARK: os << "(" << *m_value << "?)"; return;
+    case AWait: os << "((" << *m_value << ").await)"; return;
     }
     os << *m_value << ")";
 },{
@@ -636,6 +698,7 @@ NV(ExprNode_LetBinding,
 {
     // TODO: Handle recurse into Let pattern?
     visit(node.m_value);
+    visit(node.m_else);
 })
 NV(ExprNode_Assign,
 {
@@ -674,13 +737,24 @@ NV(ExprNode_Loop,
     visit(node.m_code);
     UNINDENT();
 })
+NV(ExprNode_WhileLet,
+{
+    INDENT();
+    for(auto& c : node.m_conditions) {
+        visit(c.value);
+    }
+    visit(node.m_code);
+    UNINDENT();
+})
 NV(ExprNode_Match,
 {
     INDENT();
     visit(node.m_val);
     for( auto& arm : node.m_arms )
     {
-        visit(arm.m_cond);
+        for(auto& c : arm.m_guard) {
+            visit(c.value);
+        }
         visit(arm.m_code);
     }
     UNINDENT();
@@ -696,12 +770,15 @@ NV(ExprNode_If,
 NV(ExprNode_IfLet,
 {
     INDENT();
-    visit(node.m_value);
+    for(auto& c : node.m_conditions) {
+        visit(c.value);
+    }
     visit(node.m_true);
     visit(node.m_false);
     UNINDENT();
 })
 
+NV(ExprNode_WildcardPattern, {(void)node;})
 NV(ExprNode_Integer, {(void)node;})
 NV(ExprNode_Float, {(void)node;})
 NV(ExprNode_Bool, {(void)node;})
@@ -715,6 +792,11 @@ NV(ExprNode_Closure,
 NV(ExprNode_StructLiteral,
 {
     visit(node.m_base_value);
+    for( auto& val : node.m_values )
+        visit(val.value);
+})
+NV(ExprNode_StructLiteralPattern,
+{
     for( auto& val : node.m_values )
         visit(val.value);
 })

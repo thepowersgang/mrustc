@@ -40,6 +40,7 @@ struct Dumper
 
     void dump_value_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::ValueItem::Data_Import& imp, int nindent=0) const;
     void dump_constant(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Constant& c, int nindent=0) const;
+    void dump_static(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Static& c, int nindent=0) const;
     void dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent=0) const;
 
     void dump_macrorules(const HIR::ItemPath& ip, const MacroRules& rules) const;
@@ -107,11 +108,18 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
                     this->dump_function(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
                 }
             }
+            if( this->filters.types.values )
+            {
+                for(const auto& m : ti.m_constants)
+                {
+                    this->dump_constant(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
+                }
+            }
             ::std::cout << "}" << ::std::endl;
         });
     }
 
-    dump_impl_group(crate.m_type_impls, [&](const auto& i) {
+    dump_impl_group(crate.m_type_impls, [&](const HIR::TypeImpl& i) {
         auto root_ip = ::HIR::ItemPath(i.m_type);
         ::std::cout << "impl" << i.m_params.fmt_args() << " " << i.m_type << "\n";
         ::std::cout << "  where" << i.m_params.fmt_bounds() << "\n";
@@ -121,6 +129,13 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
             for(const auto& m : i.m_methods)
             {
                 this->dump_function(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
+            }
+        }
+        if( this->filters.types.values )
+        {
+            for(const auto& m : i.m_constants)
+            {
+                this->dump_constant(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
             }
         }
         ::std::cout << "}" << ::std::endl;
@@ -176,7 +191,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             this->dump_struct(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(Union, e) {
-            //this->dump_trait(sub_ip, e);
+            //this->dump_union(sub_ip, e);
             }
         TU_ARMA(Trait, e) {
             this->dump_trait(sub_ip, i.second->publicity, e);
@@ -195,7 +210,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             this->dump_constant(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(Static, e) {
-            //this->dump_static(sub_ip, e);
+            this->dump_static(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(StructConstant, e) {
             //this->dump_constant(sub_ip, e);
@@ -218,7 +233,7 @@ void Dumper::dump_mod_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, co
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << pub << "use[type] " << ip << " = " << imp.path;
+    ::std::cout << indent << pub << " use[type] " << ip << " = " << imp.path;
     if(imp.is_variant)
     {
         ::std::cout << "#" << imp.idx;
@@ -283,6 +298,15 @@ void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const :
         return ;
     }
     ::std::cout << indent << "trait " << ip << trait.m_params.fmt_args() << "\n";
+    for( size_t i = 0; i < trait.m_all_parent_traits.size(); i ++ ) {
+        if( i == 0 ) {
+            ::std::cout << indent << ": ";
+        }
+        else {
+            ::std::cout << indent << "+ ";
+        }
+        ::std::cout << trait.m_all_parent_traits[i] << "\n";
+    }
     ::std::cout << indent << "{\n";
     auto indent2 = RepeatLitStr { "   ", nindent+1 };
     for(const auto& t : trait.m_types)
@@ -329,7 +353,7 @@ void Dumper::dump_value_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, 
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << pub << "use[value] " << ip << " = " << imp.path;
+    ::std::cout << indent << pub << " use[value] " << ip << " = " << imp.path;
     if(imp.is_variant)
     {
         ::std::cout << "#" << imp.idx;
@@ -345,7 +369,18 @@ void Dumper::dump_constant(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << "const " << ip << ": " << c.m_type << " = " << c.m_value_res << "\n";
+    ::std::cout << indent << pub << " const " << ip << ": " << c.m_type << " = " << c.m_value_res << "\n";
+}
+void Dumper::dump_static(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Static& c, int nindent/*=0*/) const
+{
+    auto indent = RepeatLitStr { "   ", nindent };
+    if( !this->filters.types.values ) {
+        return ;
+    }
+    if( filters.public_only && !pub.is_global() ) {
+        return ;
+    }
+    ::std::cout << indent << pub << " static " << ip << ": " << c.m_type << " = " << c.m_value_res << "\n";
 }
 void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent/*=0*/) const
 {
@@ -356,7 +391,7 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
     if( filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << "fn " << ip << fcn.m_params.fmt_args() << "(";
+    ::std::cout << indent << pub << " fn " << ip << fcn.m_params.fmt_args() << "(";
     for(const auto& a : fcn.m_args) {
         ::std::cout << "\n" << indent << indent.s << a.first << " : " << a.second;
         ::std::cout << ",";

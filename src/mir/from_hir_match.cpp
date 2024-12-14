@@ -95,6 +95,7 @@ struct ArmCode {
 typedef ::std::vector<PatternRuleset>  t_arm_rules;
 
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code, ::MIR::BasicBlockId first_cmp_block);
+int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val, unsigned int field_path_ofs,  ::MIR::BasicBlockId fail_bb);
 void MIR_LowerHIR_Match_Grouped( MirBuilder& builder, MirConverter& conv, const Span& sp, const HIR::TypeRef& match_ty, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block );
 void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code , ::MIR::BasicBlockId first_cmp_block);
 
@@ -246,6 +247,8 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
     std::vector<PatternRuleset> arm_rules;
     std::vector<ArmCode>    arm_code;
 
+    auto pat_scope = builder.new_scope_split(sp);
+
     auto pat_builder = PatternRulesetBuilder { builder.resolve() };
     pat_builder.append_from(sp, pat, outer_ty);
     for(auto& sr : pat_builder.m_rulesets)
@@ -258,11 +261,12 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
         else
         {
             DEBUG("LET PAT #" << pat_idx << " " << pat << " ==> [" << sr.m_rules << "]");
-            arm_rules.push_back( PatternRuleset { 0, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
+            arm_rules.push_back( PatternRuleset { pat_idx, 0, mv$(sr.m_rules), mv$(sr.m_bindings) } );
 
             auto pat_node = builder.new_bb_unlinked();
             builder.set_cur_block( pat_node );
             conv.destructure_from_list(sp, outer_ty, val.clone(), arm_rules.back().m_bindings);
+            builder.end_split_arm( sp, pat_scope, /*reachable=*/true );
             builder.end_block(MIR::Terminator::make_Goto(success_node));
 
             ArmCode::Pattern    ap;
@@ -272,9 +276,11 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
             arm_code.push_back(ac);
         }
     }
+    builder.terminate_scope( sp, mv$(pat_scope) );
     if( else_node )
     {
         // Emit a check (similar to match)
+        // NOTE: This is handled by "HIR Lower" currently, seems to work well
         TODO(sp, "Handle let-else");
     }
 
@@ -330,6 +336,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             size_t first_rule = arm_rules.size();
             for(auto& sr : pat_builder.m_rulesets)
             {
+                ::std::sort(sr.m_bindings.begin(), sr.m_bindings.end(),
+                    [](const PatternBinding& a, const PatternBinding& b){ return a.binding->m_slot < b.binding->m_slot; });
                 size_t i = &sr - &pat_builder.m_rulesets.front();
                 if( sr.m_is_impossible )
                 {
@@ -360,23 +368,70 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     );
 
             auto emit_condition = [&](MIR::BasicBlockId& cond_false, const std::vector<PatternBinding>& bindings) {
-                if( arm.m_cond )
+                if( !arm.m_guards.empty() )
                 {
-                    auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
                     TRACE_FUNCTION_FR("CONDITIONAL", "CONDITIONAL");
+
+                    const Span& top_span = arm.m_guards.front().val->span();
+
+                    // Set up a scope that doesn't allow modification of variable states outside it
+                    auto freeze_scope = builder.new_scope_freeze(top_span);
                     conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
 
-                    auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
-                    conv.visit_node_ptr( arm.m_cond );
-                    auto cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
+                    // A scope for temporary variables defined within these expressions
+                    auto tmp_scope = builder.new_scope_temp(top_span);
+
+                    bool is_cond_bb_set = false;
+
+                    for( auto& c : arm.m_guards )
+                    {
+                        // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
+
+                        conv.visit_node_ptr( c.val );
+                        MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
+
+                        auto destructure = builder.new_bb_unlinked();
+
+                        auto pat_builder = PatternRulesetBuilder { builder.resolve() };
+                        pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);
+
+                        for(auto& sr : pat_builder.m_rulesets)
+                        {
+                            if( sr.m_is_impossible ) {
+                            }
+                            else {
+                                if( &c == &arm.m_guards.front() ) {
+                                    // If `cond_false` is set, then activate it and create a new one
+                                    if(is_cond_bb_set) {
+                                        builder.set_cur_block(cond_false);
+                                    }
+                                    is_cond_bb_set = true;
+                                    cond_false = builder.new_bb_unlinked();
+                                }
+                                else {
+                                    // already in the previous loop's `destructure`
+                                }
+
+                                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, c.val->span(), sr.m_rules.data(), sr.m_rules.size(),
+                                    c.val->m_res_type, match_cond_val, 0, cond_false);
+                                conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), sr.m_bindings);
+                                builder.end_block(::MIR::Terminator::make_Goto(destructure));
+                            }
+                        }
+                        if(!is_cond_bb_set) {
+                            cond_false = builder.new_bb_unlinked();
+                            // No patterns as output, so `false` is unreachable?
+                        }
+
+                        builder.set_cur_block(cond_false);
+                        cond_false = builder.new_bb_unlinked();
+                        builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
+                        builder.end_block(::MIR::Terminator::make_Goto(cond_false));
+
+                        builder.set_cur_block(destructure);
+                    }
                     builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
                     builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
-
-                    cond_false = builder.new_bb_unlinked();
-
-                    auto destructure_block = builder.new_bb_unlinked();
-                    builder.end_block(::MIR::Terminator::make_If({ mv$(cond_lval), destructure_block, cond_false }));
-                    builder.set_cur_block( destructure_block );
                 }
 
                 conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
@@ -423,7 +478,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         builder.terminate_scope( sp, mv$(pat_scope) );
 
         // Condition
-        if(arm.m_cond)
+        if(arm.m_guards.size() > 0)
         {
             ac.has_condition = true;
 
@@ -1066,13 +1121,49 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
 
             this->push_rule(PatternRule::make_Value( std::string(r->bytes.data() + ptr, r->bytes.data() + ptr + len) ));
         }
+        else if( e.inner.data().is_Slice() && e.inner.data().as_Slice().inner == ::HIR::CoreType::U8 ) {
+            auto ptr_size = Target_GetPointerBits()/8;
+            auto ptr = lit.read_uint(ptr_size).truncate_u64();
+            auto len = lit.slice(ptr_size, ptr_size).read_uint(ptr_size).truncate_u64();
+            auto* r = lit.get_reloc();
+            ASSERT_BUG(sp, r, "Null relocation for byte-string in pattern generation");
+            ASSERT_BUG(sp, ptr >= EncodedLiteral::PTR_BASE, "");
+            ptr -= EncodedLiteral::PTR_BASE;
+
+            if( r->p ) {
+                ASSERT_BUG(sp, ptr == 0, "TODO: Non-zero offset with reference");
+                MonomorphState  val_params;
+                auto v = m_resolve.get_value(sp, *r->p, val_params);
+                ASSERT_BUG(sp, v.is_Static(), "&[u8] match with borrow of non-static (" << *r->p << ") - " << v.tag_str());
+                const HIR::Static& s = *v.as_Static();
+                ASSERT_BUG(sp, s.m_value_generated, "&[u8] match with borrow of non-resolved static (" << *r->p << ")");
+                const EncodedLiteral& val = s.m_value_res;
+                ASSERT_BUG(sp, ptr <= val.bytes.size(), "");
+                ASSERT_BUG(sp, len <= val.bytes.size(), "");
+                ASSERT_BUG(sp, ptr+len <= val.bytes.size(), "");
+
+                this->push_rule(PatternRule::make_Value(std::vector<uint8_t>(val.bytes.data() + ptr, val.bytes.data() + ptr + len)));
+            }
+            else {
+                ASSERT_BUG(sp, ptr <= r->bytes.size(), "");
+                ASSERT_BUG(sp, len <= r->bytes.size(), "");
+                ASSERT_BUG(sp, ptr+len <= r->bytes.size(), "");
+
+                this->push_rule(PatternRule::make_Value( std::vector<uint8_t>(r->bytes.data() + ptr, r->bytes.data() + ptr + len) ));
+            }
+        }
         else {
             TODO(sp, "Match literal Borrow: ty=" << ty << " lit=" << lit);
         }
         m_field_path.pop_back();
         }
     TU_ARMA(Pointer, e) {
-        TODO(sp, "Match literal with pointer?");
+        // Need to be able to tell downstream to cast to integer before comparison?
+        this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(Target_GetPointerBits()/8), HIR::CoreType::Usize}) ) );
+        //TODO(sp, "Match literal with pointer? " << lit);
+        }
+    TU_ARMA(NamedFunction, e) {
+        ERROR(sp, E0000, "Attempting to match over a functon pointer");
         }
     TU_ARMA(Function, e) {
         ERROR(sp, E0000, "Attempting to match over a functon pointer");
@@ -1501,6 +1592,17 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                         m_field_path.back() ++;
                     }
                     }
+                TU_ARMA(PathNamed, pe) {
+                    // Only allow with an empty tuple (assuming that the pattern is also empty)... or if the pattern is a wildcard
+                    if( sd.size() != 0 && !pe.is_wildcard() ) {
+                        BUG(sp, "Match not allowed, " << ty <<  " with " << pat);
+                    }
+                    for(const auto& fld : sd)
+                    {
+                        this->append_from(sp, empty_pattern, maybe_monomorph(fld.ent));
+                        m_field_path.back() ++;
+                    }
+                    }
                 TU_ARMA(PathTuple, pe) {
                     assert( pe.binding.is_Struct() );
                     PH::push_pattern_tuple(*this, sp, pe, maybe_monomorph);
@@ -1700,7 +1802,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
 
             if(pe.extra_bind.is_valid())
             {
-                TODO(sp, "Insert binding for SplitSlice (Array)");
+                ASSERT_BUG(sp, pe.extra_bind.m_implicit_deref_count == 0, "");
+                PatternBinding  pb(m_field_path, pe.extra_bind);
+                pb.field.pop_back();
+                pb.split_slice = std::make_pair( pe.leading.size(), pe.trailing.size() );
+                this->push_binding(mv$(pb));
             }
             }
         }
@@ -1825,9 +1931,17 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
     TU_ARMA(Pointer, e) {
         if( pat.m_data.is_Any() ) {
+            this->push_rule( PatternRule::make_Any({}) );
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a pointer");
+        }
+        }
+    TU_ARMA(NamedFunction, e) {
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a functon pointer");
         }
         }
     TU_ARMA(Function, e) {
@@ -2255,6 +2369,9 @@ namespace {
             TU_ARMA(Pointer, e) {
                 ERROR(sp, E0000, "Attempting to match over a pointer");
                 }
+            TU_ARMA(NamedFunction, e) {
+                ERROR(sp, E0000, "Attempting to match over a functon pointer");
+                }
             TU_ARMA(Function, e) {
                 ERROR(sp, E0000, "Attempting to match over a functon pointer");
                 }
@@ -2275,7 +2392,6 @@ namespace {
 // --------------------------------------------------------------------
 // Dumb and Simple
 // --------------------------------------------------------------------
-int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& ty, const ::MIR::LValue& val, unsigned int field_path_offset,  ::MIR::BasicBlockId fail_bb);
 
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block )
 {
@@ -2707,6 +2823,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         TU_ARMA(Pointer, te) {
             BUG(sp, "Attempting to match a pointer - " << rule << " against " << ty);
             }
+        TU_ARMA(NamedFunction, te) {
+            BUG(sp, "Attempting to match a function pointer - " << rule << " against " << ty);
+            }
         TU_ARMA(Function, te) {
             BUG(sp, "Attempting to match a function pointer - " << rule << " against " << ty);
             }
@@ -3009,8 +3128,9 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
                 auto ai = arm_rules.arm_idx(idx);
                 ASSERT_BUG(sp, m_arms_code.size() > 0, "Bottom-level ruleset with no arm code information");
                 const auto& ac = m_arms_code[ai.arm];
+                ASSERT_BUG(sp, ai.arm_rule < ac.rules.size(), "Arm rule index (" << ai.arm_rule << ") out of bounds (" << ac.rules.size() << ")");
 
-                m_builder.end_block( ::MIR::Terminator::make_Goto(ac.rules[ai.arm_rule].entry) );
+                m_builder.end_block( ::MIR::Terminator::make_Goto(ac.rules.at(ai.arm_rule).entry) );
 
                 if( ac.has_condition )
                 {
@@ -3304,8 +3424,12 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
         BUG(sp, "Match directly on borrow");
         }
     TU_ARMA(Pointer, te) {
-        // TODO: Could this actually be valid?
-        BUG(sp, "Attempting to match a pointer - " << ty);
+        auto val_usize = m_builder.new_temporary(HIR::CoreType::Usize);
+        m_builder.push_stmt_assign(sp, val_usize.clone(), ::MIR::RValue::make_Cast({ mv$(val), ::HIR::CoreType::Usize }));
+        this->gen_dispatch__primitive(HIR::CoreType::Usize, mv$(val_usize), rules, ofs, arm_targets, def_blk);
+        }
+    TU_ARMA(NamedFunction, te) {
+        BUG(sp, "Attempting to match a function pointer - " << ty);
         }
     TU_ARMA(Function, te) {
         // TODO: Could this actually be valid?

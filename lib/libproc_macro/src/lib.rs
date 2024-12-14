@@ -2,6 +2,10 @@
 //
 // Unlike the original rustc version, this one is designed to live complely detached from its compiler.
 #![allow(ellipsis_inclusive_range_patterns)]
+#![feature(crate_in_paths)]
+#![feature(optin_builtin_traits)]
+#![feature(vec_resize_with)]
+#![feature(const_vec_new)]
 
 macro_rules! some_else {
     ($e:expr => $alt:expr) => {match $e { Some(v) => v, None => $alt }};
@@ -32,7 +36,7 @@ mod protocol;
 mod serialisation;
 mod diagnostic;
 
-mod token_stream {
+pub mod token_stream {
 
     #[derive(Debug,Clone,Default)]
     pub struct TokenStream {
@@ -75,18 +79,6 @@ mod token_stream {
         }
     }
 
-    //impl ::std::string::ToString for TokenStream
-    //{
-    //    fn to_string(&self) -> String {
-    //        use std::fmt::Write;
-    //        let mut s = String::new();
-    //        for v in &self.inner
-    //        {
-    //            write!(&mut s, "{}", v).unwrap();
-    //        }
-    //        s
-    //    }
-    //}
     impl ::std::fmt::Display for TokenStream
     {
         fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -175,12 +167,20 @@ pub struct MacroDesc
     handler: MacroType,
 }
 
+static mut IS_AVAILABLE: bool = false;
 #[doc(hidden)]
 pub fn main(macros: &[MacroDesc])
 {
+    // SAFE: This is the entrypoint, so no threads running yet
+    unsafe {
+        IS_AVAILABLE = true;
+    }
     //::env_logger::init();
 
-    let mac_name = ::std::env::args().nth(1).expect("Was not passed a macro name");
+    let mut args = ::std::env::args();
+    let _ = args.next().expect("Should have an executable name");
+    let mac_name = args.next().expect("Was not passed a macro name");
+    let input_path = args.next();
     //eprintln!("Searching for macro {}\r", mac_name);
     for m in macros
     {
@@ -189,18 +189,34 @@ pub fn main(macros: &[MacroDesc])
             ::std::io::stdout().write(&[0]).expect("Stdout write error?");
             ::std::io::stdout().flush().expect("Stdout write error?");
             debug!("Waiting for input\r");
-            let input = crate::serialisation::recv_token_stream(::std::io::stdin().lock());
+            let mut stdin_raw;
+            let mut fp_raw;
+            let stdin = if let Some(p) = input_path {
+                    fp_raw = ::std::fs::File::open(p).unwrap();
+                    &mut fp_raw as &mut /*dyn */::std::io::Read
+                }
+                else {
+                    stdin_raw = ::std::io::stdin().lock();
+                    &mut stdin_raw
+                };
+            let input = crate::serialisation::recv_token_stream(stdin);
             debug!("INPUT = `{}`\r", input);
             let output = match m.handler
                 {
-                MacroType::SingleStream(h) => (h)(input),
+                MacroType::SingleStream(h) => {
+                    Span::freeze_definitions();
+                    (h)(input)
+                    },
                 MacroType::Attribute(h) => {
-                    let input_body = crate::serialisation::recv_token_stream(::std::io::stdin().lock());
+                    let input_body = crate::serialisation::recv_token_stream(stdin);
+                    debug!("INPUT BODY = `{}`\r", input_body);
+                    Span::freeze_definitions();
                     (h)(input, input_body)
                     },
                 };
             debug!("OUTPUT = `{}`\r", output);
-            crate::serialisation::send_token_stream(::std::io::stdout().lock(), output);
+            let stdout = ::std::io::stdout();
+            crate::serialisation::send_token_stream(stdout.lock(), output);
             ::std::io::Write::flush(&mut ::std::io::stdout()).expect("Stdout write error?");
             note!("Done");
             return ;
@@ -209,3 +225,7 @@ pub fn main(macros: &[MacroDesc])
     panic!("Unknown macro name '{}'", mac_name);
 }
 
+pub fn is_available() -> bool {
+    // SAFE: Reading from a value only ever written in single-threaded code
+    unsafe { IS_AVAILABLE }
+}

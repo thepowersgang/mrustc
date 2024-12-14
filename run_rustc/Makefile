@@ -44,11 +44,16 @@ endif
 TARGETVER_LEAST_1_29 := $(shell test "$(RUSTC_VERSION)" ">" "1.29" && echo yes)
 TARGETVER_LEAST_1_39 := $(shell test "$(RUSTC_VERSION)" ">" "1.39" && echo yes)
 TARGETVER_LEAST_1_54 := $(shell test "$(RUSTC_VERSION)" ">" "1.54" && echo yes)
+TARGETVER_LEAST_1_74 := $(shell test "$(RUSTC_VERSION)" ">" "1.74" && echo yes)
 
 RUSTC_BINNAME := rustc_binary
 CARGO_FLAGS_rustc := 
 ifneq ($(TARGETVER_LEAST_1_54),)
- RUST_SRC_HELLO := $(RUST_SRC)src/test/ui/hello.rs
+ ifneq ($(TARGETVER_LEAST_1_74),)
+  RUST_SRC_HELLO := $(RUST_SRC)tests/ui/hello.rs
+ else
+  RUST_SRC_HELLO := $(RUST_SRC)src/test/ui/hello.rs
+ endif
  RUST_SRC_LIBS := $(RUST_SRC)library/
  RUST_SRC_RUSTC := $(RUST_SRC)compiler/rustc/
  RUST_SRC_CODEGEN := $(RUST_SRC)compiler/rustc_codegen_llvm/
@@ -155,9 +160,13 @@ $(CARGO_HOME)config: Makefile
 $(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc $(MINICARGO) Makefile
 	@echo "[MINICARGO] $(RUST_SRC_LIBS)std > $(LIBDIR_S)"
 	mkdir -p $(LIBDIR_S)
+ifneq ($(TARGETVER_LEAST_1_74),)
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)sysroot
+else
 	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
 	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
 	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
+endif
 
 # Build hello_world using the bootstrapping compiler (mrustc-built rustc)
 $(BINDIR_S)hello_world: $(RUST_SRC_HELLO) $(LIBDIR_S)libstd.rlib $(BINDIR_S)rustc
@@ -172,14 +181,16 @@ CARGO_ENV_STAGE2_STD := CARGO_TARGET_DIR=$(OUTDIR)build-std2 RUSTC=$(abspath rus
 $(LIBDIR_2)libtest.rlib: $(LIBDIR_S)libstd.rlib $(BINDIR_2)rustc $(BINDIR_S)rustc $(BINDIR)cargo $(CARGO_HOME)config Makefile
 	@mkdir -p $(LIBDIR_2)
 	@echo [CARGO] $(RUST_SRC_LIBS)test/Cargo.toml '>' $(OUTDIR)build-std2
-ifeq ($(TARGETVER_LEAST_1_39),)
+ifneq ($(TARGETVER_LEAST_1_74),)
+	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)sysroot/Cargo.toml --features panic-unwind
+else ifeq ($(TARGETVER_LEAST_1_39),)
 	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)std/Cargo.toml --features panic-unwind
 	$Vcp --remove-destination $(CARGO_OUTDIR_STAGE2_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE2_STD)deps/*.$(DYLIB_EXT) $(LIBDIR_2)
 	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml
 else
 	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml --features panic-unwind
 endif
-	$Vcp $(CARGO_OUTDIR_STAGE2_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE2_STD)deps/*.$(DYLIB_EXT) $(LIBDIR_2)
+	$Vcp $(CARGO_OUTDIR_STAGE2_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE2_STD)deps/*.rmeta $(CARGO_OUTDIR_STAGE2_STD)deps/*.$(DYLIB_EXT) $(LIBDIR_2)
 
 $(BINDIR_2)rustc: ../output$(OUTDIR_SUF)/rustc
 	@mkdir -p $(dir $@)
@@ -214,7 +225,7 @@ ifeq ($(RUSTC_VERSION),1.19.0)
 else
 	$V$(call fn_opt_copy,$(CARGO_OUTDIR_RUSTC)$(RUSTC_BINNAME),$(BINDIR)rustc_binary)
 endif
-	$Vprintf '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(OUTDIR)prefix/lib):$(abspath $(LIBDIR))" $$d/rustc_binary $$@' >$@
+	$Vprintf '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(OUTDIR)prefix/lib):$(abspath $(LIBDIR))" $$d/rustc_binary "$$@"' >$@
 	$Vchmod +x $@
 
 CARGO_OUTDIR_STAGE3_STD := $(OUTDIR)build-std/$(RUSTC_TARGET)/release/
@@ -222,7 +233,9 @@ CARGO_ENV_STAGE3_STD := CARGO_TARGET_DIR=$(OUTDIR)build-std RUSTC=$(abspath rust
 $(LIBDIR)libstd.rlib: $(BINDIR)rustc
 	@mkdir -p $(LIBDIR)
 	@echo [CARGO] $(RUST_SRC_LIBS)test/Cargo.toml '>' $(OUTDIR)build-std2
-ifeq ($(TARGETVER_LEAST_1_39),)
+ifneq ($(TARGETVER_LEAST_1_74),)
+	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)sysroot/Cargo.toml --features panic-unwind
+else ifeq ($(TARGETVER_LEAST_1_39),)
 	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)std/Cargo.toml --features panic-unwind
 	$Vcp --remove-destination $(CARGO_OUTDIR_STAGE3_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE3_STD)deps/*.$(DYLIB_EXT) $(LIBDIR)
 	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml

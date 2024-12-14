@@ -72,7 +72,7 @@ jobs:
       matrix:
        #rustver: ["1.29", "1.39", "1.19", "1.54"]
        # Note: Only run 1.54, to save on time
-       rustver: ["1.54"]
+       rustver: ["1.54", "1.74"]
     runs-on: windows-2019   # need compiler for C codegen, might as well use the same
     env:
      RUSTC_VERSION: ${{ matrix.rustver }}.0
@@ -97,8 +97,9 @@ jobs:
     - name: Extract rust source
       shell: cmd
       run: |
-        "c:\Program Files\7-Zip\7z.exe" x rustc-1.54.0-src.tar.gz -so | "c:\Program Files\7-Zip\7z.exe" x -aoa -si -ttar
+        "c:\Program Files\7-Zip\7z.exe" x rustc-${{ matrix.rustver }}.0-src.tar.gz -so | "c:\Program Files\7-Zip\7z.exe" x -aoa -si -ttar
     - name: Build
       run: |
         cd vsproject
         .\run_hello_Pick.cmd ${{ matrix.rustver }}
+        .\run_local_tests_Pick.cmd ${{ matrix.rustver }}

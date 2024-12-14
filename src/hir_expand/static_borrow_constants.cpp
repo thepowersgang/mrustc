@@ -40,7 +40,9 @@ namespace static_borrow_constants {
 
         HIR::SimplePath m_lang_RangeFull;
 
+        // Output from a node visit
         bool    m_is_constant;
+        // Running state: Cleared if `m_is_constant` is false after a node visit
         bool    m_all_constant;
     public:
         ExprVisitor_Mark(const StaticTraitResolve& resolve, const ::HIR::TypeRef* self_type, const ::HIR::ExprPtr& expr_ptr)
@@ -98,6 +100,20 @@ namespace static_borrow_constants {
             m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
 
+            if( const auto* inode = dynamic_cast<::HIR::ExprNode_PathValue*>(node.m_value.get())
+                //&& node.m_value->m_usage == HIR::ValueUsage::Borrow
+                )
+            {
+                MonomorphState  ms;
+                auto v = m_resolve.get_value(node.span(), inode->m_path, ms, /*signature_only*/true);
+                if(v.is_Static())
+                {
+                    m_all_constant = saved_all_constant;
+                    m_is_constant = true;
+                    return ;
+                }
+            }
+
             // If the inner is constant (Array, Struct, Literal, const)
             if( m_all_constant )
             {
@@ -121,12 +137,14 @@ namespace static_borrow_constants {
                 auto& value_ptr = *value_ptr_ptr;
                 if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(value_ptr_ptr->get()))
                 {
+                    (void)inner_node;
                     m_all_constant = saved_all_constant;
                     m_is_constant = true;
                     return ;
                 }
-                auto usage = value_ptr->m_usage;
+                //auto usage = value_ptr->m_usage;
 
+                bool is_unsized = false;
                 bool is_zst = ([&]()->bool{
                     // HACK: `Target_GetSizeOf` calls `Target_GetSizeAndAlignOf` which doesn't work on generic arrays (needs alignment)
                     if( const auto* te = value_ptr->m_res_type.data().opt_Array() ) {
@@ -134,8 +152,9 @@ namespace static_borrow_constants {
                             return true;
                         }
                     }
-                    size_t v = 1;
-                    Target_GetSizeOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v);
+                    size_t v = 1, unused_align=0;
+                    Target_GetSizeAndAlignOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v, unused_align);
+                    is_unsized = (v == SIZE_MAX);
                     return v == 0;
                     })();
 
@@ -143,6 +162,10 @@ namespace static_borrow_constants {
                 if( !is_zst && monomorphise_type_needed(value_ptr->m_res_type) )
                 {
                     DEBUG("-- " << value_ptr->m_res_type << " is generic");
+                }
+                else if( is_unsized )
+                {
+                    DEBUG("-- " << value_ptr->m_res_type << " is unsized");
                 }
                 // Not mutable (... or at least, not a non-shared non-zst)
                 else if( !is_zst && node.m_type != HIR::BorrowType::Shared )
@@ -237,7 +260,7 @@ namespace static_borrow_constants {
             if( m_all_constant ) {
                 MonomorphState  ms_unused;
                 auto v = m_resolve.get_value(node.span(), node.m_path, ms_unused, true);
-                DEBUG(node.m_path << " is " << (v.as_Function()->m_const ? "" : "NOT") << " constant");
+                DEBUG(node.m_path << " is " << (v.as_Function()->m_const ? "" : "NOT ") << "constant");
                 if( v.as_Function()->m_const ) {
                     m_is_constant = !is_maybe_interior_mut(node);
                 }
@@ -264,14 +287,19 @@ namespace static_borrow_constants {
             {
                 const auto& ty = node.m_index->m_res_type;
                 DEBUG("_Index: ty = " << ty);
-                if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() && ty.data().as_Path().path.m_data.as_Generic().m_path == m_lang_RangeFull ) {
-                    DEBUG("_Index: RangeFull - can be constant");
-                    m_is_constant = !is_maybe_interior_mut(node);
+                if( node.m_value->m_res_type.data().is_Array() && node.m_value->m_res_type.data().as_Array().size == 0 ) {
+                    m_is_constant = true;
                 }
                 else {
-                    // ... or just allow it - consteval can handle indexing out of bounds, right?
-                    // ref: 1.39 librustc_data_structures/indexed_vec.rs L141 `const fn from_u32_const` uses it as a compile-time assert
-                    m_is_constant = !is_maybe_interior_mut(node);
+                    if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() && ty.data().as_Path().path.m_data.as_Generic().m_path == m_lang_RangeFull ) {
+                        DEBUG("_Index: RangeFull - can be constant");
+                        m_is_constant = !is_maybe_interior_mut(node);
+                    }
+                    else {
+                        // ... or just allow it - consteval can handle indexing out of bounds, right?
+                        // ref: 1.39 librustc_data_structures/indexed_vec.rs L141 `const fn from_u32_const` uses it as a compile-time assert
+                        m_is_constant = !is_maybe_interior_mut(node);
+                    }
                 }
             }
             m_all_constant = saved_all_constant;
@@ -327,6 +355,16 @@ namespace static_borrow_constants {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            // TODO: Separate the const-valid and const-promotable flags
+            //ASSERT_BUG(node.span(), m_all_constant, "const block wasn't constant");
+
+            // NOTE: The second pass will lift this into a `const`, which will then be evaluated
+            // - Evaluation will fail if it's not constant
+
+            m_is_constant = m_all_constant;
+        }
         // - Root values
         void visit(::HIR::ExprNode_Literal& node) override {
             ::HIR::ExprVisitorDef::visit(node);
@@ -334,6 +372,7 @@ namespace static_borrow_constants {
         }
         void visit(::HIR::ExprNode_ConstParam& node) override {
             ::HIR::ExprVisitorDef::visit(node);
+            // While yes, it is constant, don't want to turn it into a static borrow
             //m_is_constant = true;
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override {
@@ -358,6 +397,24 @@ namespace static_borrow_constants {
                 break;
             case StaticTraitResolve::ValuePtr::TAG_Function:
                 m_is_constant = true;
+                break;
+            case StaticTraitResolve::ValuePtr::TAG_Static:
+                if( v.as_Static()->m_is_mut ) {
+                    DEBUG("Static mut, can't use in consteval");
+                }
+                else if( monomorphise_path_needed(node.m_path) ) {
+                    DEBUG("Static path is still generic, can't transform into a `static`");
+                }
+                else if( !v.as_Static()->m_value_generated && !v.as_Static()->m_value ) {
+                    DEBUG("Static isn't known, cannot use in consteval");
+                }
+                else if( !m_resolve.type_is_copy(node.span(), node.m_res_type) ) {
+                    DEBUG("Static isn't copy, cannot use in consteval");
+                }
+                else {
+                    m_is_constant = !is_maybe_interior_mut(node);
+                    DEBUG(node.m_path << " m_is_constant=" << m_is_constant);
+                }
                 break;
             default:
                 break;
@@ -461,22 +518,14 @@ namespace static_borrow_constants {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
 
-        void visit_type(::HIR::TypeRef& ty) override
+        void visit_constgeneric(::HIR::ConstGeneric& c) override
         {
-            if( auto* ep = ty.data_mut().opt_Array() )
+            HIR::Visitor::visit_constgeneric(c);
+            if( auto* e = c.opt_Unevaluated() )
             {
-                this->visit_type( ep->inner );
-                DEBUG("Array size " << ty);
-                if( auto* cg = ep->size.opt_Unevaluated() ) {
-                    if(cg->is_Unevaluated())
-                    {
-                        ExprVisitor_Mark    ev(m_resolve, m_self_type, *cg->as_Unevaluated());
-                        ev.visit_node_ptr( *cg->as_Unevaluated() );
-                    }
-                }
-            }
-            else {
-                ::HIR::Visitor::visit_type(ty);
+                auto& ep = (*e)->expr;
+                ExprVisitor_Mark    ev(m_resolve, m_self_type, *ep);
+                ev.visit_node_ptr( *ep );
             }
         }
         // ------
@@ -547,7 +596,7 @@ namespace static_borrow_constants {
         public ::HIR::ExprVisitorDef
     {
     public:
-        typedef std::function<HIR::SimplePath(Span, HIR::TypeRef, HIR::ExprPtr, HIR::GenericParams)>    t_new_static_cb;
+        typedef std::function<HIR::SimplePath(Span, HIR::TypeRef, HIR::ExprPtr, HIR::GenericParams, bool)>    t_new_static_cb;
     private:
         const StaticTraitResolve& m_resolve;
         const ::HIR::TypeRef*   m_self_type;
@@ -595,12 +644,12 @@ namespace static_borrow_constants {
                 unsigned ofs_impl_l, unsigned ofs_item_l
                 )
                 : params(params)
+                , ofs_impl_l(ofs_impl_l)
+                , ofs_item_l(ofs_item_l)
                 , ofs_impl_t(ofs_impl_t)
                 , ofs_item_t(ofs_item_t)
                 , ofs_impl_v(ofs_impl_v)
                 , ofs_item_v(ofs_item_v)
-                , ofs_impl_l(ofs_impl_l)
-                , ofs_item_l(ofs_item_l)
             {
             }
             ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override
@@ -661,9 +710,11 @@ namespace static_borrow_constants {
             DEBUG("Impl: " << m_resolve.impl_generics().fmt_args());
             DEBUG("Item: " << m_resolve.item_generics().fmt_args());
             // - 0xFFFF "Self" -> 0 "Super" (if present)
-            if( m_resolve.has_self() )
+            // NOTE: Check `has_self` (which just checskf or impl params) and `m_self_type` (the actual self type)
+            // - Needed for some constant evalulated values
+            if( m_resolve.has_self() && m_self_type )
             {
-                assert( m_self_type );
+                ASSERT_BUG(sp, m_self_type, "Missing self type (disagreement between m_resolve and ExprVisitor_Mutate)");
                 constructor_path_params.m_types.push_back( m_self_type->clone() );
                 params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
             }
@@ -726,7 +777,13 @@ namespace static_borrow_constants {
                 TU_ARMA(TypeLifetime, e)
                     return ::HIR::GenericBound::make_TypeLifetime({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_lifetime(sp, e.valid_for) });
                 TU_ARMA(TraitBound, e)
-                    return ::HIR::GenericBound::make_TraitBound  ({ (e.hrtbs ? box$(e.hrtbs->clone()) : nullptr), monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    if( e.hrtbs ) {
+                        auto _h = monomorph_cb.push_hrb(*e.hrtbs);
+                        return ::HIR::GenericBound::make_TraitBound({ box$(e.hrtbs->clone()), monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    }
+                    else {
+                        return ::HIR::GenericBound::make_TraitBound({ nullptr               , monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    }
                 TU_ARMA(TypeEquality, e)
                     return ::HIR::GenericBound::make_TypeEquality({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_type(sp, e.other_type) });
                 }
@@ -742,6 +799,124 @@ namespace static_borrow_constants {
             }
             return monomorph_cb;
         }
+
+        HIR::ExprPtr extract_node(HIR::ExprNodeP& node, StaticTraitResolve& resolve, HIR::GenericParams& params_def, HIR::PathParams& constr_params)
+        {
+            auto monomorph = this->create_params(node->span(), params_def, constr_params);
+            resolve.set_item_generics_raw(params_def);
+
+            struct V: public HIR::ExprVisitorDef {
+                const Span  sp;
+                const StaticTraitResolve&   resolve;
+                const Monomorph&    monomorph;
+                bool is_generic;
+                std::map<unsigned,unsigned> binding_mapping;
+                V(const StaticTraitResolve& resolve, const Monomorph& monomorph)
+                    : resolve(resolve)
+                    , monomorph(monomorph)
+                    , is_generic(false)
+                {}
+
+                void visit_type(HIR::TypeRef& ty) override {
+                    if( monomorphise_type_needed(ty) ) {
+                        this->is_generic = true;
+                        auto new_ty = this->resolve.monomorph_expand(sp, ty, this->monomorph);
+                        DEBUG(ty << " -> " << new_ty);
+                        ty = std::move(new_ty);
+                    }
+                }
+                void visit_path_params(HIR::PathParams& pp) override {
+                    if( monomorphise_pathparams_needed(pp) ) {
+                        this->is_generic = true;
+                        auto new_pp = this->monomorph.monomorph_path_params(sp, pp, false);
+                        DEBUG(pp << " -> " << new_pp);
+                        pp = std::move(new_pp);
+                        for(auto& ty : pp.m_types) {
+                            this->resolve.expand_associated_types(sp, ty);
+                        }
+                    }
+                }
+                void visit_pattern(const Span& sp, HIR::Pattern& pat) override {
+                    HIR::ExprVisitorDef::visit_pattern(sp, pat);
+                    for( auto& pb : pat.m_bindings )
+                    {
+                        auto idx = static_cast<unsigned>(binding_mapping.size());
+                        binding_mapping.insert(::std::make_pair(pb.m_slot, idx));
+                        pb.m_slot = idx;
+                    }
+
+                    if(auto* e = pat.m_data.opt_SplitSlice())
+                    {
+                        if( e->extra_bind.is_valid() )
+                        {
+                            auto idx = static_cast<unsigned>(binding_mapping.size());
+                            binding_mapping.insert(::std::make_pair(e->extra_bind.m_slot, idx));
+                            e->extra_bind.m_slot = idx;
+                        }
+                    }
+                }
+                void visit(HIR::ExprNode_Variable& node) override {
+                    HIR::ExprVisitorDef::visit(node);
+                    ASSERT_BUG(node.span(), binding_mapping.count(node.m_slot) != 0, "");
+                    node.m_slot = binding_mapping.at(node.m_slot);
+                }
+                void visit(HIR::ExprNode_Closure& node) override {
+                    HIR::ExprVisitorDef::visit(node);
+                    // Update bindings here too
+                    if( node.m_code ) {
+                        for(auto& l : node.m_avu_cache.local_vars) {
+                            ASSERT_BUG(node.span(), binding_mapping.count(l) != 0, "");
+                            l = binding_mapping.at(l);
+                        }
+                        assert(node.m_avu_cache.captured_vars.empty());
+                    }
+                }
+                void visit(HIR::ExprNode_ConstParam& node) override {
+                    node.m_binding = monomorph.get_value(node.span(), HIR::GenericRef("", node.m_binding)).as_Generic().binding;
+                    is_generic = true;
+                }
+            } v(resolve, monomorph);
+            node->visit(v);
+            v.visit_type(node->m_res_type);
+            if( !v.is_generic ) {
+                params_def = HIR::GenericParams();
+                constr_params = HIR::PathParams();
+                DEBUG("Concrete static");
+            }
+            else {
+                DEBUG("Generic static");
+            }
+
+            auto val_expr = HIR::ExprPtr(mv$(node));
+            val_expr.m_state = m_expr_ptr.m_state.clone();
+            val_expr.m_state->stage = ::HIR::ExprState::Stage::Sbc;
+
+            val_expr.m_bindings.resize(v.binding_mapping.size());
+            for(auto& e : v.binding_mapping) {
+                val_expr.m_bindings[e.second] = monomorph.monomorph_type(val_expr->span(), m_expr_ptr.m_bindings.at(e.first));
+            }
+            return val_expr;
+        }
+
+        struct MonomorphLifetimesStatic: public Monomorphiser {
+            ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+                return HIR::TypeRef(g.name, g.binding);
+            }
+            ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+                return g;
+            }
+            ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+                return HIR::LifetimeRef(g.binding);
+            }
+            HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
+                if( lft == HIR::LifetimeRef() ) {
+                    return  HIR::LifetimeRef::new_static();
+                }
+                else {
+                    return lft;
+                }
+            }
+        };
 
         void visit(::HIR::ExprNode_Borrow& node) override {
             ::HIR::ExprVisitorDef::visit(node);
@@ -771,125 +946,72 @@ namespace static_borrow_constants {
                 auto& value_ptr = *value_ptr_ptr;
                 if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(value_ptr_ptr->get()))
                 {
+                    (void)inner_node;
                     BUG(node.span(), "Unexpected inner being deref?");
                     return ;
                 }
                 auto usage = value_ptr->m_usage;
 
+                auto new_res_ty = value_ptr->m_res_type.clone();
                 DEBUG("-- Creating static");
                 // Clone the in-scope generics (same as done in closure generation)
                 // - Would be picky, but hard to get the bounds right.
+                StaticTraitResolve  resolve { m_resolve.m_crate };
                 HIR::GenericParams  params_def;
                 HIR::PathParams constr_params;
-                auto monomorph = this->create_params(node.span(), params_def, constr_params);
-
-                struct V: public HIR::ExprVisitorDef {
-                    const Monomorph&    monomorph;
-                    bool is_generic;
-                    std::map<unsigned,unsigned> binding_mapping;
-                    V(const Monomorph& monomorph): monomorph(monomorph), is_generic(false) {}
-
-                    void visit_type(HIR::TypeRef& ty) override {
-                        if( monomorphise_type_needed(ty) ) {
-                            this->is_generic = true;
-                            auto new_ty = this->monomorph.monomorph_type(Span(), ty);
-                            DEBUG(ty << " -> " << new_ty);
-                            ty = std::move(new_ty);
-                        }
-                    }
-                    void visit_pattern(const Span& sp, HIR::Pattern& pat) override {
-                        HIR::ExprVisitorDef::visit_pattern(sp, pat);
-                        for( auto& pb : pat.m_bindings )
-                        {
-                            auto idx = static_cast<unsigned>(binding_mapping.size());
-                            binding_mapping.insert(::std::make_pair(pb.m_slot, idx));
-                            pb.m_slot = idx;
-                        }
-
-                        if(auto* e = pat.m_data.opt_SplitSlice())
-                        {
-                            if( e->extra_bind.is_valid() )
-                            {
-                                auto idx = static_cast<unsigned>(binding_mapping.size());
-                                binding_mapping.insert(::std::make_pair(e->extra_bind.m_slot, idx));
-                                e->extra_bind.m_slot = idx;
-                            }
-                        }
-                    }
-                    void visit(HIR::ExprNode_Variable& node) override {
-                        HIR::ExprVisitorDef::visit(node);
-                        ASSERT_BUG(node.span(), binding_mapping.count(node.m_slot) != 0, "");
-                        node.m_slot = binding_mapping.at(node.m_slot);
-                    }
-                    void visit(HIR::ExprNode_Closure& node) override {
-                        HIR::ExprVisitorDef::visit(node);
-                        // Update bindings here too
-                        if( node.m_code ) {
-                            for(auto& l : node.m_avu_cache.local_vars) {
-                                ASSERT_BUG(node.span(), binding_mapping.count(l) != 0, "");
-                                l = binding_mapping.at(l);
-                            }
-                            assert(node.m_avu_cache.captured_vars.empty());
-                        }
-                    }
-                } v(monomorph);
-                value_ptr->visit(v);
-                v.visit_type(value_ptr->m_res_type);
-                if( !v.is_generic ) {
-                    params_def = HIR::GenericParams();
-                    constr_params = HIR::PathParams();
-                    DEBUG("Concrete static");
-                }
-                else {
-                    DEBUG("Generic static");
-                }
-
-                auto val_expr = HIR::ExprPtr(mv$(value_ptr));
-                val_expr.m_state = m_expr_ptr.m_state.clone();
-                val_expr.m_state->stage = ::HIR::ExprState::Stage::Sbc;
-
-                val_expr.m_bindings.resize(v.binding_mapping.size());
-                for(auto& e : v.binding_mapping) {
-                    val_expr.m_bindings[e.second] = monomorph.monomorph_type(node.span(), m_expr_ptr.m_bindings.at(e.first));
-                }
+                auto val_expr = extract_node(value_ptr, resolve, params_def, constr_params);
 
                 // Create new static
                 auto sp = val_expr->span();
 
                 // Replace all unknown lifetimes with `'static`
                 // - (Currently) there shouldn't be any generics, need to solve that later on?
-                struct M: public Monomorphiser {
-                    ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
-                        return HIR::TypeRef(g.name, g.binding);
-                    }
-                    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
-                        return g;
-                    }
-                    ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
-                        return HIR::LifetimeRef(g.binding);
-                    }
-                    HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
-                        if( lft == HIR::LifetimeRef() ) {
-                            return  HIR::LifetimeRef::new_static();
-                        }
-                        else {
-                            return lft;
-                        }
-                    }
-                } m;
+                auto static_ty = MonomorphLifetimesStatic().monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
+                resolve.expand_associated_types(sp, static_ty);
 
-                auto static_ty = m.monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
+                //auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
+                //auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
+                //DEBUG("new_res_ty = " << new_res_ty);
 
-                auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
-                auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
-                DEBUG("new_res_ty = " << new_res_ty);
-
-                auto path = m_new_static_cb(sp, mv$(static_ty), mv$(val_expr), mv$(params_def));
+                auto path = m_new_static_cb(sp, mv$(static_ty), mv$(val_expr), mv$(params_def), false);
                 DEBUG("> " << path << constr_params);
                 // Update the `m_value` to point to a new node
                 auto new_node = NEWNODE(std::move(new_res_ty), PathValue, sp, HIR::GenericPath(mv$(path), mv$(constr_params)), HIR::ExprNode_PathValue::STATIC);
                 new_node->m_usage = usage;
                 value_ptr = mv$(new_node);
+            }
+        }
+        void visit(::HIR::ExprNode_ConstBlock& node) {
+            HIR::ExprVisitorDef::visit(node);
+
+            if( dynamic_cast<HIR::ExprNode_PathValue*>(node.m_inner.get()) ) {
+            }
+            else {
+                DEBUG("-- Creating const");
+                auto usage = node.m_inner->m_usage;
+
+                StaticTraitResolve  resolve { m_resolve.m_crate };
+                HIR::GenericParams  params_def;
+                HIR::PathParams constr_params;
+                auto val_expr = extract_node(node.m_inner, resolve, params_def, constr_params);
+
+                auto sp = val_expr->span();
+
+                // Replace all unknown lifetimes with `'static`
+                // - (Currently) there shouldn't be any generics, need to solve that later on?
+                auto static_ty = MonomorphLifetimesStatic().monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
+                resolve.expand_associated_types(sp, static_ty);
+
+                auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
+                auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
+                DEBUG("new_res_ty = " << new_res_ty);
+
+                auto path = m_new_static_cb(sp, mv$(static_ty), mv$(val_expr), mv$(params_def), true);
+                DEBUG("> " << path << constr_params);
+                // Update the `m_value` to point to a new node
+                auto new_node = NEWNODE(std::move(new_res_ty), PathValue, sp, HIR::GenericPath(std::move(path), mv$(constr_params)), HIR::ExprNode_PathValue::CONSTANT);
+                new_node->m_usage = usage;
+                node.m_inner = mv$(new_node);
             }
         }
     };
@@ -902,8 +1024,15 @@ namespace static_borrow_constants {
         const ::HIR::TypeRef*   m_self_type = nullptr;
         const HIR::ItemPath*  m_current_module_path;
         const HIR::Module*  m_current_module;
+        // Is the current context constant (a `const fn` or `const` item)
+        bool m_is_const;
 
-        std::map<const HIR::Module*, std::vector< std::pair<HIR::SimplePath, HIR::Static> > >  m_new_statics;
+        struct NewStatic {
+            HIR::SimplePath path;
+            HIR::Static data;
+            bool is_const;
+        };
+        std::map<const HIR::Module*, std::vector<NewStatic> >  m_new_statics;
 
     public:
         OuterVisitor(const ::HIR::Crate& crate)
@@ -915,12 +1044,12 @@ namespace static_borrow_constants {
 
         ExprVisitor_Mutate::t_new_static_cb get_new_ty_cb()
         {
-            return [this](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr, HIR::GenericParams generics)->HIR::SimplePath {
+            return [this](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr, HIR::GenericParams generics, bool is_const)->HIR::SimplePath {
                 ASSERT_BUG(sp, m_current_module, "");
                 // Assign a path (based on the current list)
                 auto& list = m_new_statics[m_current_module];
                 auto idx = list.size();
-                auto name = RcString::new_interned( FMT("lifted#" << idx) );
+                auto name = RcString::new_interned( FMT( (is_const ? "lifted#" : "const#") << idx) );
                 auto path = (*m_current_module_path + name).get_simple_path();
                 auto new_static = HIR::Static(
                     HIR::Linkage(),
@@ -929,8 +1058,9 @@ namespace static_borrow_constants {
                     /*m_value=*/mv$(val_expr)
                     );
                 new_static.m_params = mv$(generics);
+                new_static.m_save_literal = m_is_const;
                 DEBUG(path << " = " << new_static.m_value_res);
-                list.push_back(std::make_pair( path, mv$(new_static) ));
+                list.push_back(NewStatic { path, std::move(new_static), is_const });
                 return path;
                 };
         }
@@ -947,15 +1077,15 @@ namespace static_borrow_constants {
                 HIR::SimplePath mod_path;
                 if( !mod_list.second.empty() )
                 {
-                    mod_path = mod_list.second[0].first;
+                    mod_path = mod_list.second[0].path;
                     mod_path.m_components.pop_back();
                 }
 
                 struct Nvs: ::HIR::Evaluator::Newval {
 
-                    size_t m_next_idx ;
                     ::HIR::SimplePath   m_current_module_path;
                     ::HIR::Module&  m_current_module;
+                    size_t m_next_idx;
 
                     Nvs(::HIR::SimplePath current_module_path, ::HIR::Module& current_module, size_t idx)
                         : m_current_module_path(::std::move(current_module_path))
@@ -988,19 +1118,35 @@ namespace static_borrow_constants {
                 for(auto& new_static_pair : mod_list.second)
                 {
                     Span    sp;
-                    auto& new_static = new_static_pair.second;
+                    auto& new_static = new_static_pair.data;
 
-                    TRACE_FUNCTION_F("New static " << new_static_pair.first);
+                    TRACE_FUNCTION_F("New static " << new_static_pair.path << new_static.m_params.fmt_args());
 
                     if( !new_static.m_params.is_generic() )
                     {
-                        new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( new_static_pair.first, new_static.m_value, new_static.m_type.clone());
+                        new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( new_static_pair.path, new_static.m_value, new_static.m_type.clone());
                         new_static.m_value_generated = true;
                     }
 
-                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.first.m_components.back()), box$(HIR::VisEnt<HIR::ValueItem> {
+                    struct H {
+                        static HIR::Constant to_const(HIR::Static& s) {
+                            HIR::Constant rv { std::move(s.m_params), std::move(s.m_type), std::move(s.m_value) };
+                            if( s.m_value_generated ) {
+                                rv.m_value_state = HIR::Constant::ValueState::Known;
+                                rv.m_value_res = std::move(s.m_value_res);
+                            }
+                            else {
+                                rv.m_value_state = HIR::Constant::ValueState::Generic;
+                            }
+                            return rv;
+                        }
+                    };
+                    auto new_ent = new_static_pair.is_const
+                        ? HIR::ValueItem(H::to_const(new_static))
+                        : HIR::ValueItem(std::move(new_static_pair.data));
+                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.path.m_components.back()), box$(HIR::VisEnt<HIR::ValueItem> {
                         HIR::Publicity::new_none(), // Should really be private, but we're well after checking
-                        HIR::ValueItem(mv$(new_static_pair.second))
+                        std::move(new_ent)
                         })) );
                 }
             }
@@ -1058,22 +1204,13 @@ namespace static_borrow_constants {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
 
-        void visit_type(::HIR::TypeRef& ty) override
+        void visit_constgeneric(::HIR::ConstGeneric& c) override
         {
-            if( auto* ep = ty.data_mut().opt_Array() )
+            HIR::Visitor::visit_constgeneric(c);
+            if( auto* e = c.opt_Unevaluated() )
             {
-                this->visit_type( ep->inner );
-                DEBUG("Array size " << ty);
-                if( auto* cg = ep->size.opt_Unevaluated() ) {
-                    if(cg->is_Unevaluated())
-                    {
-                        ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), *cg->as_Unevaluated());
-                        ev.visit_node_ptr( *cg->as_Unevaluated() );
-                    }
-                }
-            }
-            else {
-                ::HIR::Visitor::visit_type(ty);
+                ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), *(*e)->expr);
+                ev.visit_node_ptr( *(*e)->expr );
             }
         }
         // ------
@@ -1083,9 +1220,11 @@ namespace static_borrow_constants {
             if( item.m_code )
             {
                 auto _ = m_resolve.set_item_generics(item.m_params);
+                m_is_const = item.m_const;
                 DEBUG("Function code " << p);
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_code);
                 ev.visit_node_ptr( item.m_code );
+                m_is_const = false;
             }
             else
             {
@@ -1097,13 +1236,23 @@ namespace static_borrow_constants {
             {
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
+
+
+                if( !item.m_is_mut
+                    && m_resolve.type_is_copy(item.m_value->span(), item.m_type)
+                    && m_resolve.type_is_interior_mutable(item.m_value->span(), item.m_type) == HIR::Compare::Unequal
+                    ) {
+                    item.m_save_literal = true;
+                }
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
             if( item.m_value )
             {
+                m_is_const = true;
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
+                m_is_const = false;
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
@@ -1144,10 +1293,28 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
 {
     TRACE_FUNCTION_F(ip);
     StaticTraitResolve  resolve(crate);
+    resolve.set_both_generics_raw(exp.m_state->m_impl_generics, exp.m_state->m_item_generics);
 
     static int static_count = 0;
 
-    static_borrow_constants::ExprVisitor_Mutate  ev(resolve, nullptr, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr, HIR::GenericParams generics)->HIR::SimplePath {
+    const HIR::TypeRef* self_type = ip.get_top_ip().ty;
+    if( ip.get_top_ip().wrapped ) {
+        const HIR::Path& p = *ip.get_top_ip().wrapped;
+        if( const auto* e = p.m_data.opt_UfcsInherent() ) {
+            self_type = &e->type;
+        }
+        if( const auto* e = p.m_data.opt_UfcsKnown() ) {
+            self_type = &e->type;
+        }
+    }
+    if( self_type ) {
+        DEBUG("self_type = " << *self_type);
+    }
+    else {
+        DEBUG("self_type = NONE");
+    }
+
+    static_borrow_constants::ExprVisitor_Mutate  ev(resolve, self_type, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr, HIR::GenericParams generics, bool is_const)->HIR::SimplePath {
         auto name = RcString::new_interned(FMT("lifted#C_" << static_count++));
 
         auto path = ::HIR::SimplePath(crate.m_crate_name, {name});
@@ -1160,9 +1327,58 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
         new_static.m_params = mv$(generics);
         // - Since this was neeed in consteval, it's going to need to be saved?
         new_static.m_save_literal = true;
+
+        struct Nvs: ::HIR::Evaluator::Newval {
+            const HIR::Crate& crate;
+
+            Nvs(const HIR::Crate& crate)
+                : crate(crate)
+            {
+            }
+
+            ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
+                auto name = RcString::new_interned( FMT("lifted#C_" << static_count) );
+                static_count ++;
+                auto path = HIR::SimplePath() + name;
+                auto new_static = HIR::Static(
+                    HIR::Linkage(),
+                    /*is_mut=*/false,
+                    ::std::move(type),
+                    /*m_value=*/HIR::ExprPtr()
+                );
+                new_static.m_value_generated = true;
+                new_static.m_value_res = ::std::move(value);
+                DEBUG(path << " = " << new_static.m_value_res);
+                crate.m_new_values.push_back(std::make_pair( name, box$(HIR::VisEnt<HIR::ValueItem> {
+                    HIR::Publicity::new_none(), // Should really be private, but we're well after checking
+                    HIR::ValueItem(::std::move(new_static))
+                }) ));
+
+                auto& s = crate.m_new_values.back().second->ent.as_Static();
+                s.m_value.m_state->m_impl_generics = nullptr;
+                s.m_value.m_state->m_item_generics = &s.m_params;
+                return path;
+            }
+        } nvs { crate };
+
+        if( !new_static.m_params.is_generic() )
+        {
+            new_static.m_value_res = ::HIR::Evaluator(sp, crate, nvs).evaluate_constant( path, new_static.m_value, new_static.m_type.clone());
+            new_static.m_value_generated = true;
+        }
+
         DEBUG(path << " = ?");
-        auto boxed = box$(( ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), ::HIR::ValueItem( mv$(new_static) ) } ));
+        auto vi = is_const
+            ? HIR::ValueItem(HIR::Constant { std::move(new_static.m_params), std::move(new_static.m_type), std::move(new_static.m_value) })
+            : HIR::ValueItem(std::move(new_static))
+            ;
+        auto boxed = box$(( ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), std::move(vi) } ));
         crate.m_new_values.push_back( ::std::make_pair(name, mv$(boxed)) );
+        {
+            auto& s = crate.m_new_values.back().second->ent.as_Static();
+            s.m_value.m_state->m_impl_generics = nullptr;
+            s.m_value.m_state->m_item_generics = &s.m_params;
+        }
         return path;
         }, exp);
     ev.visit_node_ptr( exp );

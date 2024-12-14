@@ -55,6 +55,17 @@ struct LowerHIR_ExprNode_Visitor:
             rv->m_local_mod = ::HIR::SimplePath(g_crate_name, v.m_local_mod->path().nodes);
         }
 
+        switch(v.m_block_type)
+        {
+        case AST::ExprNode_Block::Type::Bare:
+            break;
+        case AST::ExprNode_Block::Type::Unsafe:
+            rv->m_is_unsafe = true;
+            break;
+        case AST::ExprNode_Block::Type::Const:
+            break;
+        }
+
         if( v.m_label != "" )
         {
             if(rv->m_value_node)
@@ -71,6 +82,17 @@ struct LowerHIR_ExprNode_Visitor:
         else
         {
             m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );
+        }
+
+        switch(v.m_block_type)
+        {
+        case AST::ExprNode_Block::Type::Bare:
+            break;
+        case AST::ExprNode_Block::Type::Unsafe:
+            break;
+        case AST::ExprNode_Block::Type::Const:
+            m_rv.reset( new ::HIR::ExprNode_ConstBlock(v.span(), std::move(m_rv)) );
+            break;
         }
     }
     virtual void visit(::AST::ExprNode_Try& v) override {
@@ -95,6 +117,7 @@ struct LowerHIR_ExprNode_Visitor:
         {
             TU_MATCH_HDRA((p), {)
             TU_ARMA(Const, e) {
+                ASSERT_BUG(v.span(), e, "Missing node for ASM Const");
                 params.push_back( lower(e) );
                 }
             TU_ARMA(Sym, e) {
@@ -104,14 +127,14 @@ struct LowerHIR_ExprNode_Visitor:
                 params.push_back(::HIR::ExprNode_Asm2::Param::make_RegSingle({
                     e.dir,
                     e.spec.clone(),
-                    lower(e.val)
+                    e.val ? lower(e.val) : nullptr  // e.g. `lateout(regname) _`
                     }));
                 }
             TU_ARMA(Reg, e) {
                 params.push_back(::HIR::ExprNode_Asm2::Param::make_Reg({
                     e.dir,
                     e.spec.clone(),
-                    lower(e.val_in),
+                    e.val_in ? lower(e.val_in) : nullptr,
                     e.val_out ? lower(e.val_out) : nullptr
                     }));
                 }
@@ -133,19 +156,117 @@ struct LowerHIR_ExprNode_Visitor:
             m_rv.reset( new ::HIR::ExprNode_Yield( v.span(), lower(v.m_value) ) );
             break;
         case ::AST::ExprNode_Flow::CONTINUE:
-        case ::AST::ExprNode_Flow::BREAK:
+        case ::AST::ExprNode_Flow::BREAK: {
             auto val = v.m_value ? lower(v.m_value) : ::HIR::ExprNodeP();
             ASSERT_BUG(v.span(), !(v.m_type == ::AST::ExprNode_Flow::CONTINUE && val), "Continue with a value isn't allowed");
             m_rv.reset( new ::HIR::ExprNode_LoopControl( v.span(), v.m_target.name, (v.m_type == ::AST::ExprNode_Flow::CONTINUE), mv$(val) ) );
+            } break;
+        case ::AST::ExprNode_Flow::YEET:
+            BUG(v.span(), "do yeet should have been desugared");
             break;
         }
     }
     virtual void visit(::AST::ExprNode_LetBinding& v) override {
-        m_rv.reset( new ::HIR::ExprNode_Let( v.span(),
-            LowerHIR_Pattern( v.m_pat ),
-            LowerHIR_Type( v.m_type ),
-            lower_opt( v.m_value )
-            ) );
+        if( v.m_else ) {
+            // Cannot be expanded in expand, as it needs `None` to have been resolved to the enum variant
+            // So, it's expanded here - with the cooperation of `Resolve_Absolute` allocating some variable bindings for us
+            auto pat = LowerHIR_Pattern( v.m_pat );
+            auto type = LowerHIR_Type( v.m_type );
+            auto node_value = lower(v.m_value);
+            auto node_else = lower(v.m_else);
+
+            auto base = v.m_letelse_slots.first;
+            auto count = v.m_letelse_slots.second;
+            DEBUG(pat);
+            struct V: public HIR::Visitor {
+                unsigned base;
+                unsigned count;
+                std::vector<HIR::PatternBinding>    bindings;
+                std::map<unsigned, unsigned>    mapping;
+                V(unsigned base, unsigned count)
+                    : base(base)
+                    , count(count)
+                {}
+                void visit_pattern(::HIR::Pattern& pat) override {
+                    HIR::Visitor::visit_pattern(pat);
+                    for(size_t i = 0; i < pat.m_bindings.size(); i ++) {
+                        this->handle_binding(pat.m_bindings[i]);
+                    }
+                    // SplitSlice also defines bindings
+                    if(auto* e = pat.m_data.opt_SplitSlice() ) {
+                        if( e->extra_bind.is_valid() ) {
+                            this->handle_binding(e->extra_bind);
+                        }
+                    }
+                    // - SplitTuple doesn't?
+                    //if(auto* e = pat.m_data.opt_SplitTuple() ) {
+                    //    if( e->extra_bind.is_valid() ) {
+                    //        this->handle_binding(e->extra_bind);
+                    //    }
+                    //}
+                }
+                void handle_binding(::HIR::PatternBinding& pb) {
+                    auto it = mapping.find(pb.m_slot);
+                    if( it == mapping.end() ) {
+                        ASSERT_BUG(Span(), bindings.size() < this->count, "Miscount of variables in `let-else` - only allocated " << this->count);
+                        unsigned new_idx = base + bindings.size();
+
+                        bindings.push_back( HIR::PatternBinding(pb) );
+                        bindings.back().m_type = HIR::PatternBinding::Type::Move;
+                        it = mapping.insert(std::make_pair(pb.m_slot, new_idx)).first;
+                    }
+                    pb.m_mutable = false;
+                    pb.m_slot = it->second;
+                }
+            } visitor(base, count);
+            visitor.visit_pattern(pat);
+            /* 
+             * ```
+             * let (a,b,c,...) = match $value: $ty {
+             *     $pat => (a,b,c,...),
+             *     _ => { let _: ! = $else; },
+             *     };
+             * ```
+             */
+            std::vector<HIR::Pattern>   new_pats;
+            std::vector<HIR::ExprNodeP> tuple_vals;
+            for(size_t i = 0; i < visitor.bindings.size(); i++) {
+                auto& binding = visitor.bindings[i];
+                tuple_vals.push_back(HIR::ExprNodeP( new HIR::ExprNode_Variable(v.span(), binding.m_name, base + i) ));
+                new_pats.push_back(HIR::Pattern(std::move(binding), HIR::Pattern::Data {}));
+            }
+
+            std::vector<HIR::ExprNode_Match::Arm>   match_arms(2);
+            // `$pat => (a,b,c,...),`
+            match_arms[0].m_patterns.push_back(std::move(pat));
+            match_arms[0].m_code.reset(new HIR::ExprNode_Tuple(v.span(), std::move(tuple_vals)));
+            match_arms[1].m_patterns.push_back(HIR::Pattern());
+            // `_ => loop { let _: ! = $else; },
+            match_arms[1].m_code.reset(new HIR::ExprNode_Let(v.span(), HIR::Pattern(), HIR::TypeRef::new_diverge(), std::move(node_else)));
+            match_arms[1].m_code.reset(new HIR::ExprNode_Loop(v.span(), "",  std::move(match_arms[1].m_code), /*require_label*/true));
+            // HACK: Just use the code as-is.
+            //match_arms[1].m_code = std::move(node_else);
+            // `match $value: $ty {`
+            auto match_value = type.data().is_Infer()   // Only emit the `: $ty` part if the type was specified (not a `_`)
+                ? std::move(node_value)
+                : HIR::ExprNodeP(new HIR::ExprNode_Unsize(v.span(), std::move(node_value), std::move(type)))
+                ;
+            auto match = HIR::ExprNodeP(new HIR::ExprNode_Match(v.span(), std::move(match_value), std::move(match_arms)));
+
+            // `let (a,b,c,...) = ...`
+            m_rv.reset( new ::HIR::ExprNode_Let( v.span(),
+                HIR::Pattern(::std::vector<HIR::PatternBinding>(), HIR::Pattern::Data::make_Tuple({ std::move(new_pats) })),
+                HIR::TypeRef(),
+                std::move(match)
+            ));
+        }
+        else {
+            m_rv.reset( new ::HIR::ExprNode_Let( v.span(),
+                LowerHIR_Pattern( v.m_pat ),
+                LowerHIR_Type( v.m_type ),
+                lower_opt( v.m_value )
+                ) );
+        }
     }
     virtual void visit(::AST::ExprNode_Assign& v) override {
         struct H {
@@ -248,6 +369,10 @@ struct LowerHIR_ExprNode_Visitor:
             break;
         case ::AST::ExprNode_UniOp::RawBorrowMut:
             m_rv.reset(new ::HIR::ExprNode_RawBorrow(v.span(), ::HIR::BorrowType::Unique, lower( v.m_value ) ));
+            break;
+
+        case ::AST::ExprNode_UniOp::AWait:
+            TODO(v.span(), "Convert AWait operator");
             break;
 
         case ::AST::ExprNode_UniOp::INVERT: op = ::HIR::ExprNode_UniOp::Op::Invert; if(0)
@@ -363,30 +488,6 @@ struct LowerHIR_ExprNode_Visitor:
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Block( v.span(), false, mv$(code), {} ))
                 ) );
             break; }
-        case ::AST::ExprNode_Loop::WHILELET: {
-            ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-
-            // - Matches pattern - Run inner code
-            arms.push_back(::HIR::ExprNode_Match::Arm {
-                ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
-                ::HIR::ExprNodeP(),
-                lower(v.m_code)
-                });
-            // - Matches anything else - break
-            arms.push_back(::HIR::ExprNode_Match::Arm {
-                ::make_vec1( ::HIR::Pattern() ),
-                ::HIR::ExprNodeP(),
-                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl( v.span(), v.m_label.name, false) )
-                });
-
-            m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
-                v.m_label.name,
-                ::HIR::ExprNodeP(new ::HIR::ExprNode_Match( v.span(),
-                    lower(v.m_cond),
-                    mv$(arms)
-                    ))
-                ) );
-            break; }
         case ::AST::ExprNode_Loop::FOR:
             // NOTE: This should already be desugared (as a pass before resolve)
             BUG(v.span(), "Encountered still-sugared for loop");
@@ -440,17 +541,108 @@ struct LowerHIR_ExprNode_Visitor:
             };
         }
     }
+    virtual void visit(::AST::ExprNode_WhileLet& v) override {
+
+#if 0
+        {
+            ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
+
+            // - Matches pattern - Run inner code
+            arms.push_back(::HIR::ExprNode_Match::Arm {
+                ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
+                ::HIR::ExprNodeP(),
+                lower(v.m_code)
+                });
+            // - Matches anything else - break
+            arms.push_back(::HIR::ExprNode_Match::Arm {
+                ::make_vec1( ::HIR::Pattern() ),
+                ::HIR::ExprNodeP(),
+                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl( v.span(), v.m_label.name, false) )
+                });
+
+            m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
+                v.m_label.name,
+                ::HIR::ExprNodeP(new ::HIR::ExprNode_Match( v.span(),
+                    lower(v.m_cond),
+                    mv$(arms)
+                ))
+            ) );
+        }
+#else
+        TODO(v.span(), "while let (chained)");
+#endif
+
+        // Iterate the constructed loop and determine if there are any `break` statements pointing to it
+        {
+            struct LoopVisitor:
+                public ::HIR::ExprVisitorDef
+            {
+                const RcString& top_label;
+                bool    top_is_broken;
+                ::std::vector< const RcString*>   name_stack;
+
+                LoopVisitor(const RcString& top_label):
+                    top_label(top_label),
+                    top_is_broken(false),
+                    name_stack()
+                {}
+
+                void visit(::HIR::ExprNode_Loop& node) override {
+                    bool push = !node.m_require_label;  // Ignore any loops that require a targeted break
+                    if( push ) {
+                        this->name_stack.push_back( &node.m_label );
+                    }
+                    ::HIR::ExprVisitorDef::visit(node);
+                    if( push ) {
+                        this->name_stack.pop_back( );
+                    }
+                }
+                void visit(::HIR::ExprNode_LoopControl& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+
+                    if( node.m_continue ) {
+                    }
+                    else {
+                        for( auto it = this->name_stack.rbegin(); it != this->name_stack.rend(); ++ it )
+                        {
+                            if( node.m_label == "" || node.m_label == **it )
+                                return ;
+                        }
+                        if( node.m_label == "" || node.m_label == this->top_label ) {
+                            this->top_is_broken = true;
+                        }
+                        else {
+                            // break is for a higher loop
+                        }
+                    }
+                }
+            };
+        }
+    }
     virtual void visit(::AST::ExprNode_Match& v) override {
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
 
         for(auto& arm : v.m_arms)
         {
+            ::std::vector< ::HIR::ExprNode_Match::Guard>    guards;
+            guards.reserve(arm.m_guard.size());
+            for(auto& c : arm.m_guard) {
+                auto cond_pat = c.opt_pat
+                    ? LowerHIR_Pattern(*c.opt_pat)
+                    : HIR::Pattern { HIR::PatternBinding(), HIR::Pattern::Data::make_Value({ ::HIR::Pattern::Value::make_Integer({
+                        HIR::CoreType::Bool,
+                        U128(1)
+                        }) }) }
+                    ;
+                auto cond_val = lower_opt(c.value);
+                guards.push_back(::HIR::ExprNode_Match::Guard { std::move(cond_pat), std::move(cond_val) });
+            }
             ::HIR::ExprNode_Match::Arm  new_arm {
                 {},
-                lower_opt(arm.m_cond),
+                mv$(guards),
                 lower(arm.m_code)
                 };
-            
+
             for(const auto& pat : arm.m_patterns)
                 new_arm.m_patterns.push_back( LowerHIR_Pattern(pat) );
 
@@ -470,6 +662,7 @@ struct LowerHIR_ExprNode_Visitor:
             ));
     }
     virtual void visit(::AST::ExprNode_IfLet& v) override {
+#if 0
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
 
         std::vector<HIR::Pattern>   patterns;
@@ -492,6 +685,13 @@ struct LowerHIR_ExprNode_Visitor:
             lower(v.m_value),
             mv$(arms)
             ));
+#else
+TODO(v.span(), "while let (chained)");
+#endif
+    }
+
+    virtual void visit(::AST::ExprNode_WildcardPattern& v) override {
+        ERROR(v.span(), E0000, "`_` is only valid in expressions on the left-hand side of an assignment");
     }
 
     virtual void visit(::AST::ExprNode_Integer& v) override {
@@ -633,6 +833,9 @@ struct LowerHIR_ExprNode_Visitor:
             mv$(values)
             ) );
     }
+    virtual void visit(::AST::ExprNode_StructLiteralPattern& v) override {
+        ERROR(v.span(), E0000, "struct literal with an empty `..`");
+    }
     virtual void visit(::AST::ExprNode_Array& v) override {
         if( v.m_size )
         {
@@ -719,7 +922,7 @@ struct LowerHIR_ExprNode_Visitor:
                     if( it->m_data.is_Struct() ) {
                         ERROR(v.span(), E0000, "Named value referring to an enum that isn't tuple-like or unit-like - " << v.m_path);
                     }
-                    is_tuple_constructor = it->m_data.is_Tuple() && it->m_data.as_Tuple().m_sub_types.size() > 0;
+                    is_tuple_constructor = it->m_data.is_Tuple() && it->m_data.as_Tuple().m_items.size() > 0;
                 }
                 else
                 {

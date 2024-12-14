@@ -21,6 +21,7 @@ namespace AST {
     struct AbsolutePath;
 };
 namespace HIR {
+    class Crate;
     class Module;
     class ProcMacro;
     class TypeItem;
@@ -44,7 +45,7 @@ TAGGED_UNION(ResolveItemRef_Type, None,
     (None, struct {}),
     (Ast, const AST::Item*),
     (Hir, const HIR::TypeItem*),
-    (HirRoot, const HIR::Module*)
+    (HirRoot, const HIR::Crate*)
     );
 TAGGED_UNION(ResolveItemRef_Value, None,
     (None, struct {}),
@@ -65,6 +66,7 @@ enum class ResolveNamespace
     Value,
     Macro,
 };
+extern ::std::ostream& operator<<(::std::ostream& os, ResolveNamespace ns);
 
 /// <summary>
 /// Obtain a reference to the module pointed to by `path` (relative to `base_path`)

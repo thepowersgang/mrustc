@@ -2,6 +2,7 @@
 #pragma once
 #include <hir/generic_params.hpp>
 #include <hir/type.hpp>
+#include <hir/item_path.hpp>
 
 extern bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl, bool ignore_lifetimes=false);
 static inline bool monomorphise_genericpath_needed(const ::HIR::GenericPath& tpl, bool ignore_lifetimes=false) {
@@ -13,8 +14,15 @@ extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_life
 
 class Monomorphiser
 {
+    const HIR::Crate*   consteval_crate;
+    HIR::ItemPath consteval_path;
     mutable std::vector<const HIR::GenericParams*>  m_hrb_stack;
 public:
+    Monomorphiser()
+        : consteval_crate(nullptr)
+        , consteval_path("")
+    {
+    }
     virtual ~Monomorphiser() = default;
     
     class PopOnDrop {
@@ -32,6 +40,11 @@ public:
         return PopOnDrop(m_hrb_stack);
     }
 
+    void set_consteval_state(const HIR::Crate& crate, HIR::ItemPath ip) {
+        this->consteval_crate = &crate;
+        this->consteval_path = ip;
+    }
+
     virtual ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const = 0;
     virtual ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const = 0;
     virtual ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const = 0;
@@ -43,6 +56,7 @@ public:
     ::HIR::PathParams monomorph_path_params(const Span& sp, const ::HIR::PathParams& tpl, bool allow_infer) const;
     virtual ::HIR::GenericPath monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer=true, bool ignore_hrls=false) const;
 
+    ::HIR::ConstGeneric monomorph_constgeneric(const Span& sp, const ::HIR::ConstGeneric& val, bool allow_infer) const;
     ::HIR::ArraySize monomorph_arraysize(const Span& sp, const ::HIR::ArraySize& tpl) const;
 
     const ::HIR::TypeRef& maybe_monomorph_type(const Span& sp, ::HIR::TypeRef& tmp, const ::HIR::TypeRef& ty, bool allow_infer=true) const {

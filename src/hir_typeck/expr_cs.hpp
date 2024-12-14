@@ -148,6 +148,17 @@ struct Context
     ::std::vector<bool> m_ivars_sized;
     ::std::vector< IVarPossible>    possible_ivar_vals;
 
+    struct TaitEntry {
+        HIR::PathParams  params;
+        HIR::TypeRef    our_type;
+
+        TaitEntry(const HIR::PathParams& p, HIR::TypeRef t)
+            : params(p.clone())
+            , our_type(std::move(t))
+        {}
+    };
+    ::std::map<HIR::TypeData_ErasedType_AliasInner*, TaitEntry>  m_erased_type_aliases;
+
     const ::HIR::SimplePath m_lang_Box;
 
     Context(
@@ -183,6 +194,9 @@ struct Context
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
     void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams params, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op=false);
+
+    // Equate const generics (values)
+    void equate_values(const Span& sp, const ::HIR::ConstGeneric& rl, const ::HIR::ConstGeneric& rr);
 
     /// Adds a `ty: Sized` bound to the contained ivars.
     void require_sized(const Span& sp, const ::HIR::TypeRef& ty);

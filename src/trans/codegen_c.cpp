@@ -19,6 +19,7 @@
 #include "target.hpp"
 #include "allocator.hpp"
 #include <iomanip>
+#include "target_version.hpp"
 
 namespace {
     struct FmtShell
@@ -28,6 +29,16 @@ namespace {
         FmtShell(const ::std::string& s, bool is_win=false):
             s(s),
             is_win(is_win)
+        {
+        }
+    };
+    struct FmtGccAsm
+    {
+        const ::std::string& s;
+        bool escape_percent;
+        FmtGccAsm(const ::std::string& s, bool escape_percent)
+            : s(s)
+            , escape_percent(escape_percent)
         {
         }
     };
@@ -132,6 +143,40 @@ namespace {
             default:
                 os << c;
             }
+        }
+    }
+    return os;
+}
+::std::ostream& operator<<(::std::ostream& os, const FmtGccAsm& x)
+{
+    bool in_comment = false;
+    for(const char& ch : x.s) {
+        if( ch == '/' && (&ch)[1] == '/' ) {
+            if( !in_comment ) {
+                os << "\" ";
+            }
+            in_comment = true;
+        }
+        else {
+            in_comment = false;
+        }
+        switch(ch)
+        {
+        case '\n':  os << "\\n\"\n\"";   break;
+        //case '\r':  os << "\\r";   break;
+        case '\"':  os << "\\\"";   break;
+        case '%':
+            if( x.escape_percent ) {
+                os << "%%";
+            }
+            else {
+                os << "%";
+            }
+            break;
+        case '{':   os << "%{";   break;
+        case '}':   os << "%}";   break;
+        case '|':   os << "%|";   break;
+        default:    os << ch; break;
         }
     }
     return os;
@@ -253,6 +298,8 @@ namespace {
                 m_of
                     << "#include <windows.h>\n"
                     << "#include <math.h>\n"  // fabsf, ...
+                    << "#include <intrin.h>\n"
+                    << "#include <immintrin.h>\n"
                     << "void abort(void);\n"
                     ;
                 break;
@@ -698,6 +745,8 @@ namespace {
                     << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
                     << "static inline int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
                     << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = (int64_t)a.hi >> b; } else { v.lo = (int64_t)a.hi >> (b - 64); v.hi = (int64_t)a.hi < 0 ? -1 : 0; } return v; }\n"
+                    << "static inline uint128_t int128_to_uint128(int128_t a) { return make128_raw(a.lo, a.hi); }\n"
+                    << "static inline int128_t uint128_to_int128(uint128_t a) { return make128s_raw(a.lo, a.hi); }\n"
                     ;
             }
             else
@@ -796,7 +845,12 @@ namespace {
                 {
                     m_of << "\treturn " << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
                             << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
-                            << ");\n";
+                            ;
+                    if( TARGETVER_LEAST_1_74 ) {
+                        m_of << ", 0";  // `sigpipe` setting
+                        // 0: Default, 1: Inherit, 2: SIG_IGN, 3: SIG_DFL
+                    }
+                    m_of << ");\n";
                 }
                 else
                 {
@@ -892,19 +946,14 @@ namespace {
                     if( TARGETVER_LEAST_1_54 )
                     {
                         auto oom_method = m_crate.get_lang_item_path_opt("mrustc-alloc_error_handler");
-                        m_of << "void __rust_alloc_error_handler(uintptr_t s, uintptr_t a) {\n";
-                        if(oom_method == HIR::SimplePath()) {
-                            m_of << "\tvoid __rdl_oom(uintptr_t, uintptr_t);\n";
-                            m_of << "\t__rdl_oom(s,a);\n";
+                        if( TARGETVER_LEAST_1_74 )
+                        {
+                            m_of << "uint8_t __rust_alloc_error_handler_should_panic = 0;\n";
+                            m_of << "uint8_t __rust_no_alloc_shim_is_unstable = 0;\n";
                         }
-                        else {
-                            m_of << "\tvoid __rg_oom(uintptr_t, uintptr_t);\n";
-                            m_of << "\t__rg_oom(s,a);\n";
-                        }
-                        m_of << "}\n";
 
+                        auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
                         if(oom_method != HIR::SimplePath()) {
-                            auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
                             m_of << "struct s_" << Trans_Mangle(layout_path) << "_A { uintptr_t a, b; };\n";
                             m_of << "void oom_impl(struct s_" << Trans_Mangle(layout_path) << "_A l) {"
                                 << " extern void " << Trans_Mangle(oom_method) << "(struct s_" << Trans_Mangle(layout_path) << "_A l);"
@@ -912,6 +961,21 @@ namespace {
                                 << " }\n"
                                 ;
                         }
+
+                        m_of << "void __rust_alloc_error_handler(uintptr_t s, uintptr_t a) {\n";
+                        if(oom_method == HIR::SimplePath()) {
+                            m_of << "\tvoid __rdl_oom(uintptr_t, uintptr_t);\n";
+                            m_of << "\t__rdl_oom(s,a);\n";
+                        }
+                        else if( TARGETVER_LEAST_1_74 ) {
+                            m_of << "\tstruct s_" << Trans_Mangle(layout_path) << "_A v = { s, a };\n";
+                            m_of << "\toom_impl(v);\n";
+                        }
+                        else {
+                            m_of << "\tvoid __rg_oom(uintptr_t, uintptr_t);\n";
+                            m_of << "\t__rg_oom(s,a);\n";
+                        }
+                        m_of << "}\n";
                     }
                     else
                     {
@@ -973,10 +1037,18 @@ namespace {
                     this->push_back(std::move(s));
                 }
                 void push_lib(const char* s) {
+                    // Prevent duplicates (seen on windows)
+                    if( m_ty.size() > 0 && m_ty.back() == Ty::Implicit && std::strcmp(this->get_vec().back(), s) == 0 ) {
+                        return ;
+                    }
                     m_ty.push_back(Ty::Implicit);
                     this->push_back(s);
                 }
                 void push_lib(std::string s) {
+                    // Prevent duplicates (seen on windows)
+                    if( m_ty.size() > 0 && m_ty.back() == Ty::Implicit && s == this->get_vec().back() ) {
+                        return ;
+                    }
                     m_ty.push_back(Ty::Implicit);
                     this->push_back(std::move(s));
                 }
@@ -1137,27 +1209,24 @@ namespace {
                 for( const auto& crate_name : m_crate.m_ext_crates_ordered )
                 {
                     const auto& crate = m_crate.m_ext_crates.at(crate_name);
-                    if( !crate.m_data->m_ext_libs.empty() )
-                    {
-                        if( !crate.m_data->m_link_paths.empty() ) {
-                            libraries_and_dirs.push_border();
+                    if( !crate.m_data->m_ext_libs.empty() || !crate.m_data->m_link_paths.empty() ) {
+                        libraries_and_dirs.push_border();
+                    }
+                    for(const auto& path : crate.m_data->m_link_paths ) {
+                        libraries_and_dirs.push_dir(path.c_str());
+                    }
+                    // NOTE: Does explicit lookup, to provide scoped search directories
+                    // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
+                    for(const auto& lib : crate.m_data->m_ext_libs) {
+                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate_name);
+                        auto path = H::find_library(crate.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
+                        if( path != "" )
+                        {
+                            libraries_and_dirs.push_explicit(std::move(path));
                         }
-                        for(const auto& path : crate.m_data->m_link_paths ) {
-                            libraries_and_dirs.push_dir(path.c_str());
-                        }
-                        // NOTE: Does explicit lookup, to provide scoped search directories
-                        // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
-                        for(const auto& lib : crate.m_data->m_ext_libs) {
-                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate_name);
-                            auto path = H::find_library(crate.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
-                            if( path != "" )
-                            {
-                                libraries_and_dirs.push_explicit(std::move(path));
-                            }
-                            else
-                            {
-                                libraries_and_dirs.push_lib(lib.name.c_str());
-                            }
+                        else
+                        {
+                            libraries_and_dirs.push_lib(lib.name.c_str());
                         }
                     }
                 }
@@ -1205,6 +1274,7 @@ namespace {
                 {
                     args.push_back( a.c_str() );
                 }
+                args.push_back("-Wno-psabi");   // Suppress "note: the ABI for passing parameters with 128-byte alignment has changed in GCC 4.6"
                 switch(opt.opt_level)
                 {
                 case 0: break;
@@ -1215,10 +1285,16 @@ namespace {
                     args.push_back("-O2");
                     break;
                 }
+                // HACK: Work around [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117423] by disabling an optimisation stage
+                if( opt.opt_level > 0 )
+                {
+                    args.push_back("-fno-tree-sra");
+                }
                 if( opt.emit_debug_info )
                 {
                     args.push_back("-g");
                 }
+                // TODO: Why?
                 args.push_back("-fPIC");
                 args.push_back("-o");
                 switch(out_ty)
@@ -1383,6 +1459,9 @@ namespace {
             }
             std::string command_file = m_outfile_path + "_cmd.txt";
             std::ofstream   command_file_stream;
+            if( getenv("MRUSTC_CCACHE") ) {
+                cmd_ss << "ccache ";
+            }
             bool use_arg_file = arg_file_start > 0;
             if(use_arg_file) {
                 command_file_stream.open(command_file);
@@ -1462,44 +1541,73 @@ namespace {
                 emit_destructor_call( ::MIR::LValue::new_Deref(mv$(inner_ptr)), inner_type, /*unsized_valid=*/true, indent_level );
             }
 
-            // NOTE: This is specific to the official liballoc's owned_box
-            const auto& p = box_type.data().as_Path().path.m_data.as_Generic().m_params;
-            ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), p.clone() };
+            if( TARGETVER_MOST_1_54 )
+            {
+                // NOTE: This is specific to the official liballoc's owned_box
+                const auto& p = box_type.data().as_Path().path.m_data.as_Generic().m_params;
+                ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), p.clone() };
 
-            // If the allocator is a ZST, it won't exist in the type (need to create a dummy instance for the argument)
-            bool alloc_is_zst = false;
-            if( TARGETVER_LEAST_1_54 ) {
-                ::HIR::TypeRef  tmp;
-                const auto& ty = m_mir_res->get_lvalue_type(tmp, MIR::LValue::new_Field(slot.clone(), 1));
-                if( type_is_bad_zst(ty) ) {
-                    alloc_is_zst = true;
-                    m_of << indent << "{ ";
-                    emit_ctype(ty); m_of << " zst_alloc = {0};";
+                // If the allocator is a ZST, it won't exist in the type (need to create a dummy instance for the argument)
+                bool alloc_is_zst = false;
+                if( TARGETVER_LEAST_1_54 ) {
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = m_mir_res->get_lvalue_type(tmp, MIR::LValue::new_Field(slot.clone(), 1));
+                    if( type_is_bad_zst(ty) ) {
+                        alloc_is_zst = true;
+                        m_of << indent << "{ ";
+                        emit_ctype(ty); m_of << " zst_alloc = {0};";
+                    }
                 }
-            }
 
-            m_of << indent << Trans_Mangle(box_free) << "("; 
-            if( TARGETVER_LEAST_1_29 ) {
-                // In 1.29, `box_free` takes Unique, so pass the Unique within the Box
-                emit_lvalue(slot); m_of << "._0";
-            }
-            else {
-                emit_lvalue(slot); m_of << "._0._0._0";
-            }
-            // With 1.54, also need to pass the allocator
-            if( TARGETVER_LEAST_1_54 ) {
-                m_of << ", ";
+                m_of << indent << Trans_Mangle(box_free) << "(";
+                if( TARGETVER_LEAST_1_29 ) {
+                    // In 1.29, `box_free` takes Unique, so pass the Unique within the Box
+                    emit_lvalue(slot); m_of << "._0";
+                }
+                else {
+                    emit_lvalue(slot); m_of << "._0._0._0";
+                }
+                // With 1.54, also need to pass the allocator
+                if( TARGETVER_LEAST_1_54 ) {
+                    m_of << ", ";
+                    if(alloc_is_zst) {
+                        m_of << "zst_alloc";
+                    } else {
+                        emit_lvalue(slot); m_of << "._1";
+                    }
+                }
+                m_of << ");";
                 if(alloc_is_zst) {
-                    m_of << "zst_alloc";
-                } else {
-                    emit_lvalue(slot); m_of << "._1";
+                    m_of << " }";
                 }
+                m_of << "\n";
             }
-            m_of << ");";
-            if(alloc_is_zst) {
-                m_of << " }";
+            else
+            {
+                auto p = ::HIR::Path(box_type.clone(), m_crate.get_lang_item_path(Span(), "drop"), "drop");
+                m_of << indent << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
             }
-            m_of << "\n";
+        }
+
+        void emit_global_asm(const ::HIR::GlobalAssembly& se) override
+        {
+            m_of << "__asm__ (\"";
+            if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
+                m_of << ".intel_syntax noprefix; ";
+            for(const auto& l : se.m_lines)
+            {
+                for(const auto& f : l.frags)
+                {
+                    m_of << FmtGccAsm(f.before, false);
+                    ASSERT_BUG(Span(), f.index < se.m_symbols.size(), "Invalid argument reference in global assembly");
+                    TODO(Span(), "Handle interpolation in global_asm! - " << se.m_symbols[f.index]);
+                }
+                m_of << FmtGccAsm(l.trailing, false);
+                m_of << ";\\n ";
+            }
+            if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
+                m_of << ".att_syntax; ";
+            m_of << "\");\n";
         }
 
         void emit_type_id(const ::HIR::TypeRef& ty) override
@@ -1528,6 +1636,9 @@ namespace {
                 }
             TU_ARMA(Function, te) {
                 emit_type_fn(ty); m_of << "\n";
+                }
+            TU_ARMA(NamedFunction, te) {
+                m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
                 }
             TU_ARMA(Array, te) {
                 m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
@@ -1597,6 +1708,9 @@ namespace {
                     if(i != 0)  m_of << ",";
                     m_of << " ";
                     this->emit_ctype( te.m_arg_types[i], FMT_CB(os, os << (this->type_is_high_align(te.m_arg_types[i]) ? "*":"");) );
+                }
+                if( te.is_variadic ) {
+                    m_of << ", ...";
                 }
                 m_of << " )";
             }
@@ -1805,6 +1919,13 @@ namespace {
                 emit_type_fn(ty);
                 m_of << " // " << ty << "\n";
                 }
+            TU_ARMA(NamedFunction, te) {
+                m_of << "typedef struct "; emit_ctype(ty); m_of << " {";
+                if( m_options.disallow_empty_structs ) {
+                    m_of << " char _unused; ";
+                }
+                m_of << "} "; emit_ctype(ty); m_of << ";\n";
+                }
             TU_ARMA(Array, te) {
                 m_of << "typedef ";
                 size_t align;
@@ -1823,6 +1944,21 @@ namespace {
                 if( te.size.as_Known() == 0 && m_options.disallow_empty_structs )
                 {
                     m_of << "char _d;";
+                }
+                // HACK: MSVC doesn't allow arrays larger than 2^31-1 elements
+                else if( m_compiler == Compiler::Msvc && te.size.as_Known() > 0x7FFF'FFFF )
+                {
+                    //const uint64_t chunk_len = 0x7FFF'FFFF;
+                    const uint64_t chunk_len = 0x4000'0000;
+                    uint64_t len = te.size.as_Known();
+                    emit_ctype(te.inner); m_of << "DATA[" << chunk_len << "];";
+                    unsigned i = 0;
+                    do {
+                        len -= chunk_len;
+                        i ++;
+                        m_of << " "; emit_ctype(te.inner); m_of << "DATA_" << i << "[" << std::min(len, chunk_len) << "];";
+                    } while(len > chunk_len);
+                    // NOTE: The max size of a struct with MSVC is 0xFFFF_FFFF bytes, any field that would make the size larger than that is ignored.
                 }
                 else
                 {
@@ -2232,12 +2368,23 @@ namespace {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(p);
+            auto type = params.monomorph(m_resolve, item.m_type);
 
             // LLVM supports prepending a symbol name with \1 to prevent further mangling.
             // Since we're targeting C, not LLVM, strip off this prefix.
             std::string linkage_name = item.m_linkage.name;
             if( !linkage_name.empty() && linkage_name[0] == '\1' ) {
                 linkage_name = linkage_name.substr(1);
+            }
+
+            if(item.m_linkage.type == HIR::Linkage::Type::ExternWeak) {
+                ASSERT_BUG(sp, linkage_name != "", "");
+                m_of << "extern char " << linkage_name << "[0];\n";
+                emit_static_ty(type, p, /*is_proto=*/true);
+                m_of << " = { .raw = { (uintptr_t)" << linkage_name << " } };";
+                m_of << "\t// static " << p << " : " << type;
+                m_of << "\n";
+                return;
             }
 
             if( linkage_name != "" )
@@ -2256,7 +2403,6 @@ namespace {
                 }
             }
 
-            auto type = params.monomorph(m_resolve, item.m_type);
             m_of << "extern ";
             emit_static_ty(type, p, /*is_proto=*/true);
             if( linkage_name != "" && m_compiler == Compiler::Gcc)
@@ -2296,6 +2442,8 @@ namespace {
                     m_of << "__declspec(selectany) ";
                     break;
                 }
+                break;
+            case HIR::Linkage::Type::ExternWeak:
                 break;
             }
             if(item.m_linkage.section != "")
@@ -2364,8 +2512,8 @@ namespace {
                             MIR_ASSERT(*m_mir_res, reloc_it->ofs == i, "Relocation not aligned to a pointer - " << reloc_it->ofs << " != " << i);
                             MIR_ASSERT(*m_mir_res, reloc_it->len == ptr_size, "Relocation size not pointer size - " << reloc_it->len << " != " << ptr_size);
                             v -= EncodedLiteral::PTR_BASE;
+                            //MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Reloc=" << *reloc_it << " Literal=" << encoded);
 
-                            MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Literal=" << encoded << " Reloc=" << *reloc_it);
                             m_of << "(uintptr_t)";
                             if( reloc_it->p ) {
                                 if( reloc_it->p->m_data.is_UfcsInherent() && reloc_it->p->m_data.as_UfcsInherent().item == "#type_id") {
@@ -2378,6 +2526,9 @@ namespace {
                             }
                             else {
                                 this->print_escaped_string(reloc_it->bytes);
+                            }
+                            if( v > 0 ) {
+                                m_of << "+" << v;
                             }
 
                             ++ reloc_it;
@@ -2434,13 +2585,24 @@ namespace {
             }
         }
 
-        //void print_escaped_string(const ::std::string& s)
-        template<typename T>
-        void print_escaped_string(const T& s)
+        void print_escaped_string(const std::string& s)
         {
+            print_escaped_string_inner(s.c_str(), s.c_str() + s.size());
+        }
+        void print_escaped_string(const std::vector<uint8_t>& s)
+        {
+            const char* start =  reinterpret_cast<const char*>(s.data());
+            print_escaped_string_inner(start, start + s.size());
+        }
+        void print_escaped_string_inner(const char* start, const char* end)
+        {
+            // NOTE: the limit for msvc is 16380, divide that by three for escapes
+            const unsigned MAX_STRING_LEN = 16380/3 - 10;
             m_of << "\"" << ::std::hex;
-            for(const auto& v : s)
+            unsigned n_ch = 0;
+            while(start != end)
             {
+                const char& v = *start++;
                 switch(v)
                 {
                 case '"':
@@ -2460,6 +2622,7 @@ namespace {
                             // Trigraph! Needs an escape in it.
                             m_of << v;
                             m_of << "\"\"";
+                            n_ch = 0;
                             break;
                         }
                     }
@@ -2473,9 +2636,16 @@ namespace {
                         else
                             m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v);
                         // If the next character is a hex digit, close/reopen the string.
-                        if( &v < &s.back() && isxdigit(*(&v+1)) )
+                        if( &v < (end-1) && isxdigit(*(&v+1)) ) {
                             m_of << "\"\"";
+                            n_ch = 0;
+                        }
                     }
+                }
+                n_ch ++;
+                if(n_ch == MAX_STRING_LEN) {
+                    m_of << "\"\"";
+                    n_ch = 0;
                 }
             }
             m_of << "\"" << ::std::dec;
@@ -2552,8 +2722,8 @@ namespace {
                 }
                 // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u8`
                 else if( item.m_linkage.name == "llvm.x86.addcarryx.u32") {
-                    m_of << "\trv = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, arg3);\n";
-                    m_of << "\tif(arg0) rv |= __builtin_add_overflow" << msvc_suffix_u32 << "(*arg3, 1, arg3);\n";
+                    m_of << "\trv = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, (uint32_t*)arg3);\n";
+                    m_of << "\tif(arg0) rv |= __builtin_add_overflow" << msvc_suffix_u32 << "(*arg3, 1, (uint32_t*)arg3);\n";
                     m_of << "\treturn rv;\n";
                 }
                 // `fn llvm_subborrow" << msvc_suffix_u32 << "(a: u8, b: u32, c: u32) -> (u8, u32);`
@@ -2561,6 +2731,28 @@ namespace {
                     m_of << "\trv._0 = __builtin_sub_overflow" << msvc_suffix_u32 << "(arg1, arg2, &rv._1);\n";
                     m_of << "\tif(arg0) rv._0 |= __builtin_sub_overflow" << msvc_suffix_u32 << "(rv._1, 1, &rv._1);\n";
                     m_of << "\treturn rv;\n";
+                }
+                else if( item.m_linkage.name == "llvm.x86.xgetbv" ) {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        m_of << "\tuint32_t lo, hi;\n";
+                        m_of << "\t__asm__ __volatile__ (\"xgetbv\" : \"=a\" (lo), \"=d\" (hi) : \"c\" (arg0) );\n";
+                        m_of << "\treturn lo | ((uint64_t)hi << 32);\n";
+                        break;
+                    case Compiler::Msvc:
+                        m_of << "\treturn _xgetbv(arg0);\n";
+                        break;
+                    }
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.pause" ) {
+                    // Just a `PAUSE` instruciton, which is effectively a nop
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc  : m_of << "\t__asm__ __volatile__ (\"pause\");\n";    break;
+                    case Compiler::Msvc : m_of << "\t_mm_pause();\n"; break;
+                    }
+                    m_of << "\treturn ;\n";
                 }
                 // AES functions
                 else if( item.m_linkage.name.rfind("llvm.x86.aesni.", 0) == 0 )
@@ -2659,6 +2851,8 @@ namespace {
                     break;
                 }
                 break;
+            case HIR::Linkage::Type::ExternWeak:
+                BUG(Span(), "unexpected ExternWeak on function");
             }
             emit_function_header(p, item, params);
             m_of << ";\n";
@@ -2686,6 +2880,98 @@ namespace {
             emit_function_header(p, item, params);
             m_of << "\n";
             m_of << "{\n";
+
+#if 1
+            if( m_compiler == Compiler::Msvc && p.m_data.is_Generic() )
+            {
+                const auto& gp = p.m_data.as_Generic();
+                // MASSIVE hack:
+                // - Convert the entire body of AVX functions in `core_arch` to MSVC intrinsic calls
+                // E.g. `::"core-0_0_0"::core_arch::x86::avx512bw::_mm256_mask_loadu_epi16`
+                if( gp.m_path.m_crate_name.compare(0,5,"core-") == 0 && gp.m_path.m_components[0] == "core_arch" ) {
+                    if(false
+                        || gp.m_path.m_components.back().compare(0, 6, "_mm256") == 0
+                        || gp.m_path.m_components.back().compare(0, 6, "_mm512") == 0
+                        || gp.m_path.m_components.back().compare(0, 4, "_mm_") == 0
+                        )
+                    {
+                        // HACK: These aren't supported on msvc2019
+                        if( true
+                            || gp.m_path.m_components.back() == "_mm256_zextpd128_pd256"
+                            ) {
+                            m_of << "\tabort();";
+                            m_of << "}\n";
+                            return ;
+                        }
+                        struct H {
+                            static const char* get_intr_type(const HIR::TypeRef& ty) {
+                                if( ty.data().is_Path() ) {
+                                    const auto& p = ty.data().as_Path().path.m_data.as_Generic();
+                                    if( false
+                                        || p.m_path.m_components.back() == "__m128"
+                                        || p.m_path.m_components.back() == "__m128d"
+                                        || p.m_path.m_components.back() == "__m128i"
+                                        || p.m_path.m_components.back() == "__m256"
+                                        || p.m_path.m_components.back() == "__m256d"
+                                        || p.m_path.m_components.back() == "__m256i"
+                                        ) {
+                                        return p.m_path.m_components.back().c_str();
+                                    }
+                                }
+                                return nullptr;
+                            }
+                        };
+                        const char* rv_type = nullptr;
+                        if( ret_type.data().is_Tuple() && ret_type.data().as_Tuple().empty() ) {
+                            rv_type = "";
+                        }
+                        else {
+                            rv_type = H::get_intr_type(ret_type);
+                        }
+
+                        if(!rv_type) {
+                            m_of << "\t";
+                            emit_ctype(ret_type, FMT_CB(ss, ss << "rv";));
+                            m_of << ";\n";
+                        }
+                        else if( !rv_type[0] ) {
+                            // Void return
+                        }
+                        else {
+                            m_of << "\t" << rv_type << " rv;\n";
+                        }
+                        if(!rv_type || rv_type[0]) {
+                            m_of << "\trv = ";
+                        }
+                        m_of << gp.m_path.m_components.back() << "(";
+                        for(size_t i = 0; i < item.m_args.size(); i ++) {
+                            if( i != 0 )
+                                m_of << ", ";
+                            if( const char* t = H::get_intr_type(item.m_args[i].second) ) {
+                                m_of << "*(const " << t << "*)&";
+                            }
+                            emit_lvalue(::MIR::LValue::new_Argument(i));
+                        }
+                        if( ! gp.m_params.m_values.empty() ) {
+                            m_of << ", " << EncodedLiteralSlice(*gp.m_params.m_values[0].as_Evaluated()).read_uint();
+                        }
+                        m_of << ");\n";
+                        if( !rv_type || rv_type[0] ) {
+                            m_of << "\treturn ";
+                            if( rv_type ) {
+                                m_of << "*(";
+                                emit_ctype(ret_type);
+                                m_of << "*)&";
+                            }
+                            m_of << "rv;\n";
+                        }
+                        m_of << "}\n";
+                        return;
+                    }
+                }
+            }
+#endif
+
             // Variables
             m_of << "\t"; emit_ctype(ret_type, FMT_CB(ss, ss << "rv";)); m_of << ";\n";
             for(unsigned int i = 0; i < code->locals.size(); i ++) {
@@ -2902,7 +3188,7 @@ namespace {
                     m_of << "\tgoto bb" << e << "; /* panic */\n";
                     }
                 TU_ARMA(If, e) {
-                    m_of << "\tif("; emit_lvalue(e.cond); m_of << ") goto bb" << e.bb0 << "; else goto bb" << e.bb1 << ";\n";
+                    m_of << "\tif("; emit_lvalue(e.cond); m_of << ") goto bb" << e.bb_true << "; else goto bb" << e.bb_false << ";\n";
                     }
                 TU_ARMA(Switch, e) {
 
@@ -3801,6 +4087,13 @@ namespace {
                 return;
             }
 
+            // Cast of a named function to a function pointer - originate the pointer
+            if( ve.type.data().is_Function() && ty.data().is_NamedFunction() ) {
+                emit_lvalue(dst);
+                m_of << " = " << Trans_Mangle(ty.data().as_NamedFunction().path);
+                return;
+            }
+
             // Emulated i128/u128 support
             if (m_options.emulated_i128 && (
                 ve.type == ::HIR::CoreType::U128 || ve.type == ::HIR::CoreType::I128
@@ -3914,6 +4207,11 @@ namespace {
                     m_of << ".PTR";
                     special = true;
                 }
+            }
+            if( ty.data().is_NamedFunction() )
+            {
+                m_of << Trans_Mangle(ty.data().as_NamedFunction().path);
+                special = true;
             }
             if (ve.type.data().is_Primitive() && ty.data().is_Path() && ty.data().as_Path().binding.is_Enum())
             {
@@ -4089,9 +4387,11 @@ namespace {
                     // Handle signed values
                     if( is_signed ) {
                         m_of << static_cast<int64_t>(e.values[odd_arm]);
+                        m_of << "ll";
                     }
                     else {
                         m_of << e.values[odd_arm];
+                        m_of << "ull";
                     }
                     m_of << ") {"; cb(odd_arm); m_of << "} else {"; cb(odd_arm == 0 ? 1 : 0); m_of << "}\n";
                     return ;
@@ -4102,10 +4402,10 @@ namespace {
                 {
                     // Handle signed values
                     if( is_signed ) {
-                        m_of << indent << "case " << static_cast<int64_t>(e.values[j]) << ": ";
+                        m_of << indent << "case " << static_cast<int64_t>(e.values[j]) << "ll: ";
                     }
                     else {
-                        m_of << indent << "case " << e.values[j] << ": ";
+                        m_of << indent << "case " << e.values[j] << "ull: ";
                     }
                     cb(j);
                     m_of << "break;\n";
@@ -4263,7 +4563,7 @@ namespace {
                         }
                     TU_ARMA(UfcsInherent, pe) {
                         // Check if the return type is !
-                        omit_assign |= m_resolve.m_crate.find_type_impls(pe.type, [&](const auto& ty)->const auto& { return ty; },
+                        omit_assign |= m_resolve.m_crate.find_type_impls(pe.type, HIR::ResolvePlaceholdersNop(),
                             [&](const auto& impl) {
                                 // Associated functions
                                 {
@@ -4442,8 +4742,8 @@ namespace {
 
             m_of << indent << "__asm__ ";
             if (is_volatile) m_of << "__volatile__";
-            m_of << "(\"" << (is_intel ? ".intel_syntax; " : "");
-            // TODO: Use a more powerful parser
+            m_of << "(\"" << (is_intel ? ".intel_syntax noprefix; " : "");
+            // TODO: Use a more powerful parser that can properly handle the differences between rustc/llvm and GCC
             for (auto it = e.tpl.begin(); it != e.tpl.end(); ++it)
             {
                 if (*it == '\n')
@@ -4470,8 +4770,9 @@ namespace {
                     while(it != e.tpl.end() && *it != '}')
                         it ++;
                 }
-                else
+                else {
                     m_of << *it;
+                }
             }
             m_of << (is_intel ? ".att_syntax; " : "") << "\"";
             m_of << ": ";
@@ -4840,6 +5141,17 @@ namespace {
                 m_of << " "; emit_lvalue(m.output(3)); m_of << " = cpuid_out[3];";  // EDX
                 m_of << " }\n";
             }
+            else if( m.matches_template({"mov {0:r}, rbx", "cpuid", "xchg {0:r}, rbx"}, {"out:reg","inout=eax","inout=ecx","out=edx"}) )
+            {
+                m_of << indent << "{";
+                m_of << " int cpuid_out[4];";
+                m_of << " __cpuidex(cpuid_out, "; emit_param(m.input(1)); m_of << ", "; emit_param(m.input(2)); m_of << ");";
+                m_of << " "; emit_lvalue(m.output(1)); m_of << " = cpuid_out[0];";  // EAX
+                m_of << " "; emit_lvalue(m.output(0)); m_of << " = cpuid_out[1];";  // EBX
+                m_of << " "; emit_lvalue(m.output(2)); m_of << " = cpuid_out[2];";  // ECX
+                m_of << " "; emit_lvalue(m.output(3)); m_of << " = cpuid_out[3];";  // EDX
+                m_of << " }\n";
+            }
             // - EFlags
             else if( m.matches_template({"pushfq", "pop {0}"}, {"out:reg"}) )
             {
@@ -4929,6 +5241,20 @@ namespace {
                     return ;
                 //}
             }
+            else if( m.matches_template({"mov {0:r}, rbx", "cpuid", "xchg {0:r}, rbx"}, {"out:reg", "inout=eax", "inout=ecx", "out=edx"}) )  // 1.74 libstd_detect
+            {
+                m_of << indent << "__asm__(\"cpuid\"";
+                m_of << " : ";
+                m_of << "\"=a\" ("; emit_lvalue(m.output(1)); m_of << "), ";
+                m_of << "\"=b\" ("; emit_lvalue(m.output(0)); m_of << "), ";
+                m_of << "\"=c\" ("; emit_lvalue(m.output(2)); m_of << "), ";
+                m_of << "\"=d\" ("; emit_lvalue(m.output(3)); m_of << ")";
+                m_of << " : ";
+                m_of << "\"a\" ("; emit_param(m.input(1)); m_of << "), ";
+                m_of << "\"c\" ("; emit_param(m.input(2)); m_of << ")";
+                m_of << " );\n";
+                return ;
+            }
             else if( m.matches_template({"btl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
             {
                 m_of << indent << "__asm__(\"bt %1, (%2); setc %0\"";
@@ -4961,15 +5287,65 @@ namespace {
                 m_of << ");\n";
                 return;
             }
+            // HACK: Abort on various `v*` operations, as they have overly complex register specs that gcc doesn't like
+            else if( se.lines[0].frags.size() > 0 && (
+                false
+                || se.lines[0].frags[0].before.find("vmov") == 0
+                || se.lines[0].frags[0].before.find("vexpand") == 0
+                || se.lines[0].frags[0].before.find("vpexpand") == 0
+                ) ) {
+                m_of << "abort();\n";
+                return;
+            }
             else
             {
                 std::vector<unsigned>   arg_mappings(se.params.size(), UINT_MAX);
+                // If there is an explicit register, create a block and add `register uintptr_t asm_REGNAME asm("REGNAME");`
+                // - Requires updating the arg mappings, as doing so would remove the argument from the list.
+                bool block_open = false;
+                for(size_t i = 0; i < se.params.size(); i ++)
+                {
+                    if( const auto* pe = se.params[i].opt_Reg() ) {
+                        if( !pe->input && !pe->output ) {
+                        }
+                        else if( const auto* regname_p = pe->spec.opt_Explicit() ) {
+                            arg_mappings[i] = UINT_MAX-1;
+                            if( !block_open ) {
+                                block_open = true;
+                                m_of << indent << "{\n";
+                            }
+                            m_of << indent << "register uintptr_t asm_" << *regname_p << " asm(\"" << *regname_p << "\")";
+                            if( pe->input ) {
+                                m_of << " = (uintptr_t)"; emit_param(*pe->input);
+                            }
+                            m_of << ";\n";
+                        }
+                    }
+                }
                 std::vector<const MIR::AsmParam::Data_Reg*>   outputs;
                 // Outputs
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     if( const auto* pe = se.params[i].opt_Reg() ) {
-                        if( pe->output )
+                        if( pe->spec.is_Explicit() )
+                        {
+                            // Ignore, handled explicitly above
+                            if( pe->output ) {
+                                outputs.push_back(pe);
+                            }
+                        }
+                        else if(!pe->output && !pe->input)
+                        {
+                            if( !block_open ) {
+                                block_open = true;
+                                m_of << indent << "{\n";
+                            }
+                            m_of << indent << "uintptr_t asm_anon_" << outputs.size() << " = 0;\n";
+
+                            arg_mappings[i] = outputs.size();
+                            outputs.push_back(pe);
+                        }
+                        else if( pe->output )
                         {
                             arg_mappings[i] = outputs.size();
                             outputs.push_back(pe);
@@ -4981,7 +5357,14 @@ namespace {
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     if( const auto* pe = se.params[i].opt_Reg() ) {
-                        if( pe->input )
+                        if( pe->spec.opt_Explicit() )
+                        {
+                            // Ignore, handled explicitly above
+                            if( pe->input ) {
+                                inputs.push_back(&se.params[i]);
+                            }
+                        }
+                        else if( pe->input && !pe->output )
                         {
                             arg_mappings[i] = outputs.size() + inputs.size();
                             inputs.push_back(&se.params[i]);
@@ -4993,24 +5376,46 @@ namespace {
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     // An explicit register, not "In" and output parameter
+                    if( const auto* pe = se.params[i].opt_Reg() ) {
+                        if( !pe->input && !pe->output && pe->spec.is_Explicit() ) {
+                            const auto& regname = pe->spec.as_Explicit();
+                            clobbers.push_back(regname.c_str());
+                        }
+                    }
                 }
 
                 m_of << indent << "__asm__ ";
                 m_of << "__volatile__"; // Default everything to volatile
                 m_of << "(\"";
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
-                    m_of << ".intel_syntax; ";
+                    m_of << ".intel_syntax noprefix; ";
                 for(const auto& l : se.lines)
                 {
                     for(const auto& f : l.frags)
                     {
-                        m_of << FmtEscaped(f.before);
-                        //if( f.modifier != '\0' )
-                        //    MIR_TODO(mir_res, "Asm2 GCC: modifier - " << stmt);
+                        m_of << FmtGccAsm(f.before, !inputs.empty() || !outputs.empty());
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
-                        m_of << "%" << arg_mappings.at(f.index);
+                        m_of << "%";
+                        if( arg_mappings.at(f.index) == UINT8_MAX-1 ) {
+                            m_of << se.params[f.index].as_Reg().spec.as_Explicit();
+                            continue;
+                        }
+                        switch( f.modifier )
+                        {
+                        case '\0':
+                            break;
+                        case 'r':
+                            m_of << 'q';    // x86: `q` selects rax explicitly
+                            break;
+                        case 'e':
+                            m_of << 'k';    // x86: `k` selects eax instead of rax
+                            break;
+                        default:
+                            MIR_TODO(mir_res, "Asm2 GCC: modifier " << f.modifier << " - " << stmt);
+                        }
+                        m_of << arg_mappings.at(f.index);
                     }
-                    m_of << FmtEscaped(l.trailing);
+                    m_of << FmtGccAsm(l.trailing, !inputs.empty() || !outputs.empty());
                     m_of << ";\\n ";
                 }
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
@@ -5022,24 +5427,40 @@ namespace {
                     if(i != 0)  m_of << ",";
                     m_of << " ";
                     m_of << "\"";
+                    if( !p.output && !p.input ) {
+                        m_of << "+";
+                    }
+                    else {
+                        m_of << (p.input ? "+" : "=");
+                    }
                     TU_MATCH_HDRA((p.spec), {)
                     TU_ARMA(Class, c)
+                        // https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html
                         switch(c)
                         {
-                        case AsmCommon::RegisterClass::x86_reg: m_of << "=r";   break;
-                        case AsmCommon::RegisterClass::x86_reg_abcd: m_of << "=Q";   break;
-                        case AsmCommon::RegisterClass::x86_reg_byte: m_of << "=q";   break;
-                        case AsmCommon::RegisterClass::x86_xmm: m_of << "=x";   break;
-                        case AsmCommon::RegisterClass::x86_ymm: m_of << "=x";   break;
-                        case AsmCommon::RegisterClass::x86_zmm: m_of << "=v";   break;
-                        case AsmCommon::RegisterClass::x86_kreg: MIR_TODO(mir_res, "Asm2 GCC - x86_kreg: " << stmt);
+                        case AsmCommon::RegisterClass::x86_reg: m_of << "r";   break;
+                        case AsmCommon::RegisterClass::x86_reg_abcd: m_of << "Q";   break;
+                        case AsmCommon::RegisterClass::x86_reg_byte: m_of << "q";   break;
+                        case AsmCommon::RegisterClass::x86_xmm: m_of << "x";   break;
+                        case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
+                        case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
+                        case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                         }
                     TU_ARMA(Explicit, name) {
-                        MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg: " << stmt);
+                        m_of << "r";
                         }
                     }
-                    assert(p.output);
-                    m_of << "\" ("; emit_lvalue(*p.output); m_of << ")";
+                    m_of << "\" (";
+                    if( !p.output ) {
+                        m_of << "asm_anon_" << i;
+                    }
+                    else if( const auto* regname_p = p.spec.opt_Explicit() ) {
+                        m_of << "asm_" << *regname_p;
+                    }
+                    else {
+                        emit_lvalue(*p.output);
+                    }
+                    m_of << ")";
                 }
                 m_of << " :";
                 for(size_t i = 0; i < inputs.size(); i ++)
@@ -5060,27 +5481,61 @@ namespace {
                             case AsmCommon::RegisterClass::x86_xmm: m_of << "x";   break;
                             case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
                             case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
-                            case AsmCommon::RegisterClass::x86_kreg: MIR_TODO(mir_res, "Asm2 GCC - x86_kreg: " << stmt);
+                            case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                             }
                         TU_ARMA(Explicit, name) {
-                            MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg: " << stmt);
+                            auto it = ::std::find(outputs.begin(), outputs.end(), &r);
+                            if( it != outputs.end() ) {
+                                m_of << (it - outputs.begin());
+                            }
+                            else {
+                                m_of << "r";
+                            }
                             }
                         }
                         assert(r.input);
-                        m_of << "\" ("; emit_param(*r.input); m_of << ")";
+                        m_of << "\" (";
+                        if( const auto* regname_p = p.as_Reg().spec.opt_Explicit() ) {
+                            m_of << "asm_" << *regname_p;
+                        }
+                        else {
+                            emit_param(*r.input);
+                        }
+                        m_of << ")";
                         }
                     TU_ARMA(Const, c)   MIR_TODO(mir_res, "Asm2 GCC - Const: " << stmt);
                     TU_ARMA(Sym, c)   MIR_TODO(mir_res, "Asm2 GCC - Sym: " << stmt);
                     }
                 }
+                m_of << ":";
+                for(size_t i = 0; i < clobbers.size(); i ++ ) {
+                    if( i > 0 ) m_of << ",";
+                    m_of << " \"" << clobbers[i] << "\"";
+                }
                 m_of << ");\n";
+                for(size_t i = 0; i < se.params.size(); i ++)
+                {
+                    if( const auto* pe = se.params[i].opt_Reg() ) {
+                        if( const auto* regname_p = pe->spec.opt_Explicit() ) {
+                            if( pe->output ) {
+                                m_of << indent; emit_lvalue(*pe->output); m_of << " = ";
+                                HIR::TypeRef    tmp;
+                                m_of << "("; emit_ctype(m_mir_res->get_lvalue_type(tmp, *pe->output)); m_of << ")";
+                                m_of << "asm_" << *regname_p << ";\n";
+                            }
+                        }
+                    }
+                }
+                if( block_open ) {
+                    m_of << indent << "}\n";
+                }
             }
         }
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)
         {
             bool has_erased = visit_ty_with(item.m_return, [&](const auto& x) { return x.data().is_ErasedType(); });
-            
+
             if( has_erased || monomorphise_type_needed(item.m_return) )
             {
                 // If there's an erased type, make a copy with the erased type expanded
@@ -5088,12 +5543,12 @@ namespace {
                 {
                     tmp = clone_ty_with(sp, item.m_return, [&](const auto& x, auto& out) {
                         if( const auto* te = x.data().opt_ErasedType() ) {
-                            out = item.m_code.m_erased_types.at(te->m_index).clone();
-                            return true;
+                            if( const auto* e = te->m_inner.opt_Fcn() ) {
+                                out = item.m_code.m_erased_types.at(e->m_index).clone();
+                                return true;
+                            }
                         }
-                        else {
-                            return false;
-                        }
+                        return false;
                         });
                     tmp = params.monomorph_type(Span(), tmp).clone();
                 }
@@ -5193,21 +5648,46 @@ namespace {
                         return Ordering::SeqCst;
                     }
                     const char* suffix = name.c_str() + prefix_len;
-                    if( ::std::strcmp(suffix, "acq") == 0 ) {
+                    if( ::std::strcmp(suffix, "acq") == 0
+                        || ::std::strcmp(suffix, "acquire") == 0
+                        || ::std::strcmp(suffix, "relaxed_acquire") == 0
+                        || ::std::strcmp(suffix, "acquire_acquire") == 0
+                        || ::std::strcmp(suffix, "acquire_relaxed") == 0
+                        ) {
                         return Ordering::Acquire;
                     }
-                    else if( ::std::strcmp(suffix, "rel") == 0 ) {
+                    else if( ::std::strcmp(suffix, "rel") == 0
+                        || ::std::strcmp(suffix, "release") == 0
+                        || ::std::strcmp(suffix, "release_relaxed") == 0
+                        ) {
                         return Ordering::Release;
                     }
-                    else if( ::std::strcmp(suffix, "relaxed") == 0 ) {
+                    else if( ::std::strcmp(suffix, "relaxed") == 0
+                        || ::std::strcmp(suffix, "relaxed_relaxed") == 0
+                        ) {
                         return Ordering::Relaxed;
                     }
-                    else if( ::std::strcmp(suffix, "acqrel") == 0 ) {
+                    else if( ::std::strcmp(suffix, "acqrel") == 0
+                        || ::std::strcmp(suffix, "acqrel_relaxed") == 0
+                        ) {
                         return Ordering::AcqRel;
                     }
                     // TODO: Is this correct?
                     else if( ::std::strcmp(suffix, "unordered") == 0 ) {
                         return Ordering::Relaxed;
+                    }
+                    else if( ::std::strcmp(suffix, "seqcst") == 0
+                        || ::std::strcmp(suffix, "relaxed_seqcst") == 0
+                        || ::std::strcmp(suffix, "release_seqcst") == 0
+                        || ::std::strcmp(suffix, "acquire_seqcst") == 0
+                        || ::std::strcmp(suffix, "acqrel_seqcst") == 0
+                        || ::std::strcmp(suffix, "seqcst_seqcst") == 0
+                        || ::std::strcmp(suffix, "release_acquire") == 0
+                        || ::std::strcmp(suffix, "acqrel_acquire") == 0
+                        || ::std::strcmp(suffix, "seqcst_acquire") == 0
+                        || ::std::strcmp(suffix, "seqcst_relaxed") == 0
+                        ) {
+                        return Ordering::SeqCst;
                     }
                     else {
                         MIR_BUG(mir_res, "Unknown atomic ordering suffix - '" << suffix << "'");
@@ -5298,6 +5778,17 @@ namespace {
                 switch(m_compiler)
                 {
                 case Compiler::Gcc:
+                    switch(o_fail)
+                    {
+                    case Ordering::Release:
+                        o_fail = Ordering::Relaxed;
+                        break;
+                    case Ordering::AcqRel:
+                        o_fail = Ordering::Acquire;
+                        break;
+                    default:
+                        break;
+                    }
                     emit_lvalue(e.ret_val); m_of << "._0 = "; emit_param(e.args.at(1)); m_of << ";\n\t";
                     emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_" << (is_weak ? "weak" : "strong") << "_explicit(";
                         emit_atomic_cast(); emit_param(e.args.at(0));
@@ -5405,7 +5896,8 @@ namespace {
                             align_needed = true;
                             m_of << "ALIGN_TO(";
                         }
-                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                        const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                        m_of << repr->fields.back().offset << " + ";
                     }
                     emit_param(e.args.at(0)); m_of << ".META * " << item_size;
                     if(align_needed) {
@@ -5417,7 +5909,8 @@ namespace {
                     // TODO: Handle aligning the size if the wrapper's alignment is greater than the object
                     // - Also, how is the final field aligned?
                     if( ! ty.data().is_TraitObject() ) {
-                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                        const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                        m_of << repr->fields.back().offset << " + ";
                     }
                     //auto vtable_path = inner_ty.data().as_TraitObject().m_trait.m_path.clone();
                     //vtable_path.m_path.m_components.back() += "#vtable";
@@ -5493,18 +5986,44 @@ namespace {
             else if( name == "assert_uninit_valid" ) {
                 // TODO: Detect nonzero or enum within
             }
+            else if( name == "const_eval_select" ) {
+                const auto& arg_ty_tuple = params.m_types.at(0).data().as_Tuple();
+                const auto& arg = e.args.at(0).as_LValue();
+                // Note: arg 1 is the constant function
+                const auto& fcn_path = *e.args.at(2).as_Constant().as_Function().p;
+
+                // HACK: Just make a path terminator and call into that
+                ::std::vector<MIR::Param>   args;
+                args.reserve(arg_ty_tuple.size());
+                for(size_t i = 0; i < arg_ty_tuple.size(); i ++) {
+                    args.push_back(MIR::LValue::new_Field(arg.clone(), i));
+                }
+                auto pseudo_term = MIR::Terminator::Data_Call {
+                    e.ret_block, e.panic_block, e.ret_val.clone(),
+                    MIR::CallTarget::make_Path(fcn_path.clone()),
+                    std::move(args)
+                    };
+                emit_term_call(mir_res, pseudo_term, 1);
+            }
             // --- Type identity ---
             else if( name == "type_id" ) {
                 const auto& ty = params.m_types.at(0);
                 // NOTE: Would define the typeid here, but it has to be public
-                emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(ty);
+                emit_lvalue(e.ret_val); m_of << " = ";
+                if( TARGETVER_LEAST_1_74 && m_options.emulated_i128 ) {
+                    m_of << "make128(";
+                }
+                m_of << "(uintptr_t)&__typeid_" << Trans_Mangle(ty);
+                if( TARGETVER_LEAST_1_74 && m_options.emulated_i128 ) {
+                    m_of << ")";
+                }
             }
             else if( name == "type_name" ) {
                 auto s = FMT(params.m_types.at(0));
                 emit_lvalue(e.ret_val); m_of << ".PTR = \"" << FmtEscaped(s) << "\";\n\t";
                 emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
             }
-            else if( name == "transmute" ) {
+            else if( name == "transmute" || name == "transmute_unchecked" ) {
                 const auto& ty_src = params.m_types.at(0);
                 const auto& ty_dst = params.m_types.at(1);
                 auto is_ptr = [](const ::HIR::TypeRef& ty){ return ty.data().is_Borrow() || ty.data().is_Pointer(); };
@@ -5595,6 +6114,30 @@ namespace {
                     m_of << ", "; emit_param(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                     m_of << ")";
             }
+            else if( name == "compare_bytes" ) {
+                // A raw memcmp
+                emit_lvalue(e.ret_val);
+                m_of << " = memcmp( ";
+                emit_param(e.args.at(0));
+                m_of << ", ";
+                emit_param(e.args.at(1));
+                m_of << ", ";
+                emit_param(e.args.at(2));
+                m_of << ")";
+            }
+            else if( name == "raw_eq" ) {
+                size_t size = 0;
+                MIR_ASSERT(mir_res, Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size), "Can't get size of " << params.m_types.at(0));
+
+                // Raw byte equality (could be implemented without a memcmp call, if desired)
+                emit_lvalue(e.ret_val); m_of << " = (0 == memcmp(";
+                emit_param(e.args.at(0));
+                m_of << ", ";
+                emit_param(e.args.at(1));
+                m_of << ", ";
+                m_of << size;
+                m_of << "))";
+            }
             else if( name == "forget" ) {
                 // Nothing needs to be done, this just stops the destructor from running.
             }
@@ -5673,7 +6216,16 @@ namespace {
             // --- #[track_caller]
             else if( name == "caller_location" ) {
                 //m_of << "abort()";
-                m_of << "static struct s_ZRG2cE9core0_0_05panic8Location0g mrustc_empty_caller_location = {0,0,{\"\",0}};";
+                auto p = m_crate.get_lang_item_path_opt("panic_location");
+                m_of << "static struct ";
+                if( p == HIR::SimplePath() ) {
+                    m_of << "s_ZRG2cE9core0_0_05panic8Location0g";
+                }
+                else {
+                    m_of << "s_" << Trans_Mangle(p);
+                }
+                m_of << " mrustc_empty_caller_location = {0,0,{\"\",0}};";
+                //m_of << " mrustc_empty_caller_location = {{\"\",0},0,0};";  // NOTE: Depends on the generated layout :(
                 emit_lvalue(e.ret_val); m_of << " = &mrustc_empty_caller_location"; // TODO: Hidden ABI for caller location
             }
             // --- Pointer manipulation
@@ -5691,6 +6243,14 @@ namespace {
             }
             else if( name == "ptr_guaranteed_ne" ) {
                 emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " != "; emit_param(e.args.at(1)); m_of << ")";
+            }
+            else if( name == "ptr_guaranteed_cmp" ) {
+                // 0 if not equal, 1 if equal, 2 if could be either
+                emit_lvalue(e.ret_val); m_of << "= ( ("; emit_param(e.args.at(0)); m_of << ") == ("; emit_param(e.args.at(1)); m_of << "))";
+            }
+            else if( name == "ptr_offset_from_unsigned" ) {
+                // `fn ptr_offset_from_unsigned<T>(ptr: *const T, base: *const T) -> usize`
+                emit_lvalue(e.ret_val); m_of << "= ( ("; emit_param(e.args.at(0)); m_of << ") - ("; emit_param(e.args.at(1)); m_of << "))";
             }
             // ----
             else if( name == "bswap" ) {
@@ -5818,10 +6378,10 @@ namespace {
             else if( name == "assume" ) {
                 // I don't assume :)
             }
-            else if( name == "likely" ) {
+            else if( name == "likely" || name == "unlikely" ) {
                 emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
             }
-            else if( name == "unlikely" ) {
+            else if( name == "black_box" ) {
                 emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
             }
             // Overflowing Arithmetic
@@ -6318,13 +6878,34 @@ namespace {
                 auto emit_arg0 = [&](){ emit_param(e.args.at(0)); };
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = (";
-                if( ty == ::HIR::CoreType::U128 )
+                if( ty == ::HIR::CoreType::U128 || ty == ::HIR::CoreType::I128 )
                 {
+                    if( ty == ::HIR::CoreType::I128 ) {
+                        if( m_options.emulated_i128 ) {
+                            m_of << "uint128_to_int128(";
+                        }
+                        else {
+                            m_of << "(int128_t)";
+                        }
+                    }
                     if( name == "ctlz" || name == "ctlz_nonzero" ) {
-                        m_of << "intrinsic_ctlz_u128("; emit_param(e.args.at(0)); m_of << ")";
+                        m_of << "intrinsic_ctlz_u128(";
                     }
                     else {
-                        m_of << "intrinsic_cttz_u128("; emit_param(e.args.at(0)); m_of << ")";
+                        m_of << "intrinsic_cttz_u128(";
+                    }
+                    if( ty == ::HIR::CoreType::I128 ) {
+                        if( m_options.emulated_i128 ) {
+                            m_of << "int128_to_uint128(";
+                        }
+                        else {
+                            m_of << "(uint128_t)";
+                        }
+                    }
+                    emit_param(e.args.at(0)); m_of << ")";
+                    if( ty == ::HIR::CoreType::I128 && m_options.emulated_i128 ) {
+                        m_of << ")";
+                        m_of << ")";
                     }
                     m_of << ");";
                     return ;
@@ -6367,7 +6948,8 @@ namespace {
             }
             // --- Floating Point
             // > Round to nearest integer, half-way rounds away from zero
-            else if( name == "roundf32" && name == "roundf64" ) {
+            else if( name == "roundf32" || name == "roundf64"
+                || name == "rintf32" || name == "rintf64" ) {
                 emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "fabsf32" || name == "fabsf64" ) {
@@ -6441,175 +7023,189 @@ namespace {
                 m_of << "*(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
             }
             // --- Atomics!
-            // > Single-ordering atomics
-            else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                emit_atomic_arith(AtomicOp::Add, ordering);
-            }
-            else if( name == "atomic_xsub" || name.compare(0, 7+4+1, "atomic_xsub_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                emit_atomic_arith(AtomicOp::Sub, ordering);
-            }
-            else if( name == "atomic_and" || name.compare(0, 7+3+1, "atomic_and_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+3+1);
-                emit_atomic_arith(AtomicOp::And, ordering);
-            }
-            else if( name == "atomic_nand" || name.compare(0, 7+4+1, "atomic_nand_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                const auto& ty = params.m_types.at(0);
-                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
-                    if( m_compiler == Compiler::Gcc )
+            else if( name.compare(0, 7, "atomic_") == 0 )
+            {
+                // > Single-ordering atomics
+                if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    emit_atomic_arith(AtomicOp::Add, ordering);
+                }
+                else if( name == "atomic_xsub" || name.compare(0, 7+4+1, "atomic_xsub_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    emit_atomic_arith(AtomicOp::Sub, ordering);
+                }
+                else if( name == "atomic_and" || name.compare(0, 7+3+1, "atomic_and_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+3+1);
+                    emit_atomic_arith(AtomicOp::And, ordering);
+                }
+                else if( name == "atomic_nand" || name.compare(0, 7+4+1, "atomic_nand_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    const auto& ty = params.m_types.at(0);
+                    emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                        m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
+                        emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                        if( m_compiler == Compiler::Gcc )
+                        {
+                            m_of << ", " << get_atomic_ty_gcc(ordering);
+                        }
+                        m_of << ", __mrustc_op_and_not" << get_prim_size(ty);
+                        m_of << ")";
+                }
+                else if( name == "atomic_or" || name.compare(0, 7+2+1, "atomic_or_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+2+1);
+                    emit_atomic_arith(AtomicOp::Or, ordering);
+                }
+                else if( name == "atomic_xor" || name.compare(0, 7+3+1, "atomic_xor_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+3+1);
+                    emit_atomic_arith(AtomicOp::Xor, ordering);
+                }
+                else if( name == "atomic_max" || name.compare(0, 7+3+1, "atomic_max_") == 0
+                      || name == "atomic_min" || name.compare(0, 7+3+1, "atomic_min_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+3+1);
+                    const auto& ty = params.m_types.at(0);
+                    const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
+                    emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                        m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
+                        emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                        if( m_compiler == Compiler::Gcc )
+                        {
+                            m_of << ", " << get_atomic_ty_gcc(ordering);
+                        }
+                        m_of << ", __mrustc_op_" << op << get_prim_size(ty);
+                        m_of << ")";
+                }
+                else if( name == "atomic_umax" || name.compare(0, 7+4+1, "atomic_umax_") == 0
+                      || name == "atomic_umin" || name.compare(0, 7+4+1, "atomic_umin_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    const auto& ty = params.m_types.at(0);
+                    const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
+                    emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                        m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
+                        emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                        if( m_compiler == Compiler::Gcc )
+                        {
+                            m_of << ", " << get_atomic_ty_gcc(ordering);
+                        }
+                        m_of << ", __mrustc_op_" << op << get_prim_size(ty);
+                        m_of << ")";
+                }
+                else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    emit_lvalue(e.ret_val); m_of << " = ";
+                    switch(m_compiler)
                     {
-                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    case Compiler::Gcc:
+                        m_of << "atomic_load_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
+                        break;
+                    case Compiler::Msvc:
+                        //emit_msvc_atomic_op("InterlockedRead", ordering); emit_param(e.args.at(0)); m_of << ")";
+                        emit_msvc_atomic_op("InterlockedCompareExchange", ordering); emit_param(e.args.at(0)); m_of << ", 0, 0)";
+                        break;
                     }
-                    m_of << ", __mrustc_op_and_not" << get_prim_size(ty);
-                    m_of << ")";
-            }
-            else if( name == "atomic_or" || name.compare(0, 7+2+1, "atomic_or_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+2+1);
-                emit_atomic_arith(AtomicOp::Or, ordering);
-            }
-            else if( name == "atomic_xor" || name.compare(0, 7+3+1, "atomic_xor_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+3+1);
-                emit_atomic_arith(AtomicOp::Xor, ordering);
-            }
-            else if( name == "atomic_max" || name.compare(0, 7+3+1, "atomic_max_") == 0
-                  || name == "atomic_min" || name.compare(0, 7+3+1, "atomic_min_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+3+1);
-                const auto& ty = params.m_types.at(0);
-                const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
-                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
-                    if( m_compiler == Compiler::Gcc )
+                }
+                else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+5+1);
+                    switch (m_compiler)
                     {
-                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    case Compiler::Gcc:
+                        m_of << "atomic_store_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
+                        break;
+                    case Compiler::Msvc:
+                        m_of << "*"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
+                        break;
                     }
-                    m_of << ", __mrustc_op_" << op << get_prim_size(ty);
-                    m_of << ")";
-            }
-            else if( name == "atomic_umax" || name.compare(0, 7+4+1, "atomic_umax_") == 0
-                  || name == "atomic_umin" || name.compare(0, 7+4+1, "atomic_umin_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                const auto& ty = params.m_types.at(0);
-                const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
-                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
-                    if( m_compiler == Compiler::Gcc )
+                }
+                // Comare+Exchange (has two orderings)
+                else if( name == "atomic_cxchg_acq_failrelaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, false);
+                }
+                else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::AcqRel, Ordering::Relaxed, false);
+                }
+                // _rel = Release, Relaxed (not Release,Release)
+                else if( name == "atomic_cxchg_rel" ) {
+                    emit_atomic_cxchg(e, Ordering::Release, Ordering::Relaxed, false);
+                }
+                // _acqrel = Release, Acquire (not AcqRel,AcqRel)
+                else if( name == "atomic_cxchg_acqrel" ) {
+                    emit_atomic_cxchg(e, Ordering::AcqRel, Ordering::Acquire, false);
+                }
+                else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
+                    auto fail_ordering = get_atomic_ordering(name, 7+6+4);
+                    emit_atomic_cxchg(e, Ordering::SeqCst, fail_ordering, false);
+                }
+                else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+6);
+                    emit_atomic_cxchg(e, ordering, ordering, false);
+                }
+                else if( name == "atomic_cxchgweak_acq_failrelaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, true);
+                }
+                else if( name == "atomic_cxchgweak_acqrel_failrelaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::AcqRel , Ordering::Relaxed, true);
+                }
+                else if( name.compare(0, 7+10+4, "atomic_cxchgweak_fail") == 0 ) {
+                    auto fail_ordering = get_atomic_ordering(name, 7+10+4);
+                    emit_atomic_cxchg(e, Ordering::SeqCst , fail_ordering, true);
+                }
+                else if( name == "atomic_cxchgweak" ) {
+                    emit_atomic_cxchg(e, Ordering::SeqCst , Ordering::SeqCst , true);
+                }
+                else if( name == "atomic_cxchgweak_acq" ) {
+                    emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Acquire, true);
+                }
+                else if( name == "atomic_cxchgweak_rel" ) {
+                    emit_atomic_cxchg(e, Ordering::Release, Ordering::Relaxed, true);
+                }
+                else if( name == "atomic_cxchgweak_acqrel" ) {
+                    emit_atomic_cxchg(e, Ordering::AcqRel , Ordering::Acquire, true);
+                }
+                else if( name == "atomic_cxchgweak_relaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::Relaxed, Ordering::Relaxed, true);
+                }
+                else if( name == "atomic_cxchgweak" || name.compare(0, 91-74, "atomic_cxchgweak_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 91-74);
+                    emit_atomic_cxchg(e, ordering, ordering, false);
+                }
+                else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+5);
+                    emit_lvalue(e.ret_val); m_of << " = ";
+                    switch(m_compiler)
                     {
-                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    case Compiler::Gcc:
+                        m_of << "atomic_exchange_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
+                        break;
+                    case Compiler::Msvc:
+                        if(ordering == Ordering::Release)
+                            ordering = Ordering::SeqCst;
+                        emit_msvc_atomic_op("InterlockedExchange", ordering);
+                        emit_param(e.args.at(0)); m_of << ", ";
+                        if(params.m_types.at(0).data().is_Pointer()) { m_of << "(uintptr_t)"; } emit_param(e.args.at(1)); m_of << ")";
+                        break;
                     }
-                    m_of << ", __mrustc_op_" << op << get_prim_size(ty);
-                    m_of << ")";
-            }
-            else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                emit_lvalue(e.ret_val); m_of << " = ";
-                switch(m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "atomic_load_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
-                    break;
-                case Compiler::Msvc:
-                    //emit_msvc_atomic_op("InterlockedRead", ordering); emit_param(e.args.at(0)); m_of << ")";
-                    emit_msvc_atomic_op("InterlockedCompareExchange", ordering); emit_param(e.args.at(0)); m_of << ", 0, 0)";
-                    break;
+                }
+                else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+6);
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        m_of << "atomic_thread_fence(" << get_atomic_ty_gcc(ordering) << ")";
+                        break;
+                    case Compiler::Msvc:
+                        // TODO: MSVC atomic fence?
+                        break;
+                    }
+                }
+                else if( name == "atomic_singlethreadfence" || name.compare(0, 7+18, "atomic_singlethreadfence_") == 0 ) {
+                    // TODO: Does this matter?
+                }
+                else {
+                    MIR_BUG(mir_res, "Unknown atomic intrinsic '" << name << "'");
                 }
             }
-            else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+5+1);
-                switch (m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "atomic_store_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
-                    break;
-                case Compiler::Msvc:
-                    m_of << "*"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
-                    break;
-                }
-            }
-            // Comare+Exchange (has two orderings)
-            else if( name == "atomic_cxchg_acq_failrelaxed" ) {
-                emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, false);
-            }
-            else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
-                emit_atomic_cxchg(e, Ordering::AcqRel, Ordering::Relaxed, false);
-            }
-            // _rel = Release, Relaxed (not Release,Release)
-            else if( name == "atomic_cxchg_rel" ) {
-                emit_atomic_cxchg(e, Ordering::Release, Ordering::Relaxed, false);
-            }
-            // _acqrel = Release, Acquire (not AcqRel,AcqRel)
-            else if( name == "atomic_cxchg_acqrel" ) {
-                emit_atomic_cxchg(e, Ordering::AcqRel, Ordering::Acquire, false);
-            }
-            else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
-                auto fail_ordering = get_atomic_ordering(name, 7+6+4);
-                emit_atomic_cxchg(e, Ordering::SeqCst, fail_ordering, false);
-            }
-            else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+6);
-                emit_atomic_cxchg(e, ordering, ordering, false);
-            }
-            else if( name == "atomic_cxchgweak_acq_failrelaxed" ) {
-                emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, true);
-            }
-            else if( name == "atomic_cxchgweak_acqrel_failrelaxed" ) {
-                emit_atomic_cxchg(e, Ordering::AcqRel , Ordering::Relaxed, true);
-            }
-            else if( name.compare(0, 7+10+4, "atomic_cxchgweak_fail") == 0 ) {
-                auto fail_ordering = get_atomic_ordering(name, 7+10+4);
-                emit_atomic_cxchg(e, Ordering::SeqCst , fail_ordering, true);
-            }
-            else if( name == "atomic_cxchgweak" ) {
-                emit_atomic_cxchg(e, Ordering::SeqCst , Ordering::SeqCst , true);
-            }
-            else if( name == "atomic_cxchgweak_acq" ) {
-                emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Acquire, true);
-            }
-            else if( name == "atomic_cxchgweak_rel" ) {
-                emit_atomic_cxchg(e, Ordering::Release, Ordering::Relaxed, true);
-            }
-            else if( name == "atomic_cxchgweak_acqrel" ) {
-                emit_atomic_cxchg(e, Ordering::AcqRel , Ordering::Acquire, true);
-            }
-            else if( name == "atomic_cxchgweak_relaxed" ) {
-                emit_atomic_cxchg(e, Ordering::Relaxed, Ordering::Relaxed, true);
-            }
-            else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+5);
-                emit_lvalue(e.ret_val); m_of << " = ";
-                switch(m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "atomic_exchange_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
-                    break;
-                case Compiler::Msvc:
-                    if(ordering == Ordering::Release)
-                        ordering = Ordering::SeqCst;
-                    emit_msvc_atomic_op("InterlockedExchange", ordering);
-                    emit_param(e.args.at(0)); m_of << ", ";
-                    if(params.m_types.at(0).data().is_Pointer()) { m_of << "(uintptr_t)"; } emit_param(e.args.at(1)); m_of << ")";
-                    break;
-                }
-            }
-            else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+6);
-                switch(m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "atomic_thread_fence(" << get_atomic_ty_gcc(ordering) << ")";
-                    break;
-                case Compiler::Msvc:
-                    // TODO: MSVC atomic fence?
-                    break;
-                }
-            }
-            else if( name == "atomic_singlethreadfence" || name.compare(0, 7+18, "atomic_singlethreadfence_") == 0 ) {
-                // TODO: Does this matter?
+            else if( name == "option_payload_ptr" ) {   // 1.74 only, removed later
+                // Converts `*const Option<T>` to `*const T`, even if `None`
+                emit_lvalue(e.ret_val); m_of << " = &("; emit_param(e.args.at(0)); m_of << ")->DATA.var_1. _0";
             }
             // -- stdarg --
             else if( name == "va_copy" ) {
@@ -6627,17 +7223,26 @@ namespace {
                     } ty;
 
                     static SimdInfo for_ty(const CodeGenerator_C& self, const HIR::TypeRef& ty) {
-                        size_t size_slot = 0, size_val = 0;;
-                        Target_GetSizeOf(self.sp, self.m_resolve, ty, size_slot);
-                        const auto& ty_val = ty.data().as_Path().binding.as_Struct()->m_data.as_Tuple().at(0).ent;
-                        Target_GetSizeOf(self.sp, self.m_resolve, ty_val, size_val);
+                        const auto* ty_repr = Target_GetTypeRepr(self.sp, self.m_mir_res->m_resolve, ty);
+                        MIR_ASSERT(*self.m_mir_res, ty_repr, "No repr for " << ty);
+                        size_t size_slot = ty_repr->size;
+                        const auto& ity = ty_repr->fields[0].ty;
+                        DEBUG("SimdInfo Type: " << ity);
+                        const auto& ty_val = ity.data().is_Primitive()
+                                ? ity
+                                : ty_repr->fields[0].ty.data().as_Array().inner
+                                ;
+                        DEBUG("ty_val = " << ty_val);
+                        size_t size_val = 0;
+                        MIR_ASSERT(*self.m_mir_res, Target_GetSizeOf(self.sp, self.m_resolve, ty_val, size_val), ty_val);
 
                         MIR_ASSERT(*self.m_mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                        MIR_ASSERT(*self.m_mir_res, size_val > 0, "SimdInfo::for_ty - Value type " << ty_val << " was a ZST");
                         MIR_ASSERT(*self.m_mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
 
                         SimdInfo    rv;
                         rv.item_size = size_val;
-                        rv.count = size_slot / size_val;
+                        rv.count = size_slot == 0 ? 0 : size_slot / size_val;
                         switch(ty_val.data().as_Primitive())
                         {
                         case ::HIR::CoreType::I8:   rv.ty = Signed; break;
@@ -6675,9 +7280,9 @@ namespace {
                     m_of << "(("; dst_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
                     m_of << "= (";
                     m_of << " (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i]";
-                    m_of << op;
+                    m_of << " " << op;
                     m_of << " (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
-                    m_of << " )";
+                    m_of << " ? -1 : 0)";
                     };
                 auto simd_arith = [&](const char* op) {
                     auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
@@ -6687,6 +7292,13 @@ namespace {
                     m_of << "(("; info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
                     m_of << op << "=";
                     m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    };
+                auto simd_call = [&](const char* op) {
+                    auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    // Emulate!
+                    m_of << "for(int i = 0; i < " << info.count << "; i++)";
+                    m_of << "(("; info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= " << op << "( (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i] )";
                     };
 
                 // dst: T, index: usize, val: U
@@ -6711,6 +7323,17 @@ namespace {
 
                     // Emulate!
                     emit_lvalue(e.ret_val); m_of << " = (( "; emit_ctype(params.m_types.at(1)); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")["; emit_param(e.args.at(1)); m_of << "]";
+                }
+                // Truncate into a bitmask - Converts a collection of [0,!0] into bits
+                else if( name == "platform:simd_bitmask" ) {
+                    auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    size_t size_out = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_out);
+                    m_of << "{ uint8_t* out = (uint8_t*)&("; emit_lvalue(e.ret_val); m_of << "); memset(out, 0, " << size_out << "); ";
+                    for(size_t i = 0; i < src_info.count; i ++) {
+                        m_of << "out[" << (i / 8) << "] |= (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[" << i << "] == 0 ? 0 : (1 << " << (i % 8) << "); ";
+                    }
+                    m_of << "}";
                 }
                 else if(
                         name == "platform:simd_shuffle128" ||
@@ -6740,6 +7363,24 @@ namespace {
                     MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
                     m_of << "for(int i = 0; i < " << div << "; i++) { int j = "; emit_param(e.args.at(2)); m_of << ".DATA[i];";
                     m_of << "((uint" << (size_val*8) << "_t*)&"; emit_lvalue(e.ret_val); m_of << ")[i]";
+                    m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
+                    m_of << "}";
+                }
+                else if( name == "platform:simd_shuffle" ) {
+                    //const auto& vec_ty = params.m_types.at(0);
+                    const auto& map_ty = params.m_types.at(1);
+                    const auto& ret_ty = params.m_types.at(2);
+                    //size_t size_vec = 0;
+                    size_t size_map = 0;
+                    size_t size_ret = 0;
+                    //Target_GetSizeOf(sp, m_resolve, vec_ty, size_vec);
+                    Target_GetSizeOf(sp, m_resolve, map_ty, size_map);
+                    Target_GetSizeOf(sp, m_resolve, ret_ty, size_ret);
+                    size_t div = size_map / 4;  // map must be u32s
+                    size_t size_val = size_ret / div;
+                    m_of << "for(int i = 0; i < " << div << "; i++) {";
+                    m_of << " int j = "; emit_param(e.args.at(2)); m_of << ".DATA[i];";
+                    m_of << " ((uint" << (size_val*8) << "_t*)&"; emit_lvalue(e.ret_val); m_of << ")[i]";
                     m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
                     m_of << "}";
                 }
@@ -6787,11 +7428,36 @@ namespace {
                 else if(name == "platform:simd_and")    simd_arith("&");
                 else if(name == "platform:simd_or" )    simd_arith("|");
                 else if(name == "platform:simd_xor")    simd_arith("^");
+                else if(name == "platform:simd_xor")    simd_arith("^");
+                else if(name == "platform:simd_shr")    simd_arith(">>");
+                else if(name == "platform:simd_shl")    simd_arith("<<");
+                // platform:simd_reduce_and
+                // platform:simd_reduce_max
+                // platform:simd_reduce_min
+                // platform:simd_reduce_mul_unordered
+                // platform:simd_reduce_add_unordered
+                // platform:simd_reduce_or
+                // platform:simd_saturating_add
+                // platform:simd_saturating_sub
+                else if(name == "platform:simd_ceil")    simd_call("ceil");
+                else if(name == "platform:simd_floor")    simd_call("floor");
+                else if(name == "platform:simd_fsqrt")    simd_call("sqrt");
+                // platform:simd_fma
+                else if(name == "platform::simd_fma") {
+                    auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    // Emulate!
+                    m_of << "for(int i = 0; i < " << info.count << "; i++)";
+                    m_of << "(("; info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= fma(";
+                    m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i],";
+                    m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i],";
+                    m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(2)); m_of << ")[i]";
+                    m_of << ")";
+                }
 
                 else {
                     // TODO: Platform intrinsics
                     m_of << "assert(!\"TODO: Platform intrinsic \\\"" << name << "\\\"\")";
-                    //MIR_TODO(mir_res, "Platform intrinsic " << name);
                 }
             }
             else {
@@ -6825,6 +7491,8 @@ namespace {
             TU_ARMA(Primitive, te) {
                 }
             TU_ARMA(Pointer, te) {
+                }
+            TU_ARMA(NamedFunction, te) {
                 }
             TU_ARMA(Function, te) {
                 }
@@ -6943,7 +7611,7 @@ namespace {
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::Isize:
-                m_of << static_cast<int64_t>(ve.values[idx]);
+                m_of << static_cast<int64_t>(ve.values[idx]) << "ll";
                 break;
             case ::HIR::CoreType::Bool:
             case ::HIR::CoreType::U8:
@@ -6952,7 +7620,7 @@ namespace {
             case ::HIR::CoreType::U64:
             case ::HIR::CoreType::Usize:
             case ::HIR::CoreType::Char:
-                m_of << ve.values[idx];
+                m_of << ve.values[idx] << "ull";
                 break;
             case ::HIR::CoreType::I128: // TODO: Emulation
             case ::HIR::CoreType::U128: // TODO: Emulation
@@ -7221,6 +7889,9 @@ namespace {
             TU_ARMA(Generic, c) {
                 MIR_BUG(*m_mir_res, "Generic value present at codegen");
                 }
+            TU_ARMA(Function, c) {
+                MIR_TODO(*m_mir_res, "Constant::Function");
+                }
             TU_ARMA(ItemAddr, c) {
                 bool  is_fcn = false;
                 MonomorphState  ms_tmp;
@@ -7347,6 +8018,9 @@ namespace {
                 }
             TU_ARMA(Pointer, te) {
                 emit_ctype_ptr(te.inner, inner);
+                }
+            TU_ARMA(NamedFunction, te) {
+                m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 }
             TU_ARMA(Function, te) {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;

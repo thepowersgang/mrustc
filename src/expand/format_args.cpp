@@ -208,6 +208,23 @@ namespace {
         ::std::vector<FmtFrag>  frags;
         ::std::string   cur_literal;
 
+        auto get_named = [&](RcString ident) -> unsigned {
+            auto it = named.find(ident);
+            if( it == named.end() ) {
+                // Add an implicit named argument
+                it = named.insert(std::make_pair( ident, static_cast<unsigned>(named_args.size()) )).first;
+                // TODO: Create a token with span information pointing to this location in the string.
+                if( ident == "self" ) {
+                    // Technically, `self` needs hygiene, but mrustc doesn't do that
+                    named_args.push_back(Token(TOK_RWORD_SELF));
+                }
+                else {
+                    named_args.push_back(Token(TOK_IDENT, Ident(hygiene, ident)));
+                }
+            }
+            return n_free + it->second;
+        };
+
         const char* s = format_string.c_str();
         const char* const s_end = s + format_string.length();
         for( ; s < s_end; s ++)
@@ -266,15 +283,7 @@ namespace {
                         while( isalnum(*s) || *s == '_' || (*s < 0 || *s > 127) ) {
                             s ++;
                         }
-                        auto ident = RcString(start, s - start);
-                        auto it = named.find(ident);
-                        if( it == named.end() ) {
-                            // Add an implicit named argument
-                            it = named.insert(std::make_pair(ident, static_cast<unsigned>(named_args.size()))).first;
-                            // TODO: Create a token with span information pointing to this location in the string.
-                            named_args.push_back(Token(TOK_IDENT, Ident(hygiene, ident)));
-                        }
-                        index = n_free + it->second;
+                        index = get_named(RcString(start, s - start));
                     }
                 }
                 else {
@@ -293,7 +302,7 @@ namespace {
                         int next_c_i;
                         uint32_t ch = parse_utf8(s, next_c_i);
                         char next_c = s[next_c_i];
-                        if( ch != '}' && ch != '\0' && (next_c == '<' || next_c == '^' || next_c == '>') ) {
+                        if( s+next_c_i <= s_end && ch != '}' && (next_c == '<' || next_c == '^' || next_c == '>') ) {
                             args.align_char = ch;
                             s += next_c_i;
                         }
@@ -373,11 +382,7 @@ namespace {
                         }
                         if( *s == '$' )
                         {
-                            auto ident = RcString(start, s - start);
-                            auto it = named.find(ident);
-                            if( it == named.end() )
-                                ERROR(sp, E0000, "Named argument '"<<ident<<"' not found");
-                            args.width = n_free + it->second;
+                            args.width = get_named(RcString(start, s - start));
                             args.width_is_arg = true;
 
                             s ++;
@@ -418,12 +423,33 @@ namespace {
                                 //args.prec_is_arg = false;
                             }
                         }
+                        else if( ::std::isalpha(*s) ) {
+                            // Parse an ident and if the next character is $, convert to named
+                            // - Otherwise keep the ident around for the formatter
+
+                            const char* start = s;
+                            while( s != s_end && (isalnum(*s) || *s == '_' || (*s < 0 || *s > 127)) ) {
+                                s ++;
+                            }
+                            if( *s == '$' )
+                            {
+                                args.prec = get_named(RcString(start, s - start));
+                                args.prec_is_arg = true;
+
+                                s ++;
+                            }
+                            else {
+                                s = start;
+                                //ERROR(sp, E0000, "Unexpected character in precision");
+                            }
+                        }
                         else {
                             // Wut?
+                            ERROR(sp, E0000, "Unexpected character in precision");
                         }
                     }
 
-                    if( s[0] == '\0' )
+                    if( s == s_end )
                         ERROR(sp, E0000, "Unexpected end of formatting string");
 
                     // Parse ident?
@@ -451,11 +477,11 @@ namespace {
                     }
                     else
                     {
-                        if( strcmp(s, "x?}") == 0 ) {
+                        if( strncmp(s, "x?}", 3) == 0 ) {
                             args.debug_ty = FmtArgs::Debug::LowerHex;
                             trait_name = "Debug";
                         }
-                        else if( strcmp(s, "X?}") == 0 ) {
+                        else if( strncmp(s, "X?}", 3) == 0 ) {
                             args.debug_ty = FmtArgs::Debug::UpperHex;
                             trait_name = "Debug";
                         }
@@ -499,25 +525,27 @@ namespace {
     }
     void push_path(::std::vector<TokenTree>& toks, const AST::Crate& crate, ::std::initializer_list<const char*> il)
     {
+        AST::AbsolutePath   ap;
+        // TODO: Inject a path fragment (interpolated path), to avoid edition parsing quirks
         switch(crate.m_load_std)
         {
         case ::AST::Crate::LOAD_NONE:
-            toks.push_back( TokenTree(TOK_RWORD_CRATE) );
             break;
         case ::AST::Crate::LOAD_CORE:
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( ident("core") );
+            ASSERT_BUG(Span(), crate.m_ext_cratename_core != "", "");
+            ap.crate = crate.m_ext_cratename_core;
             break;
         case ::AST::Crate::LOAD_STD:
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( ident("std") );
+            //ap.crate = "=std";
+            ASSERT_BUG(Span(), crate.m_ext_cratename_core != "", "");
+            ap.crate = crate.m_ext_cratename_core;
             break;
         }
         for(auto ent : il)
         {
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( ident(ent) );
+            ap.nodes.push_back(ent);
         }
+        toks.push_back(Token(InterpolatedFragment( std::move(ap) )));
     }
     void push_toks(::std::vector<TokenTree>& toks, Token t1) {
         toks.push_back( mv$(t1) );
@@ -543,7 +571,6 @@ namespace {
         Token   tok;
 
         auto format_string_node = Parse_ExprVal(lex);
-        auto h = lex.get_hygiene();
         ASSERT_BUG(sp, format_string_node, "No expression returned");
         Expand_BareExpr(crate, lex.parse_state().get_current_mod(), format_string_node);
 
@@ -553,6 +580,7 @@ namespace {
         }
         const auto& format_string_sp = format_string_np->span();
         const auto& format_string = format_string_np->m_value;
+        auto h = format_string_np->m_hygiene;
 
         ::std::map<RcString, unsigned int>   named_args_index;
         ::std::vector<TokenTree>    named_args;
@@ -664,10 +692,10 @@ namespace {
 
             toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
             for(const auto& frag : fragments ) {
-                toks.push_back( Token(TOK_STRING, frag.leading_text) );
+                toks.push_back( Token(TOK_STRING, frag.leading_text, h) );
                 toks.push_back( TokenTree(TOK_COMMA) );
             }
-            toks.push_back( Token(TOK_STRING, tail) );
+            toks.push_back( Token(TOK_STRING, tail, h) );
             toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
 
             toks.push_back( Token(TOK_SEMICOLON) );
@@ -688,7 +716,12 @@ namespace {
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments )
                 {
-                    push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    if(TARGETVER_LEAST_1_74) {
+                        push_path(toks, crate, {"fmt", "rt", "Argument", "new"});
+                    }
+                    else {
+                        push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    }
                     toks.push_back( Token(TOK_PAREN_OPEN) );
                     toks.push_back( ident( FMT("a" << frag.arg_index).c_str() ) );
 
@@ -724,7 +757,12 @@ namespace {
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments )
                 {
-                    push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    if(TARGETVER_LEAST_1_74) {
+                        push_path(toks, crate, {"fmt", "rt", "Argument", "new"});
+                    }
+                    else {
+                        push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    }
                     toks.push_back( Token(TOK_PAREN_OPEN) );
                     toks.push_back( ident(FMT("a" << frag.arg_index).c_str()) );
 
@@ -741,7 +779,12 @@ namespace {
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments)
                 {
-                    push_path(toks, crate, {"fmt", "rt", "v1", "Argument"});
+                    if(TARGETVER_LEAST_1_74) {
+                        push_path(toks, crate, {"fmt", "rt", "Placeholder"});
+                    }
+                    else {
+                        push_path(toks, crate, {"fmt", "rt", "v1", "Argument"});
+                    }
                     toks.push_back( TokenTree(TOK_BRACE_OPEN) );
 
                     push_toks(toks, ident("position"), TOK_COLON );
@@ -753,9 +796,13 @@ namespace {
                     }
                     push_toks(toks, TOK_COMMA);
 
-                    push_toks(toks, ident("format"), TOK_COLON );
-                    push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
-                    toks.push_back( TokenTree(TOK_BRACE_OPEN) );
+                    if(TARGETVER_LEAST_1_74) {
+                    }
+                    else {
+                        push_toks(toks, ident("format"), TOK_COLON );
+                        push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
+                        toks.push_back( TokenTree(TOK_BRACE_OPEN) );
+                    }
                     {
                         push_toks(toks, ident("fill"), TOK_COLON, Token(U128(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
 
@@ -768,32 +815,56 @@ namespace {
                         case FmtArgs::Align::Center:    align_var_name = "Center";  break;
                         case FmtArgs::Align::Right:     align_var_name = "Right";   break;
                         }
-                        push_path(toks, crate, {"fmt", "rt", "v1", "Alignment", align_var_name});
+                        if(TARGETVER_LEAST_1_74) {
+                            push_path(toks, crate, {"fmt", "rt", "Alignment", align_var_name});
+                        }
+                        else {
+                            push_path(toks, crate, {"fmt", "rt", "v1", "Alignment", align_var_name});
+                        }
                         push_toks(toks, TOK_COMMA);
 
                         push_toks(toks, ident("flags"), TOK_COLON);
+                        struct Flag {
+                            enum V {
+                                SignPlus,
+                                SignMinus,
+                                Alternate,
+                                SignAwareZeroPad,
+                                DebugLowerHex,
+                                DebugUpperHex,
+                            };
+                        };
                         uint64_t flags = 0;
                         // ::core::fmt::FlagV1 (private)
                         switch(frag.args.sign)
                         {
                         case FmtArgs::Sign::Unspec: break;
-                        case FmtArgs::Sign::Plus:   flags |= 1 << 0;    break;
-                        case FmtArgs::Sign::Minus:  flags |= 1 << 1;    break;
+                        case FmtArgs::Sign::Plus:   flags |= 1 << Flag::SignPlus;    break;
+                        case FmtArgs::Sign::Minus:  flags |= 1 << Flag::SignMinus;    break;
                         }
                         if(frag.args.alternate)
-                            flags |= 1 << 2;
+                            flags |= 1 << Flag::Alternate;
                         switch(frag.args.debug_ty)
                         {
                         case FmtArgs::Debug::Normal:    break;
-                        case FmtArgs::Debug::LowerHex:  flags |= 1 << 4;    break;
-                        case FmtArgs::Debug::UpperHex:  flags |= 1 << 5;    break;
+                        case FmtArgs::Debug::LowerHex:  flags |= 1 << Flag::DebugLowerHex;    break;
+                        case FmtArgs::Debug::UpperHex:  flags |= 1 << Flag::DebugUpperHex;    break;
                         }
                         push_toks(toks, Token(U128(flags), CORETYPE_U32));
                         push_toks(toks, TOK_COMMA);
 
+                        auto push_path_count = [&](const char* variant) {
+                            if(TARGETVER_LEAST_1_74) {
+                                push_path(toks, crate, {"fmt", "rt", "Count", variant});
+                            }
+                            else {
+                                push_path(toks, crate, {"fmt", "rt", "v1", "Count", variant});
+                            }
+                        };
+
                         push_toks(toks, ident("precision"), TOK_COLON );
                         if( frag.args.prec_is_arg || frag.args.prec != 0 ) {
-                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Is"});
+                            push_path_count("Is");
                             push_toks(toks, TOK_PAREN_OPEN);
                             if( frag.args.prec_is_arg ) {
                                 push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.prec).c_str()) );
@@ -804,13 +875,13 @@ namespace {
                             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                         }
                         else {
-                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Implied"});
+                            push_path_count("Implied");
                         }
                         toks.push_back( TokenTree(TOK_COMMA) );
 
                         push_toks(toks, ident("width"), TOK_COLON );
                         if( frag.args.width_is_arg || frag.args.width != 0 ) {
-                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Is"});
+                            push_path_count("Is");
                             push_toks(toks, TOK_PAREN_OPEN);
                             if( frag.args.width_is_arg ) {
                                 push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.width).c_str()) );
@@ -821,11 +892,16 @@ namespace {
                             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                         }
                         else {
-                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Implied"});
+                            push_path_count("Implied");
                         }
                         toks.push_back( TokenTree(TOK_COMMA) );
                     }
-                    toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
+
+                    if(TARGETVER_LEAST_1_74) {
+                    }
+                    else {
+                        toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
+                    }
 
                     toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
                     toks.push_back( TokenTree(TOK_COMMA) );
@@ -833,6 +909,13 @@ namespace {
                 toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
             }
             // )
+            if( TARGETVER_LEAST_1_74 ) {
+                toks.push_back(TokenTree(TOK_COMMA));
+                // TODO: This is a lang item - `format_unsafe_arg`
+                push_path(toks, crate, {"fmt", "rt", "UnsafeArg", "new"});
+                toks.push_back( TokenTree(TOK_PAREN_OPEN) );
+                toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+            }
             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
         }   // if(is_simple) else
 
@@ -844,6 +927,19 @@ namespace {
 }
 
 class CFormatArgsExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        Token   tok;
+
+        auto lex = TTStream(sp, ParseState(), tt);
+        lex.parse_state().module = &mod;
+
+        return expand_format_args(sp, crate, lex, /*add_newline=*/false);
+    }
+};
+class CConstFormatArgsExpander:
     public ExpandProcMacro
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
@@ -872,5 +968,6 @@ class CFormatArgsNlExpander:
 };
 
 STATIC_MACRO("format_args", CFormatArgsExpander);
+STATIC_MACRO("const_format_args", CConstFormatArgsExpander);
 STATIC_MACRO("format_args_nl", CFormatArgsNlExpander);
 

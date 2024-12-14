@@ -11,6 +11,7 @@
 #include <ast/expr.hpp>
 #include <hir/hir.hpp>
 #include <stdspan.hpp>  // std::span
+#include <pop_on_drop.hpp>
 
 enum class Lookup
 {
@@ -76,7 +77,7 @@ void Resolve_Use(::AST::Crate& crate)
             }
             else
             {
-                DEBUG("No implict crate " << name);
+                DEBUG("No implicit crate " << name);
             }
         }
 
@@ -86,7 +87,9 @@ void Resolve_Use(::AST::Crate& crate)
             if( ct != CORETYPE_INVAL ) {
                 DEBUG("Found builtin type for `use` - " << path);
                 // TODO: only if the item doesn't already exist?
-                return AST::Path(CRATE_BUILTINS, path.nodes());
+                AST::Path   rv { CRATE_BUILTINS, path.nodes() };
+                rv.m_bindings.type.set( AST::AbsolutePath(CRATE_BUILTINS, {path.nodes().back().name()}), {} );
+                return rv;
             }
         }
 
@@ -97,6 +100,8 @@ void Resolve_Use(::AST::Crate& crate)
             std::vector<const AST::Module*>   parent_mods;
             const AST::Module* cur_mod = &crate.m_root_module;
             parent_mods.push_back(cur_mod);
+            // Walk the path to create a list of parent modules
+            // - Resets the list every time there's a non-anon module
             for( unsigned int i = 0; i < base_path.nodes().size(); i ++ )
             {
                 const auto& name = base_path.nodes()[i].name();
@@ -119,8 +124,8 @@ void Resolve_Use(::AST::Crate& crate)
                             break;
                         }
                     }
+                    ASSERT_BUG(span, next_mod, "Could not find module '" << name << "' in " << cur_mod->path());
                 }
-                assert(next_mod);
                 cur_mod = next_mod;
                 if( name.c_str()[0] != '#' ) {
                     parent_mods.clear();
@@ -130,8 +135,16 @@ void Resolve_Use(::AST::Crate& crate)
             parent_mods.pop_back();
             DEBUG("parent_mods.size() = " << parent_mods.size());
 
-            while( !parent_mods.empty() && !Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
+            for(;;)
             {
+                DEBUG("Module " << cur_mod->path());
+                if( Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
+                {
+                    break;
+                }
+                if( parent_mods.empty() ) {
+                    ERROR(span, E0000, "Unable to find " << e.nodes.front().name());
+                }
                 cur_mod = parent_mods.back();
                 parent_mods.pop_back();
             }
@@ -210,7 +223,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         {
             TRACE_FUNCTION_F(use_ent);
 
-            use_ent.path = Resolve_Use_AbsolutisePath(span, crate, path, mv$(use_ent.path));
+            use_ent.path = Resolve_Use_AbsolutisePath(span, crate, path, use_ent.path);
             if( !use_ent.path.m_class.is_Absolute() )
                 BUG(span, "Use path is not absolute after absolutisation");
 
@@ -355,6 +368,17 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 {
     ::AST::Path::Bindings   rv;
     TRACE_FUNCTION_F(mod.path() << ", des_item_name=" << des_item_name);
+
+    static ::std::vector<std::pair<const AST::Module*,const char*>>  s_recurse_stack;
+    auto recurse_ent = std::make_pair(&mod, des_item_name.c_str());
+    // EVIL: Allow a single recursion before returning empty
+    if( std::count(s_recurse_stack.begin(), s_recurse_stack.end(), recurse_ent) > 1 ) {
+        DEBUG("Recursion detected, returning empty bindings");
+        return rv;
+    }
+    auto _ = push_and_pop_at_end(s_recurse_stack, recurse_ent);
+
+    // TODO: Catch and prevent recursion?
     // If the desired item is an anon module (starts with #) then parse and index
     if( des_item_name.size() > 0 && des_item_name.c_str()[0] == '#' ) {
         unsigned int idx = 0;
@@ -385,6 +409,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             TU_ARMA(MacroInv, e) {
                 BUG(span, "Hit MacroInv in use resolution");
                 }
+            TU_ARMA(GlobalAsm, e) {
+                BUG(span, "Hit GlobalAsm in use resolution");
+                }
             TU_ARMA(Macro, e) {
                 //rv.macro = ::AST::PathBinding_Macro::make_MacroRules({nullptr, e.get()});
                 }
@@ -401,7 +428,11 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 BUG(span, "Hit Extern in use resolution");
                 }
             TU_ARMA(Crate, e) {
-                if( e.name != "" )
+                if( ! rv.type.is_Unbound() ) {
+                    // This is a hack for when a crate defines a module with the name `std` (or `core` with `#![no_std]`)
+                    DEBUG("Ignore, already bound");
+                }
+                else if( e.name != "" )
                 {
                     ASSERT_BUG(span, crate.m_extern_crates.count(e.name), "Crate '" << e.name << "' not loaded");
                     rv.type.set( AST::AbsolutePath(e.name, {}), ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) }) );
@@ -445,12 +476,70 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             }
         }
     }
-    // TODO: macros
     for(const auto& mac : mod.macros())
     {
         if( mac.name == des_item_name ) {
             rv.macro.set( mod.path() + mac.name, ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*mac.data }) );
+            DEBUG("Macro definition: " << rv.macro.path);
             break;
+        }
+    }
+    // NOTE: `use macroname;` can refer to a macro already in-scope via a parent `#[macro_use]`
+    // - So, need to look upwards
+    // - Can't use `parent_modules`, as that's only for anon.
+    if( rv.macro.is_Unbound() )
+    {
+        ::std::vector<const AST::Module*>   mods;
+        mods.push_back(&crate.root_module());
+        for(size_t i = 0; i < mod.path().nodes.size(); i++)
+        {
+            const auto& n = mod.path().nodes[i];
+            const AST::Module*  nm = nullptr;
+            if( n.c_str()[0] == '#' ) {
+                // Lazy option: just enumerate and check, instead of parsing the index
+                for(const auto& e : mods.back()->anon_mods()) {
+                    if( e && e->path().nodes.back() == n ) {
+                        nm = &*e;
+                        break;
+                    }
+                }
+            }
+            else {
+                for(const auto& e : mods.back()->m_items)
+                {
+                    if( e->data.is_Module() ) {
+                        if( e->name == mod.path().nodes[i] ) {
+                            nm = &e->data.as_Module();
+                        }
+                    }
+                }
+            }
+            ASSERT_BUG(span, nm, "Failed to find `" << n << " in " << mod.path());
+            mods.push_back( nm );
+        }
+        for(size_t i = mods.size(); i --; )
+        {
+            const auto& check_mod = *mods[i];
+            for(const auto& mac : check_mod.m_macro_imports)
+            {
+                if( mac.name == des_item_name ) {
+                    DEBUG("Macro Import - " << mac.path);
+                    TU_MATCH_HDRA( (mac.ref), { )
+                    TU_ARMA(None, e) {}
+                    TU_ARMA(MacroRules, e) {
+                        rv.macro.set( mac.path, ::AST::PathBinding_Macro::make_MacroRules({ nullptr, e }) );
+                        }
+                    TU_ARMA(BuiltinProcMacro, e) {}
+                    TU_ARMA(ExternalProcMacro, e) {}
+                    }
+                    if( ! rv.macro.is_Unbound() ) {
+                        break;
+                    }
+                }
+            }
+            if( ! rv.macro.is_Unbound() ) {
+                break;
+            }
         }
     }
     // TODO: If target is the crate root AND the crate exports macros with `macro_export`
@@ -460,12 +549,18 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if(it != crate.m_exported_macros.end())
         {
             rv.macro.set( mod.path() + des_item_name, ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*it->second }) );
+            DEBUG("Crate-exported macro - " << rv.macro.path);
         }
     }
 
     if( types_only && !rv.type.is_Unbound() ) {
         return rv;
     }
+
+    const bool can_see_private = false
+        || mod.path().is_parent_of(source_mod_path)
+        || (parent_modules.size() > 0 && parent_modules[0]->path().is_parent_of(source_mod_path))
+        ;
 
     // Imports
     // - Explicitly named imports first (they take priority over anon imports)
@@ -479,6 +574,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             const Span& sp2 = imp_e.sp;
             if( imp_e.name == des_item_name ) {
                 DEBUG("- Named import " << imp_e.name << " = " << imp_e.path);
+                if( !(can_see_private || imp->vis.is_visible(source_mod_path/*, mod.path()*/)) ) {
+                    DEBUG("Ignore private import");
+                    continue;
+                }
                 if( !imp_e.path.m_bindings.has_binding() )
                 {
                     DEBUG(" > Needs resolve p=" << &imp_e.path);
@@ -515,7 +614,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 continue ;
 
             // TODO: Correct privacy rules (if the origin of this lookup can see this item)
-            if( (imp->is_pub || mod.path().is_parent_of(source_mod_path)) )
+            if( (can_see_private || imp->vis.is_visible(source_mod_path/*, mod.path()*/)) )
             {
                 DEBUG("- Search glob of " << imp_e.path << " in " << mod.path());
                 // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
@@ -696,8 +795,8 @@ namespace {
     const auto& nodes = path.nodes();
     const ::HIR::Module* hmod = &hmodr;
 
-    for(unsigned int i = start; i < nodes.size(); i ++)
-        ap.nodes.push_back( nodes[i].name() );
+    //for(unsigned int i = start; i < nodes.size(); i ++)
+    //    ap.nodes.push_back( nodes[i].name() );
 
     if(nodes.size() == start) {
         rv.type.set( ap, ::AST::PathBinding_Type::make_Module({nullptr, { &hcrate, hmod } }) );
@@ -705,6 +804,7 @@ namespace {
     }
     for(unsigned int i = start; i < nodes.size() - 1; i ++)
     {
+        ap.nodes.push_back( nodes[i].name() );
         DEBUG("m_mod_items = {" << FMT_CB(ss, for(const auto& e : hmod->m_mod_items) ss << e.first << ", ";) << "}");
         auto it = hmod->m_mod_items.find(nodes[i].name());
         if( it == hmod->m_mod_items.end() ) {
@@ -745,6 +845,8 @@ namespace {
                 return rv;
             }
             else {
+                ap.crate = e.path.m_crate_name;
+                ap.nodes = e.path.m_components;
                 hmod = reinterpret_cast<const ::HIR::Module*>(ptr);
             }
             }
@@ -757,6 +859,7 @@ namespace {
                 ERROR(span, E0000, "Encountered enum at unexpected location in import");
             }
             const auto& name = nodes[i].name();
+            ap.nodes.push_back(name);
 
             auto idx = e.find_variant(name);
             if(idx == SIZE_MAX) {
@@ -773,7 +876,8 @@ namespace {
         }
     }
     // > Found the target module
-    
+    ap.nodes.push_back( nodes.back().name() );
+
     // - namespace/type items
     {
         auto it = hmod->m_mod_items.find(nodes.back().name());
@@ -940,7 +1044,7 @@ namespace {
             }
             else {
             }
-            
+
             if( rv.macro.is_Unbound() )
             {
                 TU_MATCH_HDRA( (*item_ptr), {)
@@ -1003,7 +1107,12 @@ namespace {
         {
             ::AST::Path::Bindings   rv;
             ASSERT_BUG(span, !path_abs.nodes.empty(), "");
-            rv.macro.set( AST::AbsolutePath(CRATE_BUILTINS, {path_abs.nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
+            if( coretype_fromstring(path.nodes()[0].name().c_str()) != CORETYPE_INVAL ) {
+                rv.type.set( AST::AbsolutePath(CRATE_BUILTINS, {path_abs.nodes.back().name()}), AST::PathBinding_Type::make_TypeAlias({nullptr}) );
+            }
+            else {
+                rv.macro.set( AST::AbsolutePath(CRATE_BUILTINS, {path_abs.nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
+            }
             return rv;
         }
 

@@ -33,7 +33,7 @@ void Expand_TestHarness(::AST::Crate& crate)
     // ```
 
     // ---- main function ----
-    auto main_fn = ::AST::Function { Span(), {}, ABI_RUST, false, false, false, TypeRef(TypeRef::TagUnit(), Span()), {} };
+    auto main_fn = ::AST::Function { Span(), TypeRef(TypeRef::TagUnit(), Span()), {} };
     {
         auto call_node = NEWNODE(_CallPath,
                 ::AST::Path(c_test, { ::AST::PathNode("test_main_static") }),
@@ -84,7 +84,7 @@ void Expand_TestHarness(::AST::Crate& crate)
             }
             desc_vals.push_back({ {}, "should_panic", mv$(should_panic_val) });
         }
-        if( TARGETVER_LEAST_1_29 )
+        if( TARGETVER_LEAST_1_29 && TARGETVER_MOST_1_54 )
         {
             // TODO: Get this from attributes
             desc_vals.push_back({ {}, "allow_fail", NEWNODE(_Bool, false) });
@@ -96,15 +96,34 @@ void Expand_TestHarness(::AST::Crate& crate)
             desc_vals.push_back({ {}, "no_run", NEWNODE(_Bool, false) });
             desc_vals.push_back({ {}, "test_type", NEWNODE(_NamedValue, ::AST::Path(c_test, { AST::PathNode("TestType"), AST::PathNode("UnitTest") })) });
         }
+        if( TARGETVER_LEAST_1_74 )
+        {
+            desc_vals.push_back({ {}, "ignore_message", NEWNODE(_NamedValue, ::AST::Path(crate.m_ext_cratename_std, {AST::PathNode("option"), AST::PathNode("Option"), AST::PathNode("None")})) });
+            auto sp = test.span.get_top_file_span();
+            desc_vals.push_back({ {}, "source_file", NEWNODE(_String, sp.filename.c_str()) });
+            desc_vals.push_back({ {}, "start_line", NEWNODE(_Integer, U128(sp.start_line), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "start_col" , NEWNODE(_Integer, U128(sp.start_ofs ), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "end_line"  , NEWNODE(_Integer, U128(sp.end_line  ), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "end_col"   , NEWNODE(_Integer, U128(sp.end_ofs   ), CORETYPE_UINT) });
+        }
         auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
 
         ::AST::ExprNode_StructLiteral::t_values   descandfn_vals;
         descandfn_vals.push_back({ {}, RcString::new_interned("desc"), mv$(desc_expr) });
 
+        auto test_fcn_node = NEWNODE(_NamedValue, AST::Path(test.path));
+        if(TARGETVER_LEAST_1_74) {
+            // Convert `fn()` into `fn()->Result<(),String>`
+            // Use `|| ::test::assert_test_result( fcn() )`
+            test_fcn_node = NEWNODE(_Closure, {}, TypeRef(Span()),
+                NEWNODE(_CallPath, ::AST::Path(c_test, { ::AST::PathNode("assert_test_result") }),
+                    ::make_vec1( NEWNODE(_CallPath, AST::Path(test.path), {}) )
+                    ), false, false);
+        }
         auto test_type_var_name  = test.is_benchmark ? "StaticBenchFn" : "StaticTestFn";
         descandfn_vals.push_back({ {}, RcString::new_interned("testfn"), NEWNODE(_CallPath,
                         ::AST::Path(c_test, { ::AST::PathNode(test_type_var_name) }),
-                        ::make_vec1( NEWNODE(_NamedValue, AST::Path(test.path)) )
+                        ::make_vec1( std::move(test_fcn_node) )
                         ) });
 
         test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDescAndFn")}), nullptr, mv$(descandfn_vals) ) );
@@ -133,14 +152,15 @@ void Expand_TestHarness(::AST::Crate& crate)
 
     // ---- module ----
     auto newmod = ::AST::Module { ::AST::AbsolutePath("", { "test#" }) };
+    auto vis_private = AST::Visibility::make_restricted(AST::Visibility::Ty::Private, newmod.path());
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
     //newmod.add_ext_crate(Span(), false, "std", "std", {});
     //newmod.add_ext_crate(Span(), false, "test", "test", {});
 
-    newmod.add_item(Span(), false, "main", mv$(main_fn), {});
-    newmod.add_item(Span(), false, "TESTS", mv$(tests_list), {});
+    newmod.add_item(Span(), vis_private, "main", mv$(main_fn), {});
+    newmod.add_item(Span(), vis_private, "TESTS", mv$(tests_list), {});
 
-    crate.m_root_module.add_item(Span(), false, "test#", mv$(newmod), {});
+    crate.m_root_module.add_item(Span(), vis_private, "test#", mv$(newmod), {});
     crate.m_lang_items["mrustc-main"] = ::AST::AbsolutePath("", { "test#", "main" });
 }

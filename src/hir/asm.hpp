@@ -4,6 +4,10 @@
 #include <tagged_union.hpp>
 #include <climits>
 
+// HACK! This is used in both AST and HIR, so put common definitions here too
+#define ABI_RUST    "Rust"
+#define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
+
 namespace AsmCommon {
 
     enum class Direction {

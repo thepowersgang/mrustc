@@ -48,3 +48,129 @@
 - Generic values raised to statics
 - U128 literals required
 - An annoying-to-debug excessive memset caused by a bad float to u64 cast
+
+
+
+=== 1.74 ===
+- if-let chains
+- `if let` in match guards
+- Closure captures
+- `FnPtr` trait
+- `core::fmt` restructured
+- unsized locals
+- `const` blocks
+- `macro_rules` "operators"
+- `Box::new` now recurses with a `#[rustc_box]`-annotated expression.
+  - WHY? WHY is Box::new so funky. INTRINSICS EXIST FOR A REASON!
+- `Drop for Box` is FINALLY a normal impl!
+- `type Foo = impl Trait`
+  - Not easy, as it has complexities and poor documentation
+  - `::std::backtrace::lazy_resolve` returns a named erased type, but other parts of that module use that type as an opaque
+    - The usage sites don't contribute any type information.
+  - `::rustc_middle::query::erase::{erase,restore}` return/take a named erased type, wrapping/unwrapping it
+    - Both usages here contribute type information.
+  - Solution 1: As committed here - do tricky things in type inference
+  - Solution 2:
+    - Tag all TAITs with the source function in "Resolve Type Aliases"
+    - Ensure typecheck of that function is completed during consteval (or even during typecheck)
+- `libstd` has a reference to `thread_local!` (well, `thread_local_inner!`) that is used before the `mod sys` that defines `thread_local_inner!`)
+  - To solve this, need to loop on expand until nothing expands
+  - That took ages to code.
+- `sizeof(Result<(), NonNull>) == sizeof(NonNull)` (same as `Option`) - mrustc doesn't quite do that
+- matching on pointer values `match HANDLE.load(Relaxed) { INVALID => {`
+- Excercises `dyn Send` more than existing implementation allowed
+- Pre-evaluated pointer casts in `const`s
+- `getopts` defined `extern crate alloc as std;`, breaking `format_args!` expansion
+- `unreachable!` is a builtin
+- `#[derive(Default)]` on enums
+- `sigpipe` parameter to `#[lang="start"]`
+- Changes to allocator bindings
+- Inline assembly used more (including `global_asm!`)
+- `offset_of!` macro expands to something interesting - `{builtin # offset_of(...)}`
+- `if foo && let Some(bar) = baz` is also valid.
+- `#[linkage="extern_weak"]` - Weak linking via nullptr/option
+- new `Cargo.toml` keys
+- `Cargo.toml` can pull `edition` from the workspace (`cargo`'s `Cargo.toml`)
+- Cargo features prefixed with `dep:`
+  - Possible quirk with `zerovec v0.9.4` - uses `dep:` but also relies on old behaviour
+- `proc_macro::is_available`
+- `FromStr` impls for `proc_macro::Literal` etc
+- `pub use bool;` - Stabilised in 1.43, but wasn't needed until now
+- struct literal patterns in pattern-assign with `..`
+- More recursive consteval requirements (const functions calling functions with arguments that need consteval?)
+  - Can be generalised to needing to do consteval after monomorph in typecheck, maybe as part of EAT
+- `Self` in structs/enums/unions (in particular, libtime used in `enum`)
+- Traits with ATY specified on parent traits being used in trait objects, vtable gen limitation
+- `format_args!` implicit bindings through heavy indenting
+- Enum packing - `rustc_parse_format::Piece` two pointers with rustc, three in mrustc
+  - mrustc not using null optimisation as well
+- `type Foo = impl Trait` is more complex than first seemed, can be set anywhere in module?
+  - Need to confirm logic from reference, and to rework implementation
+  - See https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html
+- Attributes on expressions (e.g. on a closure after the `&mut`)
+- chained if-let in match guards
+- Proc macro items want to see `#[repr]` too (TODO: Formally, what attributes do derive macros see?)
+- Proc macro attributes - hadn't actually expanded those
+- `include!` inside `mod foo { }` path rules
+- Do derives expand before or after the attached item has been expanded?
+  - Probably before... but I've always done it afterwards
+- `match foo { Self::Bar => ... }` - Simple fix
+- `#[derive(::"cratename"::TraitName)]`
+- Hygiene/spans from proc macros, changing how `$crate` expands
+  - What are the rules for this? May be a feature related to `proc_macro_hack`, as the hacks expand interestingly.
+  - `foocrate::pm_hack!(..)` expands to `#[derive(foocrate_impl::pm_hack)] enum Foo { Value = stringify!( ... ), } pm_hack_macro!()`
+  - So, the `$crate` would expand to `foocrate_impl`?
+  - Case: `unic-langid-macros::langid`
+    - Implemented with `#[proc_macro_hack]` in `unic-langid-macros-impl`
+    - Exported with `#[proc_macro_hack]` in `unic-langid-macros`, along with `unic_langid_impl::{subtags, LanguageIdentifier}`
+    - Expands to include `$crate::LanguageIdentifier::from_raw_parts_unchecked`
+    - So, the `$crate` should be `unic-langid-macros`, the re-export site.
+    - How does re-exporting work? See above, the export site defines a macro that expands to an enum and a macro call.
+    - So, the `$crate` is expanded into the target, but from source "defined" by the export site.
+    - Which means that the export site must be used as the `$crate` origin
+- `proc_macro` Span `source_file` method
+  - `rustc_fluent_macro` uses it to get the parent dir, so can't just fake it :(
+- `do yeet` :(
+- BUG: Lifetimes with closures were invalid
+- Static-borrow-constants didn't save the contents, unless actively in consteval (leading to downstream consteval)
+- `_ = ` - Assign to underscore pattern
+- `r#type` in a derive/`proc_macro`
+- Multiple bindings in let-else
+- `where` on associated type definitions - had a long-standing parser TODO
+- `dyn '_ + for<..` - Lifetime first
+- Trait-bounded impl-trait ATYS: `impl Iterator<Item: Iterator<Item=Bar>>`
+- Upcasting `&dyn Foo` to `&dyn Any` (or just any trait object downcast?)
+  - I assume the way this would work is by each vtable having a list of other vtables.
+- Turns out that minicargo isn't doing dependencies correctly :(
+  - Ends up with multiple semver-compatible crates in the build, and leads to type errors
+- Generators having a resume type (this will likely impact async)
+- `::"rustc_middle-0_0_0"::ty::list::List<T>` has a `fn iter` with `T: Copy`, ...
+  - but `impl<'tcx, T: TypeVisitable<TyCtxt<'tcx>>> TypeVisitable<TyCtxt<'tcx>> for &'tcx ty::List<T>` calls `self.iter()`
+  - `TypeVisitable` only implies `Clone`, not `Copy`
+  - So, rustc is skipping the `fn iter` and using the `Deref<Target=[T]>` impl and ending up at slice's `iter`
+  - mrustc picks the top level one, becuase impl bounds don't restrict method resolution.
+- `use $ty::*;` - where `$ty:ty` in a `macro_rules`
+- Did I mention ATCs/GATs? Because they exist, and needed fixes
+- Complex interactions with nested associated-type bounds in supertraits
+- `use info;` where `info` was `#[macro_use]`'d from an extern in crate root, seen in librustc_interface `utils.rs`
+- Reading `static`s in `const` (or another `static`), breaks some of the logic (librustc_driver_impl `DEFAULT_LOCALE_RESOURCES`)
+  - Even if it is allowed, those statics haven't had their values saved in the metadata.
+- `rustc-std-workspace-*` handling required
+  - When not building the standard library, those crates should be pointed at the standard library (or just removed?)
+- `impl Trait` in ATYs
+- Types shadowing prelude (or imported) traits prevent the trait from being included for method resolution.
+  - See rustc-1.74.0-src/vendor/nom/src/internal.rs:451 - where `Into::into` is not available due to the struct `Into` existing.
+- Really long method call chains breaking the 350 call recursion limit (rustc-1.74.0-src/vendor/curl-sys/build.rs:108)
+- `type Owned: OwnedToRef<Borrowed<'a> = Self>`
+  - Associated type bound with HRL defined
+  - `rustc-1.74.0-src/vendor/der/src/referenced.rs:19`
+- Method lookup with `Arc` reciever
+- `async` (functions and blocks)
+- References to `Self` in `impl Foo`
+- Requires zero-sized functions?
+- `#[derive(::core::cmp::PartialEq, ::core::cmp::Eq)]` (in the `windows` crate)
+- `#[repr(C, packed(1))]`
+- `&mut [] as *mut u16` (in cargo)
+- `windows` crate references DLLs that don't exist on all versions, requiring proper tree-shaking to avoid it
+- MSVC doesn't support arrays with more than 2^31-1 items, nor structs larger than 2^32-1 bytes
+  - This impacts the `hex` crate, but was fixable using `#[cfg]`

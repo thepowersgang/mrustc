@@ -75,9 +75,11 @@ struct ImplRef
     {
         friend struct ImplRef;
         const ImplRef::Data::Data_TraitImpl& ti;
+        const ::HIR::PathParams&    params;
 
-        Monomorph(const ImplRef::Data::Data_TraitImpl& ti):
-            ti(ti)
+        Monomorph(const ImplRef::Data::Data_TraitImpl& ti, const ::HIR::PathParams& params)
+            : ti(ti)
+            , params(params)
         {
         }
 
@@ -85,7 +87,7 @@ struct ImplRef
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
         ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& val) const override;
     };
-    Monomorph get_cb_monomorph_traitimpl(const Span& sp) const;
+    Monomorph get_cb_monomorph_traitimpl(const Span& sp, const ::HIR::PathParams& params) const;
 
     ::HIR::TypeRef get_impl_type() const;
     ::HIR::PathParams get_trait_params() const;
@@ -93,7 +95,7 @@ struct ImplRef
     ::HIR::TypeRef get_trait_ty_param(unsigned int) const;
 
     bool type_is_specialisable(const char* name) const;
-    ::HIR::TypeRef get_type(const char* name) const;
+    ::HIR::TypeRef get_type(const char* name, const HIR::PathParams& params) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const ImplRef& x);
 };

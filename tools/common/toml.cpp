@@ -51,8 +51,8 @@ struct Token
     }
 
 
-    static Token lex_from(::std::ifstream& is);
-    static Token lex_from_inner(::std::ifstream& is);
+    static Token lex_from(::std::ifstream& is, unsigned& line);
+    static Token lex_from_inner(::std::ifstream& is, unsigned& line);
 
     const ::std::string& as_string() const {
         assert(m_type == Type::Ident || m_type == Type::String);
@@ -111,28 +111,36 @@ TomlKeyValue TomlFile::get_next_value()
         case Token::Type::Eof:
             // Empty return indicates the end of the list
             return TomlKeyValue {};
-        case Token::Type::SquareOpen:
+        case Token::Type::SquareOpen: {
             m_current_block.clear();
-            do
+
+            t = m_lexer.get_token();
+            bool is_array = false;
+            if(t.m_type == Token::Type::SquareOpen)
             {
+                is_array = true;
                 t = m_lexer.get_token();
-                bool is_array = false;
-                if(t.m_type == Token::Type::SquareOpen)
-                {
-                    is_array = true;
-                    t = m_lexer.get_token();
+            }
+            for(;;)
+            {
+                if( !(t.m_type == Token::Type::Ident || t.m_type == Token::Type::String) ) {
+                    throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in block name - ", t));
                 }
-                assert(t.m_type == Token::Type::Ident || t.m_type == Token::Type::String);
                 m_current_block.push_back(t.as_string());
-                if(is_array)
-                {
-                    m_current_block.push_back(::format(m_array_counts[t.as_string()]++));
-                    t = m_lexer.get_token();
-                    assert(t.m_type == Token::Type::SquareClose);
-                }
 
                 t = m_lexer.get_token();
-            } while(t.m_type == Token::Type::Dot);
+                if( t.m_type != Token::Type::Dot )
+                    break;
+                t = m_lexer.get_token();
+            }
+            if(is_array)
+            {
+                m_current_block.push_back(::format(m_array_counts[m_current_block.back()]++));
+                if( t.m_type != Token::Type::SquareClose ) {
+                    throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after array name - ", t));
+                }
+                t = m_lexer.get_token();
+            }
             if( t.m_type != Token::Type::SquareClose )
             {
                 throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in block header - ", t));
@@ -144,7 +152,7 @@ TomlKeyValue TomlFile::get_next_value()
             }
             DEBUG("Start block " << m_current_block);
             // Recurse!
-            return get_next_value();
+            return get_next_value(); }
         default:
             break;
         }
@@ -181,6 +189,7 @@ TomlKeyValue TomlFile::get_next_value()
         t = m_lexer.get_token();
     }
 
+    // Note: Should be impossible, as it's the break condition above
     assert(t.m_type == Token::Type::Assign);
     t = m_lexer.get_token();
 
@@ -299,7 +308,7 @@ TomlLexer::TomlLexer(const ::std::string& filename)
 }
 Token TomlLexer::get_token()
 {
-    auto rv = Token::lex_from(m_if);
+    auto rv = Token::lex_from(m_if, m_line);
     if( rv.m_type == Token::Type::Newline )
     {
         m_line ++;
@@ -312,13 +321,26 @@ Token TomlLexer::get_token()
     return os;
 }
 
-Token Token::lex_from(::std::ifstream& is)
+Token Token::lex_from(::std::ifstream& is, unsigned& m_line)
 {
-    auto rv = Token::lex_from_inner(is);
+    auto rv = Token::lex_from_inner(is, m_line);
     //DEBUG("lex_from: " << rv);
     return rv;
 }
-Token Token::lex_from_inner(::std::ifstream& is)
+namespace {
+    void handle_escape(::std::string& str, ::std::ifstream& is) {
+        char c = is.get();
+        switch(c)
+        {
+        case '"':  str += '"'; break;
+        case '\\': str += '\\'; break;
+        case 'n':  str += '\n'; break;
+        default:
+            throw ::std::runtime_error(format("toml.cpp handle_escape: TODO: Escape sequences in strings - `", c, "`"));
+        }
+    }
+}
+Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
 {
     int c;
     do
@@ -346,21 +368,61 @@ Token Token::lex_from_inner(::std::ifstream& is)
                 return Token { Type::Eof };
         }
         return Token { Type::Newline };
+    // Literal string: No escaping
     case '\'':
         c = is.get();
-        while (c != '\'')
-        {
-            if (c == EOF)
-                throw ::std::runtime_error("Unexpected EOF in single-quoted string");
-            if (c == '\\')
-            {
-                // TODO: Escaped strings
-                throw ::std::runtime_error("TODO: Escaped sequences in strings (single)");
-            }
-            str += (char)c;
+        if( c == '\'' ) {
             c = is.get();
+            // Empty literal string
+            if( c != '\'' ) {
+                str = "";
+            }
+            else {
+                // If the first character is a newline, strip it
+                c = is.get();
+                if( c == '\n' ) {
+                    m_line ++;
+                    c = is.get();
+                }
+                // Multi-line literal string
+                for( ;; ) {
+                    if(c == '\'') {
+                        c = is.get();
+                        if(c == '\'')
+                        {
+                            c = is.get();
+                            if(c == '\'')
+                            {
+                                break;
+                            }
+                            str += '\'';
+                        }
+                        str += '\'';
+                    }
+                    if( c == '\n' ) {
+                        m_line ++;
+                    }
+                    if( c == EOF )
+                        throw ::std::runtime_error("Unexpected EOF in triple-quoted string");
+                    c = is.get();
+                }
+            }
+        }
+        else {
+            while (c != '\'')
+            {
+                if (c == EOF)
+                    throw ::std::runtime_error("Unexpected EOF in single-quoted string");
+                // Technically not allowed
+                if( c == '\n' ) {
+                    m_line ++;
+                }
+                str += (char)c;
+                c = is.get();
+            }
         }
         return Token { Type::String, str };
+    // Basic string: has escape sequences
     case '"':
         c = is.get();
         if(c == '"')
@@ -373,10 +435,15 @@ Token Token::lex_from_inner(::std::ifstream& is)
             }
             else
             {
+                // Strip newline if it's the first character
+                c = is.get();
+                if( c == '\n' ) {
+                    m_line ++;
+                    c = is.get();
+                }
                 // Keep reading until """
                 for(;;)
                 {
-                    c = is.get();
                     if(c == '"')
                     {
                         c = is.get();
@@ -393,12 +460,16 @@ Token Token::lex_from_inner(::std::ifstream& is)
                     }
                     if( c == EOF )
                         throw ::std::runtime_error("Unexpected EOF in triple-quoted string");
-                    if(c == '\\')
-                    {
-                        // TODO: Escaped strings
-                        throw ::std::runtime_error("TODO: Escaped sequences in strings (triple)");
+                    if(c == '\\') {
+                        handle_escape(str, is);
                     }
-                    str += (char)c;
+                    else {
+                        str += (char)c;
+                        if( c == '\n' ) {
+                            m_line ++;
+                        }
+                    }
+                    c = is.get();
                 }
             }
         }
@@ -410,17 +481,13 @@ Token Token::lex_from_inner(::std::ifstream& is)
                     throw ::std::runtime_error("Unexpected EOF in double-quoted string");
                 if (c == '\\')
                 {
-                    // TODO: Escaped strings
-                    c = is.get();
-                    switch(c)
-                    {
-                    case '"':  str += '"'; break;
-                    case 'n':  str += '\n'; break;
-                    default:
-                        throw ::std::runtime_error("TODO: Escaped sequences in strings");
-                    }
+                    handle_escape(str, is);
                     c = is.get();
                     continue ;
+                }
+                // Technically not allowed
+                if( c == '\n' ) {
+                    m_line ++;
                 }
                 str += (char)c;
                 c = is.get();
@@ -428,7 +495,7 @@ Token Token::lex_from_inner(::std::ifstream& is)
         }
         return Token { Type::String, str };
     default:
-        if(isalpha(c) || c == '_')
+        if(isalnum(c) || c == '_')
         {
             // Identifier
             while(isalnum(c) || c == '-' || c == '_')
@@ -437,67 +504,65 @@ Token Token::lex_from_inner(::std::ifstream& is)
                 c = is.get();
             }
             is.putback(c);
-            return Token { Type::Ident, str };
-        }
-        else if( c == '0' )
-        {
-            c = is.get();
-            if( c == 'x' )
-            {
-                c = is.get();
-                int64_t val = 0;
-                while(isxdigit(c))
-                {
-                    val *= 16;
-                    val += (c <= '9' ? c - '0' : (c & ~0x20) - 'A' + 10);
-                    c = is.get();
-                }
-                is.putback(c);
-                return Token { Type::Integer, val };
-            }
-            else if( c == 'o' )
-            {
-                c = is.get();
-                int64_t val = 0;
-                while(isdigit(c))
-                {
-                    val *= 8;
-                    val += c - '0';
-                    c = is.get();
-                }
-                is.putback(c);
-                return Token { Type::Integer, val };
-            }
-            else if( c == 'b' )
-            {
-                c = is.get();
-                int64_t val = 0;
-                while(isdigit(c))
-                {
-                    val *= 2;
-                    val += c - '0';
-                    c = is.get();
-                }
-                is.putback(c);
-                return Token { Type::Integer, val };
-            }
-            else
-            {
-                is.putback(c);
-                return Token { Type::Integer, 0 };
-            }
-        }
-        else if( isdigit(c) )
-        {
+
             int64_t val = 0;
-            while(isdigit(c))
-            {
-                val *= 10;
-                val += c - '0';
-                c = is.get();
+            bool is_all_digit;
+            if( str.size() > 2 && str[0] == '0' ) {
+                if(str[1] == 'x') {
+                    is_all_digit = true;
+                    for(size_t i = 2; i < str.size(); i ++) {
+                        c = str[i];
+                        if( !isxdigit(c) ) {
+                            is_all_digit = false;
+                            break;
+                        }
+                        val *= 16;
+                        val += (c <= '9' ? c - '0' : (c & ~0x20) - 'A' + 10);
+                    }
+                }
+                else if(str[1] == 'o') {
+                    is_all_digit = true;
+                    for(size_t i = 2; i < str.size(); i ++) {
+                        c = str[i];
+                        if( !('0' <= c && c <= '7') ) {
+                            is_all_digit = false;
+                            break;
+                        }
+                        val *= 8;
+                        val += c - '0';
+                    }
+                }
+                else if(str[1] == 'b') {
+                    is_all_digit = true;
+                    for(size_t i = 2; i < str.size(); i ++) {
+                        c = str[i];
+                        if( !('0' <= c && c <= '1') ) {
+                            is_all_digit = false;
+                            break;
+                        }
+                        val *= 2;
+                        val += c - '0';
+                    }
+                }
+                else {
+                    // Literal `0` is handled below
+                }
             }
-            is.putback(c);
-            return Token { Type::Integer, val };
+            else {
+                is_all_digit = true;
+                for(char c : str) {
+                    if( !isdigit(c) ) {
+                        is_all_digit = false;
+                        break;
+                    }
+                    val *= 10;
+                    val += c - '0';
+                }
+            }
+            if( is_all_digit ) {
+                return Token { Type::Integer, val };
+            }
+            return Token { Type::Ident, str };
         }
         else
         {

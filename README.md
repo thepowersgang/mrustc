@@ -7,7 +7,7 @@ _In-progress_ alternative rust compiler. Capable of building a fully-working cop
 
 Intro
 ===
-This project is a "simple" rust compiler written in C++ that is able to bootstrap a "recent" rustc, but may eventually become a full separate re-implementation.
+This project is a "simple" rust compiler written in C++ that is able to bootstrap a "recent" rustc.
 
 As `mrustc`'s primary goal is bootstrapping `rustc`, and as such it tends to assume that the code it's compiling is valid (and any errors in the generated code are mrustc bugs). Code generation is done by emitting a high-level assembly (currently very ugly C, but LLVM/cretone/GIMPLE/... could work) and getting an external tool (i.e. `gcc`) to do the heavy-lifting of optimising and machine code generation.
 
@@ -15,12 +15,14 @@ Progress
 --------
 
 - Builds working copies of `rustc` and `cargo` from a release source tarball
-  - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, 1.39.0, and 1.54.0
-- Supported Targets:
-  - x86-64 linux GNU (fully bootstrap tested using Debian 10.9)
-  - x86-64 windows MSVC (runnable executables on Windows 10, but bootstrap hasn't been fully tested)
-  - x86_64 and arm64 macOS
-  - (incomplete) x86 windows MSVC
+  - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, 1.39.0, 1.54.0, and 1.74.0
+  - NOTE: Older versions (1.29 and older) don't build on modern systems, due to outdated openssl bindings
+- Supported Targets (CI tested for libstd):
+  - x86-64 linux GNU (should always work, fully bootstrap tested)
+  - x86-64 windows MSVC (Status: runnable executables on Windows 10, but bootstrap hasn't ever been fully tested)
+  - Secondary Targets
+    - x86-64 and arm64 macOS
+    - (incomplete) x86 windows MSVC
 - `rustc` bootstrap tested and validated (1.19.0 isn't fully repeatable, but later versions are)
   - See the script `TestRustcBootstrap.sh` for how this was done.
 
@@ -124,8 +126,7 @@ Short-term
 
 Medium-term
 -----------
-- Propagate lifetime annotations so that MIR can include a borrow checker
+- Implement MIR borrow checker
 - Emit C code that is (more) human readable (uses names from the original source, reduced/no gotos)
 - Add alternate backends (e.g. LLVM IR, cretonne, ...)
-- Working parallel builds (fix races)
 

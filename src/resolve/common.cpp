@@ -15,6 +15,15 @@
 #include <expand/cfg.hpp>
 #include <synext_macro.hpp>
 
+::std::ostream& operator<<(::std::ostream& os, ResolveNamespace ns) {
+    switch(ns) {
+    case ResolveNamespace::Namespace:   return os << "Namespace";
+    case ResolveNamespace::Value:   return os << "Value";
+    case ResolveNamespace::Macro:   return os << "Macro";
+    }
+    return os << "?";
+}
+
 namespace {
 
     ResolveItemRef_Type as_Namespace(ResolveItemRef ir) {
@@ -76,6 +85,10 @@ namespace {
                             ASSERT_BUG(sp, i.ent.is_Module(), "Node `" << n << "` not a module in path " << mp);
                             mod = &i.ent.as_Module();
                         }
+                        if(out_path) {
+                            out_path->crate = mp.crate;
+                            out_path->nodes = mp.ents;
+                        }
                         return get_module_hir(*mod, path, 1, ignore_last, out_path);
                     }
                     else
@@ -99,7 +112,7 @@ namespace {
                     const auto& start_mod = this->get_mod_by_true_path(base_nodes, base_nodes.size() - i);
 
                     // Find the top of the path in that namespace
-                    auto real_mod = as_Namespace(this->find_item(start_mod, name, ResolveNamespace::Namespace));
+                    auto real_mod = as_Namespace(this->find_item(start_mod, name, ResolveNamespace::Namespace, out_path));
                     TU_MATCH_HDRA( (real_mod), {)
                     TU_ARMA(Ast, i_data) {
                         // TODO: What about an enum?
@@ -109,6 +122,13 @@ namespace {
                             // Ignore, keep going
                             }
                         TU_ARMA(Crate, c) {
+                            if(out_path) {
+                                *out_path = AST::AbsolutePath(c.name,{});
+                            }
+                            if( c.name == "" ) {
+                                return get_module_ast(crate.m_root_module, path, 1, ignore_last, out_path);
+                            }
+                            ASSERT_BUG(sp, crate.m_extern_crates.count(c.name) > 0, "Unable to find crate `" << c.name << "`");
                             return get_module_hir(crate.m_extern_crates.at(c.name).m_hir->m_root_module, path, 1, ignore_last, out_path);
                             }
                         TU_ARMA(Module, m) {
@@ -116,8 +136,8 @@ namespace {
                             }
                         }
                         }
-                    TU_ARMA(HirRoot, hir_mod) {
-                        return get_module_hir(*hir_mod, path, 1, ignore_last, out_path);
+                    TU_ARMA(HirRoot, hir_crate) {
+                        return get_module_hir(hir_crate->m_root_module, path, 1, ignore_last, out_path);
                         }
                     TU_ARMA(Hir, i_ent_ptr) {
                         ASSERT_BUG(sp, !i_ent_ptr->is_Import(), "");
@@ -152,16 +172,19 @@ namespace {
                     auto ec_it = AST::g_implicit_crates.find(name);
                     if(ec_it != AST::g_implicit_crates.end())
                     {
-                        const auto& ec = crate.m_extern_crates.at(ec_it->second);
-                        DEBUG("Implicitly imported crate");
-                        //if( e.nodes.size() > 1 )
-                        //{
+                        if( ec_it->second == "" ) {
+                            // This crate!
+                            return get_module_ast(crate.m_root_module, path, 1, ignore_last, out_path);
+                        }
+                        else {
+                            ASSERT_BUG(sp, crate.m_extern_crates.count(ec_it->second), "Crate \"" << ec_it->second << "\" not loaded (for \"" << ec_it->first << "\")");
+                            const auto& ec = crate.m_extern_crates.at(ec_it->second);
+                            DEBUG("Implicitly imported crate");
+                            if( out_path ) {
+                                *out_path = AST::AbsolutePath(ec_it->second,{});
+                            }
                             return get_module_hir(ec.m_hir->m_root_module, path, 1, ignore_last, out_path);
-                        //}
-                        //else
-                        //{
-                        //    return ResolveModuleRef::make_ImplicitPrelude({});
-                        //}
+                        }
                     }
                 }
                 DEBUG("Not found");
@@ -215,6 +238,9 @@ namespace {
                         DEBUG("Crate " << ec_it->second << " not found");
                         return ResolveModuleRef();
                     }
+                    if( out_path ) {
+                        *out_path = AST::AbsolutePath(ec_it->second,{});
+                    }
                     return get_module_hir(ec_it2->second.m_hir->m_root_module, path, 0, ignore_last, out_path);
                 }
                 else {
@@ -223,6 +249,9 @@ namespace {
                     if( ec_it == crate.m_extern_crates.end() ) {
                         DEBUG("Crate " << e.crate << " not found");
                         return ResolveModuleRef();
+                    }
+                    if( out_path ) {
+                        *out_path = AST::AbsolutePath(e.crate,{});
                     }
                     return get_module_hir(ec_it->second.m_hir->m_root_module, path, 0, ignore_last, out_path);
                 }
@@ -236,102 +265,61 @@ namespace {
             TRACE_FUNCTION_F("start_offset=" << start_offset << ", ignore_last=" << ignore_last);
             const AST::Module* mod = &start_mod;
 
-            for(size_t i = start_offset; i < path.nodes().size() - (ignore_last ? 1 : 0); i ++)
+            for(size_t idx = start_offset; idx < path.nodes().size() - (ignore_last ? 1 : 0); idx ++)
             {
-                const auto& name = path.nodes()[i].name();
-                // Find the module for this node
-                bool found = false;
-                for(const auto& i : mod->m_items)
-                {
-                    if( i->name == name )
-                    {
-                        bool ignore = false;
-                        for(const auto& a : i->attrs.m_items)
+                const auto& name = path.nodes()[idx].name();
+
+                auto res = find_item(*mod, name, ResolveNamespace::Namespace, out_path);
+                if( res.is_None() ) {
+                    DEBUG("Unable to find " << name << " in module " << mod->path() << " for " << path);
+                    return ResolveModuleRef();
+                }
+                const auto& r = res.as_Namespace();
+                TU_MATCH_HDRA( (r), { )
+                TU_ARMA(None, e) {
+                    DEBUG("Not found (Namespace::None)");
+                    return ResolveModuleRef();
+                    }
+                TU_ARMA(Ast, e) {
+                    if( e->is_Module() ) {
+                        mod = &e->as_Module();
+                    }
+                    else if( const auto* i = e->opt_Crate() ) {
+                        if(out_path) {
+                            *out_path = AST::AbsolutePath(i->name, {});
+                        }
+                        if( i->name == "" )
                         {
-                            if( a.name() == "cfg" )
-                            {
-                                if( !check_cfg(sp, a) )
-                                {
-                                    ignore = true;
-                                }
-                            }
+                            return get_module_ast(crate.m_root_module, path, idx+1, ignore_last, out_path);
                         }
-                        if(ignore)
-                            continue;
-
-                        TU_MATCH_HDRA( (i->data), { )
-                        TU_ARMA(None, _e) {
-                            }
-                        TU_ARMA(Impl, _e) {
-                            }
-                        TU_ARMA(NegImpl, _e) {
-                            }
-                        TU_ARMA(ExternBlock, _e) {
-                            }
-                        TU_ARMA(MacroInv, _e) {
-                            }
-                        TU_ARMA(Use, _e) {
-                            // Ignore for now
-                            }
-                        // Values - ignore
-                        TU_ARMA(Static, _e) { }
-                        TU_ARMA(Function, _e) { }
-                        // Macro
-                        TU_ARMA(Macro, _e) {
-                            }
-                        // Types - Return no module
-                        TU_ARMA(Union, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(Struct, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(Trait, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(TraitAlias, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(Type, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(Enum, _e) {
-                            return ResolveModuleRef();
-                            }
-                        // Modules (and module-likes)
-                        TU_ARMA(Module, e) {
-                            mod = &e;
-                            found = true;
-                            }
-                        TU_ARMA(Crate, e) {
-                            if( e.name == "" )
-                            {
-                                if(out_path)
-                                {
-                                    *out_path = AST::AbsolutePath(e.name, {});
-                                }
-                                return ResolveModuleRef(&crate.m_root_module);
-                            }
-                            ASSERT_BUG(sp, crate.m_extern_crates.count(e.name) != 0, "Cannot find crate `" << e.name << "`");
-                            if(out_path)
-                            {
-                                *out_path = AST::AbsolutePath(e.name, {});
-                            }
-                            return ResolveModuleRef(&crate.m_extern_crates.at(e.name).m_hir->m_root_module);
-                            }
+                        else
+                        {
+                            ASSERT_BUG(sp, crate.m_extern_crates.count(i->name) != 0, "Cannot find crate `" << i->name << "`");
+                            return get_module_hir(crate.m_extern_crates.at(i->name).m_hir->m_root_module, path, idx+1, ignore_last, out_path);
                         }
-                        if(found) {
-                            break;
-                        }
-
+                    }
+                    else {
+                        DEBUG("Found " << e->tag_str() << ", not module");
+                        return ResolveModuleRef();
+                    }
+                    }
+                TU_ARMA(Hir, e) {
+                    if( const auto* i = e->opt_Module() ) {
+                        return get_module_hir(*i, path, idx+1, ignore_last, out_path);
+                    }
+                    else {
+                        DEBUG("Found HIR " << e->tag_str() << ", not module");
+                        return ResolveModuleRef();
+                    }
+                    }
+                TU_ARMA(HirRoot, e) {
+                    if(out_path) {
+                        out_path->crate = e->m_crate_name;
+                        out_path->nodes.clear();
+                    }
+                    return get_module_hir(e->m_root_module, path, idx+1, ignore_last, out_path);
                     }
                 }
-                if(found)
-                {
-                    break;
-                }
-                //BUG(sp, "Unable to find " << name << " in module " << mod->path() << " for " << path);
-                return ResolveModuleRef();
             }
             if(out_path)
             {
@@ -361,7 +349,16 @@ namespace {
                         mod = &ext_crate.m_root_module;
                         continue;
                     }
+                    if(out_path) {
+                        out_path->crate = imp->path.m_crate_name;
+                        out_path->nodes = imp->path.m_components;
+                    }
                     ti = &ext_crate.get_typeitem_by_path(sp, imp->path, /*ignore_crate*/true, /*ignore_last*/false);
+                }
+                else {
+                    if(out_path) {
+                        out_path->nodes.push_back(name);
+                    }
                 }
                 TU_MATCH_HDRA( (*ti), {)
                 default:
@@ -372,9 +369,8 @@ namespace {
                     }
                 }
             }
-            if(out_path)
-            {
-                TODO(sp, "Get path for HIR module");
+            if(out_path) {
+                ASSERT_BUG(sp, out_path->crate != "", "Invalid HIR output path - crate name not set");
             }
             return ResolveModuleRef(mod);
         }
@@ -438,6 +434,7 @@ namespace {
             case AST::Item::TAG_ExternBlock:
             case AST::Item::TAG_Use:
             case AST::Item::TAG_MacroInv:
+            case AST::Item::TAG_GlobalAsm:
             case AST::Item::TAG_None:
                 return false;
             }
@@ -447,7 +444,7 @@ namespace {
         ResolveItemRef find_item(const AST::Module& mod, const RcString& name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr)
         //ResolveModuleRef get_source_module_for_name(const AST::Module& mod, const RcString& name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr)
         {
-            TRACE_FUNCTION_F("Looking for " << name << " in " << mod.path());
+            TRACE_FUNCTION_F("Looking for " << name << " in " << mod.path() << " (ns=" << ns << ")");
             if( mod.m_index_populated )
             {
                 TODO(sp, "Look up in index");
@@ -456,9 +453,10 @@ namespace {
             // Prevent infinite recursion
             // - Includes the target name to only catch on nested lookups of the same name
             auto guard_ent = ::std::make_pair(&mod, name);
+            bool visit_use = true;
             if( std::count(antirecurse_stack.begin(), antirecurse_stack.end(), guard_ent) > 0 ) {
                 DEBUG("Recursion detected, not looking at `use` statements in " << mod.path());
-                return ResolveItemRef();
+                visit_use = false;
             }
             struct Guard {
                 std::vector<antirecurse_stack_ent_t>& s;
@@ -472,25 +470,37 @@ namespace {
                     s.pop_back();
                 }
             } guard(antirecurse_stack, guard_ent);
-            
+
             if(ns == ResolveNamespace::Macro )
             {
                 for(const auto& i : mod.macros())
                 {
+                    DEBUG("> MACRO " << i.name);
                     if(i.name == name)
                     {
                         DEBUG("Found in ast (macro)");
+                        if(out_path) {
+                            out_path->nodes.push_back(name);
+                        }
                         return ResolveItemRef::make_Macro( &*i.data );
                     }
                 }
-                for(const auto& mac : reverse(mod.macro_imports_res()))
+                for(const auto& mac : reverse(mod.m_macro_imports))
                 {
+                    if( mac.ref.is_None() ) {
+                        // Skip
+                        continue ;
+                    }
                     if(mac.name == name) {
                         // TODO: What about macro re-exports a builtin?
-                        DEBUG("Found in ast (macro import)");
-                        TU_MATCH_HDRA( (mac.data), { )
-                        TU_ARMA(None, me)
+                        DEBUG("Found in ast (macro import) - " << mac.path);
+                        if(out_path) {
+                            *out_path = mac.path;
+                        }
+                        TU_MATCH_HDRA( (mac.ref), { )
+                        TU_ARMA(None, me) {
                             BUG(sp, "macro_imports_res had a None entry");
+                            }
                         TU_ARMA(MacroRules, me)
                             return ResolveItemRef_Macro(me);
                         TU_ARMA(BuiltinProcMacro, me)
@@ -506,13 +516,28 @@ namespace {
             {
                 //DEBUG(i.name << " " << i.data.tag_str());
                 // What about `cfg()`?
+                if( !check_cfg_attrs(i->attrs) ) {
+                    continue ;
+                }
                 if( matching_namespace(i->data, ns) && i->name == name )
                 {
-                    DEBUG("Found in ast");
+                    if(out_path) {
+                        out_path->nodes.push_back(name);
+                    }
+                    DEBUG("Found in ast (" << i->data.tag_str() << ")");
                     switch(ns)
                     {
                     case ResolveNamespace::Macro:
                         if(const auto* mac = i->data.opt_Macro()) {
+                            if( i->attrs.get("rustc_builtin_macro") ) {
+                                auto* rv = Expand_FindProcMacro(name);
+                                if( rv ) {
+                                    return ResolveItemRef_Macro(rv);
+                                }
+                                // HACK: Ignore, as there's references to the `Debug` macro... but mrustc doesn't do things that way
+                                // - Probably should have derives be in the same namespace as macros
+                                //ASSERT_BUG(sp, rv, "Unable to find rustc_builtin_macro: " << name);
+                            }
                             return ResolveItemRef_Macro(&**mac);
                         }
                         DEBUG("- Ignoring macro");
@@ -526,6 +551,9 @@ namespace {
 
                 if(const auto* use_stmt = i->data.opt_Use())
                 {
+                    if( !visit_use ) {
+                        continue;
+                    }
                     for(const auto& e : use_stmt->entries)
                     {
                         if( e.name == name )
@@ -545,6 +573,7 @@ namespace {
 
                             const auto& item_name = e.path.nodes().back().name();
                             auto tgt_mod = this->get_module(mod.path(), e.path, true, out_path);
+                            DEBUG(tgt_mod.tag_str());
 
                             TU_MATCH_HDRA( (tgt_mod), {)
                             TU_ARMA(Ast, mod_ptr) {
@@ -582,6 +611,9 @@ namespace {
             {
                 if(const auto* use_stmt = i->data.opt_Use())
                 {
+                    if( !visit_use ) {
+                        continue;
+                    }
                     for(const auto& e : use_stmt->entries)
                     {
                         if( e.name == "" )
@@ -590,10 +622,11 @@ namespace {
 
                             // - Outer recurse
                             //  > Get the module for this path
-                            auto src_mod = this->get_module(mod.path(), e.path, /*ignore_last=*/false, nullptr);
+                            auto src_mod = this->get_module(mod.path(), e.path, /*ignore_last=*/false, out_path);
                             TU_MATCH_HDRA( (src_mod), {)
                             TU_ARMA(None, _) {
                                 //BUG(use_stmt->sp, "Unable to resolve use statement path " << e.path);
+                                DEBUG("Unable to find " << e.path);
                                 continue ;
                                 }
                             TU_ARMA(ImplicitPrelude, _e) {
@@ -603,7 +636,7 @@ namespace {
                                 auto rv = find_item(*sm, name, ns, out_path);
                                 if( !rv.is_None() )
                                 {
-                                    DEBUG("Found AST glob");
+                                    DEBUG("Found in AST glob");
                                     return rv;
                                 }
                                 // Fall through, keep searching
@@ -646,6 +679,10 @@ namespace {
         /// Locate the named item in HIR (resolving `Import` references too)
         ResolveItemRef find_item_hir(const HIR::Module& mod, const RcString& item_name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr)
         {
+            TRACE_FUNCTION_F(item_name);
+            if( out_path ) {
+                ASSERT_BUG(sp, out_path->crate != "", "Crate not filled");
+            }
             struct H {
                 static const HIR::Crate& get_crate(const Span& sp, const AST::Crate& crate, const HIR::SimplePath& p) {
                     return *crate.m_extern_crates.at(p.m_crate_name).m_hir;
@@ -671,7 +708,7 @@ namespace {
                         }
                         const auto& ext_crate = H::get_crate(sp, crate, p->path);
                         if( p->path.m_components.empty() ) {
-                            return ResolveItemRef_Type(&ext_crate.m_root_module);
+                            return ResolveItemRef_Type(&ext_crate);
                         }
                         ti = &ext_crate.get_typeitem_by_path(sp, p->path, true);
                     }
@@ -707,7 +744,13 @@ namespace {
                 } break;
             case ResolveNamespace::Macro: {
                 auto it = mod.m_macro_items.find(item_name);
-                if( it != mod.m_macro_items.end() && it->second->publicity.is_global() ) {
+                if( it == mod.m_macro_items.end() ) {
+                    DEBUG("Did not find `" << item_name << "` in HIR macro");
+                }
+                else if( !it->second->publicity.is_global() ) {
+                    DEBUG("Found `" << item_name << "` in HIR macro - but not public, ignoring");
+                }
+                else {
                     DEBUG("Found `" << item_name << "` in HIR macro");
                     const HIR::MacroItem* mi;
                     if(const auto* p = it->second->ent.opt_Import()) {
@@ -739,6 +782,9 @@ namespace {
                     }
                     else {
                         mi = &it->second->ent;
+                        if(out_path) {
+                            out_path->nodes.push_back(item_name);
+                        }
                     }
                     TU_MATCH_HDRA( (*mi), {)
                     TU_ARMA(Import, me) {

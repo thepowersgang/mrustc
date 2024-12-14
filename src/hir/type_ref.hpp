@@ -30,13 +30,24 @@ enum Compare {
     Unequal,
 };
 
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
+class ResolvePlaceholders {
+public:
+    virtual const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const = 0;
+    virtual const ::HIR::ConstGeneric& get_val(const Span& sp, const HIR::ConstGeneric& v) const = 0;
+};
+class ResolvePlaceholdersNop: public ResolvePlaceholders {
+    const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const { return ty; }
+    const ::HIR::ConstGeneric& get_val(const Span& sp, const HIR::ConstGeneric& v) const { return v; }
+};
+//typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
+typedef const ResolvePlaceholders& t_cb_resolve_type;
 
 class MatchGenerics
 {
 public:
-    //virtual const HIR::TypeRef& resolve_infer(const HIR::TypeRef& ty) const { return ty; }
-    //virtual const HIR::TypeRef& resolve_generic(const HIR::TypeRef& ty) const { return ty; }
+    ::HIR::Compare cmp_path(const Span& sp, const ::HIR::Path& ty_l, const ::HIR::Path& ty_r, t_cb_resolve_type resolve_cb);
+    virtual ::HIR::Compare cmp_type(const Span& sp, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, t_cb_resolve_type resolve_cb);
+
     virtual ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) = 0;
     virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) = 0;
     virtual ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& sz) { return HIR::Compare::Equal; }
@@ -106,6 +117,9 @@ public:
     /// Duplicate recursively
     //TypeRef clone_deep() const;
     void fmt(::std::ostream& os) const;
+
+    bool operator==(const ::HIR::CoreType& x) const;
+    bool operator!=(const ::HIR::CoreType& x) const { return !(*this == x); }
 
     bool operator==(const ::HIR::TypeRef& x) const;
     bool operator!=(const ::HIR::TypeRef& x) const { return !(*this == x); }

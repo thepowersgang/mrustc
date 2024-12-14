@@ -173,6 +173,7 @@
     <ClCompile Include="..\..\src\expand\lints.cpp" />
     <ClCompile Include="..\..\src\expand\misc_attrs.cpp" />
     <ClCompile Include="..\..\src\expand\panic.cpp" />
+    <ClCompile Include="..\..\src\expand\rustc_box.cpp" />
     <ClCompile Include="..\..\src\expand\stability.cpp" />
     <ClCompile Include="..\..\src\hir\inherent_cache.cpp" />
     <ClCompile Include="..\..\src\hir_conv\lifetime_elision.cpp" />

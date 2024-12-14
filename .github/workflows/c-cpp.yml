@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          rustver: ["1.29", "1.39", "1.19", "1.54"]
+          rustver: ["1.29", "1.39", "1.19", "1.54", "1.74"]
     runs-on: ubuntu-latest
     env:
      RUSTC_VERSION: ${{ matrix.rustver }}.0

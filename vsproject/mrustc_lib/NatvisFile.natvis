@@ -35,6 +35,7 @@
     <DisplayString Condition="m_tag == TAG_Primitive">Primitive {m_data.Primitive}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic.name} #{m_data.Generic.binding}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Borrow">Borrow {m_data.Borrow}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_Pointer">Pointer {m_data.Pointer}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Path">Path {m_data.Path}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Tuple">Tuple {m_data.Tuple}</DisplayString>
     <DisplayString Condition="m_tag == TAG_ErasedType">ErasedType {m_data.ErasedType}</DisplayString>
@@ -43,6 +44,7 @@
       <Item Name="Infer"   Condition="m_tag == TAG_Infer" >m_data.Infer</Item>
       <Item Name="Generic" Condition="m_tag == TAG_Generic">m_data.Generic</Item>
       <Item Name="Borrow"  Condition="m_tag == TAG_Borrow">m_data.Borrow</Item>
+      <Item Name="Pointer" Condition="m_tag == TAG_Pointer">m_data.Borrow</Item>
       <Item Name="Path"    Condition="m_tag == TAG_Path" >m_data.Path</Item>
       <Item Name="Tuple"   Condition="m_tag == TAG_Tuple">m_data.Tuple</Item>
       <Item Name="ErasedType" Condition="m_tag == TAG_ErasedType">m_data.ErasedType</Item>

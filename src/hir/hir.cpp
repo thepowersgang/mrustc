@@ -46,14 +46,7 @@ namespace HIR {
             }
         TU_ARMA(Unevaluated, e) {
             os << "Unevaluated(";
-            if(e->m_mir) {
-                for(const auto& b : e->m_mir->blocks) {
-                    os << b.statements << "; " << b.terminator;
-                }
-            }
-            else {
-                HIR_DumpExpr(os, *e);
-            }
+            e->fmt(os);
             os << ")";
             }
         TU_ARMA(Generic, e) os << "Generic(" << e << ")";
@@ -82,31 +75,7 @@ namespace HIR {
             if(auto cmp = ::ord(te.index, xe.index))    return cmp;
             }
         TU_ARMA(Unevaluated, te, xe) {
-            // If only one has populated MIR, they can't be equal (sort populated MIR after)
-            if( !te->m_mir != !xe->m_mir ) {
-                return (te->m_mir ? OrdGreater : OrdLess);
-            }
-
-            // HACK: If the inner is a const param on both, sort based on that.
-            // - Very similar to the ordering of TypeRef::Generic
-            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**te);
-            const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xe);
-            if( tn && xn )
-            {
-                // Is this valid? What if they're from different scopes?
-                return ::ord(tn->m_binding, xn->m_binding);
-            }
-
-            if( te->m_mir )
-            {
-                assert(xe->m_mir);
-                // TODO: Compare MIR
-                TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
-            }
-            else
-            {
-                TODO(Span(), "Compare non-expanded array sizes - (wo/ MIR) " << *this << " and " << x);
-            }
+            return te->ord(*xe);
             }
         TU_ARMA(Generic, te, xe) {
             if(auto cmp = ::ord(te, xe))    return cmp;
@@ -116,6 +85,95 @@ namespace HIR {
             }
         }
         return OrdEqual;
+    }
+
+    ::std::ostream& operator<<(::std::ostream& os, const ConstGeneric_Unevaluated& x)
+    {
+        x.fmt(os);
+        return os;
+    }
+    ConstGeneric_Unevaluated::ConstGeneric_Unevaluated(HIR::ExprPtr ep)
+        : expr(std::make_shared<HIR::ExprPtr>(std::move(ep)))
+    {
+    }
+    ConstGeneric_Unevaluated ConstGeneric_Unevaluated::clone() const
+    {
+        return monomorph(Span(), MonomorphiserNop());
+    }
+    ConstGeneric_Unevaluated ConstGeneric_Unevaluated::monomorph(const Span& sp, const Monomorphiser& ms, bool allow_infer/*=true*/) const
+    {
+        ConstGeneric_Unevaluated    rv;
+        rv.params_impl = ms.monomorph_path_params(sp, params_impl, allow_infer);
+        rv.params_item = ms.monomorph_path_params(sp, params_item, allow_infer);
+        rv.expr = this->expr;
+        return rv;
+    }
+    Ordering ConstGeneric_Unevaluated::ord(const ConstGeneric_Unevaluated& x) const
+    {
+        if( this->expr.get() != x.expr.get() ) {
+            // If only one has populated MIR, they can't be equal (sort populated MIR after)
+            if( !this->expr->m_mir != !this->expr->m_mir ) {
+                return (this->expr->m_mir ? OrdGreater : OrdLess);
+            }
+
+            // HACK: If the inner is a const param on both, sort based on that.
+            // - Very similar to the ordering of TypeRef::Generic
+            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**this->expr);
+            const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**x.expr);
+            if( tn && xn )
+            {
+                // Is this valid? What if they're from different scopes?
+                return ::ord(tn->m_binding, xn->m_binding);
+            }
+
+            // If the MIR is populated
+            if( this->expr->m_mir )
+            {
+                TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
+            }
+            else {
+                // EVIL OPTION: Just compare the string representations
+                // - Hopefully there's no pointers printed involved.
+                auto v_t = FMT(*this);
+                auto v_x = FMT(x);
+                return ::ord(v_t, v_x);
+            }
+        }
+        if(auto cmp = this->params_impl.ord(x.params_impl)) return cmp;
+        if(auto cmp = this->params_item.ord(x.params_item)) return cmp;
+        return OrdEqual;
+    }
+    void ConstGeneric_Unevaluated::fmt(::std::ostream& os) const
+    {
+        os << "{";
+        os << "0=" << this->params_impl;
+        os << "1=" << this->params_item;
+        os << "}";
+        if(expr->m_mir) {
+            for(const auto& b : expr->m_mir->blocks) {
+                os << "bb" << (&b - expr->m_mir->blocks.data()) << ":{ ";
+                for(const auto& s : b.statements) {
+                    os << s << "; ";
+                }
+                os << b.terminator;
+                os << " }";
+            }
+        }
+        else {
+            struct NoNewline: public ::std::ostream, ::std::streambuf {
+                ::std::ostream& inner;
+                NoNewline(::std::ostream& inner): ::std::ostream(this), inner(inner) {}
+                int overflow(int c) override {
+                    switch(c)
+                    {
+                    case '\n':  inner.put(' '); break;
+                    default:    inner.put(c);   break;
+                    }
+                    return 0;
+                }
+            } inner_os(os);
+            HIR_DumpExpr(inner_os, *expr);
+        }
     }
 
     ::std::ostream& operator<<(::std::ostream& os, const Struct::Repr& x) {
@@ -136,7 +194,7 @@ HIR::ConstGeneric HIR::ConstGeneric::clone() const
 {
     TU_MATCH_HDRA( (*this), {)
     TU_ARMA(Infer, e) return e;
-    TU_ARMA(Unevaluated, e) return e;
+    TU_ARMA(Unevaluated, e) return ::std::make_unique<ConstGeneric_Unevaluated>(e->clone());
     TU_ARMA(Generic, e) return e;
     TU_ARMA(Evaluated, e)   return EncodedLiteralPtr(e->clone());
     }
@@ -147,6 +205,7 @@ HIR::ConstGeneric HIR::ConstGeneric::clone() const
 
 bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const
 {
+    DEBUG(*this << " " << p);
     // No path = global public
     if( !vis_path )
         return true;
@@ -166,6 +225,31 @@ bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const
             return false;
     }
     return true;
+}
+
+::HIR::TypeRef HIR::Function::make_ptr_ty(const Span& sp, const Monomorphiser& ms) const
+{
+    ::HIR::TypeData_FunctionPointer ft;
+    ft.is_unsafe   = this->m_unsafe;
+    ft.is_variadic = this->m_variadic;
+    ft.m_abi = this->m_abi;
+    ft.m_rettype = ms.monomorph_type(sp, this->m_return);
+    ft.m_arg_types.reserve(this->m_args.size());
+    for(const auto& arg : this->m_args)
+        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.second) );
+    return HIR::TypeRef(std::move(ft));
+}
+::HIR::TypeRef HIR::fn_ptr_tuple_constructor(const Span& sp, const Monomorphiser& ms, HIR::TypeRef ret_ty, const t_tuple_fields& fields)
+{
+    ::HIR::TypeData_FunctionPointer ft;
+    ft.is_unsafe   = false;
+    ft.is_variadic = false;
+    ft.m_abi = ABI_RUST;
+    ft.m_rettype = std::move(ret_ty);
+    ft.m_arg_types.reserve(fields.size());
+    for(const auto& fld : fields)
+        ft.m_arg_types.push_back( ms.monomorph_type(sp, fld.ent) );
+    return HIR::TypeRef(std::move(ft));
 }
 
 size_t HIR::Enum::find_variant(const RcString& name) const
@@ -297,7 +381,7 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
 
     auto it = mod.m_mod_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
     if( it == mod.m_mod_items.end() ) {
-        BUG(sp, "Could not find type name in " << path);
+        BUG(sp, "Could not find type " << path);
     }
 
     return it->second->ent;
@@ -378,8 +462,32 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
     }
 }
 
+namespace {
+    ::HIR::ValueItem    g_val_item_intrnsic_offsetof {
+        ::HIR::Function {
+            ::HIR::Function::Receiver::Free,
+            ::HIR::GenericParams {},
+            {},
+            HIR::TypeRef(HIR::CoreType::Usize),
+            {}
+        }
+    };
+}
+
 const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
+    if( path.m_crate_name == "#intrinsics" ) {
+        ASSERT_BUG(sp, path.m_components.size() == 1, "");
+        if( path.m_components.back() == "offset_of" ) {
+            if( ! g_val_item_intrnsic_offsetof.as_Function().m_variadic ) {
+                auto& v =  g_val_item_intrnsic_offsetof.as_Function();
+                v.m_variadic = true;
+                v.m_params.m_types.push_back(HIR::TypeParamDef { RcString("T"), {}, true });
+            }
+            return g_val_item_intrnsic_offsetof;
+        }
+        TODO(sp, "Get intrinsic " << path.m_components.back());
+    }
     if( path.m_crate_name == this->m_crate_name && path.m_components.size() == 1 ) {
         auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.m_components.back(); });
         if( i != m_new_values.end() ) {

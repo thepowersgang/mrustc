@@ -11,6 +11,7 @@
 /mrustc.layout
 /rustc-*-src.tar.gz
 /rustc-*-src
+/rustc_bootstrap
 /crates.io
 /test_deps_run-pass.mk
 
