@@ -172,3 +172,5 @@
 - `#[repr(C, packed(1))]`
 - `&mut [] as *mut u16` (in cargo)
 - `windows` crate references DLLs that don't exist on all versions, requiring proper tree-shaking to avoid it
+- MSVC doesn't support arrays with more than 2^31-1 items, nor structs larger than 2^32-1 bytes
+  - This impacts the `hex` crate, but was fixable using `#[cfg]`
