@@ -43,7 +43,7 @@ Lexer::Lexer(const ::std::string& filename, AST::Edition edition, ParseState ps)
                 throw ::std::runtime_error("Incomplete BOM - missing \\xBB in second position");
             }
             if( this->getc_byte() != '\xbf' ) {
-                throw ::std::runtime_error("Incomplete BOM - missing \\xBF in second position");
+                throw ::std::runtime_error("Incomplete BOM - missing \\xBF in third position");
             }
             m_line_ofs = 0;
         }
