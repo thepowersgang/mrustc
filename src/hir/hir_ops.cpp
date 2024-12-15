@@ -713,7 +713,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
             DEBUG("- Params mismatch");
             return false;
         }
-        // Matched with second ording
+        // Matched with second ordering
     }
     else if( this->m_trait_args.match_test_generics_fuzz(sp, other.m_trait_args, cb_ident, matcher) != ::HIR::Compare::Equal )
     {
