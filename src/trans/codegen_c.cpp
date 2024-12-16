@@ -1282,7 +1282,8 @@ namespace {
                     args.push_back("-O1");
                     break;
                 case 2:
-                    args.push_back("-O2");
+                    //args.push_back("-O2");
+                    args.push_back("-O1");  // HACK: Work around mrustc #347 by reducing the optimisation level
                     break;
                 }
                 // HACK: Work around [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117423] by disabling an optimisation stage
