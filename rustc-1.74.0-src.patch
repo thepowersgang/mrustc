@@ -81,14 +81,14 @@
  mod size_asserts {
 --- compiler/rustc_middle/src/mir/consts.rs
 +++ compiler/rustc_middle/src/mir/consts.rs
-@@ -72,3 +73,3 @@
+@@ -72,3 +72,3 @@
  
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  static_assert_size!(ConstValue<'_>, 24);
 --- compiler/rustc_middle/src/mir/interpret/value.rs
 +++ compiler/rustc_middle/src/mir/interpret/value.rs
-@@ -36,3 +37,3 @@
+@@ -36,3 +36,3 @@
  
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
@@ -109,7 +109,7 @@
  mod size_asserts {
 --- compiler/rustc_middle/src/ty/consts/kind.rs
 +++ compiler/rustc_middle/src/ty/consts/kind.rs
-@@ -74,3 +75,3 @@
+@@ -74,3 +74,3 @@
  
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
@@ -118,7 +118,7 @@
 # MSVC Cannot handle structs larger than 32-bit, so disable this for windows with mrustc
 --- vendor/hex/src/lib.rs
 +++ vendor/hex/src/lib.rs
-@@ -238,3 +239,3 @@
+@@ -238,3 +238,3 @@
  
 -#[cfg(target_pointer_width = "64")]
 +#[cfg(all(target_pointer_width = "64", not(rust_compiler = "mrustc")))]
