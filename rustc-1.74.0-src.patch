@@ -81,13 +81,15 @@
  mod size_asserts {
 --- compiler/rustc_middle/src/mir/consts.rs
 +++ compiler/rustc_middle/src/mir/consts.rs
-@@ -73,2 +73,2 @@
+@@ -73,3 +73,3 @@
+ 
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  static_assert_size!(ConstValue<'_>, 24);
 --- compiler/rustc_middle/src/mir/interpret/value.rs
 +++ compiler/rustc_middle/src/mir/interpret/value.rs
-@@ -37,2 +37,2 @@
+@@ -37,3 +37,3 @@
+ 
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  static_assert_size!(Scalar, 24);
@@ -107,7 +109,8 @@
  mod size_asserts {
 --- compiler/rustc_middle/src/ty/consts/kind.rs
 +++ compiler/rustc_middle/src/ty/consts/kind.rs
-@@ -75,2 +75,2 @@
+@@ -75,3 +75,3 @@
+ 
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(target_arch = "x86_64", target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  static_assert_size!(Expr<'_>, 24);
@@ -115,7 +118,9 @@
 # MSVC Cannot handle structs larger than 32-bit, so disable this for windows with mrustc
 --- vendor/hex/src/lib.rs
 +++ vendor/hex/src/lib.rs
-@@ -239,2 +239,2 @@
+@@ -239,3 +239,3 @@
+ 
 -#[cfg(target_pointer_width = "64")]
 +#[cfg(all(target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  from_hex_array_impl! {
+
