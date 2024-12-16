@@ -3099,6 +3099,7 @@ namespace {
             , m_recurse_types(false)
             , m_impl_params(nullptr)
             , m_item_params(nullptr)
+            , m_pass(Pass::OuterOnly)
         {}
 
         ::HIR::Evaluator get_eval(const Span& sp, NewvalState& nvs) const
