@@ -2385,6 +2385,7 @@ void Context::equate_values(const Span& sp, const ::HIR::ConstGeneric& rl, const
                 this->m_ivars.set_ivar_val_to(r.as_Infer().index, l.clone());
             }
             else {
+                // TODO: What about unevaluated values due to type inference?
                 ERROR(sp, E0000, "Value mismatch between " << l << " and " << r);
             }
         }

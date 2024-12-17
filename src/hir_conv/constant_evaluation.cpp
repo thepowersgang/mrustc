@@ -3729,6 +3729,22 @@ void ConvertHIR_ConstantEvaluate_ArraySize(const Span& sp, const ::HIR::Crate& c
     }
 }
 
+namespace {
+    bool params_contain_ivars(const ::HIR::PathParams& params) {
+        for(const auto& t : params.m_types) {
+            if( visit_ty_with(t, [](const HIR::TypeRef& t){ return t.data().is_Infer(); })) {
+                return true;
+            }
+        }
+        for(const auto& v : params.m_values) {
+            if( v.is_Infer() ) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
 void ConvertHIR_ConstantEvaluate_MethodParams(
     const Span& sp,
     const ::HIR::Crate& crate, const HIR::SimplePath& mod_path, const ::HIR::GenericParams* impl_generics, const ::HIR::GenericParams* item_generics,
@@ -3740,7 +3756,8 @@ void ConvertHIR_ConstantEvaluate_MethodParams(
     {
         if(v.is_Unevaluated())
         {
-            const auto& e = *v.as_Unevaluated()->expr;
+            const auto& ue = *v.as_Unevaluated();
+            const auto& e = *ue.expr;
             auto name = FMT("param_" << &v << "#");
             TRACE_FUNCTION_FR(name, name);
             auto nvs = NewvalState { crate.get_mod_by_path(Span(), mod_path), mod_path, name };
@@ -3751,12 +3768,21 @@ void ConvertHIR_ConstantEvaluate_MethodParams(
             // - Which, might not be known at this point - might be a UfcsInherent
             try
             {
+                // TODO: if there's an ivar in the param list, then throw defer
+                // - Caller should ensure that known ivars are expanded.
+                if( params_contain_ivars(ue.params_impl) || params_contain_ivars(ue.params_item) ) {
+                    throw Defer();
+                }
+
                 auto idx = static_cast<size_t>(&v - &params.m_values.front());
                 ASSERT_BUG(sp, idx < params_def.m_values.size(), "");
                 const auto& ty = params_def.m_values[idx].m_type;
                 ASSERT_BUG(sp, !monomorphise_type_needed(ty), "" << ty);
+                MonomorphState  ms;
+                ms.pp_impl = &ue.params_impl;
+                ms.pp_method = &ue.params_item;
 
-                auto val = eval.evaluate_constant( ::HIR::ItemPath(mod_path, name.c_str()), e, ty.clone() );
+                auto val = eval.evaluate_constant( ::HIR::ItemPath(mod_path, name.c_str()), e, ty.clone(), std::move(ms) );
                 v = ::HIR::ConstGeneric::make_Evaluated(std::move(val));
             }
             catch(const Defer& )
