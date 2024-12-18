@@ -232,7 +232,7 @@ namespace {
         ::std::string   m_outfile_path_c;
 
         ::std::ofstream m_of;
-        const ::MIR::TypeResolve* m_mir_res;
+        const ::MIR::TypeResolve* m_mir_res = nullptr;
 
         Compiler    m_compiler = Compiler::Gcc;
         struct {
