@@ -76,15 +76,9 @@ public:
     {
         size_t size = strlen(s);
         const char* hash_pos = nullptr;
-        // - Search the string for the '#' or '-' character
+        // Search the string for a '#' or '-' character (only one allowed)
         for(const auto* p = s; *p; p++)
         {
-            // If looking at the first character, ensure that it's not a digit
-            // - Also, `#<digit>` isn't valid (as it'd also badly encode)
-            if( p == s ) {
-                ASSERT_BUG(Span(), !isdigit(*p), "Leading digit not valid in '" << s << "'");
-            }
-
             if( isalnum(*p) ) {
             }
             else if( *p == '_' ) {
@@ -95,7 +89,7 @@ public:
                 hash_pos = p;
             }
             else {
-                BUG(Span(), "Encounteded invalid character '" << *p << "' in '" << s << "'");
+                BUG(Span(), "Encounteded invalid character in symbol name while mangling: '" << *p << "' in '" << s << "'");
             }
         }
 
@@ -103,18 +97,24 @@ public:
         if( hash_pos != nullptr )
         {
             auto pre_hash_len = static_cast<int>(hash_pos - s);
-#if 1
-            if( hash_pos == s && isdigit(hash_pos[1]) ) {
+            // If the hash is at the start, and is followed by either a digit (expected) or an underscore (unlikely) - then encode with a leading underscore
+            if( hash_pos == s && (isdigit(hash_pos[1]) || hash_pos[1] == '_') ) {
                 // <len:base26> '_' <body2>
                 // An encoding that allows this pattern
                 fmt_base26_int(size-1);
+                ASSERT_BUG(Span(), hash_pos[1] != '_', "Leading underscore not valid in '" << s << "'");
                 m_os << '_';
                 m_os << hash_pos + 1;
             }
             else {
                 // <pos:base26> <len:int> <body1> <body2>
                 fmt_base26_int(pre_hash_len);
-                m_os << size - 1;
+                bool needs_leading_escape = (isdigit(s[0]) || s[0] == '_');
+                m_os << size - 1 + (needs_leading_escape ? 1 : 0);
+                // If the string starts with a digit or underscrore, then escape it with another underscore.
+                if( needs_leading_escape ) {
+                    m_os << '_';
+                }
                 for(const char* c = s; c != hash_pos; ++c) {
                     if( *c == '-' || *c == '#' ) {
                         m_os << '_';
@@ -123,34 +123,16 @@ public:
                         m_os << *c;
                     }
                 }
-                //m_os << ::stdx::string_view(s, s + pre_hash_len);
                 m_os << hash_pos + 1;
             }
-#else
-            // If the suffix is all digits, then print `H` and the literal contents
-            if( false && std::isdigit(hash_pos[1]) )
-            {
-                for(auto c = hash_pos+1; *c; c++)
-                    ASSERT_BUG(Span(), std::isdigit(*c), "'" << s << "'");
-                m_os << "H";
-                m_os << pre_hash_len;
-                m_os << ::stdx::string_view(s, s + pre_hash_len);
-                m_os << hash_pos + 1;
-            }
-            else
-            {
-                // 'h' <len1> <body1> <len2> <body2>
-                m_os << "h";
-                m_os << pre_hash_len;
-                m_os << ::stdx::string_view(s, s + pre_hash_len);
-                m_os << size - pre_hash_len - 1;
-                m_os << hash_pos + 1;
-            }
-#endif
         }
         else
         {
-            m_os << size;
+            bool needs_leading_escape = (isdigit(s[0]) || s[0] == '_');
+            m_os << size + (needs_leading_escape ? 1 : 0);
+            if( needs_leading_escape ) {
+                m_os << '_';
+            }
             m_os << s;
         }
     }

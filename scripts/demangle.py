@@ -207,19 +207,6 @@ def demangle_int_ident(c_iter):
         else:
             raw = demangle_int_suffixed(c_iter)
             rv = raw[:len1] + "#" + raw[len1:]
-    ## `'b' <idx>`: back-reference
-    #if c_iter.peek() == 'b':
-    #    c_iter.next()
-    #    idx = demangle_int_getcount(c_iter)
-    #    assert c_iter.next() == '_'
-    #    return CACHE[idx]
-    #if c_iter.peek() == 'h':
-    #    c_iter.next()
-    #    rv = demangle_int_suffixed(c_iter)
-    #    rv += "#"
-    #    rv += demangle_int_suffixed(c_iter)
-    #else:
-    #    rv = demangle_int_suffixed(c_iter)
     CACHE.append(rv)
     return rv
 # Read a base-26 count
@@ -250,13 +237,18 @@ def demangle_int_suffixed(c_iter):
     l = demangle_int_getcount(c_iter)
     #print("demangle_int_suffixed", l)
     rv = ""
+    # HACK: Some 
     if l == 80:
         l = 8-1
         rv += '0'
     elif l == 50:
         l = 5-1
         rv += '0'
-    return rv + demangle_int_fixedlen(c_iter, l)
+    val = demangle_int_fixedlen(c_iter, l)
+    # If the value starts with a `_` then it's escaping an underscrore/blank/digit
+    if val[0] == '_':
+        val = val[1:]
+    return rv + val
 def demangle_int_fixedlen(c_iter, l):
     rv = ""
     for _ in range(l):
