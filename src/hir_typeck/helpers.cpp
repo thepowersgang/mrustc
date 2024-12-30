@@ -5011,7 +5011,7 @@ bool TraitResolution::find_method(const Span& sp,
                 {
                     if( *self_ty_p == *ityp )
                     {
-                        auto pp_hrb = bound.m_hrtbs ? bound.m_hrtbs->make_empty_params(3) : HIR::PathParams();
+                        auto pp_hrb = bound.m_hrtbs ? bound.m_hrtbs->make_empty_params(true) : HIR::PathParams();
                         monomorph_cb.pp_hrb = &pp_hrb;
                         final_trait_path = monomorph_cb.monomorph_genericpath(sp, final_trait_path, false);
                         DEBUG("- Monomorph to " << final_trait_path);
