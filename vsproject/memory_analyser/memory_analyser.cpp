@@ -1,12 +1,11 @@
 // memory_analyser.cpp : This file contains the 'main' function. Program execution begins and ends there.
 
 #undef NDEBUG
+#include "error_handling.h"
+#include "debug_windows.h"
+#include "types.h"
 
 #include <Windows.h>
-#pragma warning(push)
-#pragma warning(disable : 4091)
-#include <DbgHelp.h>
-#pragma warning(pop)
 #include <iostream>
 #include <vector>
 #include <string>
@@ -18,268 +17,6 @@
 #include <memory>   // unique_ptr
 
 //#include <cvconst.h>
-
-static bool ENABLE_DEBUG_SYMINFO = false;
-
-// #include <cvconst.h>
-// https://docs.microsoft.com/en-us/visualstudio/debugger/debug-interface-access/symtagenum?view=vs-2019
-enum SymTagEnum {
-    SymTagNull,
-    SymTagExe,
-    SymTagCompiland,
-    SymTagCompilandDetails,
-    SymTagCompilandEnv,
-    SymTagFunction,
-    SymTagBlock,
-    SymTagData,
-    SymTagAnnotation,
-    SymTagLabel,
-    SymTagPublicSymbol,
-    SymTagUDT,
-    SymTagEnum,
-    SymTagFunctionType,
-    SymTagPointerType,
-    SymTagArrayType,
-    SymTagBaseType,
-    SymTagTypedef,
-    SymTagBaseClass,
-    SymTagFriend,
-    SymTagFunctionArgType,
-    SymTagFuncDebugStart,
-    SymTagFuncDebugEnd,
-    SymTagUsingNamespace,
-    SymTagVTableShape,
-    SymTagVTable,
-    SymTagCustom,
-    SymTagThunk,
-    SymTagCustomType,
-    SymTagManagedType,
-    SymTagDimension,
-    SymTagCallSite,
-    SymTagInlineSite,
-    SymTagBaseInterface,
-    SymTagVectorType,
-    SymTagMatrixType,
-    SymTagHLSLType
-};
-
-enum BasicType {
-    btNoType = 0,
-    btVoid = 1,
-    btChar = 2,
-    btInt = 6,
-    btUint = 7,
-    btFloat = 8,    // TODO: `double` also shows up as this
-    btBool = 10,
-    btLong = 13,
-    btULong = 14,
-};
-
-#define FMT_STRING(...) (dynamic_cast<::std::stringstream&>(::std::stringstream() << __VA_ARGS__).str())
-
-class WinErrStr {
-    char* ptr;
-
-public:
-    WinErrStr(DWORD ec) { 
-        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_ALLOCATE_BUFFER, NULL, ec, 0, (LPSTR)&this->ptr, 0, NULL);
-        *strrchr(ptr, '\r') = '\0';
-    }
-    WinErrStr(WinErrStr&& x): ptr(x.ptr) {
-        x.ptr = nullptr;
-    }
-    WinErrStr& operator=(WinErrStr&& x) {
-        this->~WinErrStr();
-        this->ptr = x.ptr;
-        x.ptr = nullptr;
-    }
-
-    ~WinErrStr() {
-        if(ptr) {
-            LocalFree(ptr);
-            ptr = nullptr;
-        }
-    }
-    friend std::ostream& operator<<(std::ostream& os, const WinErrStr& x) {
-        return os << x.ptr;
-    }
-};
-int error(const char* name, DWORD ec) {
-    std::cout << name << ": " << WinErrStr(ec);
-    return 1;
-}
-int error(const char* name) {
-    return error(name, GetLastError());
-}
-
-
-struct fmt_u16z
-{
-    const WCHAR* ptr;
-
-    fmt_u16z(const WCHAR* ptr): ptr(ptr) {
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const fmt_u16z& x) {
-        for(auto p = x.ptr; *p; p ++)
-        {
-            if( *p < 128 ) {
-                os << static_cast<char>(*p);
-            }
-            else {
-                os << "?";
-            }
-        }
-        return os;
-    }
-};
-
-class WideStrLocalFree
-{
-    WCHAR* ptr;
-
-public:
-    WideStrLocalFree(WCHAR* ptr): ptr(ptr)
-    {
-    }
-
-    ~WideStrLocalFree() {
-        if(ptr) {
-            LocalFree(ptr);
-            ptr = nullptr;
-        }
-    }
-    friend std::ostream& operator<<(std::ostream& os, const WideStrLocalFree& x) {
-        return os << fmt_u16z(x.ptr);
-    }
-};
-
-struct ReadMemory
-{
-    LPVOID  view;
-    const MINIDUMP_MEMORY_LIST* memory;
-    const MINIDUMP_MEMORY64_LIST* memory64;
-
-    static ReadMemory* s_self;
-
-    static BOOL read(HANDLE /*hProcess*/, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, PDWORD lpNumberOfBytesRead);
-
-    static PVOID FunctionTableAccess64(HANDLE hProcess, DWORD64 AddrBase) {
-        auto rv = SymFunctionTableAccess64AccessRoutines(hProcess, AddrBase, ReadMemory::read, SymGetModuleBase64);
-        //auto rv = SymFunctionTableAccess64(hProcess, AddrBase);
-        auto ec = GetLastError();
-        //std::cout << "SymFunctionTableAccess64(" << hProcess << ", " << (void*)AddrBase << ") = " << rv << std::endl;
-        if(!rv)
-            error("SymFunctionTableAccess64", ec);
-        return rv;
-    }
-
-
-    static uint8_t read_u8(DWORD64 qwBaseAddress) {
-        BYTE   buf;
-        DWORD   n_read;
-        if( !ReadMemory::read(NULL, qwBaseAddress, &buf, sizeof(buf), &n_read) )
-            throw std::runtime_error(FMT_STRING("Can't read u8 at " << (void*)qwBaseAddress));
-        return buf;
-    }
-    static DWORD read_u32(DWORD64 qwBaseAddress) {
-        DWORD   buf;
-        DWORD   n_read;
-        if( !ReadMemory::read(NULL, qwBaseAddress, &buf, sizeof(buf), &n_read) )
-            throw std::runtime_error(FMT_STRING("Can't read u32 at " << (void*)qwBaseAddress));
-        return buf;
-    }
-
-    static DWORD64 read_ptr(DWORD64 qwBaseAddress) {
-        DWORD64   buf;
-        DWORD   n_read;
-        if( !ReadMemory::read(NULL, qwBaseAddress, &buf, sizeof(buf), &n_read) )
-            throw std::runtime_error(FMT_STRING("Can't read ptr at " << (void*)qwBaseAddress));
-        return buf;
-    }
-};
-ReadMemory* ReadMemory::s_self = 0;
-
-struct TypeDefinition;
-struct TypeRef
-{
-private:
-    typedef std::unordered_map<DWORD, TypeRef>  t_cache;
-    static t_cache  s_cache;
-public:
-    struct Wrapper {
-        unsigned    count;
-        DWORD   inner_ty_idx;
-        Wrapper(unsigned c): count(c) {}
-
-        static Wrapper new_pointer() {
-            return Wrapper(~0u);
-        }
-        bool is_pointer() const { return count == ~0u; }
-    };
-
-    std::vector<Wrapper>    wrappers;
-    enum {
-        ClassBasic,
-        ClassUdt,
-        ClassMisc,
-    } m_class;
-    union {
-        struct {
-            BasicType   bt;
-            uint8_t size;
-        } basic;
-        struct {
-            const char* name;
-            uint8_t size;
-        } misc;
-        TypeDefinition* udt;
-    } m_data;
-
-    static TypeRef lookup(HANDLE hProcess, ULONG64 mod_base, DWORD type_id);
-    static TypeRef lookup_by_name(const std::string& name);
-
-    size_t size() const;
-
-    bool is_any_basic() const { return wrappers.empty() && m_class == ClassBasic; }
-    bool is_basic(BasicType bt) const { return wrappers.empty() && m_class == ClassBasic && m_data.basic.bt == bt; }
-    const TypeDefinition* any_udt() const { return (wrappers.empty() && m_class == ClassUdt) ? m_data.udt : nullptr; }
-    bool is_udt(const char* name) const;
-    bool is_udt_suffix(const char* name) const;
-
-    TypeRef get_field(std::initializer_list<const char*> fields, size_t* ofs=nullptr) const;
-    size_t get_field_ofs(std::initializer_list<const char*> fields, TypeRef* out_ty=nullptr) const
-    {
-        size_t rv;
-        auto ty = get_field(fields, &rv);
-        if(out_ty)  *out_ty = ty;
-        return rv;
-    }
-    TypeRef deref() const;
-    void fmt(std::ostream& os, unsigned recurse_depth, unsigned indent_level=0) const;
-
-    friend std::ostream& operator<<(std::ostream& os, const TypeRef& x) {
-        x.fmt(os, 0);
-        return os;
-    }
-};
-struct TypeDefinition
-{
-    struct Field {
-        std::string name;
-        size_t  offset;
-        TypeRef ty;
-    };
-
-    std::string name;
-    size_t  size;
-    std::vector<Field>  fields;
-
-    void fmt(std::ostream& os, unsigned recurse_depth, unsigned indent_level=0) const;
-
-    static TypeDefinition* from_syminfo(HANDLE hProcess, ULONG64 mod_base, DWORD type_id);
-};
-
 
 struct MemoryStats
 {
@@ -395,8 +132,20 @@ namespace virt_types {
         try
         {
             assert(outer_ty.is_udt("HIR::TypeRef"));
-            const auto& ty = outer_ty.any_udt()->fields.at(0).ty;
-            assert(ty.is_udt("HIR::TypeData"));
+            const auto& ty_TypeInner_p = outer_ty.any_udt()->fields.at(0).ty;
+            const auto ty_TypeInner = ty_TypeInner_p.deref();
+            if( !ty_TypeInner.is_udt("HIR::TypeInner") ) {
+                ::std::cerr << "Expected UDT HIR::TypeInner, got " << ty_TypeInner << std::endl;
+                abort();
+            }
+            addr = ReadMemory::read_ptr(addr);
+            auto ref_count = ReadMemory::read_u32(addr);
+            addr += ty_TypeInner.any_udt()->fields.at(1).offset;
+            const auto& ty = ty_TypeInner.any_udt()->fields.at(1).ty;
+            if( !ty.is_udt("HIR::TypeData") ) {
+                ::std::cerr << "Expected UDT HIR::TypeData, got " << ty << std::endl;
+                abort();
+            }
             const auto* udt = ty.any_udt();
             const auto& flds = udt->fields;
             const auto* data_udt = flds[1].ty.any_udt();
@@ -574,7 +323,7 @@ int main(int argc, char* argv[])
                             //if( get_dword(pSymInfo->TypeIndex, "VIRTUALBASECLASS", TI_GET_VIRTUALBASECLASS) )
                             //{
                             auto v = get_dword(pSymInfo->TypeIndex, "VIRTUALTABLESHAPEID", TI_GET_VIRTUALTABLESHAPEID);
-                            std::cout << "#" << pSymInfo->TypeIndex << " " << pSymInfo->Name << " VTable " << v << std::endl;
+                            std::cout << "#" << pSymInfo->TypeIndex << " " << pSymInfo->Name << " UDT VTable " << v << std::endl;
                             //}
                         }
                         break;
@@ -927,460 +676,6 @@ int main(int argc, char* argv[])
 }
 
 
-/*static*/ BOOL ReadMemory::read(HANDLE /*hProcess*/, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, PDWORD lpNumberOfBytesRead)
-{
-    //std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << std::endl;
-    // Find memory range containing the address
-    if( s_self->memory )
-    {
-        for(ULONG32 i = 0; i < s_self->memory->NumberOfMemoryRanges; i ++)
-        {
-            const auto& rng = s_self->memory->MemoryRanges[i];
-            //std::cout << "- " << std::hex << rng.StartOfMemoryRange << "+" << rng.Memory.DataSize << std::endl;
-
-            if( rng.StartOfMemoryRange <= qwBaseAddress && qwBaseAddress <= rng.StartOfMemoryRange + rng.Memory.DataSize )
-            {
-                auto ofs = qwBaseAddress - rng.StartOfMemoryRange;
-                auto max_size = min(nSize, rng.Memory.DataSize - ofs);
-                const auto* src = (const char*)s_self->view + rng.Memory.Rva + ofs;
-                memcpy(lpBuffer, src, max_size);
-                if(lpNumberOfBytesRead)
-                    *lpNumberOfBytesRead = static_cast<DWORD>(max_size);
-                return TRUE;
-            }
-        }
-    }
-    if( s_self->memory64 )
-    {
-        DWORD64 base_rva = s_self->memory64->BaseRva;
-        for(ULONG32 i = 0; i < s_self->memory64->NumberOfMemoryRanges; i ++)
-        {
-            const auto& rng = s_self->memory64->MemoryRanges[i];
-            //std::cout << "- " << (void*)base_rva << " " << std::hex << rng.StartOfMemoryRange << "+" << rng.DataSize << std::endl;
-
-            if( rng.StartOfMemoryRange <= qwBaseAddress && qwBaseAddress <= rng.StartOfMemoryRange + rng.DataSize )
-            {
-                auto ofs = qwBaseAddress - rng.StartOfMemoryRange;
-                auto max_size = min(nSize, rng.DataSize - ofs);
-                const auto* src = (const char*)s_self->view + base_rva + ofs;
-                memcpy(lpBuffer, src, max_size);
-                if(lpNumberOfBytesRead)
-                    *lpNumberOfBytesRead = static_cast<DWORD>(max_size);
-                //if( nSize == 8 )
-                //    std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " = " << *(void**)lpBuffer << std::endl;
-                return TRUE;
-            }
-
-            base_rva += rng.DataSize;
-        }
-    }
-    std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " == Not found" << std::dec << std::endl;
-    return FALSE;
-}
-
-
-
-TypeRef::t_cache    TypeRef::s_cache;
-
-/*static*/ TypeRef TypeRef::lookup(HANDLE hProcess, ULONG64 mod_base, DWORD type_id)
-{
-    auto it = s_cache.find(type_id);
-    if( it != s_cache.end() )
-        return it->second;
-
-    auto get_dword = [=](const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty) {
-        DWORD v;
-        if( !SymGetTypeInfo(hProcess, mod_base, type_id, info_ty, &v) )
-        {
-            throw std::runtime_error(FMT_STRING("#" << type_id << " " << name << "=" << WinErrStr(GetLastError())));
-        }
-        return v;
-        };
-    auto get_str = [=](const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty)->WideStrLocalFree {
-        WCHAR* v;
-        if( !SymGetTypeInfo(hProcess, mod_base, type_id, info_ty, &v) )
-        {
-            throw std::runtime_error(FMT_STRING("#" << type_id << " " << name << "=" << WinErrStr(GetLastError())));
-        }
-        return WideStrLocalFree(v);
-        };
-
-
-    DWORD   symtag = get_dword("SYMTAG", TI_GET_SYMTAG);
-
-    TypeRef rv;
-    switch(symtag)
-    {
-    case SymTagPointerType:
-        rv = TypeRef::lookup(hProcess, mod_base, get_dword("TYPE", TI_GET_TYPE));
-        rv.wrappers.push_back(Wrapper::new_pointer());
-        break;
-    case SymTagArrayType:
-        rv = TypeRef::lookup(hProcess, mod_base, get_dword("TYPE", TI_GET_TYPE));
-        rv.wrappers.push_back(Wrapper(get_dword("COUNT", TI_GET_COUNT)));
-        break;
-    case SymTagEnum:
-        rv = TypeRef::lookup(hProcess, mod_base, get_dword("TYPE", TI_GET_TYPE));
-        break;
-    case SymTagBaseType:
-        rv.m_class = ClassBasic;
-        rv.m_data.basic.bt = static_cast<BasicType>(get_dword("BASETYPE", TI_GET_BASETYPE));
-        rv.m_data.basic.size = static_cast<uint8_t>(get_dword("LENGTH", TI_GET_LENGTH));
-        break;
-    case SymTagUDT:
-        rv.m_class = ClassUdt;
-        rv.m_data.udt = TypeDefinition::from_syminfo(hProcess, mod_base, type_id);
-        assert(rv.m_data.udt);
-        break;
-    case SymTagFunctionType:
-        rv.m_class = ClassMisc;
-        rv.m_data.misc.name = _strdup(FMT_STRING(get_str("SYMNAME", TI_GET_SYMNAME)).c_str());
-        rv.m_data.misc.size = static_cast<uint8_t>(get_dword("LENGTH", TI_GET_LENGTH));
-        break;
-    case SymTagVTableShape:
-        rv.m_class = ClassUdt;
-        rv.m_data.udt = TypeDefinition::from_syminfo(hProcess, mod_base, type_id);
-        assert(rv.m_data.udt);
-        break;
-    default:
-        throw std::runtime_error(FMT_STRING("#" << type_id << " SYMTAG=" << symtag));
-    }
-    s_cache.insert(std::make_pair(type_id, rv));
-    return rv;
-}
-/*static*/ TypeRef TypeRef::lookup_by_name(const std::string& name)
-{
-    for(const auto& e : s_cache)
-    {
-        if( e.second.is_udt(name.c_str()) )
-        {
-            return e.second;
-        }
-    }
-    throw ::std::runtime_error("Type not loaded");
-}
-
-bool TypeRef::is_udt(const char* name) const {
-    return wrappers.empty() && m_class == ClassUdt && m_data.udt->name == name;
-}
-bool TypeRef::is_udt_suffix(const char* name) const {
-    return wrappers.empty() && m_class == ClassUdt && m_data.udt->name.compare(0, strlen(name), name) == 0;
-}
-
-void TypeRef::fmt(std::ostream& os, unsigned recurse_depth, unsigned indent_level/*=0*/) const
-{
-    for(const auto& w : wrappers)
-    {
-        if( w.is_pointer() ) {
-            os << "*ptr ";
-        }
-        else {
-            os << "[" << w.count << "]";
-        }
-    }
-    switch(m_class)
-    {
-    case ClassBasic:
-        switch(m_data.basic.bt)
-        {
-        case btChar:    os << "char";   return;
-        case btInt:     os << "i" << (m_data.basic.size * 8);    return;
-        case btUint:    os << "u" << (m_data.basic.size * 8);   return;
-        case btFloat:   os << "f" << (m_data.basic.size * 8);  return;
-        case btBool:    os << "bool";   return;
-        }
-        os << "bt#" << m_data.basic.bt;
-        break;
-    case ClassUdt:
-        m_data.udt->fmt(os, recurse_depth, indent_level);
-        break;
-    case ClassMisc:
-        os << m_data.misc.name;
-        break;
-    }
-}
-
-size_t TypeRef::size() const
-{
-    size_t  mul = 1;
-    for(auto it = wrappers.rbegin(); it != wrappers.rend(); ++it)
-    {
-        if( it->is_pointer() )
-        {
-            return mul*8;
-        }
-        mul *= it->count;
-    }
-
-    switch(m_class)
-    {
-    case ClassBasic:
-        return m_data.basic.size;
-    case ClassUdt:
-        return mul * m_data.udt->size;
-    }
-    throw std::runtime_error(FMT_STRING("Unknown size for " << *this));
-}
-
-TypeRef TypeRef::get_field(std::initializer_list<const char*> fields, size_t* out_ofs/*=nullptr*/) const
-{
-    //std::cout << "get_field() > " << *this << std::endl;
-    auto cur = *this;
-    size_t ofs = 0;
-    for(const char* fld_name : fields)
-    {
-        if( fld_name )
-        {
-            //std::cout << "get_field(): " << fld_name << " in " << *cur << std::endl;
-            if(!cur.wrappers.empty())
-                throw std::runtime_error(FMT_STRING("Getting field of " << cur));
-            if(cur.m_class != ClassUdt)
-                throw std::runtime_error(FMT_STRING("Getting field of " << cur));
-            bool found = false;
-            for(const auto& fld : cur.m_data.udt->fields)
-            {
-                if( fld.name == fld_name ) {
-                    ofs += fld.offset;
-                    cur = fld.ty;
-                    found = true;
-                    break;
-                }
-            }
-            if(!found)
-                throw std::runtime_error(FMT_STRING("Cannot find field '" << fld_name << "' in " << cur));
-        }
-        else
-        {
-            // Deref
-            if(cur.wrappers.empty() || !cur.wrappers.back().is_pointer())
-                throw std::runtime_error(FMT_STRING("Deref of " << cur));
-            if(out_ofs)
-                throw std::runtime_error("Dereference can't get offset");
-            cur = cur.deref();
-        }
-    }
-    if(out_ofs)
-        *out_ofs = ofs;
-    return cur;
-}
-TypeRef TypeRef::deref() const
-{
-    if(this->wrappers.empty())
-        throw std::runtime_error(FMT_STRING("Dereferencing " << *this));
-    auto rv = *this;
-    rv.wrappers.pop_back();
-    return rv;
-}
-
-struct Indent {
-    const char* str;
-    unsigned level;
-
-    class Handle {
-        friend Indent;
-        Indent& i;
-        Handle(Indent& i): i(i) {
-            i.level ++;
-        }
-    public:
-        ~Handle() {
-            i.level --;
-        }
-    };
-
-    Indent(const char* s): str(s), level(0) {
-    }
-
-    Handle inc() {
-        return Handle(*this);
-    }
-    friend std::ostream& operator<<(std::ostream& os, const Indent& x) {
-        for(unsigned i = 0; i < x.level; i ++)
-            os << x.str;
-        return os;
-    }
-};
-
-/*static*/ TypeDefinition* TypeDefinition::from_syminfo(HANDLE hProcess, ULONG64 mod_base, DWORD type_id)
-{
-    static Indent s_indent = Indent(" ");
-#define DO_DEBUG(v) do { if(ENABLE_DEBUG_SYMINFO) { std::cout << s_indent << v << std::endl; } } while(0)
-    static std::unordered_map<DWORD, TypeDefinition*>   s_anti_recurse;
-    if( s_anti_recurse.find(type_id) != s_anti_recurse.end() ) {
-        DO_DEBUG("Recursion on #" << type_id);
-        return s_anti_recurse.at(type_id);
-    }
-
-    DO_DEBUG("TypeDefinition::from_syminfo(" << type_id << ")");
-    auto _ = s_indent.inc();
-
-    auto get_raw = [hProcess,mod_base](DWORD type_id, const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty, void* out) {
-        if( !SymGetTypeInfo(hProcess, mod_base, type_id, info_ty, out) )
-        {
-            throw std::runtime_error(FMT_STRING("#" << type_id << " " << name << "=" << WinErrStr(GetLastError())));
-        }
-    };
-    auto get_dword = [=](DWORD child_type_id, const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty) {
-        DWORD v;
-        get_raw(child_type_id, name, info_ty, &v);
-        return v;
-    };
-    auto get_str = [=](DWORD child_type_id, const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty)->WideStrLocalFree {
-        WCHAR* v;
-        get_raw(child_type_id, name, info_ty, &v);
-        return WideStrLocalFree(v);
-    };
-
-    auto rv = ::std::unique_ptr<TypeDefinition>(new TypeDefinition);
-
-    auto symtag = get_dword(type_id, "SYMTAG", TI_GET_SYMTAG);
-    if( symtag == SymTagUDT ) {
-        rv->name = FMT_STRING(get_str(type_id, "SYMNAME", TI_GET_SYMNAME));
-        rv->size = get_dword(type_id, "LENGTH", TI_GET_LENGTH);
-    }
-    else if( symtag == SymTagVTableShape ) {
-        rv->name = FMT_STRING("VTABLE #" << type_id);
-        rv->size = 0;
-    }
-    else {
-        throw std::runtime_error(FMT_STRING("BUG #" << type_id << " SYMTAG=" << get_dword(type_id, "SYMTAG", TI_GET_SYMTAG)));
-    }
-
-    s_anti_recurse.insert(std::make_pair(type_id, rv.get()));
-
-    DWORD child_count = get_dword(type_id, "CHILDRENCOUNT", TI_GET_CHILDRENCOUNT);
-    DO_DEBUG(rv->name << " child_count=" << child_count);
-    if(child_count > 0)
-    {
-        try
-        {
-            std::vector<ULONG>  buf( (sizeof(TI_FINDCHILDREN_PARAMS) + (child_count-1) * sizeof(ULONG))/sizeof(ULONG) );
-            auto* child_params = reinterpret_cast<TI_FINDCHILDREN_PARAMS*>(buf.data());
-            child_params->Count = child_count;
-            child_params->Start = 0;
-
-            get_raw(type_id, "FINDCHILDREN", TI_FINDCHILDREN, child_params);
-
-            for(DWORD i = 0; i < child_count; i ++)
-            {
-                auto child_type_id = child_params->ChildId[i];
-                auto child_tag = get_dword(child_type_id, "SYMTAG", TI_GET_SYMTAG);
-                switch(child_tag)
-                {
-                case SymTagData: {
-                    auto data_kind = get_dword(child_type_id, "DATAKIND", TI_GET_DATAKIND);
-                    //DO_DEBUG(i << ":" << child_type_id << " " << child_tag << "/" << data_kind);
-                    switch(data_kind)
-                    {
-                    case 7: { // Field?
-                        Field   f;
-                        // TODO: Sometimes this fails with "Incorrect function"
-                        f.name = FMT_STRING(get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
-                        f.offset = get_dword(child_type_id, "OFFSET", TI_GET_OFFSET);
-                        f.ty = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
-                        rv->fields.push_back(std::move(f));
-                        } break;
-                    case 8: // Constant?
-                        // Seen for `npos` on std::string
-                        break;
-                    default:
-                        throw std::runtime_error(FMT_STRING("#" << type_id << "->" << child_type_id << " DATAKIND=" << data_kind));
-                    }
-                    } break;
-                case SymTagFunction:
-                    //DO_DEBUG(rv->name << " fn " << get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
-                    break;
-                case SymTagBaseClass:
-                    // TODO: Recuse into this type (or look it up?)
-                    //DO_DEBUG(rv->name << " => " << child_type_id);
-                    DO_DEBUG(rv->name << " => " << get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
-                    {
-                        DO_DEBUG(">> " << child_type_id << " " << get_dword(child_type_id, "TYPE", TI_GET_TYPE));
-                        auto p = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
-                        switch(p.m_class)
-                        {
-                        case TypeRef::ClassUdt:
-                            for(auto& f : p.m_data.udt->fields)
-                            {
-                                rv->fields.push_back(f);
-                            }
-                            break;
-                        }
-                    }
-                    break;
-                case SymTagVTable:{ // VTable: Add as field
-                    Field   f;
-                    f.name = "#VTABLE";
-                    f.offset = get_dword(child_type_id, "OFFSET", TI_GET_OFFSET);
-                    DO_DEBUG(">> VT " << child_type_id << " " << get_dword(child_type_id, "TYPE", TI_GET_TYPE));
-                    f.ty = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
-                    rv->fields.push_back(std::move(f));
-                    } break;
-                case SymTagTypedef:
-                    break;
-                case SymTagEnum:
-                    break;
-                // Why? Inline structure?
-                case SymTagUDT:
-                    break;
-                default:
-                    throw std::runtime_error(FMT_STRING("#" << type_id << "->" << child_type_id << " SYMTAG=" << child_tag));
-                }
-            }
-        }
-        catch(const std::exception& e)
-        {
-            ::std::cout << "Exception " << e.what() << " in TypeDefinition::from_syminfo(" << type_id << "): " << rv->name << std::endl;
-            //rv->
-        }
-    }
-    DO_DEBUG("TypeDefinition::from_syminfo(" << type_id << "): " << rv->name);
-
-    s_anti_recurse.erase(type_id);
-    return rv.release();
-#undef DO_DEBUG
-}
-
-void TypeDefinition::fmt(std::ostream& os, unsigned recurse_depth, unsigned indent_level/*=0*/) const
-{
-    os << this->name;
-    if(recurse_depth > 0)
-    {
-        static std::vector<const TypeDefinition*>   s_stack;
-        if(std::find(s_stack.begin(), s_stack.end(), this) != s_stack.end()) {
-            os << " { ^ }";
-            return ;
-        }
-        s_stack.push_back(this);
-        os << " { ";
-        auto print_indent = [&]() {
-            if(indent_level > 0)
-            {
-                os << "\n";
-                for(unsigned i = 1; i < indent_level; i++)
-                    os << "    ";
-            }
-            };
-        if(indent_level > 0)
-        {
-            indent_level += 1;
-        }
-        for(const auto& fld : this->fields)
-        {
-            print_indent();
-            os << fld.name << " @ " << fld.offset << "+" << fld.ty.size() << ": ";
-            fld.ty.fmt(os, recurse_depth-1, indent_level);
-            os << ", ";
-        }
-        if(indent_level > 0)
-        {
-            indent_level -= 1;
-            print_indent();
-        }
-        os << "}";
-        s_stack.pop_back();
-    }
-}
 
 namespace  {
     bool is_tagged_union(const TypeRef& ty) {
@@ -1505,6 +800,19 @@ bool MemoryStats::are_equal(const TypeRef& val_ty, DWORD64 addr1, DWORD64 addr2)
         else {
             throw std::runtime_error(FMT_STRING("TAGGED_UNION " << ty << " #" << tag1 << " || #" << tag2));
         }
+    }
+    // std::vector<bool>
+    else if( ty.is_udt_suffix("std::vector<bool") ) {
+        size_t ofs_vec, ofs_len;
+        auto ty_vec = ty.get_field({"_Myvec"}, &ofs_vec);
+        auto ty_len = ty.get_field({"_Myvec"}, &ofs_len);
+        if( !this->are_equal(ty_vec, addr1+ofs_vec, addr2+ofs_vec) ) {
+            return false;
+        }
+        if( !this->are_equal(ty_len, addr1+ofs_len, addr2+ofs_len) ) {
+            return false;
+        }
+        return true;
     }
     // std::vector
     else if( ty.is_udt_suffix("std::vector<") ) {
@@ -1649,6 +957,10 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
         }
         else {
         }
+    }
+    // std::vector<bool
+    else if( ty.is_udt_suffix("std::vector<bool") ) {
+        m_counts[FMT_STRING(">" << ty)] ++;
     }
     // std::vector
     else if( ty.is_udt_suffix("std::vector<") ) {
