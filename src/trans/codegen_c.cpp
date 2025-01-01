@@ -2139,7 +2139,7 @@ namespace {
                 unsigned idx = 1 - ve->zero_variant;
                 emit_ctype(repr->fields.at(idx).ty, FMT_CB(os, os << "var_" << idx));
                 m_of << ";\n";
-                m_of << "\t} DATA;";
+                m_of << "\t} DATA;\n";
             }
             // If there's only one field - it's either a single variant, or a value enum
             else if( repr->fields.size() == 1 )

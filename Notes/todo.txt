@@ -7,10 +7,7 @@ TODO:
 - Optimise typecheck runtime
   - Mostly done with trait resolve optimisations
 - De-duplicate `static.cpp`/`helpers.cpp` (lots of common logic)
-- minicargo job system (for nicer reporting of progress)
 - Codegen units (speed up librustc build by shattering the codegen into multipule objects)
-- Proper monomorphisation of closures
-  - Add PathParams to the closure type, that translate the source node into the current context
 - Add variance to lifetime inference.
 
 MIR match generation
@@ -19,6 +16,16 @@ MIR match generation
   > Rule codegen should store the next block for each rule
   > Store both the source block and the next block (can store multiple pairs)
 
+Codegen:
+- Completely eliminate ZSTs (remove from args, remove from locals)
+  - ZSTs are borrowed in some cases, so still need to exist
+  - Could replace borrow with a borrow of an equivalent location (e.g. next argument, or just `rv`)
+  - NOTE: Failed? ICE in rustc (when implemented using borrows of `rv`)
+- Treat `repr(transparent)` types as the inner type (i.e. don't even emit `struct`s)
+- Tweak `const_eval_select` to be less verbose (or expand/delete after monomorph?)
+  - A chunk of the verbosity is from ZSTs
+  - And some from laziness
+- Transparent `Option<NonZero>` (same inner type?)
 
 ## Big change TODOs
 - Support MIR-only RLibs
@@ -63,7 +70,6 @@ MIR match generation
     - Reduces typing
     - No memory gains though.
 - Full SMIRI support in `minicargo` (running `standalone_miri` on build scripts)
-- Rupport `rustc` in `minicargo` (for doing the pre-cargo build of libstd)
 - Restructure to treat `if { ... } else if` chains as a list instead of recursive structures
 - Pre-cache inherent methods for faster lookup
 
