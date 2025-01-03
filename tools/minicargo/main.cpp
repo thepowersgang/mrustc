@@ -102,7 +102,8 @@ int main(int argc, const char* argv[])
         }
 
         auto bs_override_dir = opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path();
-        auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
+        // Convert the path to an absolute path, so we can find the workspace in directories in/above the CWD
+        auto dir = ::helpers::path(opts.directory ? opts.directory : ".").to_absolute();
 
         Cfg_SetTarget(opts.target);
 
@@ -116,6 +117,7 @@ int main(int argc, const char* argv[])
         WorkspaceManifest   workspace_manifest;
         ::helpers::path workspace_manifest_path;
         {
+            // Add `.` to the path, so the first `pop_component` returns the original path (in case the package and workspace manifests are the same file)
             auto p = dir / ".";
             // Search parent dir and up (pop current dir and then start checking)
             while( p.pop_component() )

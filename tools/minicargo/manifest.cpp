@@ -553,7 +553,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
                     }
                     else if( key_val.value.as_bool() ) {
                         if( wm->edition() == Edition::Unspec ) {
-                            eh.error("Using edition.workspace with workspace-specified edition");
+                            eh.error("`edition.workspace` present, but workspace did not specify an edition");
                         }
                         rv.m_edition = wm->edition();
                     }
