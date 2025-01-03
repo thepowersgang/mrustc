@@ -81,7 +81,7 @@ Process Process::spawn(
         abort();
     }
     // Create logfile output directory
-    if( logfile.parent().is_valid() ) {
+    if( !logfile.parent().is_valid() ) {
         mkdir(logfile.parent());
     }
 
