@@ -16,7 +16,7 @@
 #include "codegen.hpp"
 #include "monomorphise.hpp"
 
-void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const TransOptions& opt, const ::HIR::Crate& crate, const TransList& list, const ::std::string& hir_file)
+void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const TransOptions& opt, const ::HIR::Crate& crate, TransList list, const ::std::string& hir_file)
 {
     static Span sp;
 
@@ -66,10 +66,12 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
             codegen->emit_type(ty.first);
         }
     }
+    list.m_types.clear();
     for(const auto& ty : list.m_typeids)
     {
         codegen->emit_type_id(ty);
     }
+    list.m_typeids.clear();
     // Emit required constructor methods (and other wrappers)
     for(const auto& path : list.m_constructors)
     {
@@ -98,6 +100,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         const auto& te = mod_ptr->m_mod_items.at(path.m_path.m_components.back())->ent;
         codegen->emit_constructor_struct(sp, path, te.as_Struct());
     }
+    list.m_constructors.clear();
 
     // 2. Emit function prototypes
     for(const auto& ent : list.m_functions)
@@ -167,7 +170,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         {
         }
     }
-
+    list.m_statics.clear();
 
     // 4. Emit function code
     for(const auto& ent : list.m_functions)
@@ -196,12 +199,16 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
             }
         }
     }
+    list.m_functions.clear();
 
     for(const auto& a : crate.m_global_asm)
     {
         codegen->emit_global_asm(a);
     }
 
+    // NOTE: Completely reinitialise the `TransList` to free all monomorphised memory before calling the backend compilation tool
+    // - This can save several GB of working set
+    list = TransList();
     codegen->finalise(opt, out_ty, hir_file);
 }
 

@@ -44,4 +44,4 @@ extern void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list);
 
 extern void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list);
 
-extern void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const TransOptions& opt, const ::HIR::Crate& crate, const TransList& list, const ::std::string& hir_file);
+extern void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const TransOptions& opt, const ::HIR::Crate& crate, TransList list, const ::std::string& hir_file);
