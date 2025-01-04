@@ -80,8 +80,8 @@ Process Process::spawn(
         ::std::cerr << "TODO: Test and implement `capture_stderr`" << std::endl;
         abort();
     }
-    // Create logfile output directory
-    if( !logfile.parent().is_valid() ) {
+    // Create logfile output directory (if the parent path is valid, i.e. the logile path isn't a single component)
+    if( logfile.parent().is_valid() ) {
         mkdir(logfile.parent());
     }
 
@@ -391,7 +391,7 @@ void set_console_colour(std::ostream& os, TerminalColour colour) {
 void mkdir(const helpers::path& p)
 {
     #ifdef _WIN32
-    CreateDirectory(p.str().c_str(), NULL);
+    CreateDirectoryA(p.str().c_str(), NULL);
     #else
     if( ::mkdir(static_cast<::std::string>(p).c_str(), 0755) != 0 ) {
         if( errno == EEXIST ) {
