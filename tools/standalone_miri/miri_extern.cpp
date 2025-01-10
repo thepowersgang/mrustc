@@ -1231,7 +1231,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             return true;
         }
 
-        rv = Value::new_i32( fseek(fp, offset, whence) );
+        rv = Value::new_i32( fseek(fp, static_cast<long>(offset), whence) );
     }
     else if( link_name == "ftell" )
     {
@@ -1247,7 +1247,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto size = args.at(1).read_usize(0);
         auto ptr = args.at(0).read_pointer_valref_mut(0, size*nmemb).to_write();
 
-        int retval = fread(ptr.data_ptr_mut(size*nmemb), size, nmemb, fp);
+        size_t retval = fread(ptr.data_ptr_mut(size*nmemb), static_cast<size_t>(size), static_cast<size_t>(nmemb), fp);
         if(retval > 0)
         {
             ptr.mark_bytes_valid(0, retval * size);

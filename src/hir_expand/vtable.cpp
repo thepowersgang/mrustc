@@ -73,7 +73,7 @@ namespace {
                         if( !is_known ) {
                             auto i = params.m_types.size();
                             DEBUG(ty.first << " #" << i << " (from " << path << ")");
-                            auto rv = trait_ptr->m_type_indexes.insert( ::std::make_pair(ty.first, i) );
+                            auto rv = trait_ptr->m_type_indexes.insert( ::std::make_pair(ty.first, static_cast<unsigned>(i)) );
                             if(rv.second == false) {
                                 // NOTE: Some traits have multiple parents with the same ATY name
                                 // E.g. `::"rustc_data_structures-0_0_0"::graph::ControlFlowGraph`

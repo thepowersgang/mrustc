@@ -536,6 +536,31 @@ namespace {
 {
     ::HIR::PathParams   params;
 
+    size_t num_lft = 0;
+    size_t num_ty = 0;
+    size_t num_val = 0;
+    
+    for(const auto& param : src_params.m_entries) {
+        TU_MATCH_HDRA( (param), {)
+        TU_ARMA(Null, ty) {
+            }
+        TU_ARMA(Lifetime, lft) {
+            num_lft ++;
+            }
+        TU_ARMA(Type, ty) {
+            num_ty ++;
+            }
+        TU_ARMA(Value, iv) {
+            num_val ++;
+            }
+        TU_ARMA(AssociatedTyEqual, ty) {}
+        TU_ARMA(AssociatedTyBound, ty) {}
+        }
+    }
+
+    params.m_lifetimes.reserve_init(num_lft);
+    params.m_types.reserve_init(num_ty);
+    params.m_values.reserve_init(num_val);
     for(const auto& param : src_params.m_entries) {
         TU_MATCH_HDRA( (param), {)
         TU_ARMA(Null, ty) {
@@ -1449,16 +1474,7 @@ namespace {
     // HACK: Add a bound of Self: ThisTrait for parts of typeck (TODO: Remove this, it's evil)
     {
         auto this_trait = ::HIR::GenericPath( trait_path );
-        for(const auto& arg : rv.m_params.m_lifetimes) {
-            (void)arg;
-            this_trait.m_params.m_lifetimes.push_back( ::HIR::LifetimeRef(this_trait.m_params.m_lifetimes.size()) );
-        }
-        for(const auto& arg : rv.m_params.m_types) {
-            this_trait.m_params.m_types.push_back( ::HIR::TypeRef(arg.m_name, this_trait.m_params.m_types.size()) );
-        }
-        for(const auto& arg : rv.m_params.m_values) {
-            this_trait.m_params.m_values.push_back( ::HIR::GenericRef(arg.m_name, this_trait.m_params.m_values.size()) );
-        }
+        this_trait.m_params = rv.m_params.make_nop_params(0);
         rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ {}, ::HIR::TypeRef("Self",0xFFFF), { {}, mv$(this_trait) } }) );
     }
 

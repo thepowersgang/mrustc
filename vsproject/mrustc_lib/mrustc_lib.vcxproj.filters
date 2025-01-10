@@ -713,6 +713,9 @@
     <ClInclude Include="..\..\src\trans\target.hpp">
       <Filter>Header Files\trans</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\include\stdspan.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="../packages.config" />

@@ -19,22 +19,17 @@ namespace {
         if( is_expr && pp.m_types.empty() )
         {
             // Empty list, fill with ivars
-            while( pp.m_types.size() < params_def.m_types.size() )
-            {
-                pp.m_types.push_back( ::HIR::TypeRef() );
-            }
+            pp.m_types.resize( params_def.m_types.size() );
         }
 
         // Shouldn't this error out if not in an expression?
         if( pp.m_lifetimes.empty() )
         {
-            while( pp.m_lifetimes.size() < params_def.m_lifetimes.size() )
-            {
-                pp.m_lifetimes.push_back( ::HIR::LifetimeRef() );
-            }
+            pp.m_lifetimes.resize( params_def.m_lifetimes.size() );
         }
 
         auto ms_o = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+        pp.m_types.reserve( params_def.m_types.size() );
         while( pp.m_types.size() < params_def.m_types.size() && params_def.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
             pp.m_types.push_back( ms_o.monomorph_type(sp, params_def.m_types[pp.m_types.size()].m_default) );
         }

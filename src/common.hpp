@@ -429,4 +429,201 @@ public:
 };
 
 
+/// A thin vector type (single-pointer) that cannot resize, and stores the vector length in the pointed-to memory
+///
+/// Used for HIR structures to save significant amounts of memory
+template<typename T>
+class ThinVector
+{
+    struct Meta {
+        size_t  len;
+        size_t  cap;
+    };
+    T*    m_ptr;
+public:
+    ~ThinVector() {
+        if(m_ptr)
+        {
+            auto* m = meta();
+            auto len = m->len;
+            m->len = 0;
+            for(size_t i = 0; i < len; i ++) {
+                m_ptr[i].~T();
+            }
+            free(m);
+            m_ptr = nullptr;
+        }
+    }
+
+    ThinVector(): m_ptr(nullptr) {}
+    explicit ThinVector(size_t len)
+        : m_ptr(nullptr)
+    {
+        if(len > 0)
+        {
+            this->reserve_init(len);
+            auto* meta = this->meta();
+            for(size_t i = 0; i < len; i ++) {
+                new(&m_ptr[i]) T;
+                meta->len ++;
+            }
+        }
+    }
+    ThinVector(const T* begin, const T* end)
+        : m_ptr(nullptr)
+    {
+        if(begin != end)
+        {
+            this->reserve_init(end - begin);
+            auto* meta = this->meta();
+            for(auto it = begin; it != end; ++it) {
+                new(&m_ptr[meta->len]) T(*it);
+                meta->len ++;
+            }
+        }
+    }
+    explicit ThinVector(const std::vector<T>& x): ThinVector(x.data(), x.data() + x.size()) {}
+
+    ThinVector(const ThinVector& x): ThinVector(x.data(), x.data() + x.size()) {}
+    ThinVector(ThinVector&& x): m_ptr(x.m_ptr) { x.m_ptr = nullptr; }
+
+    ThinVector& operator=(const ThinVector& x) { this->~ThinVector(); new(this) ThinVector(x); return *this; }
+    ThinVector& operator=(ThinVector&& x) { this->~ThinVector(); this->m_ptr = x.m_ptr; x.m_ptr = nullptr; return *this; }
+
+    void reserve(size_t new_cap) {
+        if(new_cap > this->capacity())
+        {
+            auto saved = std::move(*this);
+            this->reserve_init(new_cap);
+            for(auto& v : saved) {
+                this->push_back(std::move(v));
+            }
+        }
+    }
+    void resize(size_t len) {
+        this->reserve(len);
+        auto* m = this->meta();
+        if( m )
+        {
+            while( m->len > len ) {
+                m->len --;
+                m_ptr[m->len].~T();
+            }
+            while( m->len < len ) {
+                this->push_back(T());
+            }
+        }
+    }
+
+    void reserve_init(size_t cap) {
+        if(m_ptr)   throw std::runtime_error("Initialising an initialised ThinVector");
+        if(cap > 0)
+        {
+            auto* p = static_cast<T*>( malloc( sizeof(T) * (cap + metadata_len()) ) );
+            if(!p) {
+                throw ::std::bad_alloc();
+            }
+            auto* meta = (Meta*)p;
+            m_ptr = p + metadata_len();
+            meta->cap = cap;
+            meta->len = 0;
+        }
+    }
+    template<typename... Args>
+    void emplace_back(Args&&... v) {
+        auto len = size();
+        if(len == 0) {
+            this->reserve(2);
+        }
+        else if(len >= meta()->cap) {
+            this->reserve((len + 1) * 3 / 2);
+        }
+        new(&m_ptr[len]) T(std::move(v)...);
+        this->meta()->len ++;
+    }
+    void push_back(T v) {
+        this->emplace_back(std::move(v));
+    }
+    
+    const T& front() const { if(this->size() == 0) throw std::out_of_range("ThinVector::front"); return *m_ptr; }
+          T& front()       { if(this->size() == 0) throw std::out_of_range("ThinVector::front"); return *m_ptr; }
+    const T& back() const { if(this->size() == 0) throw std::out_of_range("ThinVector::back"); return m_ptr[size()-1]; }
+          T& back()       { if(this->size() == 0) throw std::out_of_range("ThinVector::back"); return m_ptr[size()-1]; }
+    const T* begin() const { return m_ptr; }
+          T* begin()       { return m_ptr; }
+    const T* end() const { return m_ptr + size(); }
+          T* end()       { return m_ptr + size(); }
+
+    const T& operator[](size_t i) const { return m_ptr[i]; }
+          T& operator[](size_t i)       { return m_ptr[i]; }
+    const T& at(size_t i) const { if(i >= this->size()) throw std::out_of_range("ThinVector::at"); return m_ptr[i]; }
+          T& at(size_t i)       { if(i >= this->size()) throw std::out_of_range("ThinVector::at"); return m_ptr[i]; }
+    const T* data() const { return m_ptr; }
+          T* data()       { return m_ptr; }
+    size_t size() const {
+        if(m_ptr) {
+            return meta()->len;
+        }
+        else {
+            return 0;
+        }
+    }
+    size_t capacity() const {
+        if(m_ptr) {
+            return meta()->cap;
+        }
+        else {
+            return 0;
+        }
+    }
+    bool empty() const {
+        return m_ptr == nullptr;
+    }
+
+    Ordering ord(const ThinVector<T>& x) const {
+        size_t l = this->size();
+        if(l > x.size()) {
+            l = x.size();
+        }
+        for(size_t i = 0; i < l; i ++ ) {
+            auto rv = ::ord( (*this)[i], x[i] );
+            if( rv != OrdEqual )
+                return rv;
+        }
+
+        if(l < this->size()) {
+            return OrdLess;
+        }
+        else if( l > this->size() ) {
+            return OrdGreater;
+        }
+        else {
+           return OrdEqual;
+        }
+    }
+private:
+    static size_t metadata_len() {
+        //static_assert(sizeof(T) > 0, "");
+        return (sizeof(Meta) + sizeof(T) - 1) / sizeof(T);
+    }
+    const Meta* meta() const { return m_ptr ? (const Meta*)(m_ptr-metadata_len()) : nullptr; }
+          Meta* meta()       { return m_ptr ? (      Meta*)(m_ptr-metadata_len()) : nullptr; }
+};
+template <typename T>
+inline ::std::ostream& operator<<(::std::ostream& os, const ThinVector<T>& v) {
+    if( v.size() > 0 )
+    {
+        bool is_first = true;
+        for( const auto& i : v )
+        {
+            if(!is_first)
+                os << ", ";
+            is_first = false;
+            os << i;
+        }
+    }
+    return os;
+}
+
+
 #endif

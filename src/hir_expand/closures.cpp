@@ -873,6 +873,10 @@ namespace {
             static bool contains(const ::std::vector<T>& l, const U& v) {
                 return ::std::find(l.begin(), l.end(), v) != l.end();
             }
+            template<typename T, typename U>
+            static bool contains(const ThinVector<T>& l, const U& v) {
+                return ::std::find(l.begin(), l.end(), v) != l.end();
+            }
             enum class TypeNeed {
                 // No generics used
                 NoGenerics,

@@ -5,6 +5,18 @@
     <DisplayString Condition="m_ptr == 0">""</DisplayString>
     <StringView Condition="m_ptr != 0">(const char*)m_ptr->data,s</StringView>
   </Type>
+  <Type Name="ThinVector&lt;*&gt;">
+    <DisplayString Condition="m_ptr == 0">{{ size=0 }}</DisplayString>
+    <DisplayString Condition="m_ptr != 0">{{ size={((size_t*)m_ptr)[-2]} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple" Condition="m_ptr != 0">((size_t*)m_ptr)[-2]</Item>
+      <Item Name="[capacity]" ExcludeView="simple" Condition="m_ptr != 0">((size_t*)m_ptr)[-1]</Item>
+      <ArrayItems Condition="m_ptr != 0">
+        <Size>((size_t*)m_ptr)[-2]</Size>
+        <ValuePointer>m_ptr</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
   <Type Name="Span">
     <DisplayString Condition="m_ptr == 0">NULL</DisplayString>
     <DisplayString Condition="m_ptr == &amp;Span::s_empty_span">EMPTY</DisplayString>

@@ -92,6 +92,7 @@ namespace {
     {
     };
 
+    ::Ordering typelist_ord_specific(const Span& sp, const ThinVector<::HIR::TypeRef>& left, const ThinVector<::HIR::TypeRef>& right);
     ::Ordering typelist_ord_specific(const Span& sp, const ::std::vector<::HIR::TypeRef>& left, const ::std::vector<::HIR::TypeRef>& right);
 
     ::Ordering type_ord_specific(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
@@ -246,6 +247,23 @@ namespace {
         throw "Fell off end of type_ord_specific";
     }
 
+    ::Ordering typelist_ord_specific(const Span& sp, const ThinVector<::HIR::TypeRef>& le, const ThinVector<::HIR::TypeRef>& re)
+    {
+        auto rv = ::OrdEqual;
+        assert(le.size() == re.size());
+        for(unsigned int i = 0; i < le.size(); i ++) {
+            auto a = type_ord_specific(sp, le[i], re[i]);
+            if( a != ::OrdEqual ) {
+                if( rv != ::OrdEqual && a != rv )
+                {
+                    DEBUG("Inconsistent ordering between type lists - i=" << i << " [" << le << "] vs [" << re << "]");
+                    throw TypeOrdSpecific_MixedOrdering {};
+                }
+                rv = a;
+            }
+        }
+        return rv;
+    }
     ::Ordering typelist_ord_specific(const Span& sp, const ::std::vector<::HIR::TypeRef>& le, const ::std::vector<::HIR::TypeRef>& re)
     {
         auto rv = ::OrdEqual;
@@ -1252,6 +1270,10 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
     const auto& vtable_ref = crate.get_struct_by_path(sp, vtable_ty_spath);
     // Copy the param set from the trait in the trait object
     ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+    vtable_params.m_types = ThinVector<HIR::TypeRef>( te.m_trait.m_path.m_params.m_types.size() + this->m_type_indexes.size() );
+    for(size_t i = 0; i < te.m_trait.m_path.m_params.m_types.size(); i ++) {
+        vtable_params.m_types[i] = te.m_trait.m_path.m_params.m_types[i].clone();
+    }
     // - Include associated types on bound
     for(const auto& ty_b : te.m_trait.m_type_bounds) {
         if( this->m_type_indexes.count(ty_b.first) == 0 ) {
@@ -1259,9 +1281,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
             continue ;
         }
         auto idx = this->m_type_indexes.at(ty_b.first);
-        if(vtable_params.m_types.size() <= idx)
-            vtable_params.m_types.resize(idx+1);
-        vtable_params.m_types[idx] = ty_b.second.type.clone();
+        vtable_params.m_types.at(idx) = ty_b.second.type.clone();
     }
     return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
 }

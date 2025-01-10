@@ -109,17 +109,21 @@ Ordering HIR::GenericBound::ord(const HIR::GenericBound& b) const
 
 HIR::PathParams HIR::GenericParams::make_nop_params(unsigned level, bool lifetimes_only/*=false*/) const
 {
-    HIR::PathParams rv;
-    for(const auto& t : this->m_lifetimes) {
-        rv.m_lifetimes.push_back(HIR::LifetimeRef( 256*level + rv.m_lifetimes.size() ));
-    }
     assert( !lifetimes_only || this->m_types .empty() );
     assert( !lifetimes_only || this->m_values.empty() );
-    for(const auto& t : this->m_types) {
-        rv.m_types.push_back(HIR::TypeRef(t.m_name, 256*level + rv.m_types.size()));
+
+    HIR::PathParams rv;
+    rv.m_lifetimes = ThinVector<HIR::LifetimeRef >( this->m_lifetimes.size() );
+    rv.m_types     = ThinVector<HIR::TypeRef     >( this->m_types.size() );
+    rv.m_values    = ThinVector<HIR::ConstGeneric>( this->m_values.size() );
+    for(size_t i = 0; i < this->m_lifetimes.size(); i ++) {
+        rv.m_lifetimes[i] = HIR::LifetimeRef( 256*level + i );
     }
-    for(const auto& t : this->m_values) {
-        rv.m_values.push_back(HIR::GenericRef(t.m_name, 256*level + rv.m_values.size()));
+    for(size_t i = 0; i < this->m_types.size(); i ++) {
+        rv.m_types[i] = HIR::TypeRef(this->m_types[i].m_name, 256*level + i);
+    }
+    for(size_t i = 0; i < this->m_values.size(); i ++) {
+        rv.m_values[i] = HIR::GenericRef(this->m_values[i].m_name, 256*level + i);
     }
     return rv;
 }

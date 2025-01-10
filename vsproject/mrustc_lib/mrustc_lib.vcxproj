@@ -348,6 +348,7 @@
     <ClInclude Include="..\..\src\include\serialise.hpp" />
     <ClInclude Include="..\..\src\include\serialiser_texttree.hpp" />
     <ClInclude Include="..\..\src\include\span.hpp" />
+    <ClInclude Include="..\..\src\include\stdspan.hpp" />
     <ClInclude Include="..\..\src\include\synext.hpp" />
     <ClInclude Include="..\..\src\include\synext_decorator.hpp" />
     <ClInclude Include="..\..\src\include\synext_macro.hpp" />

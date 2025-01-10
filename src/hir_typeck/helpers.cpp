@@ -1079,6 +1079,17 @@ namespace {
         }
         return true;
     }
+    bool type_list_equal(const HMTypeInferrence& context, const ThinVector< ::HIR::TypeRef>& l, const ThinVector< ::HIR::TypeRef>& r)
+    {
+        if( l.size() != r.size() )
+            return false;
+
+        for( unsigned int i = 0; i < l.size(); i ++ ) {
+            if( !context.types_equal(l[i], r[i]) )
+                return false;
+        }
+        return true;
+    }
 }
 bool HMTypeInferrence::pathparams_equal(const ::HIR::PathParams& pps_l, const ::HIR::PathParams& pps_r) const
 {

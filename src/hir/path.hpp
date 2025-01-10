@@ -94,7 +94,7 @@ static inline Compare& operator &=(Compare& x, const Compare& y) {
 
 /// Simple path - Absolute with no generic parameters
 // TODO: Investigate having this be a custom Rc vector-alike
-// - Would save 3*8 bytes inline, and make comparison/clone cheaper
+// - Would save 3*8 bytes inline (not much?), and make comparison/clone cheaper
 struct SimplePath
 {
     RcString   m_crate_name;
@@ -115,6 +115,9 @@ struct SimplePath
     }
 
     SimplePath clone() const;
+
+    const RcString& crate_name() const { return m_crate_name; };
+    const ::std::vector<RcString>& components() const { return m_components; };
 
     SimplePath operator+(const RcString& s) const;
     bool operator==(const SimplePath& x) const {
@@ -138,9 +141,9 @@ struct SimplePath
 
 struct PathParams
 {
-    ::std::vector<LifetimeRef>  m_lifetimes;
-    ::std::vector<TypeRef>  m_types;
-    ::std::vector<HIR::ConstGeneric>  m_values;
+    ThinVector<LifetimeRef>  m_lifetimes;
+    ThinVector<TypeRef>  m_types;
+    ThinVector<HIR::ConstGeneric>  m_values;
 
     PathParams();
     PathParams(::HIR::TypeRef );

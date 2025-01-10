@@ -95,6 +95,15 @@
             }
         }
         template<typename T>
+        void serialise_vec(const ThinVector<T>& vec)
+        {
+            TRACE_FUNCTION_F("<" << typeid(T).name() << "> size=" << vec.size());
+            auto _ = m_out.open_object(typeid(ThinVector<T>).name());
+            m_out.write_count(vec.size());
+            for(const auto& i : vec)
+                serialise(i);
+        }
+        template<typename T>
         void serialise_vec(const ::std::vector<T>& vec)
         {
             TRACE_FUNCTION_F("<" << typeid(T).name() << "> size=" << vec.size());

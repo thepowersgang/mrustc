@@ -173,6 +173,24 @@ namespace {
         {
             return deserialise_vec_c<T>([&](){ return D<T>::des(*this); });
         }
+        template<typename T>
+        ThinVector<T> deserialise_thinvec_c(::std::function<T()> cb)
+        {
+            TRACE_FUNCTION_FR("<" << typeid(T).name() << ">", m_in.get_pos());
+            auto _ = m_in.open_object(typeid(ThinVector<T>).name());
+            size_t n = m_in.read_count();
+            DEBUG("n = " << n);
+            ThinVector<T>    rv;
+            rv.reserve_init(n);
+            for(size_t i = 0; i < n; i ++)
+                rv.push_back( cb() );
+            return rv;
+        }
+        template<typename T>
+        ThinVector<T> deserialise_thinvec()
+        {
+            return deserialise_thinvec_c<T>([&](){ return D<T>::des(*this); });
+        }
 
         template<typename T>
         ::std::set<T> deserialise_set()
@@ -1154,9 +1172,9 @@ namespace {
     {
         ::HIR::PathParams   rv;
         TRACE_FUNCTION_FR("", rv);
-        rv.m_lifetimes = deserialise_vec< ::HIR::LifetimeRef>();
-        rv.m_types = deserialise_vec< ::HIR::TypeRef>();
-        rv.m_values = deserialise_vec< ::HIR::ConstGeneric>();
+        rv.m_lifetimes = deserialise_thinvec< ::HIR::LifetimeRef>();
+        rv.m_types = deserialise_thinvec< ::HIR::TypeRef>();
+        rv.m_values = deserialise_thinvec< ::HIR::ConstGeneric>();
         return rv;
     }
     ::HIR::GenericPath HirDeserialiser::deserialise_genericpath()

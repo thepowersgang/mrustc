@@ -671,9 +671,7 @@ namespace resolve_ufcs {
                 DEBUG("- Trying trait " << *trait_info.first);
 
                 auto trait_path = ::HIR::GenericPath( *trait_info.first );
-                for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
-                    trait_path.m_params.m_types.push_back( ::HIR::TypeRef() );
-                }
+                trait_path.m_params.m_types = ThinVector<HIR::TypeRef>( trait.m_params.m_types.size() );
 
                 // TODO: If there's only one trait with this name, assume it's the correct one.
 

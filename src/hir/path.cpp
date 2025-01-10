@@ -134,19 +134,22 @@ namespace HIR {
 }
 ::HIR::PathParams::PathParams(::HIR::TypeRef ty0)
 {
-    m_types.push_back( mv$(ty0) );
+    m_types = ThinVector<HIR::TypeRef>(1);
+    m_types[0] = std::move(ty0);
 }
 HIR::PathParams::PathParams(::HIR::LifetimeRef lft)
 {
-    m_lifetimes.push_back(lft);
+    m_lifetimes = ThinVector<HIR::LifetimeRef>(1);
+    m_lifetimes[0] = std::move(lft);
 }
 ::HIR::PathParams HIR::PathParams::clone() const
 {
     PathParams  rv;
-    for( const auto& l : m_lifetimes )
-        rv.m_lifetimes.push_back( l );
+    rv.m_lifetimes = this->m_lifetimes;
+    rv.m_types.reserve(m_types.size());
     for( const auto& t : m_types )
         rv.m_types.push_back( t.clone() );
+    rv.m_values.reserve(m_values.size());
     for( const auto& t : m_values )
         rv.m_values.push_back( t.clone() );
     return rv;

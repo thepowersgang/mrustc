@@ -99,10 +99,7 @@ namespace {
         if( params.m_lifetimes.size() != param_defs.m_lifetimes.size() )
         {
             if( params.m_lifetimes.size() == 0 && fill_infer ) {
-                for(const auto& lft : param_defs.m_lifetimes) {
-                    (void)lft;
-                    params.m_lifetimes.push_back({});
-                }
+                params.m_lifetimes.resize( param_defs.m_lifetimes.size() );
             }
         }
         if( params.m_types.size() != param_defs.m_types.size() )
@@ -110,10 +107,7 @@ namespace {
             TRACE_FUNCTION_FR(path, params);
 
             if( params.m_types.size() == 0 && fill_infer ) {
-                for(const auto& typ : param_defs.m_types) {
-                    (void)typ;
-                    params.m_types.push_back( ::HIR::TypeRef() );
-                }
+                params.m_types.resize( param_defs.m_types.size() );
             }
             else if( params.m_types.size() > param_defs.m_types.size() ) {
                 ERROR(sp, E0000, "Too many type parameters passed to " << path);
@@ -136,6 +130,7 @@ namespace {
         if( params.m_values.size() != param_defs.m_values.size() )
         {
             if( params.m_values.size() == 0 && fill_infer ) {
+                params.m_values.reserve(param_defs.m_values.size());
                 for(const auto& val : param_defs.m_values) {
                     if( val.m_default ) {
                         // NOTE: Can't just copy, as Unevaluated may not have had its params set yet

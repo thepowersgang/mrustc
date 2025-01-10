@@ -109,10 +109,7 @@ public:
     PathParams make_empty_params(bool lifetimes_only=false) const {
         assert(lifetimes_only);
         PathParams  rv;
-        for(const auto& unused_lft : m_lifetimes) {
-            (void)unused_lft;
-            rv.m_lifetimes.push_back(HIR::LifetimeRef());
-        }
+        rv.m_lifetimes = ThinVector<LifetimeRef>(m_lifetimes.size());
         return rv;
     }
 

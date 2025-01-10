@@ -284,6 +284,7 @@ namespace
 
         void visit_path_params(::HIR::PathParams& pp) override
         {
+            DEBUG(pp);
             static Span _sp;
             const Span& sp = _sp;
 

@@ -1001,7 +1001,7 @@ namespace {
     }
     HIR::PathParams parse_params(TokenStream& lex)
     {
-        HIR::PathParams rv;
+        std::vector<HIR::TypeRef>   tys;
         if( lex.lookahead(0) == TOK_LT || lex.lookahead(0) == TOK_DOUBLE_LT )
         {
             if( !consume_if(lex, TOK_LT) ) {
@@ -1012,7 +1012,7 @@ namespace {
             while( !(lex.lookahead(0) == TOK_GT || lex.lookahead(0) == TOK_DOUBLE_GT) )
             {
                 // TODO: Lifetimes?
-                rv.m_types.push_back( parse_type(lex) );
+                tys.push_back( parse_type(lex) );
                 if( !consume_if(lex, TOK_COMMA) )
                     break;
             }
@@ -1029,6 +1029,11 @@ namespace {
                 auto tok = lex.getToken();
                 throw ParseError::Unexpected(lex, tok, { TOK_GT, TOK_DOUBLE_GT });
             }
+        }
+        HIR::PathParams rv;
+        rv.m_types.reserve_init(tys.size());
+        for(auto& v : tys) {
+            rv.m_types.push_back(std::move(v));
         }
         return rv;
     }
