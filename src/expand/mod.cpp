@@ -204,8 +204,8 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                         }
                     }
                 } d;
-                d.mac_path.push_back(proc_mac->path.m_crate_name);
-                d.mac_path.insert(d.mac_path.end(), proc_mac->path.m_components.begin(), proc_mac->path.m_components.end());
+                d.mac_path.push_back(proc_mac->path.crate_name());
+                d.mac_path.insert(d.mac_path.end(), proc_mac->path.components().begin(), proc_mac->path.components().end());
                 // HACK: tracing's #[instrument] is very slow (with mrustc), so just ignore it (this is the rustc-1.74 version)
                 if( d.mac_path.front() == "tracing_attributes-0_1_26" && d.mac_path.back() == "instrument" ) {
                 }
@@ -422,8 +422,8 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
         }
     TU_ARMA(ExternalProcMacro, proc_mac) {
         ::std::vector<RcString> mac_path;
-        mac_path.push_back(proc_mac->path.m_crate_name);
-        mac_path.insert(mac_path.end(), proc_mac->path.m_components.begin(), proc_mac->path.m_components.end());
+        mac_path.push_back(proc_mac->path.crate_name());
+        mac_path.insert(mac_path.end(), proc_mac->path.components().begin(), proc_mac->path.components().end());
         rv = ProcMacro_Invoke(mi_span, crate, mac_path, input_tt);
         }
     TU_ARMA(BuiltinProcMacro, proc_mac) {

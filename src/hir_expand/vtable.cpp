@@ -271,7 +271,7 @@ namespace {
             {
                 const auto& pt = tr.m_all_parent_traits[i];
                 auto parent_vtable_spath = pt.m_path.m_path;
-                parent_vtable_spath.m_components.back() = RcString::new_interned(FMT( parent_vtable_spath.m_components.back().c_str() << "#vtable" ));
+                parent_vtable_spath.update_last_component( RcString::new_interned(FMT( parent_vtable_spath.components().back().c_str() << "#vtable" )) );
                 auto parent_vtable_path = ::HIR::GenericPath(mv$(parent_vtable_spath), pt.m_path.m_params.clone());
                 auto ty = true || supertrait_flags[i]
                     ? ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_path(mv$(parent_vtable_path), {}) )
@@ -376,7 +376,7 @@ namespace {
             if( p && std::strcmp(p, "#vtable") == 0 )
             {
                 auto trait_path = ip.parent->get_simple_path();
-                trait_path.m_components.push_back( RcString::new_interned(ip.name, p - ip.name) );
+                trait_path += RcString::new_interned(ip.name, p - ip.name);
                 const auto& trait = m_crate.get_trait_by_path(sp, trait_path);
 
                 auto& fields = str.m_data.as_Named();

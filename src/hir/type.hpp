@@ -128,14 +128,14 @@ struct TypeData_Path
 
     bool is_closure() const {
         return path.m_data.is_Generic()
-            && path.m_data.as_Generic().m_path.m_components.back().size() > 8
-            && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(CLOSURE_PATH_PREFIX), CLOSURE_PATH_PREFIX) == 0
+            && path.m_data.as_Generic().m_path.components().back().size() > 8
+            && path.m_data.as_Generic().m_path.components().back().compare(0,strlen(CLOSURE_PATH_PREFIX), CLOSURE_PATH_PREFIX) == 0
             ;
     }
     bool is_generator() const {
         return path.m_data.is_Generic()
-            && path.m_data.as_Generic().m_path.m_components.back().size() > 8
-            && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(GENERATOR_PATH_PREFIX), GENERATOR_PATH_PREFIX) == 0
+            && path.m_data.as_Generic().m_path.components().back().size() > 8
+            && path.m_data.as_Generic().m_path.components().back().compare(0,strlen(GENERATOR_PATH_PREFIX), GENERATOR_PATH_PREFIX) == 0
             ;
     }
 };

@@ -102,15 +102,15 @@ public:
     }
 
     bool operator==(const ::HIR::SimplePath& sp) const {
-        if( sp.m_crate_name != "" )  return false;
+        if( sp.crate_name() != "" )  return false;
 
-        auto i = sp.m_components.size();
+        auto i = sp.components().size();
         const auto* n = this;
         while( n && i -- )
         {
             if( !n->name )
                 return false;
-            if( n->name != sp.m_components[i] )
+            if( n->name != sp.components()[i] )
                 return false;
             n = n->parent;
         }

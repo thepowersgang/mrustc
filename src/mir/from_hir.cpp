@@ -2065,8 +2065,7 @@ namespace {
             {
                 // Get the variant index from the enum.
                 auto enum_path = node.m_path.clone();
-                enum_path.m_path.m_components.pop_back();
-                const auto& var_name = node.m_path.m_path.m_components.back();
+                const auto var_name = enum_path.m_path.pop_component();
                 const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path.m_path);
 
                 size_t idx = enm.find_variant(var_name);
@@ -2151,9 +2150,9 @@ namespace {
             {
                 const auto& gpath = node.m_path.m_data.as_Generic();
                 const auto& fcn = m_builder.crate().get_function_by_path(node.span(), gpath.m_path);
-                if( gpath.m_path.m_crate_name == "#intrinsics" )
+                if( gpath.m_path.crate_name() == "#intrinsics" )
                 {
-                    const auto& name = gpath.m_path.m_components.back();
+                    const auto& name = gpath.m_path.components().back();
                     if( name == "offset_of" ) {
                         const auto& ty = gpath.m_params.m_types.at(0);
                         const auto* cur_ty = &ty;
@@ -2201,7 +2200,7 @@ namespace {
                 {
                     m_builder.end_block(::MIR::Terminator::make_Call({
                         next_block, panic_block,
-                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ gpath.m_path.m_components.back(), gpath.m_params.clone() }),
+                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ gpath.m_path.components().back(), gpath.m_params.clone() }),
                         mv$(values)
                         }));
                 }
@@ -2209,7 +2208,7 @@ namespace {
                 {
                     m_builder.end_block(::MIR::Terminator::make_Call({
                         next_block, panic_block,
-                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ RcString(FMT("platform:" << gpath.m_path.m_components.back())), gpath.m_params.clone() }),
+                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ RcString(FMT("platform:" << gpath.m_path.components().back())), gpath.m_params.clone() }),
                         mv$(values)
                         }));
                 }
@@ -2392,8 +2391,7 @@ namespace {
             {
                 // Get the variant index from the enum.
                 auto enum_path = node.m_path.clone();
-                enum_path.m_path.m_components.pop_back();
-                const auto& var_name = node.m_path.m_path.m_components.back();
+                auto var_name = enum_path.m_path.pop_component();
 
                 const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path.m_path);
 
@@ -2621,8 +2619,7 @@ namespace {
                 }
             TU_ARMA(Enum, e) {
                 auto enum_path = ty_path.clone();
-                enum_path.m_path.m_components.pop_back();
-                const auto& var_name = ty_path.m_path.m_components.back();
+                auto var_name = enum_path.m_path.pop_component();
 
                 const auto& enm = *e;
                 size_t idx = enm.find_variant(var_name);

@@ -198,7 +198,7 @@ namespace {
             // TODO: If visible, ensure that target is visited.
             if( is_visible )
             {
-                if( ! e.is_variant && e.path.m_crate_name == state.crate.m_crate_name )
+                if( ! e.is_variant && e.path.crate_name() == state.crate.m_crate_name )
                 {
                     const auto& vi2 = state.crate.get_valitem_by_path(sp, e.path, false);
                     Trans_Enumerate_ValItem(state, vi2, is_visible, [&](){ return e.path; });
@@ -813,7 +813,7 @@ namespace
                     static Span sp;
 
                     // If the data trait is empty, then no vtable to visit
-                    if( !te.m_trait.m_path.m_path.m_components.empty() )
+                    if( !te.m_trait.m_path.m_path.components().empty() )
                     {
                         // Ensure that the data trait's vtable is present
                         const auto& trait = *te.m_trait.m_trait_ptr;
@@ -1176,7 +1176,7 @@ void Trans_Enumerate_Types(EnumState& state)
                 ASSERT_BUG(sp, markings_ptr, "Path binding not set correctly - " << ty);
 
                 // If the type has a drop impl, and it's either defined in this crate or has params (and thus was monomorphised)
-                if( markings_ptr->has_drop_impl && (gp.m_path.m_crate_name == state.crate.m_crate_name || gp.m_params.has_params()) )
+                if( markings_ptr->has_drop_impl && (gp.m_path.crate_name() == state.crate.m_crate_name || gp.m_params.has_params()) )
                 {
                     // Add the Drop impl to the codegen list
                     Trans_Enumerate_FillFrom_PathMono(state,  ::HIR::Path( ty.clone(), state.crate.get_lang_item_path(sp, "drop"), "drop", HIR::PathParams(HIR::LifetimeRef())));
@@ -1742,7 +1742,7 @@ namespace {
         {
             if(auto rv = find_function_by_link_name(e_crate.second.m_data->m_root_module, {e_crate.first}, name,  out_path))
             {
-                assert( out_path.m_crate_name == e_crate.first );
+                assert( out_path.crate_name() == e_crate.first );
                 return rv;
             }
         }

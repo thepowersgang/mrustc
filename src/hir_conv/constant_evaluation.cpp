@@ -853,7 +853,7 @@ namespace {
     EntPtr get_ent_fullpath(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::Path& path, EntNS ns, MonomorphState& out_ms, const ::HIR::GenericParams** out_impl_params_def=nullptr)
     {
         if(const auto* gp = path.m_data.opt_Generic()) {
-            const auto& name = gp->m_path.m_components.back();
+            const auto& name = gp->m_path.components().back();
             const auto& mod = resolve.m_crate.get_mod_by_path(sp, gp->m_path, /*ignore_last*/true);
             // TODO: This pointer will be invalidated...
             for(const auto& is : mod.m_inline_statics) {
@@ -3669,8 +3669,7 @@ void ConvertHIR_ConstantEvaluate_Expr(const ::HIR::Crate& crate, const ::HIR::It
 void ConvertHIR_ConstantEvaluate_Enum(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, const ::HIR::Enum& enm)
 {
     auto mod_path = ip.get_simple_path();
-    auto item_name = mod_path.m_components.back();
-    mod_path.m_components.pop_back();
+    auto item_name = mod_path.pop_component();
     const auto& mod = crate.get_mod_by_path(Span(), mod_path);
 
     auto& item = const_cast<::HIR::Enum&>(enm);

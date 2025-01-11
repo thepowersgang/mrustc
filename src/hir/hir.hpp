@@ -65,10 +65,12 @@ public:
         return Publicity(none_path);
     }
     static Publicity new_priv(::HIR::SimplePath p) {
-        while( !p.m_components.empty() && p.m_components.back().c_str()[0] == '#' ) {
-            p.m_components.pop_back();
+        size_t n_comp = p.components().size();
+        while(n_comp > 0 && p.components()[n_comp-1].c_str()[0] == '#' ) {
+            n_comp --;
         }
-        return Publicity(::std::make_shared<HIR::SimplePath>(::std::move(p)));
+        auto s = std::span<const RcString>(p.components().data(), n_comp);
+        return Publicity(::std::make_shared<HIR::SimplePath>(p.crate_name(), s));
     }
 
     bool is_global() const {

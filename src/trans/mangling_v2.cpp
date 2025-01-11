@@ -139,10 +139,10 @@ public:
     // SimplePath : <ncomp> 'c' [<RcString> ...]
     void fmt_simple_path(const ::HIR::SimplePath& sp)
     {
-        m_os << sp.m_components.size();
+        m_os << sp.components().size();
         m_os << "c";    // Needed to separate the component count from the crate name
-        this->fmt_name(sp.m_crate_name);
-        for(const auto& c : sp.m_components)
+        this->fmt_name(sp.crate_name());
+        for(const auto& c : sp.components())
         {
             this->fmt_name(c);
         }

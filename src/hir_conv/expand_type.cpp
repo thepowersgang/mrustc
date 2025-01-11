@@ -195,7 +195,7 @@ public:
         if( path.m_data.is_Generic() )
         {
             const auto& gp = path.m_data.as_Generic();
-            if( gp.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, gp.m_path, /*igncrate*/false, /*ignlast*/true).is_Enum() )
+            if( gp.m_path.components().size() > 1 && m_crate.get_typeitem_by_path(sp, gp.m_path, /*igncrate*/false, /*ignlast*/true).is_Enum() )
             {
                 return ::HIR::GenericPath();
             }
@@ -254,7 +254,7 @@ public:
             const auto& enm = ti.as_Enum();
 
             auto gp2 = gp.clone();
-            gp2.m_path.m_components.push_back(name);
+            gp2.m_path += name;
             gp2.m_params.m_lifetimes.resize( enm.m_params.m_lifetimes.size() );
             gp2.m_params.m_types.resize( enm.m_params.m_types.size() );
             gp2.m_params.m_values.resize( enm.m_params.m_values.size() );
@@ -286,7 +286,7 @@ public:
         auto& gp = path.m_data.as_Generic();
 
         // TODO: Better error messages?
-        if( gp.m_path.m_components.size() > 1 )
+        if( gp.m_path.components().size() > 1 )
         {
             const auto& ti = m_crate.get_typeitem_by_path(sp, gp.m_path, false, /*ignore_last*/true);
             if( ti.is_Enum() ) {
@@ -296,7 +296,7 @@ public:
                 gp.m_params.m_lifetimes.resize( enm.m_params.m_lifetimes.size() );
                 gp.m_params.m_types.resize( enm.m_params.m_types.size() );
 
-                auto idx = ti.as_Enum().find_variant(gp.m_path.m_components.back());
+                auto idx = ti.as_Enum().find_variant(gp.m_path.components().back());
                 return ::HIR::Pattern::PathBinding::make_Enum({ &enm, static_cast<unsigned>(idx) });
             }
         }
@@ -542,7 +542,7 @@ public:
         if( const auto* n = ::std::strchr(p.name, '#') ) {
             if( n != p.name && n[1] ) {
                 auto path = p.get_simple_path();
-                path.m_components.back() = RcString(p.name, n - p.name);
+                path.update_last_component( RcString(p.name, n - p.name) );
                 const auto& enm = m_crate.get_enum_by_path(Span(), path);
                 ty = HIR::TypeRef::new_path( HIR::GenericPath(std::move(path), str.m_params.make_nop_params(0)), &enm);
             }

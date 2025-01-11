@@ -117,17 +117,17 @@ class CMacroUseHandler:
                 AST::AbsolutePath   path { ec_item->name, {name} };
                 if( const auto* imp = e->ent.opt_Import() )
                 {
-                    if( imp->path.m_crate_name == CRATE_BUILTINS ) {
+                    if( imp->path.crate_name() == CRATE_BUILTINS ) {
                         DEBUG("Importing builtin (skip): " << name);
                         continue ;
                     }
-                    ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.m_crate_name), "Crate `" << imp->path.m_crate_name << "` not loaded");
-                    const ::HIR::Module& mod = crate.m_extern_crates.at(imp->path.m_crate_name).m_hir->get_mod_by_path(sp, imp->path, /*ignore_last_node*/true, /*ignore_crate_name*/true);
+                    ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.crate_name()), "Crate `" << imp->path.crate_name() << "` not loaded");
+                    const ::HIR::Module& mod = crate.m_extern_crates.at(imp->path.crate_name()).m_hir->get_mod_by_path(sp, imp->path, /*ignore_last_node*/true, /*ignore_crate_name*/true);
 
-                    ASSERT_BUG(sp, mod.m_macro_items.count(imp->path.m_components.back()), "Failed to find final component of " << imp->path);
-                    e = &*mod.m_macro_items.at(imp->path.m_components.back());
+                    ASSERT_BUG(sp, mod.m_macro_items.count(imp->path.components().back()), "Failed to find final component of " << imp->path);
+                    e = &*mod.m_macro_items.at(imp->path.components().back());
                     if( const auto& imp2 = e->ent.opt_Import() ) {
-                        if( imp2->path.m_crate_name == CRATE_BUILTINS ) {
+                        if( imp2->path.crate_name() == CRATE_BUILTINS ) {
                             DEBUG("Importing builtin (skip): " << name);
                             continue ;
                         }
@@ -137,7 +137,7 @@ class CMacroUseHandler:
                     }
                     else {
                     }
-                    path = AST::AbsolutePath(imp->path.m_crate_name, imp->path.m_components);
+                    path = AST::AbsolutePath(imp->path.crate_name(), imp->path.components().to_vec());
                 }
 
                 MacroRef    mr;

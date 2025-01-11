@@ -54,10 +54,10 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
 namespace {
     AST::Path hir_to_ast(const HIR::SimplePath& p) {
         // The crate name here has to be non-empty, because it's external.
-        assert( p.m_crate_name != "" );
-        AST::Path   rv( p.m_crate_name, {} );
-        rv.nodes().reserve( p.m_components.size() );
-        for(const auto& n : p.m_components)
+        assert( p.crate_name() != "" );
+        AST::Path   rv( p.crate_name(), {} );
+        rv.nodes().reserve( p.components().size() );
+        for(const auto& n : p.components())
             rv.nodes().push_back( AST::PathNode(n) );
         return rv;
     }
@@ -346,32 +346,32 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
             ::AST::PathBinding<::AST::PathBinding_Type> pb;
             if( vep->is_Import() ) {
                 const auto& spath = vep->as_Import().path;
-                pb.path.crate = spath.m_crate_name;
-                pb.path.nodes = spath.m_components;
+                pb.path.crate = spath.crate_name();
+                pb.path.nodes = spath.components().to_vec();
 
-                ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
-                const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
+                ASSERT_BUG(sp, crate.m_extern_crates.count(spath.crate_name()) == 1, "Crate " << spath.crate_name() << " is not loaded");
+                const auto* hmod = &crate.m_extern_crates.at(spath.crate_name()).m_hir->m_root_module;
                 // Import of the crate root
-                if( spath.m_components.size() == 0 ) {
+                if( spath.components().size() == 0 ) {
                     pb.binding = ::AST::PathBinding_Type::make_Module({nullptr, {nullptr, hmod}});
                     _add_item(sp, dst_mod, IndexName::Namespace, it.first, vis, ::AST::Path(pb), false);
                     continue ;
                 }
-                for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
-                    const auto& hit = hmod->m_mod_items.at( spath.m_components[i] );
+                for(unsigned int i = 0; i < spath.components().size()-1; i ++) {
+                    const auto& hit = hmod->m_mod_items.at( spath.components()[i] );
                     // Only support enums on the penultimate component
-                    if( i == spath.m_components.size()-2 && hit->ent.is_Enum() ) {
+                    if( i == spath.components().size()-2 && hit->ent.is_Enum() ) {
                         pb.binding = ::AST::PathBinding_Type::make_EnumVar({nullptr, 0});
                         _add_item_type( sp, dst_mod, it.first, vis, mv$(pb), false );
                         hmod = nullptr;
                         break ;
                     }
-                    ASSERT_BUG(sp, hit->ent.is_Module(), "Path component " << spath.m_components[i] << " of " << spath << " is not a module, instead " << hit->ent.tag_str());
+                    ASSERT_BUG(sp, hit->ent.is_Module(), "Path component " << spath.components()[i] << " of " << spath << " is not a module, instead " << hit->ent.tag_str());
                     hmod = &hit->ent.as_Module();
                 }
                 if( !hmod )
                     continue ;
-                vep = &hmod->m_mod_items.at( spath.m_components.back() )->ent;
+                vep = &hmod->m_mod_items.at( spath.components().back() )->ent;
             }
             else {
                 pb.path = mod_ap + it.first;
@@ -417,27 +417,27 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
             ::AST::PathBinding<::AST::PathBinding_Value> pb;
             if( ve.ent.is_Import() ) {
                 const auto& spath = ve.ent.as_Import().path;
-                pb.path.crate = spath.m_crate_name;
-                pb.path.nodes = spath.m_components;
+                pb.path.crate = spath.crate_name();
+                pb.path.nodes = spath.components().to_vec();
 
-                ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
-                const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
-                for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
-                    const auto& hit = hmod->m_mod_items.at( spath.m_components[i] );
-                    if( i == spath.m_components.size()-2 && hit->ent.is_Enum() ) {
-                        auto idx = hit->ent.as_Enum().find_variant(spath.m_components.back());
+                ASSERT_BUG(sp, crate.m_extern_crates.count(spath.crate_name()) == 1, "Crate " << spath.crate_name() << " is not loaded");
+                const auto* hmod = &crate.m_extern_crates.at(spath.crate_name()).m_hir->m_root_module;
+                for(unsigned int i = 0; i < spath.components().size()-1; i ++) {
+                    const auto& hit = hmod->m_mod_items.at( spath.components()[i] );
+                    if( i == spath.components().size()-2 && hit->ent.is_Enum() ) {
+                        auto idx = hit->ent.as_Enum().find_variant(spath.components().back());
                         ASSERT_BUG(sp, idx != SIZE_MAX, spath);
                         pb.binding = ::AST::PathBinding_Value::make_EnumVar({nullptr, static_cast<unsigned>(idx)});
                         _add_item_value( sp, dst_mod, it.first, vis, mv$(pb), false );
                         hmod = nullptr;
                         break ;
                     }
-                    ASSERT_BUG(sp, hit->ent.is_Module(), "Path component " << spath.m_components[i] << " of " << spath << " is not a module, instead " << hit->ent.tag_str());
+                    ASSERT_BUG(sp, hit->ent.is_Module(), "Path component " << spath.components()[i] << " of " << spath << " is not a module, instead " << hit->ent.tag_str());
                     hmod = &hit->ent.as_Module();
                 }
                 if( !hmod )
                     continue ;
-                vep = &hmod->m_value_items.at( spath.m_components.back() )->ent;
+                vep = &hmod->m_value_items.at( spath.components().back() )->ent;
             }
             else {
                 pb.path = mod_ap + it.first;
@@ -455,10 +455,10 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                 }
             // TODO: What if these refer to an enum variant?
             TU_ARMA(StructConstant, e) {
-                pb.binding = ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() });
+                pb.binding = ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.crate_name()).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() });
                 }
             TU_ARMA(StructConstructor, e) {
-                pb.binding = ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() });
+                pb.binding = ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.crate_name()).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() });
                 }
             TU_ARMA(Function, e) {
                 pb.binding = ::AST::PathBinding_Value::make_Function({nullptr});
@@ -472,8 +472,8 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
         if( e.publicity.is_global() ) {
             ::AST::PathBinding<::AST::PathBinding_Macro>    pb;
             if(const auto* ep = e.ent.opt_Import()) {
-                pb.path.crate = ep->path.m_crate_name;
-                pb.path.nodes = ep->path.m_components;
+                pb.path.crate = ep->path.crate_name();
+                pb.path.nodes = ep->path.components().to_vec();
                 // NOTE: This shouldn't ever be pointing at an import, and no other handling needed
             }
             else {
@@ -714,11 +714,11 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
         const auto* item_ptr = &it->second->ent;
         if( item_ptr->is_Import() ) {
             const auto& e = item_ptr->as_Import();
-            const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+            const auto& ec = crate.m_extern_crates.at( e.path.crate_name() );
 
             // TODO: Update the path (and update `i` while there)
 
-            if( e.path.m_components.size() == 0 ) {
+            if( e.path.components().empty() ) {
                 hmod = &ec.m_hir->m_root_module;
                 continue ;
             }

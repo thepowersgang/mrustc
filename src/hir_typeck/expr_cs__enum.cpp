@@ -14,14 +14,10 @@
 namespace
 {
     inline ::HIR::SimplePath get_parent_path(const ::HIR::SimplePath& sp) {
-        auto rv = sp;
-        rv.m_components.pop_back();
-        return rv;
+        return sp.parent();
     }
     inline ::HIR::GenericPath get_parent_path(const ::HIR::GenericPath& gp) {
-        auto rv = gp.clone();
-        rv.m_path.m_components.pop_back();
-        return rv;
+        return ::HIR::GenericPath( gp.m_path.parent(), gp.m_params.clone() );
     }
 }
 
@@ -1279,7 +1275,7 @@ namespace typecheck
             TU_ARMA(Unbound, e) {}
             TU_ARMA(Opaque, e) {}
             TU_ARMA(Enum, e) {
-                const auto& var_name = node.m_path.m_path.m_components.back();
+                const auto& var_name = node.m_path.m_path.components().back();
                 const auto& enm = *e;
                 size_t idx = enm.find_variant(var_name);
                 ASSERT_BUG(sp, idx < enm.m_data.as_Data().size(), "Unknown variant - " << node.m_path);
@@ -1364,7 +1360,7 @@ namespace typecheck
                     auto& name = t.data().as_Path().path.m_data.as_UfcsInherent().item;
                     ASSERT_BUG(sp, TU_TEST1(it.data(), Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
                     node.m_real_path = it.data().as_Path().path.m_data.as_Generic().clone();
-                    node.m_real_path.m_path.m_components.push_back( name );
+                    node.m_real_path.m_path += name;
                 }
             }
             auto& ty_path = node.m_real_path;
@@ -1383,7 +1379,7 @@ namespace typecheck
             TU_ARMA(Opaque, e) {}
             TU_ARMA(ExternType, e) {}   // Error?
             TU_ARMA(Enum, e) {
-                const auto& var_name = ty_path.m_path.m_components.back();
+                const auto& var_name = ty_path.m_path.components().back();
                 const auto& enm = *e;
                 auto idx = enm.find_variant(var_name);
                 ASSERT_BUG(sp, idx != SIZE_MAX, "");
@@ -1788,7 +1784,7 @@ namespace typecheck
                     this->context.equate_types(sp, node.m_res_type, ty);
                     } break;
                 case ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR: {
-                    const auto& var_name = e.m_path.m_components.back();
+                    const auto& var_name = e.m_path.components().back();
                     auto enum_path = get_parent_path(e.m_path);
                     const auto& enm = this->context.m_crate.get_enum_by_path(sp, enum_path);
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, enm.m_params, e.m_params);

@@ -12,12 +12,14 @@
 #include <common.hpp>
 #include <tagged_union.hpp>
 #include <span.hpp>
+#include <stdspan.hpp>
 #include "type_ref.hpp"
 #include "generic_ref.hpp"
 #include "expr_ptr.hpp"
 
 struct EncodedLiteral;
 class Monomorphiser;
+class HirSerialiser;
 
 namespace HIR {
 
@@ -97,9 +99,12 @@ static inline Compare& operator &=(Compare& x, const Compare& y) {
 // - Would save 3*8 bytes inline (not much?), and make comparison/clone cheaper
 struct SimplePath
 {
+    friend class HirSerialiser;
+private:
     RcString   m_crate_name;
     ::std::vector< RcString>   m_components;
 
+public:
     SimplePath():
         m_crate_name("")
     {
@@ -113,13 +118,31 @@ struct SimplePath
         m_components( mv$(components) )
     {
     }
+    SimplePath(RcString crate, ::std::span< const RcString> components):
+        m_crate_name( mv$(crate) ),
+        m_components( components.begin(), components.end() )
+    {
+    }
+    SimplePath(RcString crate, ::std::initializer_list<RcString> components):
+        m_crate_name( mv$(crate) ),
+        m_components( components.begin(), components.end() )
+    {
+    }
 
     SimplePath clone() const;
+    SimplePath parent() const;
 
     const RcString& crate_name() const { return m_crate_name; };
-    const ::std::vector<RcString>& components() const { return m_components; };
+    ::std::span<const RcString> components() const { return std::span<const RcString>(m_components.begin(), m_components.end()); }
 
     SimplePath operator+(const RcString& s) const;
+
+    void operator+=(const RcString& s);
+    RcString pop_component();
+
+    void update_crate_name(RcString v);
+    void update_last_component(RcString v);
+
     bool operator==(const SimplePath& x) const {
         return m_crate_name == x.m_crate_name && m_components == x.m_components;
     }
@@ -135,6 +158,7 @@ struct SimplePath
         rv = ::ord(m_components, x.m_components);
         return rv;
     }
+    bool starts_with(const SimplePath& x, bool skip_last=false) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
 };
 

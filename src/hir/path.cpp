@@ -13,15 +13,6 @@ namespace {
     bool g_compare_hrls = false;
 }
 
-::HIR::SimplePath HIR::SimplePath::operator+(const RcString& s) const
-{
-    ::HIR::SimplePath ret(m_crate_name);
-    ret.m_components = m_components;
-
-    ret.m_components.push_back( s );
-
-    return ret;
-}
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::SimplePath& x)
     {
@@ -127,6 +118,48 @@ namespace HIR {
 ::HIR::SimplePath HIR::SimplePath::clone() const
 {
     return SimplePath( m_crate_name, m_components );
+}
+::HIR::SimplePath HIR::SimplePath::parent() const
+{
+    return SimplePath( m_crate_name, components().subspan(0, m_components.size()-1) );
+}
+::HIR::SimplePath HIR::SimplePath::operator+(const RcString& s) const
+{
+    ::HIR::SimplePath ret(m_crate_name);
+    ret.m_components = m_components;
+
+    ret.m_components.push_back( s );
+
+    return ret;
+}
+void HIR::SimplePath::operator+=(const RcString& s) {
+    m_components.push_back( s );
+}
+RcString HIR::SimplePath::pop_component() {
+    assert(!m_components.empty());
+    auto rv = m_components.back();
+    m_components.pop_back();
+    return rv;
+}
+void HIR::SimplePath::update_crate_name(RcString v) {
+    m_crate_name = std::move(v);
+}
+void HIR::SimplePath::update_last_component(RcString v) {
+    assert(!m_components.empty());
+    m_components.back() = std::move(v);
+}
+bool HIR::SimplePath::starts_with(const HIR::SimplePath& p, bool skip_last/*=false*/) const {
+    if( p.m_crate_name != this->m_crate_name )
+        return false;
+    // This path can't start with `p` if it's shorter than `p`
+    if( this->m_components.size() < p.m_components.size() - (skip_last ? 1 : 0) )
+        return false;
+    for(size_t i = 0; i < p.m_components.size() - (skip_last ? 1 : 0); i++) {
+        if( p.m_components[i] != this->m_components[i] ) {
+            return false;
+        }
+    }
+    return true;
 }
 
 ::HIR::PathParams::PathParams()
@@ -366,16 +399,8 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
 }
 ::HIR::Compare HIR::GenericPath::compare_with_placeholders(const Span& sp, const ::HIR::GenericPath& x, ::HIR::t_cb_resolve_type resolve_placeholder) const
 {
-    using ::HIR::Compare;
-
-    if( this->m_path.m_crate_name != x.m_path.m_crate_name )
-        return Compare::Unequal;
-    if( this->m_path.m_components.size() != x.m_path.m_components.size() )
-        return Compare::Unequal;
-    for(unsigned int i = 0; i < this->m_path.m_components.size(); i ++ )
-    {
-        if( this->m_path.m_components[i] != x.m_path.m_components[i] )
-            return Compare::Unequal;
+    if( this->m_path != x.m_path ) {
+        return ::HIR::Compare::Unequal;
     }
 
     return this->m_params. compare_with_placeholders(sp, x.m_params, resolve_placeholder);

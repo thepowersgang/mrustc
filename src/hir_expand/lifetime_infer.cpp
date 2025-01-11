@@ -1791,7 +1791,7 @@ namespace {
                 BUG(sp, "Opaque type binding in _TupleVariant - " << ty);
                 }
             TU_ARMA(Enum, e) {
-                const auto& var_name = node.m_path.m_path.m_components.back();
+                const auto& var_name = node.m_path.m_path.components().back();
                 const auto& enm = *e;
                 size_t idx = enm.find_variant(var_name);
                 const auto& var_ty = enm.m_data.as_Data()[idx].type;
@@ -1846,7 +1846,7 @@ namespace {
             TU_ARMA(Unbound, e) {}
             TU_ARMA(Opaque, e) {}
             TU_ARMA(Enum, e) {
-                const auto& var_name = ty_path.m_path.m_components.back();
+                const auto& var_name = ty_path.m_path.components().back();
                 const auto& enm = *e;
                 auto idx = enm.find_variant(var_name);
                 ASSERT_BUG(sp, idx != SIZE_MAX, "");

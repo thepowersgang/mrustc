@@ -822,8 +822,7 @@ TODO(v.span(), "while let (chained)");
         {
             ASSERT_BUG(v.span(), TU_TEST1(ty.data(), Path, .path.m_data.is_Generic()), "Enum variant path not GenericPath: " << ty );
             auto& gp = ty.get_unique().as_Path().path.m_data.as_Generic();
-            auto var_name = gp.m_path.m_components.back();
-            gp.m_path.m_components.pop_back();
+            auto var_name = gp.m_path.pop_component();
             ty = ::HIR::TypeRef::new_path( ::HIR::Path(mv$(ty), mv$(var_name)), {} );
         }
         m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),

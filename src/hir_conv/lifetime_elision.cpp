@@ -236,7 +236,7 @@ namespace
             const static Span   sp;
             // Get the type definition and fill in omitted lifetimes
             const HIR::GenericParams* gp = nullptr;
-            if( p.m_path.m_components.size() > 1 ) {
+            if( p.m_path.components().size() > 1 ) {
                 if( const auto* e = m_resolve.m_crate.get_typeitem_by_path(sp, p.m_path, false, true).opt_Enum() ) {
                     gp = &e->m_params;
                 }

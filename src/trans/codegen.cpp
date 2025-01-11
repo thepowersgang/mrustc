@@ -80,12 +80,12 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         // - Struct (must be a tuple struct)
         // - Enum variant (must be a tuple variant)
         const ::HIR::Module* mod_ptr = nullptr;
-        if(path.m_path.m_components.size() > 1)
+        if(path.m_path.components().size() > 1)
         {
             const auto& nse = crate.get_typeitem_by_path(sp, path.m_path, false, true);
             if(const auto* e = nse.opt_Enum())
             {
-                auto var_idx = e->find_variant(path.m_path.m_components.back());
+                auto var_idx = e->find_variant(path.m_path.components().back());
                 codegen->emit_constructor_enum(sp, path, *e, var_idx);
                 continue ;
             }
@@ -97,7 +97,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         }
 
         // Not an enum, currently must be a struct
-        const auto& te = mod_ptr->m_mod_items.at(path.m_path.m_components.back())->ent;
+        const auto& te = mod_ptr->m_mod_items.at(path.m_path.components().back())->ent;
         codegen->emit_constructor_struct(sp, path, te.as_Struct());
     }
     list.m_constructors.clear();

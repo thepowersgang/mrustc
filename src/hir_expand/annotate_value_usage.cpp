@@ -651,7 +651,7 @@ namespace {
                 const ::HIR::t_struct_fields* fields_ptr;
                 if( tpb.is_Enum() ) {
                     const auto& enm = *tpb.as_Enum();
-                    auto idx = enm.find_variant(ty_path.m_path.m_components.back());
+                    auto idx = enm.find_variant(ty_path.m_path.components().back());
                     ASSERT_BUG(sp, idx != SIZE_MAX, "");
                     const auto& var_ty = enm.m_data.as_Data()[idx].type;
                     const auto& str = *var_ty.data().as_Path().binding.as_Struct();

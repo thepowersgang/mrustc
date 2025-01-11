@@ -3157,7 +3157,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
     out_params = MonomorphState {};
     TU_MATCH_HDR( (p.m_data), {)
     TU_ARM(p.m_data, Generic, pe) {
-        if( pe.m_path.m_components.size() > 1 )
+        if( pe.m_path.components().size() > 1 )
         {
             const auto& ti = m_crate.get_typeitem_by_path(sp, pe.m_path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
             if( const auto* e = ti.opt_Enum() )
@@ -3166,7 +3166,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                     *out_impl_params_def = &e->m_params;
                 }
                 out_params.pp_impl = &pe.m_params;
-                auto idx = e->find_variant(pe.m_path.m_components.back());
+                auto idx = e->find_variant(pe.m_path.components().back());
                 if( e->m_data.is_Data() )
                 {
                     if( e->m_data.as_Data()[idx].type != ::HIR::TypeRef::new_unit() )

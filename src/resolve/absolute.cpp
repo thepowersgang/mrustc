@@ -21,6 +21,10 @@
 
 namespace
 {
+    AST::AbsolutePath sp_to_ap(const HIR::SimplePath& sp) {
+        return AST::AbsolutePath(sp.crate_name(), sp.components().to_vec());
+    }
+
     struct GenericSlot
     {
         enum class Level
@@ -480,9 +484,7 @@ namespace
                 DEBUG(mp);
                 if(mp.crate != "")
                 {
-                    HIR::SimplePath vis_path;
-                    vis_path.m_crate_name = mp.crate;
-                    vis_path.m_components = mp.ents;
+                    HIR::SimplePath vis_path { mp.crate, mp.ents };
 
                     static Span sp;
                     // External crate path
@@ -512,15 +514,15 @@ namespace
                                 // Set the true path (so the returned path is canonical)
                                 true_path = &imp.path;
 
-                                auto item_path = AST::AbsolutePath(imp.path.m_crate_name, imp.path.m_components) + name;
+                                auto item_path = sp_to_ap(imp.path) + name;
                                 if(imp.is_variant) {
-                                    const auto& enm = m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir
+                                    const auto& enm = m_crate.m_extern_crates.at(imp.path.crate_name()).m_hir
                                         ->get_enum_by_path(sp, imp.path, /*ignore_crate_name*/true, /*ignore_last*/true);
                                     bindings.value.set( item_path, AST::PathBinding_Value::make_EnumVar({nullptr, imp.idx, &enm}) );
                                     break;  // Break out of the switch
                                 }
                                 else {
-                                    item = &m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir->get_valitem_by_path(sp, imp.path, true);
+                                    item = &m_crate.m_extern_crates.at(imp.path.crate_name()).m_hir->get_valitem_by_path(sp, imp.path, true);
                                 }
                             }
                             TU_MATCH_HDRA( (*item), {)
@@ -547,15 +549,15 @@ namespace
                                 // Set the true path (so the returned path is canonical)
                                 true_path = &imp.path;
 
-                                auto item_path = AST::AbsolutePath(imp.path.m_crate_name, imp.path.m_components) + name;
+                                auto item_path = sp_to_ap(imp.path) + name;
                                 if(imp.is_variant) {
-                                    const auto& enm = m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir
+                                    const auto& enm = m_crate.m_extern_crates.at(imp.path.crate_name()).m_hir
                                         ->get_enum_by_path(sp, imp.path, /*ignore_crate_name*/true, /*ignore_last*/true);
                                     bindings.type.set( item_path, AST::PathBinding_Type::make_EnumVar({nullptr, imp.idx, &enm}) );
                                     break;  // Break out of the switch
                                 }
                                 else {
-                                    item = &m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir->get_typeitem_by_path(sp, imp.path, true);
+                                    item = &m_crate.m_extern_crates.at(imp.path.crate_name()).m_hir->get_typeitem_by_path(sp, imp.path, true);
                                 }
                             }
                             TU_MATCH_HDRA( (*item), {)
@@ -587,8 +589,8 @@ namespace
                     if(bindings.has_binding()) {
                         auto rv = AST::Path(mp.crate, {});
                         if( true_path ) {
-                            rv.m_class.as_Absolute().crate = true_path->m_crate_name;
-                            for(const auto& e : true_path->m_components) {
+                            rv.m_class.as_Absolute().crate = true_path->crate_name();
+                            for(const auto& e : true_path->components()) {
                                 rv.nodes().push_back( e );
                             }
                         }
@@ -1070,13 +1072,13 @@ namespace {
     void Resolve_Absolute_Path_BindAbsolute__hir_from_import(Context& context, const Span& sp, bool is_value, AST::Path& path, const ::HIR::SimplePath& p)
     {
         TRACE_FUNCTION_FR("path="<<path<<", p="<<p, path);
-        if( p.m_crate_name == CRATE_BUILTINS ) {
-            AST::Path   rv( p.m_crate_name, {} );
-            rv.nodes().reserve( p.m_components.size() );
-            for(const auto& c : p.m_components)
+        if( p.crate_name() == CRATE_BUILTINS ) {
+            AST::Path   rv( p.crate_name(), {} );
+            rv.nodes().reserve( p.components().size() );
+            for(const auto& c : p.components())
                 rv.nodes().push_back( AST::PathNode(c) );
             rv.nodes().back().args() = mv$( path.nodes().back().args() );
-            auto ap = AST::AbsolutePath(p.m_crate_name, p.m_components);
+            auto ap = sp_to_ap(p);
 
     #if 0
             ASSERT_BUG(sp, p.m_components.size() == 2, "Invalid component count in " << p);
@@ -1092,7 +1094,7 @@ namespace {
             }
             TODO(sp, "");
     #else
-            if( coretype_fromstring(p.m_components.back().c_str()) != CORETYPE_INVAL ) {
+            if( coretype_fromstring(p.components().back().c_str()) != CORETYPE_INVAL ) {
                 rv.m_bindings.type.set(ap, AST::PathBinding_Type::make_TypeAlias({nullptr}));
             }
             else {
@@ -1102,11 +1104,11 @@ namespace {
             path = mv$(rv);
             return;
         }
-        const auto& ext_crate = context.m_crate.m_extern_crates.at(p.m_crate_name);
+        const auto& ext_crate = context.m_crate.m_extern_crates.at(p.crate_name());
         const ::HIR::Module* hmod = &ext_crate.m_hir->m_root_module;
-        for(unsigned int i = 0; i < p.m_components.size() - 1; i ++)
+        for(unsigned int i = 0; i < p.components().size() - 1; i ++)
         {
-            const auto& name = p.m_components[i];
+            const auto& name = p.components()[i];
             auto it = hmod->m_mod_items.find(name);
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find path component '" << name << "' of " << p);
@@ -1115,20 +1117,20 @@ namespace {
             default:
                 TODO(sp, "Unknown item type in path - " << i << " " << p << " - " << it->second->ent.tag_str());
             TU_ARMA(Enum, e) {
-                if( i != p.m_components.size() - 2 ) {
+                if( i != p.components().size() - 2 ) {
                     ERROR(sp, E0000, "Enum as path component in unexpected location - " << p);
                 }
-                const auto& varname = p.m_components.back();
+                const auto& varname = p.components().back();
                 auto var_idx = e.find_variant(varname);
                 ASSERT_BUG(sp, var_idx != SIZE_MAX, "Extern crate import path points to non-present variant - " << p);
 
                 // Construct output path (with same set of parameters)
-                AST::Path   rv( p.m_crate_name, {} );
-                rv.nodes().reserve( p.m_components.size() );
-                for(const auto& c : p.m_components)
+                AST::Path   rv( p.crate_name(), {} );
+                rv.nodes().reserve( p.components().size() );
+                for(const auto& c : p.components())
                     rv.nodes().push_back( AST::PathNode(c) );
                 rv.nodes().back().args() = mv$( path.nodes().back().args() );
-                auto ap = AST::AbsolutePath(p.m_crate_name, p.m_components);
+                auto ap = sp_to_ap(p);
                 if( e.m_data.is_Data() && e.m_data.as_Data()[var_idx].is_struct ) {
                     rv.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e}) );
                 }
@@ -1147,8 +1149,8 @@ namespace {
 
         ::AST::Path::Bindings   pb;
 
-        const auto& name = p.m_components.back();
-        auto ap = ::AST::AbsolutePath(p.m_crate_name, p.m_components);
+        const auto& name = p.components().back();
+        auto ap = sp_to_ap(p);
         if( is_value )
         {
             auto it = hmod->m_value_items.find(name);
@@ -1218,9 +1220,9 @@ namespace {
         }
 
         // Construct output path (with same set of parameters)
-        AST::Path   rv( p.m_crate_name, {} );
-        rv.nodes().reserve( p.m_components.size() );
-        for(const auto& c : p.m_components)
+        AST::Path   rv( p.crate_name(), {} );
+        rv.nodes().reserve( p.components().size() );
+        for(const auto& c : p.components())
             rv.nodes().push_back( AST::PathNode(c) );
         rv.nodes().back().args() = mv$( path.nodes().back().args() );
         rv.m_bindings = mv$(pb);
@@ -1257,8 +1259,8 @@ namespace {
             TU_ARMA(Import, e) {
                 DEBUG("`" << n.name() << "`: Import " << e.path);
                 // - Update path then restart
-                auto newpath = AST::Path(e.path.m_crate_name, {});
-                for(const auto& n : e.path.m_components)
+                auto newpath = AST::Path(e.path.crate_name(), {});
+                for(const auto& n : e.path.components())
                     newpath.nodes().push_back( AST::PathNode(n) );
                 if( newpath.nodes().empty() ) {
                     ASSERT_BUG(sp, n.args().is_empty(), "Params present, but name resolves to a crate root - " << path << " #" << i << " -> " << newpath);

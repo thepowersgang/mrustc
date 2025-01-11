@@ -131,7 +131,7 @@ int main(int argc, char* argv[])
                     bool found = false;
                     for(const auto& f : opts.filters)
                     {
-                        if( f == test.input_function.m_components.back() )
+                        if( f == test.input_function.components().back() )
                         {
                             found = true;
                             break;
@@ -173,7 +173,7 @@ int main(int argc, char* argv[])
                     bool found = false;
                     for(const auto& f : opts.filters)
                     {
-                        if( f == test.input_function.m_components.back() )
+                        if( f == test.input_function.components().back() )
                         {
                             found = true;
                             break;
@@ -193,8 +193,7 @@ int main(int argc, char* argv[])
 
                 MIR_Optimise(resolve, test.input_function, *cloned_mir, in_fcn.m_args, in_fcn.m_return);
 
-                auto p = test.input_function;
-                p.m_crate_name = RcString(f.m_filename);
+                auto p = HIR::SimplePath(RcString(f.m_filename), test.input_function.components());
                 if( !compare_mir(exp_mir, *cloned_mir, p) )
                 {
                     MIR_Dump_Fcn(std::cerr, *cloned_mir);

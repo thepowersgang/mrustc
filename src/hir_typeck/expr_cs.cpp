@@ -21,14 +21,10 @@ namespace {
     inline HIR::ExprNodeP mk_exprnodep(HIR::ExprNode* en, ::HIR::TypeRef ty){ en->m_res_type = mv$(ty); return HIR::ExprNodeP(en); }
 
     inline ::HIR::SimplePath get_parent_path(const ::HIR::SimplePath& sp) {
-        auto rv = sp;
-        rv.m_components.pop_back();
-        return rv;
+        return sp.parent();
     }
     inline ::HIR::GenericPath get_parent_path(const ::HIR::GenericPath& gp) {
-        auto rv = gp.clone();
-        rv.m_path.m_components.pop_back();
-        return rv;
+        return ::HIR::GenericPath( get_parent_path(gp.m_path), gp.m_params.clone() );
     }
 
     bool type_contains_impl_placeholder(const ::HIR::TypeRef& t) {
@@ -593,7 +589,7 @@ namespace {
             ASSERT_BUG(sp, node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer, "1.29 mode with non-box _Emplace node");
             ASSERT_BUG(sp, placer_ty == ::HIR::TypeRef::new_unit(), "1.29 mode with box in syntax - placer type is " << placer_ty);
 
-            ASSERT_BUG(sp, !lang_Boxed.m_components.empty(), "`owbed_box` not present when `box` operator used");
+            ASSERT_BUG(sp, !lang_Boxed.components().empty(), "`owned_box` not present when `box` operator used");
 
             // NOTE: `owned_box` shouldn't point to anything but a struct
             const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
@@ -651,7 +647,7 @@ namespace {
                     // HACK: Add a possibility of the result type being ``Box<`data_ty`>``
                     // - This only happens if the `owned_box` lang item is present and this node is a `box` operation
                     const auto& lang_Boxed = this->context.m_lang_Box;
-                    if( ! lang_Boxed.m_components.empty() )
+                    if( ! lang_Boxed.components().empty() )
                     {
                         // NOTE: `owned_box` shouldn't point to anything but a struct
                         const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
@@ -1555,7 +1551,7 @@ namespace {
             TU_ARMA(Unbound, e) {}
             TU_ARMA(Opaque, e) {}
             TU_ARMA(Enum, e) {
-                const auto& var_name = ty_path.m_path.m_components.back();
+                const auto& var_name = ty_path.m_path.components().back();
                 const auto& enm = *e;
                 auto idx = enm.find_variant(var_name);
                 ASSERT_BUG(sp, idx != SIZE_MAX, "");

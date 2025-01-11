@@ -2005,8 +2005,8 @@ namespace {
                         break;
                     TU_ARMA(ExternalProcMacro, pm) {
                         DEBUG("proc_macro " << pm->path);
-                        mac_path.push_back(pm->path.m_crate_name);
-                        mac_path.insert(mac_path.end(), pm->path.m_components.begin(), pm->path.m_components.end());
+                        mac_path.push_back(pm->path.crate_name());
+                        mac_path.insert(mac_path.end(), pm->path.components().begin(), pm->path.components().end());
                         }
                     }
                     if( !mac_path.empty() ) {
@@ -2024,8 +2024,8 @@ namespace {
                 // Leave `mac_path` empty, triggering an error in caller
                 }
             TU_ARMA(ExternalProcMacro, ext_proc_mac) {
-                mac_path.push_back(ext_proc_mac->path.m_crate_name);
-                mac_path.insert(mac_path.end(), ext_proc_mac->path.m_components.begin(), ext_proc_mac->path.m_components.end());
+                mac_path.push_back(ext_proc_mac->path.crate_name());
+                mac_path.insert(mac_path.end(), ext_proc_mac->path.components().begin(), ext_proc_mac->path.components().end());
                 }
             TU_ARMA(BuiltinProcMacro, proc_mac) {
                 TODO(sp, "Handle builtin proc macro");

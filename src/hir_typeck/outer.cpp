@@ -14,7 +14,7 @@ namespace {
     const ::HIR::GenericParams& get_params_for_item(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, ::HIR::Visitor::PathContext pc)
     {
         // Support for enum variants
-        if( path.m_components.size() > 1 )
+        if( path.components().size() > 1 )
         {
             const auto& pitem = crate.get_typeitem_by_path(sp, path, false, true);
             if(pitem.is_Enum() ) {

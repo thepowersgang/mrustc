@@ -1042,24 +1042,23 @@ namespace {
     {
         Token   tok;
         if( lex.lookahead(0) == TOK_IDENT ) {
-            auto rv = ::HIR::SimplePath(RcString());
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            rv.m_components.push_back( tok.ident().name );
-            return rv;
+            return ::HIR::SimplePath(RcString(), {tok.ident().name});
         }
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         GET_CHECK_TOK(tok, lex, TOK_STRING);
-        auto rv = ::HIR::SimplePath(RcString::new_interned(tok.str()));
+        auto crate_name = RcString::new_interned(tok.str());
 
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         lex.putback(mv$(tok));
 
+        std::vector<RcString>   components;
         while( consume_if(lex, TOK_DOUBLE_COLON) )
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            rv.m_components.push_back( tok.ident().name );
+            components.push_back( tok.ident().name );
         }
-        return rv;
+        return ::HIR::SimplePath(std::move(crate_name), std::move(components));
     }
     HIR::GenericPath parse_genericpath(TokenStream& lex)
     {

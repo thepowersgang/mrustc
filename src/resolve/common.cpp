@@ -26,6 +26,10 @@
 
 namespace {
 
+    AST::AbsolutePath sp_to_ap(const HIR::SimplePath& sp) {
+        return AST::AbsolutePath(sp.crate_name(), sp.components().to_vec());
+    }
+
     ResolveItemRef_Type as_Namespace(ResolveItemRef ir) {
         if(ir.is_None())
             return ResolveItemRef_Type::make_None({});
@@ -343,15 +347,14 @@ namespace {
                 const auto* ti = &it->second->ent;
                 if(const auto* imp = ti->opt_Import())
                 {
-                    ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.m_crate_name), "Crate " << imp->path.m_crate_name << " not loaded");
-                    const auto& ext_crate = *crate.m_extern_crates.at(imp->path.m_crate_name).m_hir;
-                    if( imp->path.m_components.empty() ) {
+                    ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.crate_name()), "Crate " << imp->path.crate_name() << " not loaded");
+                    const auto& ext_crate = *crate.m_extern_crates.at(imp->path.crate_name()).m_hir;
+                    if( imp->path.components().empty() ) {
                         mod = &ext_crate.m_root_module;
                         continue;
                     }
                     if(out_path) {
-                        out_path->crate = imp->path.m_crate_name;
-                        out_path->nodes = imp->path.m_components;
+                        *out_path = sp_to_ap(imp->path);
                     }
                     ti = &ext_crate.get_typeitem_by_path(sp, imp->path, /*ignore_crate*/true, /*ignore_last*/false);
                 }
@@ -685,10 +688,10 @@ namespace {
             }
             struct H {
                 static const HIR::Crate& get_crate(const Span& sp, const AST::Crate& crate, const HIR::SimplePath& p) {
-                    return *crate.m_extern_crates.at(p.m_crate_name).m_hir;
+                    return *crate.m_extern_crates.at(p.crate_name()).m_hir;
                 }
                 static const HIR::Module& get_mod_for_hir_path(const Span& sp, const AST::Crate& crate, const HIR::SimplePath& p) {
-                    const auto& hir_crate = *crate.m_extern_crates.at(p.m_crate_name).m_hir;
+                    const auto& hir_crate = *crate.m_extern_crates.at(p.crate_name()).m_hir;
                     return hir_crate.get_mod_by_path(sp, p, /*ignore_last*/true, /*ingore_crate*/true);
                 }
             };
@@ -703,11 +706,10 @@ namespace {
                     const HIR::TypeItem*    ti;
                     if(const auto* p = it->second->ent.opt_Import()) {
                         if(out_path) {
-                            out_path->crate = p->path.m_crate_name;
-                            out_path->nodes = p->path.m_components;
+                            *out_path = sp_to_ap(p->path);
                         }
                         const auto& ext_crate = H::get_crate(sp, crate, p->path);
-                        if( p->path.m_components.empty() ) {
+                        if( p->path.components().empty() ) {
                             return ResolveItemRef_Type(&ext_crate);
                         }
                         ti = &ext_crate.get_typeitem_by_path(sp, p->path, true);
@@ -728,8 +730,7 @@ namespace {
                     const HIR::ValueItem*    vi;
                     if(const auto* p = it->second->ent.opt_Import()) {
                         if(out_path) {
-                            out_path->crate = p->path.m_crate_name;
-                            out_path->nodes = p->path.m_components;
+                            *out_path = sp_to_ap(p->path);
                         }
                         vi = &H::get_crate(sp, crate, p->path).get_valitem_by_path(sp, p->path, true);
                     }
@@ -755,11 +756,10 @@ namespace {
                     const HIR::MacroItem* mi;
                     if(const auto* p = it->second->ent.opt_Import()) {
                         if(out_path) {
-                            out_path->crate = p->path.m_crate_name;
-                            out_path->nodes = p->path.m_components;
+                            *out_path = sp_to_ap(p->path);
                         }
-                        if( p->path.m_crate_name == CRATE_BUILTINS ) {
-                            auto* pm = Expand_FindProcMacro(p->path.m_components.at(0));
+                        if( p->path.crate_name() == CRATE_BUILTINS ) {
+                            auto* pm = Expand_FindProcMacro(p->path.components().back());
                             // TODO: What if it's a derive?
                             if( !pm )
                                 break;
@@ -769,8 +769,8 @@ namespace {
                         mi = &H::get_crate(sp, crate, p->path).get_macroitem_by_path(sp, p->path, true);
                         if(const auto* p = mi->opt_Import())
                         {
-                            if( p->path.m_crate_name == CRATE_BUILTINS ) {
-                                auto* pm = Expand_FindProcMacro(p->path.m_components.at(0));
+                            if( p->path.crate_name() == CRATE_BUILTINS ) {
+                                auto* pm = Expand_FindProcMacro(p->path.components().back());
                                 // TODO: What if it's a derive?
                                 if( !pm )
                                     break;

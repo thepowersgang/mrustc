@@ -2245,7 +2245,7 @@ namespace {
             TRACE_FUNCTION_F(path << " var_idx=" << var_idx);
 
             auto p = path.clone();
-            p.m_path.m_components.pop_back();
+            p.m_path.pop_component();
             auto ty = ::HIR::TypeRef::new_path(p.clone(), &item);
 
             MonomorphStatePtr   ms(nullptr, &path.m_params, nullptr);
@@ -2889,16 +2889,17 @@ namespace {
                 // MASSIVE hack:
                 // - Convert the entire body of AVX functions in `core_arch` to MSVC intrinsic calls
                 // E.g. `::"core-0_0_0"::core_arch::x86::avx512bw::_mm256_mask_loadu_epi16`
-                if( gp.m_path.m_crate_name.compare(0,5,"core-") == 0 && gp.m_path.m_components[0] == "core_arch" ) {
+                if( gp.m_path.crate_name().compare(0,5,"core-") == 0 && gp.m_path.components()[0] == "core_arch" ) {
+                    const auto& fcn_name = gp.m_path.components().back();
                     if(false
-                        || gp.m_path.m_components.back().compare(0, 6, "_mm256") == 0
-                        || gp.m_path.m_components.back().compare(0, 6, "_mm512") == 0
-                        || gp.m_path.m_components.back().compare(0, 4, "_mm_") == 0
+                        || fcn_name.compare(0, 6, "_mm256") == 0
+                        || fcn_name.compare(0, 6, "_mm512") == 0
+                        || fcn_name.compare(0, 4, "_mm_") == 0
                         )
                     {
                         // HACK: These aren't supported on msvc2019
                         if( true
-                            || gp.m_path.m_components.back() == "_mm256_zextpd128_pd256"
+                            || fcn_name == "_mm256_zextpd128_pd256"
                             ) {
                             m_of << "\tabort();";
                             m_of << "}\n";
@@ -2908,15 +2909,16 @@ namespace {
                             static const char* get_intr_type(const HIR::TypeRef& ty) {
                                 if( ty.data().is_Path() ) {
                                     const auto& p = ty.data().as_Path().path.m_data.as_Generic();
+                                    const auto& fcn_name = p.m_path.components().back();
                                     if( false
-                                        || p.m_path.m_components.back() == "__m128"
-                                        || p.m_path.m_components.back() == "__m128d"
-                                        || p.m_path.m_components.back() == "__m128i"
-                                        || p.m_path.m_components.back() == "__m256"
-                                        || p.m_path.m_components.back() == "__m256d"
-                                        || p.m_path.m_components.back() == "__m256i"
+                                        || fcn_name == "__m128"
+                                        || fcn_name == "__m128d"
+                                        || fcn_name == "__m128i"
+                                        || fcn_name == "__m256"
+                                        || fcn_name == "__m256d"
+                                        || fcn_name == "__m256i"
                                         ) {
-                                        return p.m_path.m_components.back().c_str();
+                                        return fcn_name.c_str();
                                     }
                                 }
                                 return nullptr;
@@ -2944,7 +2946,7 @@ namespace {
                         if(!rv_type || rv_type[0]) {
                             m_of << "\trv = ";
                         }
-                        m_of << gp.m_path.m_components.back() << "(";
+                        m_of << fcn_name.back() << "(";
                         for(size_t i = 0; i < item.m_args.size(); i ++) {
                             if( i != 0 )
                                 m_of << ", ";

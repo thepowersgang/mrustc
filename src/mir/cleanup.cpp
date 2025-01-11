@@ -1411,7 +1411,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                             }
                         TU_ARMA(EnumConstructor, ve) {
                             auto enm_path = fcn_ty.path.m_data.as_Generic().clone();
-                            enm_path.m_path.m_components.pop_back();
+                            enm_path.m_path.pop_component();
                             block.statements.push_back(::MIR::Statement::make_Assign({
                                 std::move(e.ret_val),
                                 MIR::RValue::make_EnumVariant({ std::move(enm_path), static_cast<unsigned>(ve.v), std::move(e.args) })

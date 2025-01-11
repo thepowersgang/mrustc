@@ -117,20 +117,11 @@ HIR::ArraySize HIR::ArraySize::clone() const
     , type()
 {
     this->generics = params.clone();
-    this->generics.m_bounds.clear();;
+    this->generics.m_bounds.clear();
 }
 bool ::HIR::TypeData_ErasedType_AliasInner::is_public_to(const HIR::SimplePath& p) const
 {
-    if( p.m_crate_name != this->path.m_crate_name )
-        return false;
-    if( p.m_components.size() < this->path.m_components.size() - 1)
-        return false;
-    for(size_t i = 0; i < this->path.m_components.size() - 1; i++) {
-        if( p.m_components[i] != this->path.m_components[i] ) {
-            return false;
-        }
-    }
-    return true;
+    return p.starts_with(this->path, /*skip_last=*/true);
 }
 
 ::HIR::TypeData_FunctionPointer HIR::TypeData::Data_NamedFunction::decay(const Span& sp) const
@@ -187,7 +178,7 @@ bool ::HIR::TypeData_ErasedType_AliasInner::is_public_to(const HIR::SimplePath& 
     TU_ARMA(EnumConstructor, ec) {
         const auto& e = this->path.m_data.as_Generic();
         MonomorphStatePtr   ms { nullptr, &e.m_params, nullptr };
-        auto enum_path = e.m_path; enum_path.m_components.pop_back();
+        auto enum_path = e.m_path.parent();
         const auto& enm = *ec.e;
         ASSERT_BUG(sp, enm.m_data.is_Data(), "Enum " << enum_path << " isn't a data-holding enum");
         const auto& var_ty = enm.m_data.as_Data()[ec.v].type;

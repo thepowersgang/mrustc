@@ -1078,7 +1078,7 @@ namespace static_borrow_constants {
                 if( !mod_list.second.empty() )
                 {
                     mod_path = mod_list.second[0].path;
-                    mod_path.m_components.pop_back();
+                    mod_path.pop_component();
                 }
 
                 struct Nvs: ::HIR::Evaluator::Newval {
@@ -1144,7 +1144,7 @@ namespace static_borrow_constants {
                     auto new_ent = new_static_pair.is_const
                         ? HIR::ValueItem(H::to_const(new_static))
                         : HIR::ValueItem(std::move(new_static_pair.data));
-                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.path.m_components.back()), box$(HIR::VisEnt<HIR::ValueItem> {
+                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.path.components().back()), box$(HIR::VisEnt<HIR::ValueItem> {
                         HIR::Publicity::new_none(), // Should really be private, but we're well after checking
                         std::move(new_ent)
                         })) );

@@ -510,6 +510,7 @@ public:
                 m_ptr[m->len].~T();
             }
             while( m->len < len ) {
+                assert(meta() == m);
                 this->push_back(T());
             }
         }
@@ -532,7 +533,7 @@ public:
     template<typename... Args>
     void emplace_back(Args&&... v) {
         auto len = size();
-        if(len == 0) {
+        if(!meta() || meta()->cap == 0) {
             this->reserve(2);
         }
         else if(len >= meta()->cap) {

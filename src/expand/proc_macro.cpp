@@ -423,9 +423,9 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
             continue ;
         const auto& pm = mi.second->ent.as_ProcMacro();
         bool good = true;
-        for(size_t i = 0; i < ::std::min( mac_path.size()-1, pm.path.m_components.size() ); i++)
+        for(size_t i = 0; i < ::std::min( mac_path.size()-1, pm.path.components().size() ); i++)
         {
-            if( mac_path[1+i] != pm.path.m_components[i] )
+            if( mac_path[1+i] != pm.path.components()[i] )
             {
                 good = false;
                 break;
@@ -1657,7 +1657,7 @@ namespace {
 ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
     TokenStream(ParseState()),
     m_parent_span(sp),
-    m_this_span( Span( m_parent_span, proc_macro_desc.path.m_crate_name, proc_macro_desc.name ) ),
+    m_this_span( Span( m_parent_span, proc_macro_desc.path.crate_name(), proc_macro_desc.name ) ),
     m_proc_macro_desc(proc_macro_desc),
     m_edition(edition)
 {

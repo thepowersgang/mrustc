@@ -487,7 +487,7 @@ namespace
             auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
 
             auto enum_path = var_path.clone();
-            enum_path.m_path.m_components.pop_back();
+            enum_path.m_path.pop_component();
 
             // Create constructor function
             const auto& var_ty = item.m_data.as_Data().at(var_idx).type;

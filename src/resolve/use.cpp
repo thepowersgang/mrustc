@@ -739,8 +739,8 @@ namespace {
 
     const void* get_hir_modenum_by_path(const Span& sp, const ::AST::Crate& crate, const ::HIR::SimplePath& path, bool& is_enum)
     {
-        const auto* hmod = &crate.m_extern_crates.at( path.m_crate_name ).m_hir->m_root_module;
-        for(const auto& node : path.m_components)
+        const auto* hmod = &crate.m_extern_crates.at( path.crate_name() ).m_hir->m_root_module;
+        for(const auto& node : path.components())
         {
             auto it = hmod->m_mod_items.find(node);
             if( it == hmod->m_mod_items.end() )
@@ -754,14 +754,14 @@ namespace {
                     BUG(sp, "Import in module position didn't resolve as a module - " << import.path);
             )
             else TU_IFLET( ::HIR::TypeItem, (it->second->ent), Enum, enm,
-                if( &node == &path.m_components.back() ) {
+                if( &node == &path.components().back() ) {
                     is_enum = true;
                     return &enm;
                 }
                 BUG(sp, "");
             )
             else {
-                if( &node == &path.m_components.back() )
+                if( &node == &path.components().back() )
                     return nullptr;
                 BUG(sp, "");
             }
@@ -833,8 +833,8 @@ namespace {
                 if( idx == SIZE_MAX ) {
                     ERROR(span, E0000, "Unable to find variant " << path);
                 }
-                ap.crate = e.path.m_crate_name;
-                ap.nodes = e.path.m_components;
+                ap.crate = e.path.crate_name();
+                ap.nodes = e.path.components().to_vec();
                 ap.nodes.push_back(name);
                 if( enm.m_data.is_Data() && enm.m_data.as_Data()[idx].is_struct ) {
                     rv.type.set(ap, ::AST::PathBinding_Type::make_EnumVar({ nullptr, static_cast<unsigned int>(idx), &enm }));
@@ -845,8 +845,8 @@ namespace {
                 return rv;
             }
             else {
-                ap.crate = e.path.m_crate_name;
-                ap.nodes = e.path.m_components;
+                ap.crate = e.path.crate_name();
+                ap.nodes = e.path.components().to_vec();
                 hmod = reinterpret_cast<const ::HIR::Module*>(ptr);
             }
             }
@@ -896,17 +896,17 @@ namespace {
             DEBUG("E : Mod " << nodes.back().name() << " = " << item_ptr->tag_str());
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
-                ap = AST::AbsolutePath(e.path.m_crate_name, e.path.m_components);
-                const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+                ap = AST::AbsolutePath(e.path.crate_name(), e.path.components().to_vec());
+                const auto& ec = crate.m_extern_crates.at( e.path.crate_name() );
                 // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
                 if( e.is_variant ) {
                     auto p = e.path;
-                    p.m_components.pop_back();
+                    p.pop_component();
                     const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
                     assert(e.idx < enm.num_variants());
                     rv.type.set( ap, ::AST::PathBinding_Type::make_EnumVar({ nullptr, e.idx, &enm }) );
                 }
-                else if( e.path.m_components.empty() )
+                else if( e.path.components().empty() )
                 {
                     rv.type.set( ap, ::AST::PathBinding_Type::make_Module({nullptr, {&ec, &ec.m_hir->m_root_module}}) );
                 }
@@ -969,13 +969,13 @@ namespace {
             DEBUG("E : Value " << nodes.back().name() << " = " << item_ptr->tag_str());
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
-                ap = AST::AbsolutePath(e.path.m_crate_name, e.path.m_components);
+                ap = AST::AbsolutePath(e.path.crate_name(), e.path.components().to_vec());
                 // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
-                const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
+                const auto& ec = crate.m_extern_crates.at( e.path.crate_name() );
                 if( e.is_variant )
                 {
                     auto p = e.path;
-                    p.m_components.pop_back();
+                    p.pop_component();
                     const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
                     assert(e.idx < enm.num_variants());
                     rv.value.set( ap, ::AST::PathBinding_Value::make_EnumVar({ nullptr, e.idx, &enm }) );
@@ -999,12 +999,12 @@ namespace {
                     }
                 // TODO: What happens if these two refer to an enum constructor?
                 TU_ARMA(StructConstant, e) {
-                    ASSERT_BUG(span, crate.m_extern_crates.count(e.ty.m_crate_name), "Crate '" << e.ty.m_crate_name << "' not loaded for " << e.ty);
-                    rv.value.set( ap, ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(span, e.ty, true).as_Struct() }) );
+                    ASSERT_BUG(span, crate.m_extern_crates.count(e.ty.crate_name()), "Crate '" << e.ty.crate_name() << "' not loaded for " << e.ty);
+                    rv.value.set( ap, ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.crate_name()).m_hir->get_typeitem_by_path(span, e.ty, true).as_Struct() }) );
                     }
                 TU_ARMA(StructConstructor, e) {
-                    ASSERT_BUG(span, crate.m_extern_crates.count(e.ty.m_crate_name), "Crate '" << e.ty.m_crate_name << "' not loaded for " << e.ty);
-                    rv.value.set( ap, ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(span, e.ty, true).as_Struct() }) );
+                    ASSERT_BUG(span, crate.m_extern_crates.count(e.ty.crate_name()), "Crate '" << e.ty.crate_name() << "' not loaded for " << e.ty);
+                    rv.value.set( ap, ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.crate_name()).m_hir->get_typeitem_by_path(span, e.ty, true).as_Struct() }) );
                     }
                 TU_ARMA(Function, e) {
                     rv.value.set( ap, ::AST::PathBinding_Value::make_Function({ nullptr }) );
@@ -1031,16 +1031,16 @@ namespace {
             DEBUG("E : Macro " << nodes.back().name() << " = " << item_ptr->tag_str());
 
             if( const auto* imp = item_ptr->opt_Import() ) {
-                if( imp->path.m_crate_name == CRATE_BUILTINS )
+                if( imp->path.crate_name() == CRATE_BUILTINS )
                 {
                     rv.macro.set( AST::AbsolutePath(CRATE_BUILTINS, {nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
                     return rv;
                 }
-                ASSERT_BUG(span, crate.m_extern_crates.count(imp->path.m_crate_name) > 0, "Unable to find crate for " << imp->path);
-                const auto& c = *crate.m_extern_crates.at(imp->path.m_crate_name).m_hir;    // Have to manually look up, AST doesn't have a `get_mod_by_path`
+                ASSERT_BUG(span, crate.m_extern_crates.count(imp->path.crate_name()) > 0, "Unable to find crate for " << imp->path);
+                const auto& c = *crate.m_extern_crates.at(imp->path.crate_name()).m_hir;    // Have to manually look up, AST doesn't have a `get_mod_by_path`
                 const auto& mod = c.get_mod_by_path(span, imp->path, /*ignore_last=*/true, /*ignore_crate=*/true);
-                item_ptr = &mod.m_macro_items.at(imp->path.m_components.back())->ent;
-                ap = AST::AbsolutePath(imp->path.m_crate_name, imp->path.m_components);
+                item_ptr = &mod.m_macro_items.at(imp->path.components().back())->ent;
+                ap = AST::AbsolutePath(imp->path.crate_name(), imp->path.components().to_vec());
             }
             else {
             }
@@ -1049,7 +1049,7 @@ namespace {
             {
                 TU_MATCH_HDRA( (*item_ptr), {)
                 TU_ARMA(Import, e) {
-                    if( e.path.m_crate_name == CRATE_BUILTINS )
+                    if( e.path.crate_name() == CRATE_BUILTINS )
                         ;
                     else
                         BUG(span, "Recursive import in " << path << " - " << it->second->ent.as_Import().path << " -> " << e.path);

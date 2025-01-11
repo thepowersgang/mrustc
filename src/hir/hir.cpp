@@ -213,18 +213,8 @@ bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const
     if( *vis_path == *none_path ) {
         return false;
     }
-    // Crate names must match
-    if(p.m_crate_name != vis_path->m_crate_name)
-        return false;
-    // `p` must be a child of vis_path
-    if(p.m_components.size() < vis_path->m_components.size())
-        return false;
-    for(size_t i = 0; i < vis_path->m_components.size(); i ++)
-    {
-        if(p.m_components[i] != vis_path->m_components[i])
-            return false;
-    }
-    return true;
+    // `p` must be a child of vis_path (i.e. starts with it)
+    return p.starts_with(*vis_path);
 }
 
 ::HIR::TypeRef HIR::Function::make_ptr_ty(const Span& sp, const Monomorphiser& ms) const
@@ -334,20 +324,20 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path_opt(const char* name) 
 namespace {
     const ::HIR::Module& get_containing_module(const ::HIR::Crate& crate, const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node)
     {
-        ASSERT_BUG(sp, path.m_components.size() > 0u, "Invalid path (no nodes) - " << path);
-        ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1u : 0u), "Invalid path (only one node with `ignore_last_node` - " << path);
+        ASSERT_BUG(sp, path.components().size() > 0u, "Invalid path (no nodes) - " << path);
+        ASSERT_BUG(sp, path.components().size() > (ignore_last_node ? 1u : 0u), "Invalid path (only one node with `ignore_last_node` - " << path);
 
         const ::HIR::Module* mod;
-        if( !ignore_crate_name && path.m_crate_name != crate.m_crate_name ) {
-            ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded for " << path);
-            mod = &crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
+        if( !ignore_crate_name && path.crate_name() != crate.m_crate_name ) {
+            ASSERT_BUG(sp, crate.m_ext_crates.count(path.crate_name()) > 0, "Crate '" << path.crate_name() << "' not loaded for " << path);
+            mod = &crate.m_ext_crates.at(path.crate_name()).m_data->m_root_module;
         }
         else {
             mod =  &crate.m_root_module;
         }
-        for( unsigned int i = 0; i < path.m_components.size() - (ignore_last_node ? 2 : 1); i ++ )
+        for( unsigned int i = 0; i < path.components().size() - (ignore_last_node ? 2 : 1); i ++ )
         {
-            const auto& pc = path.m_components[i];
+            const auto& pc = path.components()[i];
             auto it = mod->m_mod_items.find( pc );
             if( it == mod->m_mod_items.end() ) {
                 BUG(sp, "Couldn't find component " << i << " of " << path);
@@ -367,7 +357,7 @@ const ::HIR::MacroItem& ::HIR::Crate::get_macroitem_by_path(const Span& sp, cons
 {
     const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, ignore_last_node);
 
-    auto it = mod.m_macro_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
+    auto it = mod.m_macro_items.find( ignore_last_node ? path.components()[path.components().size()-2] : path.components().back() );
     if( it == mod.m_macro_items.end() ) {
         BUG(sp, "Could not find macro name in " << path);
     }
@@ -379,7 +369,7 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
 {
     const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, ignore_last_node);
 
-    auto it = mod.m_mod_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
+    auto it = mod.m_mod_items.find( ignore_last_node ? path.components()[path.components().size()-2] : path.components().back() );
     if( it == mod.m_mod_items.end() ) {
         BUG(sp, "Could not find type " << path);
     }
@@ -391,15 +381,15 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
 {
     if( ignore_last_node )
     {
-        ASSERT_BUG(sp, path.m_components.size() > 0, "get_mod_by_path received invalid path with ignore_last_node=true - " << path);
+        ASSERT_BUG(sp, path.components().size() > 0, "get_mod_by_path received invalid path with ignore_last_node=true - " << path);
     }
     // Special handling for empty paths with `ignore_last_node`
-    if( path.m_components.size() == (ignore_last_node ? 1 : 0) )
+    if( path.components().size() == (ignore_last_node ? 1 : 0) )
     {
-        if( !ignore_crate_name && path.m_crate_name != m_crate_name )
+        if( !ignore_crate_name && path.crate_name() != m_crate_name )
         {
-            ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-            return m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
+            ASSERT_BUG(sp, m_ext_crates.count(path.crate_name()) > 0, "Crate '" << path.crate_name() << "' not loaded");
+            return m_ext_crates.at(path.crate_name()).m_data->m_root_module;
         }
         else
         {
@@ -476,9 +466,9 @@ namespace {
 
 const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
-    if( path.m_crate_name == "#intrinsics" ) {
-        ASSERT_BUG(sp, path.m_components.size() == 1, "");
-        if( path.m_components.back() == "offset_of" ) {
+    if( path.crate_name() == "#intrinsics" ) {
+        ASSERT_BUG(sp, path.components().size() == 1, "");
+        if( path.components().back() == "offset_of" ) {
             if( ! g_val_item_intrnsic_offsetof.as_Function().m_variadic ) {
                 auto& v =  g_val_item_intrnsic_offsetof.as_Function();
                 v.m_variadic = true;
@@ -486,17 +476,17 @@ const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const 
             }
             return g_val_item_intrnsic_offsetof;
         }
-        TODO(sp, "Get intrinsic " << path.m_components.back());
+        TODO(sp, "Get intrinsic " << path.components().back());
     }
-    if( path.m_crate_name == this->m_crate_name && path.m_components.size() == 1 ) {
-        auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.m_components.back(); });
+    if( path.crate_name() == this->m_crate_name && path.components().size() == 1 ) {
+        auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.components().back(); });
         if( i != m_new_values.end() ) {
             return i->second->ent;
         }
     }
     const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, /*ignore_last_node=*/false);
 
-    auto it = mod.m_value_items.find( path.m_components.back() );
+    auto it = mod.m_value_items.find( path.components().back() );
     if( it == mod.m_value_items.end() ) {
         BUG(sp, "Could not find value name " << path);
     }
@@ -518,7 +508,7 @@ const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const 
 const ::HIR::Static& ::HIR::Crate::get_static_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
     const auto& m = this->get_mod_by_path(sp, path, /*ignore_last*/true);
-    auto it = m.m_value_items.find(path.m_components.back());
+    auto it = m.m_value_items.find(path.components().back());
     if(it != m.m_value_items.end())
     {
         ASSERT_BUG(sp, it->second->ent.is_Static(), "`static` path " << path << " didn't point to a static - " << it->second->ent.tag_str());
@@ -526,13 +516,13 @@ const ::HIR::Static& ::HIR::Crate::get_static_by_path(const Span& sp, const ::HI
     }
     for(const auto& e : m.m_inline_statics)
     {
-        if(e.first == path.m_components.back())
+        if(e.first == path.components().back())
         {
             return *e.second;
         }
     }
-    if( path.m_crate_name == this->m_crate_name && path.m_components.size() == 1 ) {
-        auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.m_components.back(); });
+    if( path.crate_name() == this->m_crate_name && path.components().size() == 1 ) {
+        auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.components().back(); });
         if( i != m_new_values.end() ) {
             return i->second->ent.as_Static();
         }

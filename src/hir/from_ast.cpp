@@ -988,7 +988,7 @@ namespace {
             }
             else {
                 // TraitPath -> GenericPath -> SimplePath
-                if( v.m_trait.m_path.m_path.m_components.size() > 0 ) {
+                if( !v.m_trait.m_path.m_path.components().empty() ) {
                     ERROR(ty.span(), E0000, "Multiple data traits in trait object - " << ty);
                 }
                 v.m_trait = LowerHIR_TraitPath(ty.span(), *t.path, t.hrbs);
@@ -1449,7 +1449,7 @@ namespace {
 ::HIR::Trait LowerHIR_Trait(::HIR::SimplePath trait_path, const ::AST::Trait& f)
 {
     TRACE_FUNCTION_F(trait_path);
-    trait_path.m_crate_name = g_crate_name;
+    trait_path.update_crate_name( g_crate_name );
 
     bool trait_reqires_sized = false;
     auto params = LowerHIR_GenericParams(f.params(), &trait_reqires_sized);
@@ -2005,7 +2005,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         // - Well... sub-modules that contain a `macro` would also lead to the same import
         if( ie.second.is_import ) { //&& ie.second.is_pub ) {
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Type );
-            assert(hir_path.m_components.empty() || hir_path.m_components.back() != "");
+            assert(hir_path.components().empty() || hir_path.components().back() != "");
             ::HIR::TypeItem ti;
             if( const auto* pb = ie.second.path.m_bindings.type.binding.opt_EnumVar() ) {
                 DEBUG("Import NS " << ie.first << " = " << hir_path << " (Enum Variant)");
@@ -2026,8 +2026,8 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         // TODO: See code for `m_namespace_items` above
         if( ie.second.is_import ) {//&& ie.second.is_pub ) {
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Value );
-            assert(!hir_path.m_components.empty());
-            assert(hir_path.m_components.back() != "");
+            assert(!hir_path.components().empty());
+            assert(hir_path.components().back() != "");
             ::HIR::ValueItem    vi;
 
             TU_MATCH_HDRA( (ie.second.path.m_bindings.value.binding), {)
@@ -2051,8 +2051,8 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Macro );
         if( ie.second.is_import )
         {
-            assert(!hir_path.m_components.empty());
-            assert(hir_path.m_components.back() != "");
+            assert(!hir_path.components().empty());
+            assert(hir_path.components().back() != "");
 
             DEBUG("Import MACRO " << ie.first << " = " << hir_path);
             auto mi = ::HIR::MacroItem::make_Import({ mv$(hir_path) });
@@ -2333,9 +2333,9 @@ public:
                     else {
                         assert(mac.data);
                         assert(!mac.data->m_rules.empty());
-                        ::HIR::SimplePath   p { g_crate_name, mod.path().nodes };
-                        p.m_components.push_back(mac.name);
-                        mi = HIR::MacroItem::make_Import({ mv$(p) });
+                        auto pc = mod.path().nodes;
+                        pc.push_back(mac.name);
+                        mi = HIR::MacroItem::make_Import({ ::HIR::SimplePath(g_crate_name, std::move(pc)) });
                     }
                     ASSERT_BUG(Span(), macros.count(mac.name) == 0, "Duplicate export of: " << mac.name);
                     if( macros.count(mac.name) == 0 )
@@ -2451,7 +2451,7 @@ public:
             {
                 // Equal definitions, also good (TODO: How can this happen?)
             }
-            else if( irv.first->second.m_components.empty() && path.m_components.empty() )
+            else if( irv.first->second.components().empty() && path.components().empty() )
             {
                 // Both are just markers, also good (e.g. #![needs_panic_runtime])
             }
@@ -2489,7 +2489,7 @@ public:
         struct H {
             static ::HIR::SimplePath resolve_path(const ::HIR::Crate& crate, bool is_value, ::std::initializer_list<const char*> n)
             {
-                ::HIR::SimplePath   cur_path("", {});
+                ::std::vector<RcString> cur_path_components;
 
                 const ::HIR::Module* mod = &crate.m_root_module;
                 assert(n.begin() != n.end());
@@ -2507,7 +2507,7 @@ public:
                     }
                     else if(const auto* ep = e->ent.opt_Module() )
                     {
-                        cur_path.m_components.push_back(*it);
+                        cur_path_components.push_back(*it);
                         mod = ep;
                     }
                     else
@@ -2537,8 +2537,8 @@ public:
                     }
                     else
                     {
-                        cur_path.m_components.push_back(last);
-                        return cur_path;
+                        cur_path_components.push_back(last);
+                        return ::HIR::SimplePath("", std::move(cur_path_components));
                     }
                 }
             }
@@ -2695,7 +2695,7 @@ public:
                         }
                     }
                     if( const auto* i = mi.second->ent.opt_Import() ) {
-                        if( i->path.m_crate_name == CRATE_BUILTINS ) {
+                        if( i->path.crate_name() == CRATE_BUILTINS ) {
                         }
                         else if( const auto* i2 = g_crate_ptr->get_macroitem_by_path(Span(), i->path).opt_Import() ) {
                             BUG(Span(), "Attempted recusive import - " << i->path << " points at " << i2->path);

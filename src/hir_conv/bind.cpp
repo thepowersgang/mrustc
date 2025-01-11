@@ -208,9 +208,9 @@ namespace {
                 if(auto* pe = ve->path.m_data.opt_Generic())
                 {
                     const auto& path = pe->m_path;
-                    const auto& pc = path.m_components.back();
+                    const auto& pc = path.components().back();
                     const ::HIR::Module*  mod = nullptr;
-                    if( path.m_components.size() == 1 )
+                    if( path.components().size() == 1 )
                     {
                         mod = &m_crate.get_mod_by_path(sp, path, true);
                     }
@@ -241,13 +241,13 @@ namespace {
                         }
                         else
                         {
-                            BUG(sp, "Node " << path.m_components.size()-2 << " of path " << ve->path << " wasn't a module");
+                            BUG(sp, "Node " << path.components().size()-2 << " of path " << ve->path << " wasn't a module");
                         }
                     }
 
                     if( mod )
                     {
-                        auto it = mod->m_value_items.find( path.m_components.back() );
+                        auto it = mod->m_value_items.find( path.components().back() );
                         if( it == mod->m_value_items.end() ) {
                             BUG(sp, "Couldn't find final component of " << path);
                         }
@@ -884,7 +884,7 @@ namespace {
             };
 
             auto this_path = ip.get_simple_path();
-            this_path.m_crate_name = m_crate.m_crate_name;
+            this_path.update_crate_name( m_crate.m_crate_name );
 
             Enumerate   e;
             for(const auto& pt : tr.m_parent_traits)

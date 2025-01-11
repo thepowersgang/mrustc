@@ -270,10 +270,10 @@ namespace resolve_ufcs {
                     {
                         // If it points to an enum, rewrite
                         auto& gp = node.m_path.m_data.as_Generic();
-                        if( gp.m_path.m_components.size() > 1 )
+                        if( gp.m_path.components().size() > 1 )
                         {
                             const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
-                            if( ent.is_Enum() && ent.as_Enum().find_variant(gp.m_path.m_components.back()) != SIZE_MAX )
+                            if( ent.is_Enum() && ent.as_Enum().find_variant(gp.m_path.components().back()) != SIZE_MAX )
                             {
                                 // Rewrite!
                                 m_replacement.reset(new ::HIR::ExprNode_TupleVariant(sp, mv$(gp), /*is_struct*/false, mv$(node.m_args)));
@@ -292,13 +292,13 @@ namespace resolve_ufcs {
                     {
                         // If it points to an enum, set binding
                         auto& gp = node.m_path.m_data.as_Generic();
-                        if( gp.m_path.m_components.size() > 1 )
+                        if( gp.m_path.components().size() > 1 )
                         {
                             const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
                             if( ent.is_Enum() )
                             {
                                 const auto& enm = ent.as_Enum();
-                                auto idx = enm.find_variant(gp.m_path.m_components.back());
+                                auto idx = enm.find_variant(gp.m_path.components().back());
                                 if( enm.m_data.is_Value() || enm.m_data.as_Data().at(idx).type == HIR::TypeRef::new_unit() )
                                 {
                                     m_replacement.reset(new ::HIR::ExprNode_UnitVariant(sp, mv$(gp), /*is_struct*/false));
@@ -325,7 +325,7 @@ namespace resolve_ufcs {
                         // If it points to an enum, set binding
                         auto& p = node.m_type.data_mut().as_Path().path;
                         auto& gp = p.m_data.as_Generic();
-                        if( gp.m_path.m_components.size() > 1 )
+                        if( gp.m_path.components().size() > 1 )
                         {
                             const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
                             if( ent.is_Enum() )
@@ -333,8 +333,7 @@ namespace resolve_ufcs {
                                 DEBUG(&node << ": Tagging as an enum");
                                 node.m_is_struct = false;
                                 auto enum_path = std::move(gp);
-                                auto var_name = enum_path.m_path.m_components.back();
-                                enum_path.m_path.m_components.pop_back();
+                                auto var_name = enum_path.m_path.pop_component();
                                 auto enum_ty = HIR::TypeRef::new_path(std::move(enum_path), &ent.as_Enum());
                                 p = ::HIR::Path(std::move(enum_ty), std::move(var_name));
                             }
@@ -346,7 +345,7 @@ namespace resolve_ufcs {
                 // NOTE: Custom needed for trait scoping
                 void visit(::HIR::ExprNode_Block& node) override
                 {
-                    if( node.m_traits.size() == 0 && node.m_local_mod.m_components.size() > 0 ) {
+                    if( node.m_traits.size() == 0 && node.m_local_mod.components().size() > 0 ) {
                         const auto& mod = upper_visitor.m_crate.get_mod_by_path(node.span(), node.m_local_mod);
                         for( const auto& trait_path : mod.m_traits ) {
                             node.m_traits.push_back( ::std::make_pair( &trait_path, &upper_visitor.m_crate.get_trait_by_path(node.span(), trait_path) ) );
@@ -886,7 +885,7 @@ namespace resolve_ufcs {
                         DEBUG("Found variant " << e.type << " #" << idx);
                         if( enm.m_data.is_Value() || !enm.m_data.as_Data()[idx].is_struct ) {
                             auto gp = e.type.data().as_Path().path.m_data.as_Generic().clone();
-                            gp.m_path.m_components.push_back(e.item);
+                            gp.m_path += e.item;
                             if( e.params.has_params() ) {
                                 ERROR(sp, E0000, "Type parameters on UFCS enum variant - " << p);
                             }
@@ -909,7 +908,7 @@ namespace resolve_ufcs {
                         DEBUG("Found variant " << e.type << " #" << idx);
                         if( enm.m_data.is_Data() && enm.m_data.as_Data()[idx].is_struct ) {
                             auto gp = e.type.data().as_Path().path.m_data.as_Generic().clone();
-                            gp.m_path.m_components.push_back(e.item);
+                            gp.m_path += e.item;
                             if( e.params.has_params() ) {
                                 ERROR(sp, E0000, "Type parameters on UFCS enum variant - " << p);
                             }
@@ -942,12 +941,12 @@ namespace resolve_ufcs {
                 break;
             TU_ARMA(Value, e) {
                 this->visit_pattern_Value(sp, pat, e.val);
-                if( e.val.is_Named() && e.val.as_Named().path.m_data.is_Generic() && e.val.as_Named().path.m_data.as_Generic().m_path.m_components.size() > 1 )
+                if( e.val.is_Named() && e.val.as_Named().path.m_data.is_Generic() && e.val.as_Named().path.m_data.as_Generic().m_path.components().size() > 1 )
                 {
                     auto& gp = e.val.as_Named().path.m_data.as_Generic();
                     if( const auto* enm_p = m_crate.get_typeitem_by_path(sp, gp.m_path, false, true).opt_Enum() )
                     {
-                        unsigned idx = enm_p->find_variant(gp.m_path.m_components.back());
+                        unsigned idx = enm_p->find_variant(gp.m_path.components().back());
                         pat.m_data = ::HIR::Pattern::Data::make_PathValue({
                             mv$(gp),
                             ::HIR::Pattern::PathBinding::make_Enum({enm_p, idx})
