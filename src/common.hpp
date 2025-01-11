@@ -545,6 +545,13 @@ public:
     void push_back(T v) {
         this->emplace_back(std::move(v));
     }
+    void pop_back() {
+        auto* m = this->meta();
+        if(m && m->len > 0 ) {
+            m->len --;
+            m_ptr[m->len].~T();
+        }
+    }
     
     const T& front() const { if(this->size() == 0) throw std::out_of_range("ThinVector::front"); return *m_ptr; }
           T& front()       { if(this->size() == 0) throw std::out_of_range("ThinVector::front"); return *m_ptr; }
@@ -582,20 +589,21 @@ public:
     }
 
     Ordering ord(const ThinVector<T>& x) const {
-        size_t l = this->size();
-        if(l > x.size()) {
-            l = x.size();
+        size_t cmp_len = this->size();
+        if(cmp_len > x.size()) {
+            cmp_len = x.size();
         }
-        for(size_t i = 0; i < l; i ++ ) {
+        for(size_t i = 0; i < cmp_len; i ++ ) {
             auto rv = ::ord( (*this)[i], x[i] );
             if( rv != OrdEqual )
                 return rv;
         }
 
-        if(l < this->size()) {
+        // Longer lists sort afer shorter ones
+        if( this->size() < x.size() ) {
             return OrdLess;
         }
-        else if( l > this->size() ) {
+        else if( this->size() > x.size() ) {
             return OrdGreater;
         }
         else {

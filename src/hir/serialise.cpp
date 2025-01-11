@@ -283,8 +283,7 @@
         void serialise_simplepath(const ::HIR::SimplePath& path)
         {
             TRACE_FUNCTION_F(path);
-            m_out.write_string(path.m_crate_name);
-            serialise_vec(path.m_components);
+            serialise_vec(path.m_members);
         }
         void serialise_pathparams(const ::HIR::PathParams& pp)
         {
@@ -433,7 +432,7 @@
                 decltype(crate.m_lang_items)    lang_items_filtered;
                 for(const auto& ent : crate.m_lang_items)
                 {
-                    if(ent.second.m_crate_name == "" || ent.second.m_crate_name == crate.m_crate_name)
+                    if(ent.second.crate_name() == "" || ent.second.crate_name() == crate.m_crate_name)
                     {
                         lang_items_filtered.insert(ent);
                     }

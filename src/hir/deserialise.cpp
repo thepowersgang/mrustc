@@ -1155,18 +1155,14 @@ namespace {
     ::HIR::SimplePath HirDeserialiser::deserialise_simplepath()
     {
         TRACE_FUNCTION;
+        auto rv = ::HIR::SimplePath { deserialise_thinvec< RcString>() };
         // HACK! If the read crate name is empty, replace it with the name we're loaded with
-        auto crate_name = m_in.read_istring();
-        auto components = deserialise_vec< RcString>();
-        if( crate_name == "" && components.size() > 0)
+        if( rv.crate_name() == "" && rv.components().size() > 0)
         {
             assert(m_crate_name != "");
-            crate_name = m_crate_name;
+            rv.update_crate_name( m_crate_name );
         }
-        return ::HIR::SimplePath {
-            mv$(crate_name),
-            mv$(components)
-            };
+        return rv;
     }
     ::HIR::PathParams HirDeserialiser::deserialise_pathparams()
     {

@@ -16,15 +16,15 @@ namespace {
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::SimplePath& x)
     {
-        if( x.m_crate_name != "" ) {
-            os << "::\"" << x.m_crate_name << "\"";
+        if( x.crate_name() != "" ) {
+            os << "::\"" << x.crate_name() << "\"";
         }
-        else if( x.m_components.size() == 0 ) {
+        else if( x.components().size() == 0 ) {
             os << "::";
         }
         else {
         }
-        for(const auto& n : x.m_components)
+        for(const auto& n : x.components())
         {
             os << "::" << n;
         }
@@ -117,45 +117,77 @@ namespace HIR {
 
 ::HIR::SimplePath HIR::SimplePath::clone() const
 {
-    return SimplePath( m_crate_name, m_components );
+    return SimplePath( m_members );
 }
 ::HIR::SimplePath HIR::SimplePath::parent() const
 {
-    return SimplePath( m_crate_name, components().subspan(0, m_components.size()-1) );
+    if( m_members.size() > 1 ) { 
+        return SimplePath(ThinVector<RcString>(m_members.begin(), m_members.end() - 1));
+    }
+    else {
+        return this->clone();
+    }
 }
 ::HIR::SimplePath HIR::SimplePath::operator+(const RcString& s) const
 {
-    ::HIR::SimplePath ret(m_crate_name);
-    ret.m_components = m_components;
-
-    ret.m_components.push_back( s );
-
-    return ret;
+    if( m_members.empty() ) {
+        return ThinVector<RcString>({ RcString(), s });
+    }
+    else {
+        SimplePath  rv;
+        rv.m_members.reserve(m_members.size());
+        for(const auto& v : m_members) {
+            rv.m_members.push_back(v);
+        }
+        rv.m_members.push_back(s);
+        return rv;
+    }
 }
 void HIR::SimplePath::operator+=(const RcString& s) {
-    m_components.push_back( s );
+    if( m_members.empty() ) {
+        m_members = ThinVector<RcString>({ RcString(), s });
+    }
+    else {
+        m_members.push_back( s );
+    }
 }
 RcString HIR::SimplePath::pop_component() {
-    assert(!m_components.empty());
-    auto rv = m_components.back();
-    m_components.pop_back();
-    return rv;
+    if( m_members.size() <= 1 ) {
+        return RcString();
+    }
+    else {
+        auto rv = m_members.back();
+        m_members.pop_back();
+        if( m_members.size() == 1 && m_members[0] == RcString() ) {
+            m_members = ThinVector<RcString>();
+        }
+        return rv;
+    }
 }
 void HIR::SimplePath::update_crate_name(RcString v) {
-    m_crate_name = std::move(v);
+    if( m_members.empty() ) {
+        m_members.push_back(v);
+    }
+    else if( v.c_str()[0] == '\0' && m_members.size() == 1 ) {
+        m_members = ThinVector<RcString>();
+    }
+    else {
+        m_members[0] = std::move(v);
+    }
 }
 void HIR::SimplePath::update_last_component(RcString v) {
-    assert(!m_components.empty());
-    m_components.back() = std::move(v);
+    assert(m_members.size() >= 2);
+    m_members.back() = std::move(v);
 }
 bool HIR::SimplePath::starts_with(const HIR::SimplePath& p, bool skip_last/*=false*/) const {
-    if( p.m_crate_name != this->m_crate_name )
-        return false;
+    if( p.m_members.empty() ) {
+        return crate_name() == RcString();
+    }
     // This path can't start with `p` if it's shorter than `p`
-    if( this->m_components.size() < p.m_components.size() - (skip_last ? 1 : 0) )
+    if( m_members.size() < p.m_members.size() - (skip_last ? 1 : 0) )
         return false;
-    for(size_t i = 0; i < p.m_components.size() - (skip_last ? 1 : 0); i++) {
-        if( p.m_components[i] != this->m_components[i] ) {
+    for(size_t i = 0; i < p.m_members.size() - (skip_last ? 1 : 0); i++) {
+        if( p.m_members[i] != this->m_members[i] ) {
             return false;
         }
     }

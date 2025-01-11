@@ -20,6 +20,7 @@
 struct EncodedLiteral;
 class Monomorphiser;
 class HirSerialiser;
+class HirDeserialiser;
 
 namespace HIR {
 
@@ -95,45 +96,63 @@ static inline Compare& operator &=(Compare& x, const Compare& y) {
 }
 
 /// Simple path - Absolute with no generic parameters
-// TODO: Investigate having this be a custom Rc vector-alike
-// - Would save 3*8 bytes inline (not much?), and make comparison/clone cheaper
+// TODO: Maybe make this de-duplicated? Not sure about the overheads involved vs the gain - some paths are very common, others are only used once
 struct SimplePath
 {
     friend class HirSerialiser;
+    friend class HirDeserialiser;
 private:
-    RcString   m_crate_name;
-    ::std::vector< RcString>   m_components;
+    ThinVector<RcString>    m_members;
 
+    SimplePath(ThinVector<RcString> members): m_members(std::move(members)) {}
 public:
-    SimplePath():
-        m_crate_name("")
+    SimplePath()
     {
     }
-    SimplePath(RcString crate):
-        m_crate_name( mv$(crate) )
+    SimplePath(RcString crate)
+        : SimplePath(crate, ::std::span<RcString>())
     {
     }
-    SimplePath(RcString crate, ::std::vector< RcString> components):
-        m_crate_name( mv$(crate) ),
-        m_components( mv$(components) )
+    SimplePath(RcString crate, ::std::vector< RcString> components)
+        : SimplePath(crate, ::std::span<RcString>(components))
     {
     }
-    SimplePath(RcString crate, ::std::span< const RcString> components):
-        m_crate_name( mv$(crate) ),
-        m_components( components.begin(), components.end() )
+    SimplePath(RcString crate, ::std::span<RcString> components)
     {
+        // NOTE: Ensure that it's impossible for the crate name to be empty with only one value in `m_members`, simplifies comparison logic
+        if( crate.c_str()[0] != '\0' || !components.empty() ) {
+            m_members.reserve(1 + components.size());
+            m_members.push_back(std::move(crate));
+            for(auto& n : components) {
+                m_members.push_back(std::move(n));
+            }
+        }
     }
-    SimplePath(RcString crate, ::std::initializer_list<RcString> components):
-        m_crate_name( mv$(crate) ),
-        m_components( components.begin(), components.end() )
+    SimplePath(RcString crate, ::std::span<const RcString> components)
+    {
+        if( crate.c_str()[0] != '\0' || !components.empty() ) {
+            m_members.reserve(1 + components.size());
+            m_members.push_back(std::move(crate));
+            for(const auto& n : components) {
+                m_members.push_back(n);
+            }
+        }
+    }
+    SimplePath(RcString crate, ::std::initializer_list<RcString> components)
+        : SimplePath(std::move(crate), ::std::span<const RcString>(components.begin(), components.end()))
     {
     }
 
     SimplePath clone() const;
     SimplePath parent() const;
 
-    const RcString& crate_name() const { return m_crate_name; };
-    ::std::span<const RcString> components() const { return std::span<const RcString>(m_components.begin(), m_components.end()); }
+    const RcString& crate_name() const {
+        static RcString empty;
+        return m_members.empty() ? empty : m_members.front();
+    }
+    ::std::span<const RcString> components() const {
+        return m_members.empty() ? std::span<const RcString>() : std::span<const RcString>(m_members.begin() + 1, m_members.end());
+    }
 
     SimplePath operator+(const RcString& s) const;
 
@@ -144,7 +163,7 @@ public:
     void update_last_component(RcString v);
 
     bool operator==(const SimplePath& x) const {
-        return m_crate_name == x.m_crate_name && m_components == x.m_components;
+        return ord(x) == OrdEqual;
     }
     bool operator!=(const SimplePath& x) const {
         return !(*this == x);
@@ -153,10 +172,7 @@ public:
         return ord(x) == OrdLess;
     }
     Ordering ord(const SimplePath& x) const {
-        auto rv = ::ord(m_crate_name, x.m_crate_name);
-        if(rv != OrdEqual)  return rv;
-        rv = ::ord(m_components, x.m_components);
-        return rv;
+        return ::ord(m_members, x.m_members);
     }
     bool starts_with(const SimplePath& x, bool skip_last=false) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
