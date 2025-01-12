@@ -6,52 +6,59 @@
 
 ReadMemory* ReadMemory::s_self = 0;
 
+ReadMemory::ReadMemory(LPVOID view, const MINIDUMP_MEMORY_LIST* memory, const MINIDUMP_MEMORY64_LIST* memory64)
+    : view_base(view)
+{
+    if(memory)
+    {
+        for(ULONG32 i = 0; i < memory->NumberOfMemoryRanges; i ++)
+        {
+            const auto& rng = memory->MemoryRanges[i];
+            m_ranges[rng.StartOfMemoryRange] = MemoryRange { rng.Memory.Rva, rng.Memory.DataSize };
+        }
+    }
+    if(memory64)
+    {
+        DWORD64 base_rva = memory64->BaseRva;
+        for(ULONG32 i = 0; i < memory64->NumberOfMemoryRanges; i ++)
+        {
+            const auto& rng = memory64->MemoryRanges[i];
+            m_ranges[rng.StartOfMemoryRange] = MemoryRange { base_rva, rng.DataSize };
+            base_rva += rng.DataSize;
+        }
+    }
+    for(const auto& r : m_ranges) {
+        ::std::cout << "@" << std::hex << r.first << "+" << r.second.len << " => +0x" << r.second.ofs << "\n";
+    }
+    s_self = this;
+}
 /*static*/ BOOL ReadMemory::read(HANDLE /*hProcess*/, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, PDWORD lpNumberOfBytesRead)
 {
     //std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << std::endl;
+
     // Find memory range containing the address
-    if( s_self->memory )
-    {
-        for(ULONG32 i = 0; i < s_self->memory->NumberOfMemoryRanges; i ++)
-        {
-            const auto& rng = s_self->memory->MemoryRanges[i];
-            //std::cout << "- " << std::hex << rng.StartOfMemoryRange << "+" << rng.Memory.DataSize << std::endl;
-
-            if( rng.StartOfMemoryRange <= qwBaseAddress && qwBaseAddress <= rng.StartOfMemoryRange + rng.Memory.DataSize )
-            {
-                auto ofs = qwBaseAddress - rng.StartOfMemoryRange;
-                auto max_size = min(nSize, rng.Memory.DataSize - ofs);
-                const auto* src = (const char*)s_self->view + rng.Memory.Rva + ofs;
-                memcpy(lpBuffer, src, max_size);
-                if(lpNumberOfBytesRead)
-                    *lpNumberOfBytesRead = static_cast<DWORD>(max_size);
-                return TRUE;
-            }
-        }
+    // - `upper_bound` returns first element after the target value, so shift it backwards to get the element before (or equal to) the target
+    auto slot = s_self->m_ranges.upper_bound(qwBaseAddress);
+    if( slot != s_self->m_ranges.end() ) {
+        -- slot;
     }
-    if( s_self->memory64 )
+    //if( slot != s_self->m_ranges.end() ) {
+    //    ::std::cout << std::hex << slot->first << "+" << slot->second.len << std::dec << "\n";
+    //}
+    if( slot != s_self->m_ranges.end() && qwBaseAddress - slot->first < slot->second.len )
     {
-        DWORD64 base_rva = s_self->memory64->BaseRva;
-        for(ULONG32 i = 0; i < s_self->memory64->NumberOfMemoryRanges; i ++)
-        {
-            const auto& rng = s_self->memory64->MemoryRanges[i];
-            //std::cout << "- " << (void*)base_rva << " " << std::hex << rng.StartOfMemoryRange << "+" << rng.DataSize << std::endl;
-
-            if( rng.StartOfMemoryRange <= qwBaseAddress && qwBaseAddress <= rng.StartOfMemoryRange + rng.DataSize )
-            {
-                auto ofs = qwBaseAddress - rng.StartOfMemoryRange;
-                auto max_size = min(nSize, rng.DataSize - ofs);
-                const auto* src = (const char*)s_self->view + base_rva + ofs;
-                memcpy(lpBuffer, src, max_size);
-                if(lpNumberOfBytesRead)
-                    *lpNumberOfBytesRead = static_cast<DWORD>(max_size);
-                //if( nSize == 8 )
-                //    std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " = " << *(void**)lpBuffer << std::endl;
-                return TRUE;
-            }
-
-            base_rva += rng.DataSize;
+        // Start address is within within the range
+        // NOTE: Not bothering to check for if the read spans two ranges, because with 64-bit dumps that shouldn't happen?
+        auto ofs = qwBaseAddress - slot->first;
+        auto max_size = min(nSize, slot->second.ofs - ofs);
+        if(max_size != nSize) {
+            std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " == ReadMemory::read truncated 0x" << max_size << std::dec << std::endl;
         }
+        const auto* src = (const char*)s_self->view_base + slot->second.ofs + ofs;
+        memcpy(lpBuffer, src, max_size);
+        if(lpNumberOfBytesRead)
+            *lpNumberOfBytesRead = static_cast<DWORD>(max_size);
+        return TRUE;
     }
     std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " == ReadMemory::read failed" << std::dec << std::endl;
     return FALSE;

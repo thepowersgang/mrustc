@@ -34,7 +34,7 @@ public:
     }
 };
 static inline int error(const char* name, DWORD ec) {
-    std::cout << name << ": " << WinErrStr(ec);
+    std::cout << name << ": " << WinErrStr(ec) << "\n";
     return 1;
 }
 static inline int error(const char* name) {

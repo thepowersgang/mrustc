@@ -458,7 +458,6 @@ int main(int argc, char* argv[])
     // TODO: Dump all types?
 
     auto rm = ReadMemory { view, memory_list, memory64_list };
-    ReadMemory::s_self = &rm;
 
     std::cout << "--- Enumerating memory" << std::endl;
     std::cout.flush();

@@ -7,6 +7,7 @@
 #pragma warning(pop)
 #include <ostream>
 #include "error_handling.h"
+#include <map>
 
 // #include <cvconst.h>
 // https://docs.microsoft.com/en-us/visualstudio/debugger/debug-interface-access/symtagenum?view=vs-2019
@@ -107,11 +108,18 @@ public:
 
 struct ReadMemory
 {
-    LPVOID  view;
-    const MINIDUMP_MEMORY_LIST* memory;
-    const MINIDUMP_MEMORY64_LIST* memory64;
-
+private:
     static ReadMemory* s_self;
+
+    LPVOID  view_base;
+    struct MemoryRange {
+        uint64_t    ofs;
+        uint64_t    len;
+    };
+    ::std::map<uint64_t, MemoryRange>   m_ranges;
+
+public:
+    ReadMemory(LPVOID view, const MINIDUMP_MEMORY_LIST* memory, const MINIDUMP_MEMORY64_LIST* memory64);
 
     static BOOL read(HANDLE /*hProcess*/, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, PDWORD lpNumberOfBytesRead);
 
@@ -121,7 +129,7 @@ struct ReadMemory
         auto ec = GetLastError();
         //std::cout << "SymFunctionTableAccess64(" << hProcess << ", " << (void*)AddrBase << ") = " << rv << std::endl;
         if(!rv)
-            error("SymFunctionTableAccess64", ec);
+            error("SymFunctionTableAccess64AccessRoutines", ec);
         return rv;
     }
 

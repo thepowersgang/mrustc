@@ -85,7 +85,7 @@ TypeRef::t_cache    TypeRef::s_cache;
             return e.second;
         }
     }
-    throw ::std::runtime_error("Type not loaded");
+    throw ::std::runtime_error("Type `" + name + "` not loaded");
 }
 
 bool TypeRef::is_udt(const char* name) const {
