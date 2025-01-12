@@ -1063,7 +1063,7 @@ namespace {
             mv$(params),
             e.info.is_unsafe,
             e.info.is_variadic,
-            e.info.m_abi,
+            RcString::new_interned(e.info.m_abi),
             LowerHIR_Type(*e.info.m_rettype),
             mv$(args)
             };
@@ -1783,7 +1783,7 @@ namespace {
             rv.m_receiver_type
             );
     }
-    rv.m_abi = f.abi();
+    rv.m_abi = RcString::new_interned(f.abi());
     rv.m_unsafe = f.is_unsafe();
     rv.m_const = f.is_const();
     rv.m_params = LowerHIR_GenericParams(f.params(), nullptr);  // TODO: If this is a method, then it can add the Self: Sized bound

@@ -124,7 +124,7 @@ struct TypeData_Path
 {
     ::HIR::Path path;
     TypePathBinding binding;
-    ::HIR::GenericParams    hrtbs;   // HRTBs for vtable paths ONLY
+    ::std::unique_ptr<::HIR::GenericParams> hrtbs;   // HRTBs for vtable paths ONLY
 
     bool is_closure() const {
         return path.m_data.is_Generic()
@@ -185,7 +185,7 @@ struct TypeData_FunctionPointer
     GenericParams   hrls;   // Higher-ranked lifetimes
     bool    is_unsafe;
     bool    is_variadic;
-    ::std::string   m_abi;
+    RcString    m_abi;  // While RcString is usually used for identifiers only, there's not many ABIs, and this saves (on msvc x64 - 32-8 bytes)
     TypeRef m_rettype;
     ::std::vector<TypeRef>  m_arg_types;
 };

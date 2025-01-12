@@ -194,7 +194,7 @@ public:
 
     Receiver    m_receiver = Receiver::Free;
     HIR::TypeRef    m_receiver_type;    // Receiver type for when a custom
-    ::std::string   m_abi = ABI_RUST;
+    RcString   m_abi = RcString::new_interned(ABI_RUST);
     bool    m_unsafe = false;
     bool    m_const = false;
 

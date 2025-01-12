@@ -222,7 +222,10 @@
                 }
             TU_ARMA(Path, e) {
                 serialise_path(e.path);
-                serialise_generics(e.hrtbs);
+                m_out.write_bool(e.hrtbs.get() != nullptr);
+                if(e.hrtbs) {
+                    serialise_generics(*e.hrtbs);
+                }
                 }
             TU_ARMA(Generic, e) {
                 serialise(e);

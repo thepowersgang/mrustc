@@ -788,7 +788,7 @@ namespace {
             rv.m_linkage = deserialise_linkage();
             rv.m_receiver = static_cast< ::HIR::Function::Receiver>( m_in.read_tag() );
             rv.m_receiver_type = deserialise_type();
-            rv.m_abi = m_in.read_string();
+            rv.m_abi = m_in.read_istring();
             rv.m_unsafe = m_in.read_bool();
             rv.m_const = m_in.read_bool();
             rv.m_markings = deserialise_function_markings();
@@ -1098,7 +1098,7 @@ namespace {
         _(Path, {
             deserialise_path(),
             {},
-            deserialise_genericparams()
+            m_in.read_bool() ? box$(deserialise_genericparams()) : nullptr
             })
         _(Generic, deserialise_genericref())
         _(TraitObject, {
@@ -1140,7 +1140,7 @@ namespace {
             deserialise_genericparams(),
             m_in.read_bool(),
             m_in.read_bool(),
-            m_in.read_string(),
+            m_in.read_istring(),
             deserialise_type(),
             deserialise_vec< ::HIR::TypeRef>()
             })
