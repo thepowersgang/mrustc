@@ -53,6 +53,6 @@ ReadMemory* ReadMemory::s_self = 0;
             base_rva += rng.DataSize;
         }
     }
-    std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " == Not found" << std::dec << std::endl;
+    std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " == ReadMemory::read failed" << std::dec << std::endl;
     return FALSE;
 }

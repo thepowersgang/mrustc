@@ -11,15 +11,23 @@
 #include <string>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 #include <map>
 #include <set>
 #include <cassert>
 #include <memory>   // unique_ptr
+#include <algorithm>    // std::sort
 
 //#include <cvconst.h>
 
+const bool DUPLICATION_TypeRef = false;
+const bool DUPLICATION_SimplePath = false;
+
 struct MemoryStats
 {
+    /// TypeRef pointer values that have been seen (avoids double-visiting)
+    std::unordered_set<uint64_t>    m_seen_types;
+
     std::map<std::string, unsigned>   m_counts;
     std::map<std::string, std::pair<DWORD64, unsigned> >   m_duplicates_SimplePath;
     std::map<std::string, std::pair<DWORD64, unsigned> >   m_duplicates_TypeRef;
@@ -32,6 +40,21 @@ struct MemoryStats
 
 
 namespace {
+    ::std::pair<DWORD64,DWORD64> get_checked_thinvector(DWORD64 addr, size_t inner_size)
+    {
+        auto meta_size = 2*8;
+        auto meta_ofs_c = (meta_size + inner_size - 1) / inner_size;
+        auto meta_ofs = meta_ofs_c * inner_size;
+        auto start = ReadMemory::read_ptr(addr);
+        auto meta_addr = start - meta_ofs;
+        if( start == 0 ) {
+            return std::make_pair(inner_size,inner_size);
+        }
+        else {
+            auto len = ReadMemory::read_ptr(meta_addr);
+            return std::make_pair(start, start + len * inner_size);
+        }
+    }
     ::std::pair<DWORD64,DWORD64> get_checked_vector(DWORD64 addr, size_t inner_size)
     {
         auto start = ReadMemory::read_ptr(addr + 0*8);
@@ -87,16 +110,18 @@ namespace virt_types {
     std::string fmt_rcstring(/*const TypeRef& ty,*/ DWORD64 addr) {
         try
         {
-            std::string s;
             if( addr == 0 ) {
                 return "#NULL#";
             }
             auto refcnt = ReadMemory::read_u32(addr + 0);
             auto len = ReadMemory::read_u32(addr + 4);
+            //auto ordering = ReadMemory::read_u32(addr + 8);
             //s += FMT_STRING("(@" << (void*)addr << " " << len << "/" << refcnt << ")");
-            for(size_t i = 0; i < len; i ++)
-            {
-                s += ReadMemory::read_u8(addr + 8 + i);
+            std::string s;
+            s.resize(len);
+            if( !ReadMemory::read(nullptr, addr + 12, const_cast<char*>(s.data()), len, nullptr) ) {
+                ::std::cout << "fmt_rcstring: malformed (@" << (void*)addr << " " << len << "/" << refcnt << ")" << "\n";
+                return FMT_STRING("fmt_rcstring: malformed (@" << (void*)addr << " " << len << "/" << refcnt << ")");
             }
             return s;
         }
@@ -108,20 +133,25 @@ namespace virt_types {
     std::string fmt_simplepath(const TypeRef& ty, DWORD64 addr) {
         try
         {
-            std::string s;
-            s += "::\"";
-            s += fmt_rcstring(ReadMemory::read_ptr(addr + ty.get_field_ofs({"m_crate_name"})));
-            s += "\"";
-
-            auto inner_ty = ty.get_field({"m_components", "_Mypair", "_Myval2", "_Myfirst"}).deref();
+            auto inner_ty = ty.get_field({"m_members", "m_ptr"}).deref();
             auto inner_size = inner_ty.size();
-            auto v = get_checked_vector( addr + ty.get_field_ofs({"m_components"}), inner_size );
-            for(auto cur = v.first; cur != v.second; cur += inner_size)
-            {
-                s += "::";
-                s += fmt_rcstring(ReadMemory::read_ptr(cur));
+            auto v = get_checked_thinvector( addr + ty.get_field_ofs({"m_members"}), inner_size );
+            if( v.first == v.second ) {
+                return "::\"\"";
             }
-            return s;
+            else {
+                std::string s;
+                s += "::\"";
+                s += fmt_rcstring(v.first);
+                s += "\"";
+
+                for(auto cur = v.first + inner_size; cur != v.second; cur += inner_size)
+                {
+                    s += "::";
+                    s += fmt_rcstring(ReadMemory::read_ptr(cur));
+                }
+                return s;
+            }
         }
         catch(const std::exception& e)
         {
@@ -421,6 +451,9 @@ int main(int argc, char* argv[])
             return error("MiniDumpReadDumpStream - Memory64ListStream");
         }
     }
+    else {
+        ::std::cout << "memory64_list: " << memory64_list->NumberOfMemoryRanges << " range\n";
+    }
 
     // TODO: Dump all types?
 
@@ -573,13 +606,24 @@ int main(int argc, char* argv[])
         {
             std::cout << e.first << " = " << e.second << std::endl;
         }
+        if( DUPLICATION_SimplePath )
         {
             const auto& ty = TypeRef::lookup_by_name("HIR::SimplePath");
             const auto& list = el.ms.m_duplicates_SimplePath;
             std::cout << "Duplicates of " << ty << std::endl;
+            ::std::vector<decltype(&*list.begin())>   vals;
+            vals.reserve(list.size());
+            for(auto it = list.begin(); it != list.end(); ++it) {
+                vals.push_back(&*it);
+            }
+            ::std::sort(vals.begin(), vals.end(), [](const decltype(&*list.begin())& a, const decltype(&*list.begin())& b) {
+                return a->second.second < b->second.second;
+                });
+
             unsigned unique = 0;
-            for(const auto& e : list)
+            for(auto it : vals)
             {
+                const auto& e = *it;
                 if(e.second.second > 1)
                 {
                     std::cout << "> SimplePath:" << (void*)e.second.first << " * " << e.second.second << " - " << e.first << std::endl;
@@ -591,6 +635,7 @@ int main(int argc, char* argv[])
             }
             std::cout << "> UNIQUE * " << unique << std::endl;
         }
+        if( DUPLICATION_TypeRef )
         {
             const auto& ty = TypeRef::lookup_by_name("HIR::TypeRef");
             const auto& list = el.ms.m_duplicates_TypeRef;
@@ -752,7 +797,7 @@ const TypeRef& MemoryStats::get_real_type(const TypeRef& ty, DWORD64 addr) const
                 else
                 {
                     // VTable not found!
-                    throw std::runtime_error(FMT_STRING("VTABLE " << ty << " 0x" << std::hex << vtable << " not known"));
+                    ::std::cout << "VTABLE " << " 0x" << std::hex << vtable << " for virtual type " << ty << " not known - assuming leaf type\n";
                 }
             }
         }
@@ -838,6 +883,30 @@ bool MemoryStats::are_equal(const TypeRef& val_ty, DWORD64 addr1, DWORD64 addr2)
         {
         }
     }
+    // std::vector
+    else if( ty.is_udt_suffix("ThinVector<") ) {
+        auto inner_ty = ty.get_field({"m_ptr"}).deref();
+        auto inner_size = inner_ty.size();
+        try
+        {
+            auto v1 = get_checked_thinvector(addr1, inner_size);
+            auto v2 = get_checked_thinvector(addr2, inner_size);
+            auto s1 = v1.second - v1.first;
+            auto s2 = v2.second - v2.first;
+            //std::cout << " > " << s1 << " & " << s2 << std::endl;
+            if( s1 != s2 )
+                return false;
+            for(auto cur1 = v1.first, cur2 = v2.first; cur1 < v1.second; cur1 += inner_size, cur2 += inner_size)
+            {
+                if( !this->are_equal(inner_ty, cur1, cur2) )
+                    return false;
+            }
+            return true;
+        }
+        catch(...)
+        {
+        }
+    }
     // TODO: Further checks
     else {
         // TODO: What about unions?
@@ -877,311 +946,401 @@ bool MemoryStats::are_equal(const TypeRef& val_ty, DWORD64 addr1, DWORD64 addr2)
 void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_level/*=true*/)
 {
     static Indent s_indent = Indent(" ");
-#define DO_DEBUG_F(force, v) do { if(force || (true && s_indent.level < 5)) { std::cout << s_indent << v << std::endl; } } while(0)
+#define DO_DEBUG_F(force, v) do { if(force || (true && s_indent.level < 4)) { std::cout << s_indent << v << std::endl; } } while(0)
 #define DO_DEBUG(v) DO_DEBUG_F(false, v)
     auto _ = s_indent.inc();
     try {
-    DO_DEBUG("enum_type_at: >> " << val_ty << ", " << (void*)addr);
-    const auto& ty = this->get_real_type(val_ty, addr);
+        DO_DEBUG("enum_type_at: >> " << val_ty << ", " << (void*)addr);
+        const auto& ty = this->get_real_type(val_ty, addr);
 
-    // 1. Get the enumeration key for the instance (e.g. TypeRef(Prim) or AST::Item(Fcn))
-    // - If none, skip
-    auto enum_key = this->get_enum_key(ty, addr);
-    if(enum_key != "")
-    {
-        m_counts[enum_key] ++;
-    }
-
-    // TODO: For certain types, check if de-duplication is needed
-    if( true && ty.is_udt("HIR::SimplePath") )
-    {
-        auto dbg_name = virt_types::fmt_simplepath(ty, addr);
-
-        auto& list = m_duplicates_SimplePath;
-        auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(addr, 0)) );
-        it.first->second.second += 1;
-
-        m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
-    }
-    if( true && ty.is_udt("HIR::TypeRef") )
-    {
-        if(true)
+        // 1. Get the enumeration key for the instance (e.g. TypeRef(Prim) or AST::Item(Fcn))
+        // - If none, skip
+        auto enum_key = this->get_enum_key(ty, addr);
+        if(enum_key != "")
         {
-            auto dbg_name = virt_types::fmt_typeref(ty, addr);
-
-            auto& list = m_duplicates_TypeRef;
-            auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(addr, 0)) );
-            it.first->second.second += 1;
+            m_counts[enum_key] ++;
         }
 
-        m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
-    }
-
-    // IDEA: If top-level (either pointed-to or part of a vector), then count raw type
-    if( is_top_level )
-    {
-        m_counts[FMT_STRING(ty << " [" << ty.size() << "]")] ++;
-        m_counts["~TOTAL"] += static_cast<unsigned>(ty.size());
-    }
-
-    // 2. Recurse (using special handlers if required)
-    if( ty.is_any_basic() || (!ty.wrappers.empty() && ty.wrappers.back().is_pointer()) ) {
-        DWORD64 v = 0;
-        ReadMemory::read(NULL, addr, &v, static_cast<DWORD>(ty.size()), NULL);
-        DO_DEBUG("enum_type_at: " << ty << " @ " << (void*)addr << " = " << (void*)v);
-    }
-    else if( !ty.wrappers.empty() ) {
-        // What should happen with arrays?
-    }
-    else if( is_tagged_union(ty) ) {
-        const auto* udt = ty.any_udt();
-        const auto& flds = udt->fields;
-        const auto* data_udt = flds[1].ty.any_udt();
-        auto tag = ReadMemory::read_u32(addr) - 1;
-        if( tag + 1 == 0 ) {
-            // Dead, just log
-            DO_DEBUG("TAGGED_UNION " << ty << " #DEAD");
-        }
-        else if( tag < data_udt->fields.size() ) {
-            DO_DEBUG("TAGGED_UNION " << ty << " #" << tag << " : " << data_udt->fields[tag].name);
-            this->enum_type_at(data_udt->fields[tag].ty, addr + flds[1].offset, /*is_top_level=*/false);
-        }
-        else {
-            throw std::runtime_error(FMT_STRING("TAGGED_UNION " << ty << " #" << tag));
-        }
-    }
-    // std::string
-    else if( ty.is_udt("std::basic_string<char,std::char_traits<char>,std::allocator<char> >") ) {
-        auto cap = ReadMemory::read_u32(addr + 24);
-        if( cap < 16 ) {
-        }
-        else {
-        }
-    }
-    // std::vector<bool
-    else if( ty.is_udt_suffix("std::vector<bool") ) {
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    // std::vector
-    else if( ty.is_udt_suffix("std::vector<") ) {
-        auto start = ReadMemory::read_ptr(addr + 0*8);
-        auto end = ReadMemory::read_ptr(addr + 1*8);
-        auto max = ReadMemory::read_ptr(addr + 2*8);
-        auto inner_ty = ty.get_field({"_Mypair", "_Myval2", "_Myfirst"}).deref();
-        auto inner_size = inner_ty.size();
-        if( start <= end && end <= max
-            && (end - start) % inner_size == 0 && (max - start) % inner_size == 0
-            && start != 0
-            )
+        // TODO: For certain types, check if de-duplication is needed
+        if( true && ty.is_udt("HIR::SimplePath") )
         {
-            auto len = (end - start) / inner_size;
-            auto cap = (max - start) / inner_size;
-            DO_DEBUG("std::vector< " << inner_ty << " >: " << (void*)start << "+" << len << "<" << cap);
-            for(auto cur = start; cur < end; cur += inner_size)
+            auto dbg_name = virt_types::fmt_simplepath(ty, addr);
+
+            if( DUPLICATION_SimplePath )
             {
-                this->enum_type_at(inner_ty, cur, /*is_top_level=*/true);
+                auto& list = m_duplicates_SimplePath;
+                auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(addr, 0)) );
+                it.first->second.second += 1;
+            }
+
+            m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
+        }
+        if( true && ty.is_udt("HIR::TypeRef") )
+        {
+            if( DUPLICATION_TypeRef )
+            {
+                auto dbg_name = virt_types::fmt_typeref(ty, addr);
+
+                auto& list = m_duplicates_TypeRef;
+                auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(addr, 0)) );
+                it.first->second.second += 1;
+            }
+
+            m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
+        }
+        if( true && ty.is_udt("HIR::TypeData") )
+        {
+            if( DUPLICATION_TypeRef )
+            {
+                auto dbg_name = virt_types::fmt_typeref(ty, addr);
+
+                auto& list = m_duplicates_TypeRef;
+                auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(addr, 0)) );
+                it.first->second.second += 1;
+            }
+
+            m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
+        }
+
+        // IDEA: If top-level (either pointed-to or part of a vector), then count raw type
+        if( is_top_level )
+        {
+            m_counts[FMT_STRING(ty << " [" << ty.size() << "]")] ++;
+            m_counts["~TOTAL"] += static_cast<unsigned>(ty.size());
+        }
+        else if(enum_key != "")
+        {
+            // Actually, just count everything?
+            m_counts[FMT_STRING(ty << " [" << ty.size() << "]")] ++;
+        }
+
+        // 2. Recurse (using special handlers if required)
+        if( ty.is_any_basic() || (!ty.wrappers.empty() && ty.wrappers.back().is_pointer()) ) {
+            DWORD64 v = 0;
+            ReadMemory::read(NULL, addr, &v, static_cast<DWORD>(ty.size()), NULL);
+            DO_DEBUG("enum_type_at: " << ty << " @ " << (void*)addr << " = " << (void*)v);
+            //if( v ) {
+            //    this->enum_type_at(ty.deref(), v, /*is_top_level=*/false);
+            //}
+        }
+        else if( !ty.wrappers.empty() ) {
+            // What should happen with arrays?
+        }
+        else if( is_tagged_union(ty) ) {
+            const auto* udt = ty.any_udt();
+            const auto& flds = udt->fields;
+            const auto* data_udt = flds[1].ty.any_udt();
+            auto tag = ReadMemory::read_u32(addr) - 1;
+            if( tag + 1 == 0 ) {
+                // Dead, just log
+                DO_DEBUG("TAGGED_UNION " << ty << " #DEAD");
+            }
+            else if( tag < data_udt->fields.size() ) {
+                DO_DEBUG("TAGGED_UNION " << ty << " #" << tag << " : " << data_udt->fields[tag].name);
+                this->enum_type_at(data_udt->fields[tag].ty, addr + flds[1].offset, /*is_top_level=*/false);
+            }
+            else {
+                throw std::runtime_error(FMT_STRING("TAGGED_UNION " << ty << " #" << tag));
             }
         }
-        else
-        {
-            // Invalid!
-            DO_DEBUG("std::vector< " << inner_ty << " >: BAD " << (void*)start << "-" << (void*)end << "-" << (void*)max);
+        // std::string
+        else if( ty.is_udt("std::basic_string<char,std::char_traits<char>,std::allocator<char> >") ) {
+            auto cap = ReadMemory::read_u32(addr + 24);
+            if( cap < 16 ) {
+            }
+            else {
+            }
         }
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    // std::map
-    else if( ty.is_udt_suffix("std::map<") ) {
-
-        auto node_ty = ty.get_field({"_Mypair", "_Myval2", "_Myval2", "_Myhead", nullptr});
-        size_t val_ofs = 0;
-        auto inner_ty = node_ty.get_field({"_Myval"}, &val_ofs);
-
-        auto head = ReadMemory::read_ptr(addr + 0*8);
-        auto size = ReadMemory::read_ptr(addr + 1*8);
-        DO_DEBUG("std::map< " << inner_ty << " >: head=" << (void*)head << ", size=" << size);
-        if(size > 0)
-        {
-            struct Node {
-                DWORD64 addr;
-
-                DWORD64 left_addr;
-                DWORD64 parent_addr;
-                DWORD64 right_addr;
-                bool    is_nil;
-
-                static Node read(DWORD64 addr) {
-                    Node    rv;
-                    rv.addr = addr;
-                    rv.left_addr = ReadMemory::read_ptr(addr + 0*8);
-                    rv.parent_addr = ReadMemory::read_ptr(addr + 1*8);
-                    rv.right_addr = ReadMemory::read_ptr(addr + 2*8);
-                    rv.is_nil = (ReadMemory::read_u8(addr + 25) != 0);
-                    DO_DEBUG("Node(@" << (void*)rv.addr << " " << (void*)rv.left_addr << "," << (void*)rv.right_addr << " " << (rv.is_nil ? "NIL" : "") << ")");
-                    return rv;
-                }
-                Node leftmost() const {
-                    assert(!this->is_nil);
-                    auto cur_n = *this;
-                    while(true)
-                    {
-                        auto n = Node::read(cur_n.left_addr);
-                        if(n.is_nil)
-                            break;
-                        cur_n = n;
-                    }
-                    return cur_n;
-                }
-            };
-            // Get left, check if it's NIL
-            Node cur_n = Node::read(head);
-            cur_n = Node::read(cur_n.left_addr);
-            while(!cur_n.is_nil)
+        // std::vector<bool
+        else if( ty.is_udt_suffix("std::vector<bool") ) {
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        // std::vector
+        else if( ty.is_udt_suffix("std::vector<") ) {
+            auto start = ReadMemory::read_ptr(addr + 0*8);
+            auto end = ReadMemory::read_ptr(addr + 1*8);
+            auto max = ReadMemory::read_ptr(addr + 2*8);
+            auto inner_ty = ty.get_field({"_Mypair", "_Myval2", "_Myfirst"}).deref();
+            auto inner_size = inner_ty.size();
+            if( start <= end && end <= max
+                && (end - start) % inner_size == 0 && (max - start) % inner_size == 0
+                && start != 0
+                )
             {
-                assert(size-- > 0);
-                this->enum_type_at(inner_ty, cur_n.addr + val_ofs, true);
-
-
-                auto r_n = Node::read(cur_n.right_addr);
-                if(!r_n.is_nil) {
-                    // Go to into right (to the leftmost)
-                    cur_n = r_n.leftmost();
+                auto len = (end - start) / inner_size;
+                auto cap = (max - start) / inner_size;
+                DO_DEBUG("std::vector< " << inner_ty << " >: " << (void*)start << "+" << len << "<" << cap);
+                for(auto cur = start; cur < end; cur += inner_size)
+                {
+                    this->enum_type_at(inner_ty, cur, /*is_top_level=*/true);
                 }
-                else {
-                    Node parent_n;
-                    parent_n = Node::read(cur_n.parent_addr);
-                    // If parent isn't NIL, and the parent's right is the current
-                    // - Go up again
-                    while( !parent_n.is_nil && cur_n.addr == parent_n.right_addr )
+            }
+            else
+            {
+                // Invalid!
+                DO_DEBUG("std::vector< " << inner_ty << " >: BAD " << (void*)start << "-" << (void*)end << "-" << (void*)max);
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        // std::vector
+        else if( ty.is_udt_suffix("ThinVector<") ) {
+            auto inner_ty = ty.get_field({"m_ptr"}).deref();
+            auto inner_size = inner_ty.size();
+
+            auto meta_size = 2*8;
+            auto meta_ofs_c = (meta_size + inner_size - 1) / inner_size;
+            auto meta_ofs = meta_ofs_c * inner_size;
+            auto start = ReadMemory::read_ptr(addr);
+            auto meta_addr = start - meta_ofs;
+            auto len = start == 0 ? 0 : ReadMemory::read_ptr(meta_addr);
+            auto cap = start == 0 ? 0 : ReadMemory::read_ptr(meta_addr+8);
+            auto end = start + len * inner_size;
+            auto max = start + cap * inner_size;
+            if( start <= end && end <= max
+                && (end - start) % inner_size == 0 && (max - start) % inner_size == 0
+                && start != 0
+                )
+            {
+                DO_DEBUG("ThinVector< " << inner_ty << " >: " << (void*)start << "+" << len << " (end=" << (void*)end << ")");
+                try {
+                    if(len > 0) {
+                        ReadMemory::read_u8(start);   // Triggers an exception if the read fails
+                        ReadMemory::read_u8(end - inner_size);   // Triggers an exception if the read fails
+                    }
+                    for(auto cur = start; cur < end; cur += inner_size)
                     {
+                        this->enum_type_at(inner_ty, cur, /*is_top_level=*/true);
+                    }
+                }
+                catch(const std::exception& e)
+                {
+                    DO_DEBUG_F(true, "enum_type_at: << " << val_ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
+                    DO_DEBUG_F(true, "was ThinVector< " << inner_ty << " >: " << (void*)start << "+" << len << " (end=" << (void*)end << ")");
+                }
+            }
+            else
+            {
+                // Invalid!
+                DO_DEBUG("ThinVector< " << inner_ty << " >: BAD " << (void*)start << "-" << (void*)end << "-" << (void*)max);
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        // std::map
+        else if( ty.is_udt_suffix("std::map<") ) {
+
+            auto node_ty = ty.get_field({"_Mypair", "_Myval2", "_Myval2", "_Myhead", nullptr});
+            size_t val_ofs = 0;
+            auto inner_ty = node_ty.get_field({"_Myval"}, &val_ofs);
+
+            auto head = ReadMemory::read_ptr(addr + 0*8);
+            auto size = ReadMemory::read_ptr(addr + 1*8);
+            DO_DEBUG("std::map< " << inner_ty << " >: head=" << (void*)head << ", size=" << size);
+            if(size > 0)
+            {
+                struct Node {
+                    DWORD64 addr;
+
+                    DWORD64 left_addr;
+                    DWORD64 parent_addr;
+                    DWORD64 right_addr;
+                    bool    is_nil;
+
+                    static Node read(DWORD64 addr) {
+                        struct Copied {
+                            DWORD64 left_addr;
+                            DWORD64 parent_addr;
+                            DWORD64 right_addr;
+                            char pad[25 - 3*8];
+                            char is_nil;
+                        } v;
+                        if( !ReadMemory::read(0, addr, &v, sizeof(v), nullptr) ) {
+                            throw std::runtime_error(FMT_STRING("Can't read Node at " << (void*)addr));
+                        }
+                        Node    rv;
+                        rv.addr = addr;
+                        rv.left_addr = v.left_addr;
+                        rv.parent_addr = v.parent_addr;
+                        rv.right_addr = v.right_addr;
+                        rv.is_nil = (v.is_nil != 0);
+                        DO_DEBUG("Node(@" << (void*)rv.addr << " " << (void*)rv.left_addr << "," << (void*)rv.right_addr << " " << (rv.is_nil ? "NIL" : "") << ")");
+                        return rv;
+                    }
+                    Node leftmost() const {
+                        assert(!this->is_nil);
+                        auto cur_n = *this;
+                        while(true)
+                        {
+                            auto n = Node::read(cur_n.left_addr);
+                            if(n.is_nil)
+                                break;
+                            cur_n = n;
+                        }
+                        return cur_n;
+                    }
+                };
+                // See implementation of `_Tree_unchecked_const_iterator` in `xtree`
+                // Get left, check if it's NIL
+                Node cur_n = Node::read(head);
+                cur_n = Node::read(cur_n.left_addr);
+                while(!cur_n.is_nil)
+                {
+                    assert(size-- > 0);
+                    // Visit the type
+                    this->enum_type_at(inner_ty, cur_n.addr + val_ofs, true);
+
+                    // Increment iterator
+                    auto r_n = Node::read(cur_n.right_addr);
+                    if(!r_n.is_nil) {
+                        // Go to into right (to the leftmost)
+                        cur_n = r_n.leftmost();
+                    }
+                    else {
+                        Node parent_n = Node::read(cur_n.parent_addr);
+                        // If parent isn't NIL, and the parent's right is the current
+                        // - Go up again
+                        while( !parent_n.is_nil && cur_n.addr == parent_n.right_addr )
+                        {
+                            cur_n = parent_n;
+                            parent_n = Node::read(cur_n.parent_addr);
+                        }
                         cur_n = parent_n;
-                        parent_n = Node::read(cur_n.parent_addr);
                     }
-                    cur_n = parent_n;
                 }
             }
+            m_counts[FMT_STRING(">" << ty)] ++;
         }
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    // std::unordered_map
-    else if( ty.is_udt_suffix("std::unordered_map<") ) {
-        auto list_ty = ty.get_field({"_List", "_Mypair", "_Myval2"});
-        TypeRef list_node_ptr_ty;
-        size_t head_ofs = ty.get_field_ofs({"_List", "_Mypair", "_Myval2", "_Myhead"}, &list_node_ptr_ty);
-        size_t size_ofs = ty.get_field_ofs({"_List", "_Mypair", "_Myval2", "_Mysize"});
+        // std::unordered_map
+        else if( ty.is_udt_suffix("std::unordered_map<") ) {
+            auto list_ty = ty.get_field({"_List", "_Mypair", "_Myval2"});
+            TypeRef list_node_ptr_ty;
+            size_t head_ofs = ty.get_field_ofs({"_List", "_Mypair", "_Myval2", "_Myhead"}, &list_node_ptr_ty);
+            size_t size_ofs = ty.get_field_ofs({"_List", "_Mypair", "_Myval2", "_Mysize"});
 
-        size_t val_ofs;
-        auto val_ty = list_node_ptr_ty.deref().get_field({"_Myval"}, &val_ofs);
-        auto head_node = ReadMemory::read_ptr(addr + head_ofs);
-        auto size = ReadMemory::read_ptr(addr + size_ofs);
-        DO_DEBUG("std::unordered_map< " << val_ty << " >: head=" << (void*)head_node << ", size=" << size);
-        if(size > 0)
-        {
-            // First node doesn't contain data (I assume it's a pointer to the start/end?)
-            auto cur_node = ReadMemory::read_ptr(head_node + 0*8);
-            while(cur_node != head_node)
+            size_t val_ofs;
+            auto val_ty = list_node_ptr_ty.deref().get_field({"_Myval"}, &val_ofs);
+            auto head_node = ReadMemory::read_ptr(addr + head_ofs);
+            auto size = ReadMemory::read_ptr(addr + size_ofs);
+            DO_DEBUG("std::unordered_map< " << val_ty << " >: head=" << (void*)head_node << ", size=" << size);
+            if(size > 0)
             {
-                auto next_addr = ReadMemory::read_ptr(cur_node + 0*8);
-                auto prev_addr = ReadMemory::read_ptr(cur_node + 1*8);
-                auto data_addr = cur_node + val_ofs;
-                DO_DEBUG("+ " << (void*)next_addr << "," << (void*)prev_addr << " D@" << (void*)data_addr);
-                this->enum_type_at(val_ty, data_addr, true);
-                cur_node = next_addr;
+                // First node doesn't contain data (I assume it's a pointer to the start/end?)
+                auto cur_node = ReadMemory::read_ptr(head_node + 0*8);
+                while(cur_node != head_node)
+                {
+                    auto next_addr = ReadMemory::read_ptr(cur_node + 0*8);
+                    auto prev_addr = ReadMemory::read_ptr(cur_node + 1*8);
+                    auto data_addr = cur_node + val_ofs;
+                    DO_DEBUG("+ " << (void*)next_addr << "," << (void*)prev_addr << " D@" << (void*)data_addr);
+                    this->enum_type_at(val_ty, data_addr, true);
+                    cur_node = next_addr;
+                }
             }
+            m_counts[FMT_STRING(">" << ty)] ++;
         }
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    // unique_ptr
-    else if( ty.is_udt_suffix("std::unique_ptr<") ) {
-        auto ptr = ReadMemory::read_ptr(addr);
-        auto inner_ty = ty.get_field({"_Mypair", "_Myval2", nullptr});
-        DO_DEBUG("std::unique_ptr< " << inner_ty << " >: " << (void*)ptr);
-        if(ptr)
-        {
-            this->enum_type_at(inner_ty, ptr, true);
-        }
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    // shared_ptr
-    else if( ty.is_udt_suffix("std::shared_ptr<") ) {
-        auto ptr = ReadMemory::read_ptr(addr);
-        auto inner_ty = ty.get_field({"_Ptr", nullptr});
-        DO_DEBUG("std::shared_ptr< " << inner_ty << " >: " << (void*)ptr);
-        if(ptr)
-        {
-            static std::set<DWORD64>    s_shared_ptrs;
-            if( s_shared_ptrs.count(ptr) == 0 )
+        // unique_ptr
+        else if( ty.is_udt_suffix("std::unique_ptr<") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"_Mypair", "_Myval2", nullptr});
+            DO_DEBUG("std::unique_ptr< " << inner_ty << " >: " << (void*)ptr);
+            if(ptr)
             {
-                s_shared_ptrs.insert(ptr);
                 this->enum_type_at(inner_ty, ptr, true);
             }
+            m_counts[FMT_STRING(">" << ty)] ++;
         }
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    // HIR::CratePtr
-    else if( ty.is_udt("HIR::CratePtr") ) {
-        auto ptr = ReadMemory::read_ptr(addr);
-        auto inner_ty = ty.get_field({"m_ptr", nullptr});
-        DO_DEBUG("HIR::CratePtr: " << inner_ty << " @ " << (void*)ptr);
-        if(ptr)
-        {
-            this->enum_type_at(inner_ty, ptr, true);
-        }
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    // HIR::ExprPtrInner
-    else if( ty.is_udt("HIR::ExprPtrInner") ) {
-        auto ptr = ReadMemory::read_ptr(addr);
-        auto inner_ty = ty.get_field({"ptr", nullptr});
-        DO_DEBUG("HIR::ExprPtrInner: " << inner_ty << " @ " << (void*)ptr);
-        if(ptr)
-        {
-            this->enum_type_at(inner_ty, ptr, true);
-        }
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    // HIR::ExprPtrInner
-    else if( ty.is_udt("MIR::FunctionPointer") ) {
-        auto ptr = ReadMemory::read_ptr(addr);
-        auto inner_ty = ty.get_field({"ptr", nullptr});
-        DO_DEBUG("MIR::FunctionPointer: " << inner_ty << " @ " << (void*)ptr);
-        if(ptr)
-        {
-            this->enum_type_at(inner_ty, ptr, true);
-        }
-        m_counts[FMT_STRING(">" << ty)] ++;
-    }
-    else {
-        // TODO: What about unions?
-        // Enumerate inner types of a struct
-        if( ty.wrappers.empty() && ty.m_class == TypeRef::ClassUdt )
-        {
-            // TODO: If this is a union, don't recurse!
-            bool is_union = false;
-            for(const auto& f : ty.m_data.udt->fields)
+        // shared_ptr
+        else if( ty.is_udt_suffix("std::shared_ptr<") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"_Ptr", nullptr});
+            DO_DEBUG("std::shared_ptr< " << inner_ty << " >: " << (void*)ptr);
+            if(ptr)
             {
-                for(const auto& f2 : ty.m_data.udt->fields)
+                static std::set<DWORD64>    s_shared_ptrs;
+                if( s_shared_ptrs.count(ptr) == 0 )
                 {
-                    if(&f == &f2)
-                        continue;
-                    if(f.offset == f2.offset) {
-                        is_union = true;
+                    s_shared_ptrs.insert(ptr);
+                    this->enum_type_at(inner_ty, ptr, true);
+                }
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        // HIR::CratePtr
+        else if( ty.is_udt("HIR::CratePtr") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"m_ptr", nullptr});
+            DO_DEBUG("HIR::CratePtr: " << inner_ty << " @ " << (void*)ptr);
+            if(ptr)
+            {
+                this->enum_type_at(inner_ty, ptr, true);
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        // HIR::ExprPtrInner
+        else if( ty.is_udt("HIR::ExprPtrInner") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"ptr", nullptr});
+            DO_DEBUG("HIR::ExprPtrInner: " << inner_ty << " @ " << (void*)ptr);
+            if(ptr)
+            {
+                this->enum_type_at(inner_ty, ptr, true);
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        // HIR::ExprPtrInner
+        else if( ty.is_udt("MIR::FunctionPointer") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"ptr", nullptr});
+            DO_DEBUG("MIR::FunctionPointer: " << inner_ty << " @ " << (void*)ptr);
+            if(ptr)
+            {
+                this->enum_type_at(inner_ty, ptr, true);
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        else if( ty.is_udt("HIR::TypeRef") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"m_ptr", nullptr});
+            DO_DEBUG("HIR::TypeRef: " << inner_ty << " @ " << (void*)ptr);
+            if(ptr)
+            {
+                if( !m_seen_types.insert(ptr).second ) {
+                    this->enum_type_at(inner_ty, ptr, true);
+                }
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        else {
+            // TODO: What about unions?
+            // Enumerate inner types of a struct
+            if( ty.wrappers.empty() && ty.m_class == TypeRef::ClassUdt )
+            {
+                // TODO: If this is a union, don't recurse!
+                bool is_union = false;
+                for(const auto& f : ty.m_data.udt->fields)
+                {
+                    for(const auto& f2 : ty.m_data.udt->fields)
+                    {
+                        if(&f == &f2)
+                            continue;
+                        if(f.offset == f2.offset) {
+                            is_union = true;
+                            break;
+                        }
+                    }
+                    if(is_union) {
                         break;
                     }
                 }
-                if(is_union) {
-                    break;
-                }
-            }
-            if( !is_union ) {
-                for(const auto& f : ty.m_data.udt->fields)
-                {
-                    DO_DEBUG("enum_type_at: " << (void*)addr << "+" << f.offset << " " << f.name << ": " << f.ty);
-                    enum_type_at(f.ty, addr + f.offset, /*is_top_level=*/false);
+                if( !is_union ) {
+                    for(const auto& f : ty.m_data.udt->fields)
+                    {
+                        DO_DEBUG("enum_type_at: " << (void*)addr << "+" << f.offset << " " << f.name << ": " << f.ty);
+                        enum_type_at(f.ty, addr + f.offset, /*is_top_level=*/false);
+                    }
                 }
             }
         }
-    }
-    DO_DEBUG("enum_type_at: << " << ty << ", " << (void*)addr);
+        DO_DEBUG("enum_type_at: << " << ty << ", " << (void*)addr);
     }
     catch(const std::exception& e)
     {
