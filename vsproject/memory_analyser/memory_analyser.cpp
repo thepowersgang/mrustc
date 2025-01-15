@@ -22,15 +22,18 @@
 
 const bool DUPLICATION_TypeRef = false;
 const bool DUPLICATION_SimplePath = false;
+const bool DUPLICATION_RcString = false;
 
 struct MemoryStats
 {
     /// TypeRef pointer values that have been seen (avoids double-visiting)
     std::unordered_set<uint64_t>    m_seen_types;
+    std::unordered_set<uint64_t>    m_seen_RcString;
 
     std::map<std::string, unsigned>   m_counts;
     std::map<std::string, std::pair<DWORD64, unsigned> >   m_duplicates_SimplePath;
     std::map<std::string, std::pair<DWORD64, unsigned> >   m_duplicates_TypeRef;
+    std::map<std::string, std::pair<DWORD64, unsigned> >   m_duplicates_RcString;
 
     std::string get_enum_key(const TypeRef& ty, DWORD64 addr) const;
     const TypeRef& get_real_type(const TypeRef& ty, DWORD64 addr) const;
@@ -71,42 +74,6 @@ namespace {
 }
 
 namespace virt_types {
-    struct StdVector
-    {
-        const TypeRef& ty;
-        DWORD64 start;
-        DWORD64 end;
-
-        DWORD64 cur;
-
-        StdVector(const TypeRef& inner_ty, DWORD64 addr):
-            ty(inner_ty)
-        {
-            size_t inner_size = inner_ty.size();
-            start = ReadMemory::read_ptr(addr + 0*8);
-            end = ReadMemory::read_ptr(addr + 1*8);
-            auto max = ReadMemory::read_ptr(addr + 2*8);
-            if( !(start <= end && end <= max) )
-                throw std::runtime_error("");
-            if( !((end - start) % inner_size == 0) && !((max - start) % inner_size == 0) )
-                throw std::runtime_error("");
-            if( start == 0 )
-            {
-                end = 0;
-                cur = 0;
-            }
-            else
-            {
-                cur = start;
-            }
-        }
-
-        static StdVector at(const TypeRef& vec_ty, DWORD64 addr)
-        {
-            return StdVector(vec_ty.get_field({"_Mypair", "_Myval2", "_Myfirst"}).deref(), addr);
-        }
-    };
-
     std::string fmt_rcstring(/*const TypeRef& ty,*/ DWORD64 addr) {
         try
         {
@@ -142,7 +109,7 @@ namespace virt_types {
             else {
                 std::string s;
                 s += "::\"";
-                s += fmt_rcstring(v.first);
+                s += fmt_rcstring(ReadMemory::read_ptr(v.first));
                 s += "\"";
 
                 for(auto cur = v.first + inner_size; cur != v.second; cur += inner_size)
@@ -237,6 +204,7 @@ namespace virt_types {
 
 
 std::map<uint64_t, TypeRef> g_vtable_cache;
+HANDLE  g_proc_handle = (HANDLE)1;
 
 int main(int argc, char* argv[])
 {
@@ -287,8 +255,7 @@ int main(int argc, char* argv[])
         return error("MapViewOfFile");
     }
 
-    auto proc_handle = (HANDLE)1;
-    if( !SymInitialize(proc_handle, NULL, FALSE) )
+    if( !SymInitialize(g_proc_handle, NULL, FALSE) )
         return error("SymInitialize");
 
     MINIDUMP_MODULE_LIST*   module_list = NULL;
@@ -302,10 +269,10 @@ int main(int argc, char* argv[])
         const auto* mod_name = reinterpret_cast<const MINIDUMP_STRING*>((char*)view + mod.ModuleNameRva);
         module_names.push_back(FMT_STRING(fmt_u16z(mod_name->Buffer)));
         std::cout << (void*)mod.BaseOfImage << " + " << /*for hex formatting*/reinterpret_cast<void*>(static_cast<uintptr_t>(mod.SizeOfImage)) << " : " << module_names.back()  << std::endl;
-        if( !SymLoadModule(proc_handle, NULL, module_names.back().c_str(), NULL, mod.BaseOfImage, mod.SizeOfImage) )
+        if( !SymLoadModule(g_proc_handle, NULL, module_names.back().c_str(), NULL, mod.BaseOfImage, mod.SizeOfImage) )
             return error("SymLoadModule ext");
     }
-    SymRefreshModuleList(proc_handle);
+    SymRefreshModuleList(g_proc_handle);
 
     // TODO: Obtain a mapping of vtables addresses to types
     // - Could fetch the type name form the vtable itself?
@@ -423,9 +390,9 @@ int main(int argc, char* argv[])
             }
         };
         std::cout << "--- Enumerating all UDT types" << std::endl; std::cout.flush();
-        SymEnumTypes(proc_handle, module_list->Modules[0].BaseOfImage, H::ty_enum_cb, nullptr);
+        SymEnumTypes(g_proc_handle, module_list->Modules[0].BaseOfImage, H::ty_enum_cb, nullptr);
         std::cout << "--- Enumerating all VTables" << std::endl; std::cout.flush();
-        SymEnumSymbols(proc_handle, module_list->Modules[0].BaseOfImage, "", H::vt_enum_cb, nullptr);
+        SymEnumSymbols(g_proc_handle, module_list->Modules[0].BaseOfImage, "", H::vt_enum_cb, nullptr);
     }
 
     std::cout << "--- Loading dump file" << std::endl;
@@ -457,7 +424,7 @@ int main(int argc, char* argv[])
 
     // TODO: Dump all types?
 
-    auto rm = ReadMemory { view, memory_list, memory64_list };
+    auto rm = ReadMemory { view, size.LowPart, memory_list, memory64_list };
 
     std::cout << "--- Enumerating memory" << std::endl;
     std::cout.flush();
@@ -563,7 +530,7 @@ int main(int argc, char* argv[])
                 PSYMBOL_INFO  symbol = (PSYMBOL_INFO )symbolBuffer;
                 symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
                 symbol->MaxNameLen = 255;
-                if( !SymFromAddr(proc_handle, frame.AddrPC.Offset, NULL, symbol) ) {
+                if( !SymFromAddr(g_proc_handle, frame.AddrPC.Offset, NULL, symbol) ) {
                     error("SymFromAddr");
                     std::cout << "+" << (void*)frame.AddrPC.Offset << " ?" << std::endl;
                     continue ;
@@ -578,10 +545,10 @@ int main(int argc, char* argv[])
                 ih_frame.FrameOffset = context.Rbp;
                 ih_frame.StackOffset = context.Rsp;
                 //ih_frame.FuncTableEntry = (DWORD64)ReadMemory::FunctionTableAccess64(proc_handle, symbol->Address);
-                SymSetContext(proc_handle, &ih_frame, /*(unused) Context=*/NULL);
+                SymSetContext(g_proc_handle, &ih_frame, /*(unused) Context=*/NULL);
                 el.frame = &frame;
                 el.context = &context;
-                el.proc_handle = proc_handle;
+                el.proc_handle = g_proc_handle;
 
                 auto it = variables.find(symbol->Name);
                 if( it != variables.end() )
@@ -589,7 +556,7 @@ int main(int argc, char* argv[])
                     std::cout << "Enumerating for " << symbol->Name << std::endl;
                     el.var_list = &it->second;
                     try {
-                        SymEnumSymbols(proc_handle, NULL, "", EnumLocals::cb_static, &el);
+                        SymEnumSymbols(g_proc_handle, NULL, "", EnumLocals::cb_static, &el);
                     }
                     catch(const std::exception& e)
                     {
@@ -598,7 +565,7 @@ int main(int argc, char* argv[])
                     }
 
                 }
-            } while( StackWalk(IMAGE_FILE_MACHINE_AMD64, proc_handle, (HANDLE)2, &frame, &context, ReadMemory::read, ReadMemory::FunctionTableAccess64, SymGetModuleBase64, NULL) );
+            } while( StackWalk(IMAGE_FILE_MACHINE_AMD64, g_proc_handle, (HANDLE)2, &frame, &context, ReadMemory::read, ReadMemory::FunctionTableAccess64, SymGetModuleBase64, NULL) );
         }
 
         for(const auto& e : el.ms.m_counts)
@@ -653,68 +620,35 @@ int main(int argc, char* argv[])
             }
             std::cout << "> UNIQUE * " << unique << std::endl;
         }
-        return 0;
-    }
-
-#if 0
-    std::cout << thread_list->NumberOfThreads << " threads" << std::endl;
-    for(ULONG32 i = 0; i < thread_list->NumberOfThreads; i ++)
-    {
-        const auto& thread = thread_list->Threads[i];
-        std::cout << i << ": " << thread.ThreadId
-            << std::hex << " context=(" << thread.ThreadContext.Rva << "+" << thread.ThreadContext.DataSize << ")" << std::dec
-            << std::endl;
-
-
-        CONTEXT context;
-        memcpy(&context, (const char*)view + thread.ThreadContext.Rva, min(sizeof(CONTEXT), thread.ThreadContext.DataSize));
-        STACKFRAME  frame;
-        memset(&frame, 0, sizeof(frame));
-        frame.AddrPC.Mode = AddrModeFlat;
-        frame.AddrFrame.Mode = AddrModeFlat;
-        frame.AddrStack.Mode = AddrModeFlat;
-        frame.AddrPC.Segment = 0;
-        frame.AddrFrame.Segment = 0;
-        frame.AddrStack.Segment = 0;
-        frame.AddrPC.Offset = context.Rip;
-        frame.AddrFrame.Offset = context.Rbp;
-        frame.AddrStack.Offset = context.Rsp;
-        std::cout
-            << " AX " << (void*)context.Rax
-            << " CX " << (void*)context.Rcx
-            << " DX " << (void*)context.Rdx
-            << " BX " << (void*)context.Rbx
-            << std::endl
-            ;
-        do
+        if( DUPLICATION_RcString )
         {
-            char symbolBuffer[sizeof(SYMBOL_INFO ) + 256];
-            memset(symbolBuffer, 0, sizeof(symbolBuffer));
-            PSYMBOL_INFO  symbol = (PSYMBOL_INFO )symbolBuffer;
-            symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-            symbol->MaxNameLen = 255;
-            if( !SymFromAddr(proc_handle, frame.AddrPC.Offset, NULL, symbol) ) {
-                error("SymFromAddr");
-            }
-
-            const char* modname = "UNKNOWN";
-            for(int i = 0; i < module_list->NumberOfModules; i ++)
+            const auto& ty = TypeRef::lookup_by_name("RcString");
+            const auto& list = el.ms.m_duplicates_RcString;
+            std::cout << "Duplicates of " << ty << std::endl;
+            unsigned unique = 0;
+            std::vector< decltype(&*list.begin())>    items;
+            for(const auto& e : list)
             {
-                const auto& mod = module_list->Modules[i];
-                if(mod.BaseOfImage <= frame.AddrPC.Offset && frame.AddrPC.Offset <= mod.BaseOfImage + mod.SizeOfImage)
+                if(e.second.second > 1)
                 {
-                    modname = module_names[i].c_str();
+                    items.push_back(&e);
+                }
+                else
+                {
+                    unique += 1;
                 }
             }
-            std::cout << "+" << (void*)frame.AddrPC.Offset << " " << modname << " " << symbol->Name
-                << " BP=" << (void*)frame.AddrFrame.Offset
-                << " SP=" << (void*)frame.AddrStack.Offset
-                << std::endl;
-            //std::cout << sym_info->Name << std::endl;
-        } while( StackWalk(IMAGE_FILE_MACHINE_AMD64, proc_handle, (HANDLE)2, &frame, &context, ReadMemory::read, ReadMemory::FunctionTableAccess64, SymGetModuleBase64, NULL) );
-       // break ;
+            std::sort(items.begin(), items.end(), [](const auto& a, const auto& b){ return a->second.second < b->second.second; });
+            for(const auto* ep : items) {
+                const auto& e = *ep;
+                std::cout << "> RcString: [x" << e.second.second << "] - " << e.first << std::endl;
+            }
+            std::cout << "> UNIQUE * " << unique << std::endl;
+        }
     }
-#endif
+
+    auto mem_usage = ReadMemory::calculate_usage();
+    std::cout << (mem_usage.first / 1024/1024) << " MiB / " << (mem_usage.second / 1024/1024) << " MiB visited\n";
 
     return 0;
 }
@@ -796,7 +730,16 @@ const TypeRef& MemoryStats::get_real_type(const TypeRef& ty, DWORD64 addr) const
                 else
                 {
                     // VTable not found!
-                    ::std::cout << "VTABLE " << " 0x" << std::hex << vtable << " for virtual type " << ty << " not known - assuming leaf type\n";
+                    static ::std::set<DWORD64>  warned_vtables;
+                    if(warned_vtables.insert(vtable).second) {
+                        ::std::cout << "VTABLE " << " 0x" << std::hex << vtable << " for virtual type " << ty << " not known - assuming leaf type\n";
+
+                        SYMBOL_INFO_PACKAGE sinfo;
+                        sinfo.si.MaxNameLen = sizeof(sinfo.name);
+                        if( SymFromAddr(g_proc_handle, vtable, nullptr, &sinfo.si) ) {
+                            ::std::cout << "Found: " << sinfo.si.Name << "\n";
+                        }
+                    }
                 }
             }
         }
@@ -944,13 +887,106 @@ bool MemoryStats::are_equal(const TypeRef& val_ty, DWORD64 addr1, DWORD64 addr2)
 
 void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_level/*=true*/)
 {
+    static std::vector<const TypeRef*> stack;
     static Indent s_indent = Indent(" ");
-#define DO_DEBUG_F(force, v) do { if(force || (true && s_indent.level < 4)) { std::cout << s_indent << v << std::endl; } } while(0)
+    static unsigned MAX_LOG_LEVEL = 7;
+#define DO_DEBUG_F(force, v) do { if(force || (true && s_indent.level < MAX_LOG_LEVEL)) { std::cout << s_indent << v << std::endl; } } while(0)
 #define DO_DEBUG(v) DO_DEBUG_F(false, v)
     auto _ = s_indent.inc();
+    auto init_stack_size = stack.size();
+    stack.push_back(&val_ty);
+
     try {
         DO_DEBUG("enum_type_at: >> " << val_ty << ", " << (void*)addr);
         const auto& ty = this->get_real_type(val_ty, addr);
+        if( is_top_level ) {
+            ReadMemory::mark_seen(addr, static_cast<DWORD>(ty.size()));
+
+#if 0   // Wastes space, but works
+            {
+                static std::set<DWORD64>    visited_addrs;
+                if( ! visited_addrs.insert(addr).second ) {
+                    ::std::cout << "DOUBLE VISIT: " << ty << " @ " << (void*)addr << "\n";
+                    ::std::cout << "Path: ";
+                    for(const auto* t : stack) {
+                        ::std::cout << " " << *t;
+                    }
+                    ::std::cout << "\n";
+                }
+            }
+#endif
+#if 0   // Untested
+            {
+                // Map of base_address to length for visited ranges
+                static std::map<DWORD64, DWORD64> visited_ranges;
+                auto it = visited_ranges.upper_bound(addr); // first item after this address
+                if( it != visited_ranges.begin() ) {
+                    it --;
+                }
+
+                auto cur_a = addr;
+                auto cur_s = ty.size();
+
+                bool had_overlap = false;
+                while( it != visited_ranges.end() && cur_s > 0 ) {
+                    if( it->first <= cur_a && cur_a < it->first + it->second ) {
+                        // Visited!
+                        had_overlap = true;
+
+                        auto pre_size = cur_a - it->first;
+                        auto tail_size = it->second - pre_size;
+                        if( tail_size < cur_s ) {
+                            it = visited_ranges.end();
+                        }
+                        else {
+                            cur_a += tail_size;
+                            cur_s -= tail_size;
+                            ++ it;
+                        }
+                    }
+                    else if( it->first > cur_a ) {
+                        auto space = it->first - cur_a;
+                        auto new_size = std::min(cur_s, space);
+                        if( it != visited_ranges.begin() && (it-1)->first + (it-1)->second == cur_a ) {
+                            if( new_size == space ) {
+                                // This spans between those two ranges.
+                                auto update_size = new_size + it->second;
+                                if(update_size > cur_s ) {
+                                    cur_s = 0;
+                                }
+                                else {
+                                    cur_a += update_size;
+                                    cur_s -= update_size;
+                                }
+                                // Update the previous with the sum of the sizes, and delete the second
+                                (it-1)->second += update_size;
+                                it = visited_ranges.erase(it);
+                            }
+                            else {
+                                (it-1)->second += new_size;
+                                cur_a += new_size;
+                                cur_s -= new_size;
+                            }
+                        }
+                        else {
+                            // Adding into a blank space
+                            it = visited_ranges.insert(cur_a, new_size).first;
+                            cur_a += new_size;
+                            cur_s -= new_size;
+                            ++ it;
+                        }
+                    }
+                }
+                if( it == visited_ranges.end() ) {
+                    // List must be empty
+                }
+                else if( it->first <= addr && addr < it->first + it->second )
+                {
+                    // Start is within the range
+                }
+            }
+#endif
+        }
 
         // 1. Get the enumeration key for the instance (e.g. TypeRef(Prim) or AST::Item(Fcn))
         // - If none, skip
@@ -960,7 +996,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             m_counts[enum_key] ++;
         }
 
-        // TODO: For certain types, check if de-duplication is needed
+        // For certain types, check if de-duplication is needed
         if( true && ty.is_udt("HIR::SimplePath") )
         {
             auto dbg_name = virt_types::fmt_simplepath(ty, addr);
@@ -1000,6 +1036,23 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
 
             m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
         }
+        if( true && ty.is_udt("RcString") )
+        {
+            if( DUPLICATION_RcString )
+            {
+                auto str_ptr = ReadMemory::read_ptr(addr);
+                if( m_seen_RcString.insert(str_ptr).second )
+                {
+                    auto dbg_name = virt_types::fmt_rcstring(str_ptr);
+
+                    auto& list = m_duplicates_RcString;
+                    auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(str_ptr, 0)) );
+                    it.first->second.second += 1;
+                }
+            }
+
+            m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
+        }
 
         // IDEA: If top-level (either pointed-to or part of a vector), then count raw type
         if( is_top_level )
@@ -1013,17 +1066,33 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             m_counts[FMT_STRING(ty << " [" << ty.size() << "]")] ++;
         }
 
+        static std::set<std::string>    warned_types;
+        auto warn_type = [&]() {
+            if( warned_types.insert( FMT_STRING(ty) ).second ) {
+                ::std::cout << "Not recursing into type: " << ty << "\n";
+                ::std::cout << "Path: ";
+                for(const auto* t : stack) {
+                    ::std::cout << " " << *t;
+                }
+                ::std::cout << "\n";
+            }
+        };
+
         // 2. Recurse (using special handlers if required)
         if( ty.is_any_basic() || (!ty.wrappers.empty() && ty.wrappers.back().is_pointer()) ) {
             DWORD64 v = 0;
             ReadMemory::read(NULL, addr, &v, static_cast<DWORD>(ty.size()), NULL);
             DO_DEBUG("enum_type_at: " << ty << " @ " << (void*)addr << " = " << (void*)v);
+            if( !ty.is_any_basic() ) {
+                warn_type();
+            }
             //if( v ) {
             //    this->enum_type_at(ty.deref(), v, /*is_top_level=*/false);
             //}
         }
         else if( !ty.wrappers.empty() ) {
             // What should happen with arrays?
+            warn_type();
         }
         else if( is_tagged_union(ty) ) {
             const auto* udt = ty.any_udt();
@@ -1050,9 +1119,36 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             else {
             }
         }
+        // RcString
+        else if( ty.is_udt("RcString") ) {
+            auto str_ptr = ReadMemory::read_ptr(addr);
+            if(str_ptr ) {
+                auto len = ReadMemory::read_u32(str_ptr + 4);
+                ReadMemory::mark_seen(str_ptr, 12 + len);
+            }
+        }
+        // Span: a reference-counted pointer
+        else if( ty.is_udt("Span") ) {
+            static std::set<uint64_t>   seen_spans;
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"m_ptr", nullptr});
+            if(ptr) {
+                static std::set<DWORD64>    s_spans;
+                if( s_spans.count(ptr) == 0 ) {
+                    s_spans.insert(ptr);
+                    this->enum_type_at(inner_ty, ptr, true);
+                }
+            }
+        }
         // std::vector<bool
         else if( ty.is_udt_suffix("std::vector<bool") ) {
             m_counts[FMT_STRING(">" << ty)] ++;
+            // "Visit" the contained data, so it's counted for memory usage
+            auto start = ReadMemory::read_ptr(addr + 0*8);
+            auto end = ReadMemory::read_ptr(addr + 1*8);
+            auto max = ReadMemory::read_ptr(addr + 2*8);
+            ReadMemory::mark_seen(start, static_cast<DWORD>(end - start));
+            m_counts["~TOTAL"] += static_cast<unsigned>(end - start);
         }
         // std::vector
         else if( ty.is_udt_suffix("std::vector<") ) {
@@ -1236,7 +1332,34 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             }
             m_counts[FMT_STRING(">" << ty)] ++;
         }
-        // unique_ptr
+        // ----
+        // Various smart pointers
+        else if( ty.is_udt("MIR::FunctionPointer") || ty.is_udt("HIR::ExprStatePtr") || ty.is_udt("HIR::ExprPtrInner") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"ptr", nullptr});
+            if(ptr) {
+                this->enum_type_at(inner_ty, ptr, true);
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        else if( ty.is_udt("EncodedLiteralPtr") || ty.is_udt("MIR::EnumCachePtr") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"p", nullptr});
+            if(ptr) {
+                this->enum_type_at(inner_ty, ptr, true);
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        else if( ty.is_udt("MacroRulesPtr") || ty.is_udt("HIR::CratePtr") ) {
+            auto ptr = ReadMemory::read_ptr(addr);
+            auto inner_ty = ty.get_field({"m_ptr", nullptr});
+            if(ptr) {
+                this->enum_type_at(inner_ty, ptr, true);
+            }
+            m_counts[FMT_STRING(">" << ty)] ++;
+        }
+        // ----
+        // unique_ptr<...>
         else if( ty.is_udt_suffix("std::unique_ptr<") ) {
             auto ptr = ReadMemory::read_ptr(addr);
             auto inner_ty = ty.get_field({"_Mypair", "_Myval2", nullptr});
@@ -1247,7 +1370,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             }
             m_counts[FMT_STRING(">" << ty)] ++;
         }
-        // shared_ptr
+        // shared_ptr<...>
         else if( ty.is_udt_suffix("std::shared_ptr<") ) {
             auto ptr = ReadMemory::read_ptr(addr);
             auto inner_ty = ty.get_field({"_Ptr", nullptr});
@@ -1255,44 +1378,10 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             if(ptr)
             {
                 static std::set<DWORD64>    s_shared_ptrs;
-                if( s_shared_ptrs.count(ptr) == 0 )
+                if( s_shared_ptrs.insert(ptr).second )
                 {
-                    s_shared_ptrs.insert(ptr);
                     this->enum_type_at(inner_ty, ptr, true);
                 }
-            }
-            m_counts[FMT_STRING(">" << ty)] ++;
-        }
-        // HIR::CratePtr
-        else if( ty.is_udt("HIR::CratePtr") ) {
-            auto ptr = ReadMemory::read_ptr(addr);
-            auto inner_ty = ty.get_field({"m_ptr", nullptr});
-            DO_DEBUG("HIR::CratePtr: " << inner_ty << " @ " << (void*)ptr);
-            if(ptr)
-            {
-                this->enum_type_at(inner_ty, ptr, true);
-            }
-            m_counts[FMT_STRING(">" << ty)] ++;
-        }
-        // HIR::ExprPtrInner
-        else if( ty.is_udt("HIR::ExprPtrInner") ) {
-            auto ptr = ReadMemory::read_ptr(addr);
-            auto inner_ty = ty.get_field({"ptr", nullptr});
-            DO_DEBUG("HIR::ExprPtrInner: " << inner_ty << " @ " << (void*)ptr);
-            if(ptr)
-            {
-                this->enum_type_at(inner_ty, ptr, true);
-            }
-            m_counts[FMT_STRING(">" << ty)] ++;
-        }
-        // HIR::ExprPtrInner
-        else if( ty.is_udt("MIR::FunctionPointer") ) {
-            auto ptr = ReadMemory::read_ptr(addr);
-            auto inner_ty = ty.get_field({"ptr", nullptr});
-            DO_DEBUG("MIR::FunctionPointer: " << inner_ty << " @ " << (void*)ptr);
-            if(ptr)
-            {
-                this->enum_type_at(inner_ty, ptr, true);
             }
             m_counts[FMT_STRING(">" << ty)] ++;
         }
@@ -1302,7 +1391,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             DO_DEBUG("HIR::TypeRef: " << inner_ty << " @ " << (void*)ptr);
             if(ptr)
             {
-                if( !m_seen_types.insert(ptr).second ) {
+                if( m_seen_types.insert(ptr).second ) {
                     this->enum_type_at(inner_ty, ptr, true);
                 }
             }
@@ -1337,6 +1426,12 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                         enum_type_at(f.ty, addr + f.offset, /*is_top_level=*/false);
                     }
                 }
+                else {
+                }
+            }
+            // NOTE: Basic types and pointers/arrays covered at start of `if` block
+            else {
+                warn_type();
             }
         }
         DO_DEBUG("enum_type_at: << " << ty << ", " << (void*)addr);
@@ -1345,5 +1440,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
     {
         DO_DEBUG_F(true, "enum_type_at: << " << val_ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
     }
+    stack.pop_back();
+    assert(stack.size() == init_stack_size);
 #undef DO_DEBUG
 }

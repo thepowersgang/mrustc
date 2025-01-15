@@ -8,6 +8,7 @@
 #include <ostream>
 #include "error_handling.h"
 #include <map>
+#include <vector>
 
 // #include <cvconst.h>
 // https://docs.microsoft.com/en-us/visualstudio/debugger/debug-interface-access/symtagenum?view=vs-2019
@@ -111,15 +112,22 @@ struct ReadMemory
 private:
     static ReadMemory* s_self;
 
-    LPVOID  view_base;
+    LPVOID  m_view_base;
     struct MemoryRange {
         uint64_t    ofs;
         uint64_t    len;
     };
     ::std::map<uint64_t, MemoryRange>   m_ranges;
 
+    /// Each bit covers 32 bytes of data in buffer `m_view_base`
+    ::std::vector<uint8_t>  m_visited_bitmap;
+
 public:
-    ReadMemory(LPVOID view, const MINIDUMP_MEMORY_LIST* memory, const MINIDUMP_MEMORY64_LIST* memory64);
+    ReadMemory(LPVOID view, DWORD view_size, const MINIDUMP_MEMORY_LIST* memory, const MINIDUMP_MEMORY64_LIST* memory64);
+    BOOL read_inner(HANDLE /*hProcess*/, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, PDWORD lpNumberOfBytesRead);
+
+    static ::std::pair<size_t,size_t> calculate_usage();
+    static void mark_seen(DWORD64 qwBaseAddress, DWORD nSize);
 
     static BOOL read(HANDLE /*hProcess*/, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, PDWORD lpNumberOfBytesRead);
 
