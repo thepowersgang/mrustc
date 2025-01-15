@@ -1179,7 +1179,7 @@ void Trans_Enumerate_Types(EnumState& state)
                 if( markings_ptr->has_drop_impl && (gp.m_path.crate_name() == state.crate.m_crate_name || gp.m_params.has_params()) )
                 {
                     // Add the Drop impl to the codegen list
-                    Trans_Enumerate_FillFrom_PathMono(state,  ::HIR::Path( ty.clone(), state.crate.get_lang_item_path(sp, "drop"), "drop", HIR::PathParams(HIR::LifetimeRef())));
+                    Trans_Enumerate_FillFrom_PathMono(state,  ::HIR::Path( ty.clone(), state.crate.get_lang_item_path(sp, "drop"), RcString::new_interned("drop"), HIR::PathParams(HIR::LifetimeRef())));
                     constructors_added = true;
                 }
             }

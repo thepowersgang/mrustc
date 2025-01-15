@@ -45,6 +45,7 @@ namespace {
             }
         }
     };
+    const RcString rcstring_drop = RcString::new_interned("drop");
 }
 
 namespace {
@@ -264,7 +265,7 @@ namespace {
             this->push_stmt_assign( borrow_lv.clone(), MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, ::MIR::LValue::new_Deref(this->self.clone()) }) );
 
             this->terminate_Call(
-                MIR::LValue::new_Return(), ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, "drop"), make_vec1<MIR::Param>(mv$(borrow_lv)),
+                MIR::LValue::new_Return(), ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, rcstring_drop), make_vec1<MIR::Param>(mv$(borrow_lv)),
                 /*bb_ret=*/mir.blocks.size()+1,
                 /*bb_panic=*/mir.blocks.size()
             );
@@ -923,10 +924,11 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             trans_list.m_drop_glue.insert( ty.first.clone() );
         }
 
+        auto drop_glue_name = RcString::new_interned("#drop_glue");
         for(const auto& ty : trans_list.m_drop_glue)
         {
             Span    sp;
-            auto path = ::HIR::Path(ty.clone(), "#drop_glue");
+            auto path = ::HIR::Path(ty.clone(), drop_glue_name);
 
             HIR::Function   fcn;
             fcn.m_return = HIR::TypeRef::new_unit();
@@ -1115,10 +1117,10 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                         }
                     }
                     if( has_drop ) {
-                        if( auto* e = trans_list.add_function( ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, "drop") ) )
+                        if( auto* e = trans_list.add_function( ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, rcstring_drop) ) )
                         {
                             MonomorphState  params;
-                            auto p = ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, "drop");
+                            auto p = ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, rcstring_drop);
                             auto fcn_e = state.resolve.get_value(sp, p, /*out*/params, /*signature_only=*/false);
                             ASSERT_BUG(sp, fcn_e.is_Function(), "Drop didn't point to a function! " << fcn_e.tag_str() << " " << p);
                             ASSERT_BUG(sp, !params.has_types(), "Generic drop impl encountered during auto_impls (should have been populated during enum)");

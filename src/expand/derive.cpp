@@ -16,6 +16,25 @@
 #include "proc_macro.hpp"
 #include "common.hpp"   // Expand_LookupMacro
 
+namespace {
+    const RcString rcstring_Self = RcString::new_interned("Self");
+    const RcString rcstring_self = RcString::new_interned("self");
+    const RcString rcstring_v    = RcString::new_interned("v");
+    const RcString rcstring_fmt = RcString::new_interned("fmt");
+
+    const RcString rcstring_f     = RcString::new_interned("f");
+    const RcString rcstring_field = RcString::new_interned("field");
+
+    const RcString rcstring_Clone = RcString::new_interned("Clone");
+    const RcString rcstring_clone = RcString::new_interned("clone");
+
+    const RcString rcstring_assert_receiver_is_total_eq = RcString::new_interned("assert_receiver_is_total_eq");
+
+    TypeRef mktype_Self(const Span& sp) {
+        return TypeRef(sp, rcstring_Self, 0xFFFF);
+    }
+}
+
 template<typename T>
 static inline ::std::vector<T> vec$(T v1) {
     ::std::vector<T> tmp;
@@ -401,9 +420,9 @@ class Deriver_Debug:
             sp,
             TypeRef(sp, get_path(core_name, "fmt", "Result")),
             vec$(
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"),
-                    TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "f"),
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self),
+                    TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) ),
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_f),
                     TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), true, TypeRef(sp, get_path(core_name, "fmt", "Formatter")) ) )
                 )
             );
@@ -412,7 +431,7 @@ class Deriver_Debug:
         AST::GenericParams  params = get_params_with_bounds(sp, p, debug_trait, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, debug_trait), type.clone() ) );
-        rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, "fmt", mv$(fcn));
+        rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, rcstring_fmt, mv$(fcn));
         return mv$(rv);
     }
 
@@ -427,14 +446,14 @@ public:
         AST::ExprNodeP  node;
         TU_MATCH_HDRA((str.m_data), {)
         TU_ARMA(Unit, e) {
-            node = NEWNODE(NamedValue, AST::Path("f"));
+            node = NEWNODE(NamedValue, AST::Path(rcstring_f));
             node = NEWNODE(CallMethod,
                 mv$(node), AST::PathNode("write_str",{}),
                 vec$( NEWNODE(String, name) )
                 );
             }
         TU_ARMA(Struct, e) {
-            node = NEWNODE(NamedValue, AST::Path("f"));
+            node = NEWNODE(NamedValue, AST::Path(rcstring_f));
             std::vector<AST::ExprNodeP> nodes;
             nodes.push_back(NEWNODE(LetBinding, AST::Pattern(AST::Pattern::TagBind(), sp, "s"), TypeRef(sp), NEWNODE(CallMethod,
                     mv$(node), AST::PathNode("debug_struct",{}),
@@ -443,12 +462,12 @@ public:
             for( const auto& fld : e.ents )
             {
                 nodes.push_back(NEWNODE(CallMethod,
-                    NEWNODE(NamedValue, AST::Path("s")), AST::PathNode("field",{}),
+                    NEWNODE(NamedValue, AST::Path("s")), AST::PathNode(rcstring_field,{}),
                     vec$(
                         NEWNODE(String, fld.m_name.c_str()),
                         NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
                             NEWNODE(Field,
-                                NEWNODE(NamedValue, AST::Path("self")),
+                                NEWNODE(NamedValue, AST::Path(rcstring_self)),
                                 fld.m_name
                                 )
                             ))
@@ -459,7 +478,7 @@ public:
             node = NEWNODE(Block, AST::ExprNode_Block::Type::Bare, /*yields_final_value*/true, mv$(nodes), {});
             }
         TU_ARMA(Tuple, e) {
-            node = NEWNODE(NamedValue, AST::Path("f"));
+            node = NEWNODE(NamedValue, AST::Path(rcstring_f));
             node = NEWNODE(CallMethod,
                 mv$(node), AST::PathNode("debug_tuple",{}),
                 vec$( NEWNODE(String, name) )
@@ -467,11 +486,11 @@ public:
             for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
                 node = NEWNODE(CallMethod,
-                    mv$(node), AST::PathNode("field",{}),
+                    mv$(node), AST::PathNode(rcstring_field,{}),
                     vec$(
                         NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
                             NEWNODE(Field,
-                                NEWNODE(NamedValue, AST::Path("self")),
+                                NEWNODE(NamedValue, AST::Path(rcstring_self)),
                                 RcString::new_interned(FMT(idx))
                                 )
                             ))
@@ -500,7 +519,7 @@ public:
             TU_MATCH_HDRA( (v.m_data), {)
             TU_ARMA(Value, e) {
                 code = NEWNODE(CallMethod,
-                    NEWNODE(NamedValue, AST::Path("f")),
+                    NEWNODE(NamedValue, AST::Path(rcstring_f)),
                     AST::PathNode("write_str",{}),
                     vec$( NEWNODE(String, v.m_name.c_str()) )
                     );
@@ -511,10 +530,10 @@ public:
 
                 auto s_ent = NEWNODE(NamedValue, AST::Path("s"));
                 auto nodes = make_refpat_a(sp, pats_a, e.m_items, [&](size_t idx, auto a){
-                    return NEWNODE(CallMethod, s_ent->clone(), AST::PathNode("field", {}), vec$( mv$(a) ));
+                    return NEWNODE(CallMethod, s_ent->clone(), AST::PathNode(rcstring_field, {}), vec$( mv$(a) ));
                     });
                 nodes.insert(nodes.begin(), NEWNODE(LetBinding, AST::Pattern(AST::Pattern::TagBind(), sp, "s"), TypeRef(sp),
-                    NEWNODE(CallMethod, NEWNODE(NamedValue, AST::Path("f")), AST::PathNode("debug_tuple",{}),
+                    NEWNODE(CallMethod, NEWNODE(NamedValue, AST::Path(rcstring_f)), AST::PathNode("debug_tuple",{}),
                         vec$( NEWNODE(String, v.m_name.c_str()) )
                         )
                         ));
@@ -527,7 +546,7 @@ public:
 
                 auto s_ent = NEWNODE(NamedValue, AST::Path("s"));
                 auto nodes = make_refpat_a(sp, pats_a, e.m_fields, [&](size_t idx, auto a){
-                    return NEWNODE(CallMethod, s_ent->clone(), AST::PathNode("field", {}),
+                    return NEWNODE(CallMethod, s_ent->clone(), AST::PathNode(rcstring_field, {}),
                             vec$(
                                 NEWNODE(String, e.m_fields[idx].m_name.c_str()),
                                 mv$(a)
@@ -535,7 +554,7 @@ public:
                             );
                     });
                 nodes.insert(nodes.begin(), NEWNODE(LetBinding, AST::Pattern(AST::Pattern::TagBind(), sp, "s"), TypeRef(sp),
-                    NEWNODE(CallMethod, NEWNODE(NamedValue, AST::Path("f")), AST::PathNode("debug_struct",{}),
+                    NEWNODE(CallMethod, NEWNODE(NamedValue, AST::Path(rcstring_f)), AST::PathNode("debug_struct",{}),
                         vec$( NEWNODE(String, v.m_name.c_str()) )
                         )
                         ));
@@ -556,7 +575,7 @@ public:
                 ));
         }
         AST::ExprNodeP  node = NEWNODE(Match,
-            NEWNODE(NamedValue, AST::Path("self")),
+            NEWNODE(NamedValue, AST::Path(rcstring_self)),
             mv$(arms)
             );
 
@@ -586,8 +605,8 @@ public:
 
         this->iterate_struct_fields(str, [&](RcString fld_name) {
             nodes.push_back(this->compare_and_ret( sp, opts.core_name,
-                NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), fld_name),
-                NEWNODE(Field, NEWNODE(NamedValue, AST::Path("v"   )), fld_name)
+                NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), fld_name),
+                NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_v   )), fld_name)
                 ));
             });
         nodes.push_back( this->equal_value(sp, opts.core_name) );
@@ -668,8 +687,8 @@ public:
         }
 
         ::std::vector<AST::ExprNodeP>   vals;
-        vals.push_back( NEWNODE(NamedValue, AST::Path("self")) );
-        vals.push_back( NEWNODE(NamedValue, AST::Path("v")) );
+        vals.push_back( NEWNODE(NamedValue, AST::Path(rcstring_self)) );
+        vals.push_back( NEWNODE(NamedValue, AST::Path(rcstring_v   )) );
         return this->make_ret(sp, opts.core_name, p, type, this->get_field_bounds(enm), NEWNODE(Match,
             NEWNODE(Tuple, mv$(vals)),
             mv$(arms)
@@ -688,8 +707,8 @@ class Deriver_PartialEq:
             sp,
             TypeRef(sp, CORETYPE_BOOL),
             vec$(
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "v"   ), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) )
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) ),
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_v   ), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
@@ -735,8 +754,8 @@ class Deriver_PartialOrd:
             sp,
             TypeRef(sp, path_option_ordering),
             vec$(
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "v"   ), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) )
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) ),
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_v   ), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
@@ -788,8 +807,8 @@ class Deriver_PartialOrd:
     {
         return NEWNODE(CallPath, get_path(core_name, "cmp", "PartialOrd", "partial_cmp"),
             ::make_vec2(
-                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, get_path(core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path("self")) )) ),
-                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, get_path(core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path("v")) )) )
+                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, get_path(core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path(rcstring_self)) )) ),
+                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, get_path(core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path(rcstring_v)) )) )
                 )
             );
     }
@@ -812,7 +831,7 @@ class Deriver_Eq:
             sp,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) )
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
@@ -820,7 +839,7 @@ class Deriver_Eq:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, "assert_receiver_is_total_eq", mv$(fcn));
+        rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, rcstring_assert_receiver_is_total_eq, mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP assert_is_eq(const AST::Path& method_path, AST::ExprNodeP val) const {
@@ -830,10 +849,10 @@ class Deriver_Eq:
             );
     }
     AST::ExprNodeP field(const ::std::string& name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), RcString::new_interned(name));
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), RcString::new_interned(name));
     }
     AST::ExprNodeP field(const RcString& name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), name);
     }
 
 public:
@@ -841,7 +860,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
-        const AST::Path    assert_method_path = this->get_trait_path(opts.core_name) + "assert_receiver_is_total_eq";
+        const AST::Path    assert_method_path = this->get_trait_path(opts.core_name) + rcstring_assert_receiver_is_total_eq;
         ::std::vector<AST::ExprNodeP>   nodes;
 
         this->iterate_struct_fields(str, [&](RcString name) {
@@ -853,7 +872,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        const AST::Path    assert_method_path = this->get_trait_path(opts.core_name) + "assert_receiver_is_total_eq";
+        const AST::Path    assert_method_path = this->get_trait_path(opts.core_name) + rcstring_assert_receiver_is_total_eq;
 
         AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
@@ -901,7 +920,7 @@ public:
         }
 
         return this->make_ret(sp, opts.core_name, p, type, this->get_field_bounds(enm), NEWNODE(Match,
-            NEWNODE(NamedValue, AST::Path("self")),
+            NEWNODE(NamedValue, AST::Path(rcstring_self)),
             mv$(arms)
             ));
     }
@@ -909,7 +928,7 @@ public:
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Union& unn) const override
     {
         // Eq is just a marker, so it's valid to derive for union
-        const AST::Path    assert_method_path = this->get_trait_path(opts.core_name) + "assert_receiver_is_total_eq";
+        const AST::Path    assert_method_path = this->get_trait_path(opts.core_name) + rcstring_assert_receiver_is_total_eq;
         ::std::vector<AST::ExprNodeP>   nodes;
 
         for( const auto& fld : unn.m_variants )
@@ -933,8 +952,8 @@ class Deriver_Ord:
             sp,
             TypeRef(sp, path_ordering),
             vec$(
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "v"   ), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) )
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) ),
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_v   ), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
@@ -978,8 +997,8 @@ class Deriver_Ord:
     {
         return NEWNODE(CallPath, get_path(core_name, "cmp", "Ord", "cmp"),
             ::make_vec2(
-                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, get_path(core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path("self")) )) ),
-                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, get_path(core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path("v")) )) )
+                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, get_path(core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path(rcstring_self)) )) ),
+                NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, get_path(core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path(rcstring_v   )) )) )
                 )
             );
     }
@@ -991,10 +1010,10 @@ class Deriver_Clone:
     public Deriver
 {
     AST::Path get_trait_path(const RcString& core_name) const {
-        return AST::Path(core_name, { AST::PathNode("clone", {}), AST::PathNode("Clone", {}) });
+        return AST::Path(core_name, { AST::PathNode(rcstring_clone, {}), AST::PathNode(rcstring_Clone, {}) });
     }
     AST::Path get_method_path(const RcString& core_name) const {
-        return get_trait_path(core_name) + "clone";
+        return get_trait_path(core_name) + rcstring_clone;
     }
 
     AST::Impl make_ret(Span sp, const RcString& core_name, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
@@ -1003,9 +1022,9 @@ class Deriver_Clone:
 
         AST::Function fcn(
             sp,
-            TypeRef(sp, "Self", 0xFFFF),
+            mktype_Self(sp),
             vec$(
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) )
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) )
                 )
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
@@ -1013,7 +1032,7 @@ class Deriver_Clone:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, "clone", mv$(fcn));
+        rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, rcstring_clone, mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP clone_val_ref(const RcString& core_name, AST::ExprNodeP val) const {
@@ -1030,10 +1049,10 @@ class Deriver_Clone:
             );
     }
     AST::ExprNodeP field(const RcString& name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), name);
     }
     AST::ExprNodeP field(const ::std::string& name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), RcString::new_interned(name));
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), RcString::new_interned(name));
     }
 
 public:
@@ -1121,7 +1140,7 @@ public:
         }
 
         return this->make_ret(sp, opts.core_name, p, type, this->get_field_bounds(enm), NEWNODE(Match,
-            NEWNODE(NamedValue, AST::Path("self")),
+            NEWNODE(NamedValue, AST::Path(rcstring_self)),
             mv$(arms)
             ));
     }
@@ -1136,7 +1155,7 @@ private:
         // Clone on a union can only be a bitwise copy.
         // - This requires a Copy impl. That's up to the user
         auto ret = this->make_ret(sp, opts.core_name, p, type, ::std::move(field_bounds), NEWNODE(Deref,
-            NEWNODE(NamedValue, AST::Path("self"))
+            NEWNODE(NamedValue, AST::Path(rcstring_self))
             ));
 
         // TODO: What if the type is only conditionally copy? (generic over something)
@@ -1194,7 +1213,7 @@ class Deriver_Default:
         return get_path(core_name, "default", "Default");
     }
     AST::Path get_method_path(const RcString& core_name) const {
-        return AST::Path::new_ufcs_trait( ::TypeRef(Span()), get_trait_path(core_name), { AST::PathNode("default", {}) } );
+        return AST::Path::new_ufcs_trait( ::TypeRef(Span()), get_trait_path(core_name), { AST::PathNode(RcString::new_interned("default"), {}) } );
     }
 
     AST::Impl make_ret(Span sp, const RcString& core_name, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound, AST::ExprNodeP node) const
@@ -1203,7 +1222,7 @@ class Deriver_Default:
 
         AST::Function fcn(
             sp,
-            TypeRef(sp, "Self", 0xFFFF),
+            mktype_Self(sp),
             {}
             );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
@@ -1211,7 +1230,7 @@ class Deriver_Default:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, "default", mv$(fcn));
+        rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, RcString::new_interned("default"), mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP default_call(const RcString& core_name) const {
@@ -1321,7 +1340,7 @@ class Deriver_Hash:
             sp,
             TypeRef(TypeRef::TagUnit(), sp),
             vec$(
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) ),
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "state"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), true, TypeRef(sp, "H", 0x100|0)) )
                 )
             );
@@ -1349,10 +1368,10 @@ class Deriver_Hash:
             );
     }
     AST::ExprNodeP field(const RcString& name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), name);
     }
     AST::ExprNodeP field(const std::string& name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), RcString::new_interned(name));
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), RcString::new_interned(name));
     }
 
 public:
@@ -1438,7 +1457,7 @@ public:
         }
 
         return this->make_ret(sp, opts.core_name, p, type, this->get_field_bounds(enm), NEWNODE(Match,
-            NEWNODE(NamedValue, AST::Path("self")),
+            NEWNODE(NamedValue, AST::Path(rcstring_self)),
             mv$(arms)
             ));
     }
@@ -1449,10 +1468,10 @@ class Deriver_RustcEncodable:
 {
     // NOTE: This emits paths like `::rustc_serialize::Encodable` - rustc and crates.io have subtly different crate names
     AST::Path get_trait_path() const {
-        return AST::Path("=rustc_serialize", { AST::PathNode(RcString::new_interned("Encodable"), {}) });
+        return AST::Path(RcString::new_interned("=rustc_serialize"), { AST::PathNode(RcString::new_interned("Encodable"), {}) });
     }
     AST::Path get_trait_path_Encoder() const {
-        return AST::Path("=rustc_serialize", { AST::PathNode(RcString::new_interned("Encoder"), {}) });
+        return AST::Path(RcString::new_interned("=rustc_serialize"), { AST::PathNode(RcString::new_interned("Encoder"), {}) });
     }
     AST::Path get_method_path() const {
         return get_trait_path() + "encode";
@@ -1470,7 +1489,7 @@ class Deriver_RustcEncodable:
             sp,
             TypeRef(sp, mv$(result_path)),
             vec$(
-                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, TypeRef(sp, "Self", 0xFFFF)) ),
+                AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), false, mktype_Self(sp)) ),
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "s"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), true, TypeRef(sp, "S", 0x100|0)) )
                 )
             );
@@ -1495,10 +1514,10 @@ class Deriver_RustcEncodable:
         return this->enc_val_direct(NEWNODE(UniOp, AST::ExprNode_UniOp::REF, mv$(val)) );
     }
     AST::ExprNodeP field(const RcString& name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), name);
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), name);
     }
     AST::ExprNodeP field(::std::string name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path("self")), RcString::new_interned(name));
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), RcString::new_interned(name));
     }
 
     AST::ExprNodeP enc_closure(Span sp, AST::ExprNodeP code) const {
@@ -1663,7 +1682,7 @@ public:
                 ));
         }
 
-        auto node_match = NEWNODE(Match, NEWNODE(NamedValue, AST::Path("self")), mv$(arms));
+        auto node_match = NEWNODE(Match, NEWNODE(NamedValue, AST::Path(rcstring_self)), mv$(arms));
 
         ::std::string enum_name = type.m_data.as_Path()->nodes().back().name().c_str();
         auto node = NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_enum",
@@ -1679,10 +1698,10 @@ class Deriver_RustcDecodable:
 {
     // NOTE: This emits paths like `::rustc_serialize::Encodable` - rustc and crates.io have subtly different crate names
     AST::Path get_trait_path() const {
-        return AST::Path("=rustc_serialize", { AST::PathNode(RcString::new_interned("Decodable"), {}) });
+        return AST::Path(RcString::new_interned("=rustc_serialize"), { AST::PathNode(RcString::new_interned("Decodable"), {}) });
     }
     AST::Path get_trait_path_Decoder() const {
-        return AST::Path("=rustc_serialize", { AST::PathNode(RcString::new_interned("Decoder"), {}) });
+        return AST::Path(RcString::new_interned("=rustc_serialize"), { AST::PathNode(RcString::new_interned("Decoder"), {}) });
     }
     AST::Path get_method_path() const {
         return get_trait_path() + "decode";
@@ -1693,14 +1712,14 @@ class Deriver_RustcDecodable:
         const AST::Path    trait_path = this->get_trait_path();
 
         AST::Path result_path = get_path(core_name, "result", "Result");
-        result_path.nodes()[1].args().m_entries.push_back( TypeRef(sp, "Self", 0xFFFF) );
+        result_path.nodes()[1].args().m_entries.push_back( mktype_Self(sp) );
         result_path.nodes()[1].args().m_entries.push_back( TypeRef(sp, AST::Path::new_ufcs_trait(TypeRef(sp, "D", 0x100|0), this->get_trait_path_Decoder(), { AST::PathNode("Error",{}) })) );
 
         AST::Function fcn(
             sp,
             TypeRef(sp, result_path),
             vec$(
-                //AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, false, AST::LifetimeRef(), TypeRef(sp, "Self", 0xFFFF)) ),
+                //AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, false, AST::LifetimeRef(), mktype_Self(sp)) ),
                 AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "d"), TypeRef(TypeRef::TagReference(), sp, AST::LifetimeRef(), true, TypeRef(sp, "D", 0x100|0)) )
                 )
             );
@@ -1722,7 +1741,7 @@ class Deriver_RustcDecodable:
         return NEWNODE(CallPath, this->get_method_path(),  vec$( NEWNODE(NamedValue, AST::Path("d")) ));
     }
     AST::ExprNodeP field(const ::std::string& name) const {
-        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(RcString::new_interned("self"))), RcString::new_interned(name));
+        return NEWNODE(Field, NEWNODE(NamedValue, AST::Path(rcstring_self)), RcString::new_interned(name));
     }
 
     AST::ExprNodeP dec_closure(Span sp, AST::ExprNodeP code) const {

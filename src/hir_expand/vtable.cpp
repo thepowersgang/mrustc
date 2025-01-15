@@ -307,7 +307,7 @@ namespace {
             ::HIR::GenericPath  path( mv$(item_path), mv$(params) );
 
             tr.m_values.insert( ::std::make_pair(
-                "vtable#",
+                RcString::new_interned("vtable#"),
                 ::HIR::TraitValueItem(::HIR::Static( ::HIR::Linkage(), false, ::HIR::TypeRef::new_path( mv$(path), {} ), {} ))
                 ) );
         }
@@ -347,7 +347,7 @@ namespace {
                 }
 
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
-                impl.m_statics.insert(::std::make_pair( "vtable#", ::HIR::TraitImpl::ImplEnt<::HIR::Static> { true, ::HIR::Static {
+                impl.m_statics.insert(::std::make_pair( RcString::new_interned("vtable#"), ::HIR::TraitImpl::ImplEnt<::HIR::Static> { true, ::HIR::Static {
                     ::HIR::Linkage(),
                     false,
                     ::HIR::TypeRef::new_path(::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref),

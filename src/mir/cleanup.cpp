@@ -161,10 +161,11 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 }
 
 namespace {
+    const RcString rcstring_vtable = RcString::new_interned("vtable#");
     ::MIR::Constant create_vtable(HIR::TypeRef ty, const HIR::TraitPath& trait) {
         auto vtable_path = trait.m_hrtbs
-            ? ::HIR::Path(mv$(ty), trait.m_hrtbs->clone(), trait.m_path.clone(), "vtable#")
-            : ::HIR::Path(mv$(ty), trait.m_path.clone(), "vtable#");
+            ? ::HIR::Path(mv$(ty), trait.m_hrtbs->clone(), trait.m_path.clone(), rcstring_vtable)
+            : ::HIR::Path(mv$(ty), trait.m_path.clone(), rcstring_vtable);
         return ::MIR::Constant::make_ItemAddr(box$(vtable_path));
     }
 }
