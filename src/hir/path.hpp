@@ -99,8 +99,8 @@ static inline Compare& operator &=(Compare& x, const Compare& y) {
 // TODO: Maybe make this de-duplicated? Not sure about the overheads involved vs the gain - some paths are very common, others are only used once
 struct SimplePath
 {
-    friend class HirSerialiser;
-    friend class HirDeserialiser;
+    friend HirSerialiser;
+    friend HirDeserialiser;
 private:
     ThinVector<RcString>    m_members;
 
