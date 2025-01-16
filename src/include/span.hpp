@@ -10,6 +10,7 @@
 #include <rc_string.hpp>
 #include <functional>
 #include <memory>
+#include <utility>
 
 enum ErrorType
 {
@@ -41,9 +42,8 @@ public:
 
     Span(const Span& x);
     Span(Span&& x):
-        m_ptr(x.m_ptr)
+        m_ptr(::std::exchange(x.m_ptr, nullptr))
     {
-        x.m_ptr = nullptr;
     }
 
     Span& operator=(const Span& x)
