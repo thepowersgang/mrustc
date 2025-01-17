@@ -1157,6 +1157,13 @@ void Trans_Enumerate_Types(EnumState& state)
                     tv.visit_type(gpath.m_params.m_types[0]);
                 }
             }
+
+            if( gpath.m_path == state.resolve.m_lang_Fn
+                || gpath.m_path == state.resolve.m_lang_FnMut
+                || gpath.m_path == state.resolve.m_lang_FnOnce )
+            {
+                tv.visit_type(gpath.m_params.m_types[0]);
+            }
         }
 
         constructors_added = false;
