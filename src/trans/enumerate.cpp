@@ -189,7 +189,7 @@ namespace {
     }
     void Trans_Enumerate_ValItem(EnumState& state, const ::HIR::ValueItem& vi, bool is_visible, ::std::function<::HIR::SimplePath()> get_path)
     {
-        TRACE_FUNCTION_F(get_path() << " : " << vi.tag_str());
+        TRACE_FUNCTION_F(get_path() << " : " << vi.tag_str() << " is_visible=" << is_visible);
         const Span  sp;
         switch(vi.tag())
         {

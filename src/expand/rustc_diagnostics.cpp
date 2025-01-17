@@ -44,6 +44,7 @@ class CExpanderBuildDiagnosticArray:
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::vector<TokenTree>    toks;
+        toks.push_back( TOK_RWORD_PUB );
         toks.push_back( TOK_RWORD_STATIC );
         toks.push_back( Token(TOK_IDENT, item_name) );
         // : [(&'static str, &'static str); 0]
