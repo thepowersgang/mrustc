@@ -16,7 +16,7 @@
 class TomlFileIter;
 struct TomlKeyValue;
 
-struct Token;
+struct TomlToken;
 class TomlLexer
 {
     friend class TomlFile;
@@ -27,7 +27,7 @@ class TomlLexer
     unsigned    m_line;
 protected:
     TomlLexer(const ::std::string& filename);
-    Token   get_token();
+    TomlToken   get_token();
 
 public:
     friend ::std::ostream& operator<<(::std::ostream& os, const TomlLexer& x);
