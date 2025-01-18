@@ -6468,6 +6468,7 @@ void MIR_SortBlocks(const StaticTraitResolve& resolve, const ::HIR::ItemPath& pa
     {
         auto fix_bb_idx = [&](auto idx){ return ::std::find(idxes.begin(), idxes.end(), idx) - idxes.begin(); };
         new_block_list.push_back( mv$(fcn.blocks[idx]) );
+        new_block_list.back().statements.shrink_to_fit();   // Save some memory
         visit_terminator_target_mut(new_block_list.back().terminator, [&](auto& te){
             te = fix_bb_idx(te);
             });

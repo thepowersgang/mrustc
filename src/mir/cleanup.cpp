@@ -74,6 +74,7 @@ public:
     void flush_block()
     {
         flush();
+        m_fcn.blocks.at(cur_block).statements.shrink_to_fit();
         this->cur_stmt = 0;
         this->cur_block += 1;
     }
