@@ -61,8 +61,8 @@ TypeRef::t_cache    TypeRef::s_cache;
         break;
     case SymTagFunctionType:
         rv.m_class = ClassMisc;
-        rv.m_data.misc.name = _strdup(FMT_STRING(get_str("SYMNAME", TI_GET_SYMNAME)).c_str());
-        rv.m_data.misc.size = static_cast<uint8_t>(get_dword("LENGTH", TI_GET_LENGTH));
+        rv.m_data.misc.name = _strdup("fn"); //rv.m_data.misc.name = _strdup(FMT_STRING(get_str("SYMNAME", TI_GET_SYMNAME)).c_str());
+        rv.m_data.misc.size = 0;//static_cast<uint8_t>(get_dword("LENGTH", TI_GET_LENGTH));
         break;
     case SymTagVTableShape:
         rv.m_class = ClassUdt;
