@@ -141,19 +141,27 @@ public:
         return rv;
     }
 
+    struct ReadFail: public ::std::exception {
+        const char* type_name;
+        DWORD64 addr;
+        std::string msg;
+        ReadFail(const char* type_name, DWORD64 addr);
+        const char* what() const noexcept { return msg.c_str(); }
+    };
+
 
     static uint8_t read_u8(DWORD64 qwBaseAddress) {
         BYTE   buf;
         DWORD   n_read;
         if( !ReadMemory::read(NULL, qwBaseAddress, &buf, sizeof(buf), &n_read) )
-            throw std::runtime_error(FMT_STRING("Can't read u8 at " << (void*)qwBaseAddress));
+            throw ReadFail("u8", qwBaseAddress);
         return buf;
     }
     static DWORD read_u32(DWORD64 qwBaseAddress) {
         DWORD   buf;
         DWORD   n_read;
         if( !ReadMemory::read(NULL, qwBaseAddress, &buf, sizeof(buf), &n_read) )
-            throw std::runtime_error(FMT_STRING("Can't read u32 at " << (void*)qwBaseAddress));
+            throw ReadFail("u32", qwBaseAddress);
         return buf;
     }
 
@@ -161,7 +169,7 @@ public:
         DWORD64   buf;
         DWORD   n_read;
         if( !ReadMemory::read(NULL, qwBaseAddress, &buf, sizeof(buf), &n_read) )
-            throw std::runtime_error(FMT_STRING("Can't read ptr at " << (void*)qwBaseAddress));
+            throw ReadFail("ptr", qwBaseAddress);
         return buf;
     }
 };

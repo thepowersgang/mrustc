@@ -77,6 +77,11 @@ namespace {
             return std::make_pair(0, 0);
         return std::make_pair(start, end);
     }
+    void update_max(unsigned& slot, unsigned new_val) {
+        if(new_val > slot) {
+            slot = new_val;
+        }
+    }
 }
 
 namespace virt_types {
@@ -456,8 +461,7 @@ int main(int argc, char* argv[])
 
             static BOOL cb_locals(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
                 auto* self = reinterpret_cast<EnumLocals*>(UserContext);
-                if( (pSymInfo->Flags & SYMFLAG_LOCAL) != 0 )
-                {
+                if( (pSymInfo->Flags & SYMFLAG_LOCAL) != 0 ) {
                     // TODO: How to know if the variable is valid yet?
                     self->enum_value(pSymInfo, SymbolSize);
                 }
@@ -586,7 +590,9 @@ int main(int argc, char* argv[])
                     std::cout << "Enumerating for " << symbol->Name << std::endl;
                     el.var_list = &it->second;
                     try {
-                        SymEnumSymbols(g_proc_handle, NULL, "", EnumLocals::cb_locals, &el);
+                        if( !SymEnumSymbols(g_proc_handle, NULL, "", EnumLocals::cb_locals, &el) ) {
+                            printf("SymEnumSymbols failed: 0x%x\n", GetLastError());
+                        }
                     }
                     catch(const std::exception& e)
                     {
@@ -1056,26 +1062,29 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                     len = 0; cap = 0;
                 }
                 else {
-                    std::string s;
-                    s.resize(len);
-                    if( !ReadMemory::read(nullptr, ptr, const_cast<char*>(s.data()), len, nullptr) ) {
-                        ::std::cout << "std::string > indirect @" << (void*)ptr << " +" << len << "+" << cap << ": MALFORMED (bad mem)!\n";
-                    }
-                    else {
-                        ::std::cout << "std::string > indirect @" << (void*)ptr << " +" << len << "+" << cap << " = \"";
-                        for(char c : s) {
-                            if( c == '\\' || c == '"' ) {
-                                ::std::cout << "\\" << c;
-                            }
-                            else if( ' ' <= c && c < 0x7f ) {
-                                ::std::cout << c;
-                            }
-                            else {
-                                const char* const HEX = "0123456789ABCDEF";
-                                ::std::cout << "\\x" << HEX[uint8_t(c) >> 4] << HEX[uint8_t(c) & 0xF];
-                            }
+                    // Debug print the strings?
+                    if( false ) {
+                        std::string s;
+                        s.resize(len);
+                        if( !ReadMemory::read(nullptr, ptr, const_cast<char*>(s.data()), len, nullptr) ) {
+                            ::std::cout << "std::string > indirect @" << (void*)ptr << " +" << len << "+" << cap << ": MALFORMED (bad mem)!\n";
                         }
-                        ::std::cout << "\"\n";
+                        else {
+                            ::std::cout << "std::string > indirect @" << (void*)ptr << " +" << len << "+" << cap << " = \"";
+                            for(char c : s) {
+                                if( c == '\\' || c == '"' ) {
+                                    ::std::cout << "\\" << c;
+                                }
+                                else if( ' ' <= c && c < 0x7f ) {
+                                    ::std::cout << c;
+                                }
+                                else {
+                                    const char* const HEX = "0123456789ABCDEF";
+                                    ::std::cout << "\\x" << HEX[uint8_t(c) >> 4] << HEX[uint8_t(c) & 0xF];
+                                }
+                            }
+                            ::std::cout << "\"\n";
+                        }
                     }
                 }
 
@@ -1107,7 +1116,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             }
 
 
-            if( m_seen_RcString.insert(str_ptr).second )
+            if( str_ptr && m_seen_RcString.insert(str_ptr).second )
             {
                 if( DUPLICATION_RcString )
                 {
@@ -1145,6 +1154,8 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             auto end = ReadMemory::read_ptr(addr + 1*8);
             auto max = ReadMemory::read_ptr(addr + 2*8);
             ReadMemory::mark_seen(start, static_cast<DWORD>(end - start));
+            m_counts[FMT_STRING("~A " << ty)] += (max - start);
+            update_max(m_counts[FMT_STRING("~M " << ty)], max - start);
             m_counts["~TOTAL"] += static_cast<unsigned>(end - start);
         }
         // std::vector
@@ -1176,6 +1187,8 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             if(max - end > 1000) {
                 ::std::cout << ty << " wastage: " << max - end << "\n";
             }
+            m_counts[FMT_STRING("~A " << ty)] += (max - start);
+            update_max(m_counts[FMT_STRING("~M " << ty)], max - start);
             m_counts[FMT_STRING("~Waste " << ty)] += (max - end);
         }
         // std::vector
@@ -1219,6 +1232,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                 // Invalid!
                 DO_DEBUG("ThinVector< " << inner_ty << " >: BAD " << (void*)start << "-" << (void*)end << "-" << (void*)max);
             }
+            m_counts[FMT_STRING("~A " << ty)] += (max - start);
             m_counts[FMT_STRING(">" << ty)] ++;
             m_counts[FMT_STRING("~Waste " << ty)] += (max - end);
         }
@@ -1229,6 +1243,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             size_t val_ofs = 0;
             auto inner_ty = node_ty.get_field({"_Myval"}, &val_ofs);
 
+            size_t total_bytes = 0;
             auto head = ReadMemory::read_ptr(addr + 0*8);
             auto size = ReadMemory::read_ptr(addr + 1*8);
             DO_DEBUG("std::map< " << inner_ty << " >: head=" << (void*)head << ", size=" << size);
@@ -1281,6 +1296,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                 cur_n = Node::read(cur_n.left_addr);
                 while(!cur_n.is_nil)
                 {
+                    total_bytes += node_ty.size();
                     assert(size-- > 0);
                     // Visit the type
                     this->enum_type_at(inner_ty, cur_n.addr + val_ofs, true);
@@ -1304,6 +1320,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                     }
                 }
             }
+            m_counts[FMT_STRING("~A " << ty)] += total_bytes;
             m_counts[FMT_STRING(">" << ty)] ++;
         }
         // std::unordered_map
@@ -1313,6 +1330,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             size_t head_ofs = ty.get_field_ofs({"_List", "_Mypair", "_Myval2", "_Myhead"}, &list_node_ptr_ty);
             size_t size_ofs = ty.get_field_ofs({"_List", "_Mypair", "_Myval2", "_Mysize"});
 
+            size_t total_bytes = 0;
             size_t val_ofs;
             auto val_ty = list_node_ptr_ty.deref().get_field({"_Myval"}, &val_ofs);
             auto head_node = ReadMemory::read_ptr(addr + head_ofs);
@@ -1330,8 +1348,10 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                     DO_DEBUG("+ " << (void*)next_addr << "," << (void*)prev_addr << " D@" << (void*)data_addr);
                     this->enum_type_at(val_ty, data_addr, true);
                     cur_node = next_addr;
+                    total_bytes += list_node_ptr_ty.size();
                 }
             }
+            m_counts[FMT_STRING("~A " << ty)] += total_bytes;
             m_counts[FMT_STRING(">" << ty)] ++;
         }
         // ----
@@ -1340,6 +1360,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             auto ptr = ReadMemory::read_ptr(addr);
             auto inner_ty = ty.get_field({"ptr", nullptr});
             if(ptr) {
+                m_counts[FMT_STRING("~A " << ty)] += this->get_real_type(inner_ty, ptr).size();
                 this->enum_type_at(inner_ty, ptr, true);
             }
             m_counts[FMT_STRING(">" << ty)] ++;
@@ -1348,6 +1369,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             auto ptr = ReadMemory::read_ptr(addr);
             auto inner_ty = ty.get_field({"p", nullptr});
             if(ptr) {
+                m_counts[FMT_STRING("~A " << ty)] += this->get_real_type(inner_ty, ptr).size();
                 this->enum_type_at(inner_ty, ptr, true);
             }
             m_counts[FMT_STRING(">" << ty)] ++;
@@ -1356,6 +1378,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             auto ptr = ReadMemory::read_ptr(addr);
             auto inner_ty = ty.get_field({"m_ptr", nullptr});
             if(ptr) {
+                m_counts[FMT_STRING("~A " << ty)] += this->get_real_type(inner_ty, ptr).size();
                 this->enum_type_at(inner_ty, ptr, true);
             }
             m_counts[FMT_STRING(">" << ty)] ++;
@@ -1366,8 +1389,8 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             auto ptr = ReadMemory::read_ptr(addr);
             auto inner_ty = ty.get_field({"_Mypair", "_Myval2", nullptr});
             DO_DEBUG("std::unique_ptr< " << inner_ty << " >: " << (void*)ptr);
-            if(ptr)
-            {
+            if(ptr) {
+                m_counts[FMT_STRING("~A " << ty)] += this->get_real_type(inner_ty, ptr).size();
                 this->enum_type_at(inner_ty, ptr, true);
             }
             m_counts[FMT_STRING(">" << ty)] ++;
@@ -1382,6 +1405,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                 static std::set<DWORD64>    s_shared_ptrs;
                 if( s_shared_ptrs.insert(ptr).second )
                 {
+                    m_counts[FMT_STRING("~A " << ty)] += this->get_real_type(inner_ty, ptr).size();
                     this->enum_type_at(inner_ty, ptr, true);
                 }
             }
@@ -1394,6 +1418,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             if(ptr)
             {
                 if( m_seen_types.insert(ptr).second ) {
+                    m_counts[FMT_STRING("~A " << ty)] += this->get_real_type(inner_ty, ptr).size();
                     this->enum_type_at(inner_ty, ptr, true);
                 }
             }
@@ -1441,6 +1466,10 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
     catch(const std::exception& e)
     {
         DO_DEBUG_F(true, "enum_type_at: << " << val_ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
+        ::std::cout << "Path:\n";
+        for(const auto* t : stack) {
+            ::std::cout << " " << *t << "\n";
+        }
     }
     stack.pop_back();
     assert(stack.size() == init_stack_size);

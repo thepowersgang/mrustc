@@ -76,6 +76,13 @@ TypeRef::t_cache    TypeRef::s_cache;
     //::std::cout << "TypeRef::lookup: " << rv << std::endl;
     return rv;
 }
+
+TypeRef::TypeNotLoaded::TypeNotLoaded(const std::string& name)
+{
+    this->name = name;
+    this->msg = "Type `" + name + "` not loaded";
+}
+
 /*static*/ TypeRef TypeRef::lookup_by_name(const std::string& name)
 {
     for(const auto& e : s_cache)
@@ -85,7 +92,7 @@ TypeRef::t_cache    TypeRef::s_cache;
             return e.second;
         }
     }
-    throw ::std::runtime_error("Type `" + name + "` not loaded");
+    throw TypeNotLoaded(name);;
 }
 
 bool TypeRef::is_udt(const char* name) const {

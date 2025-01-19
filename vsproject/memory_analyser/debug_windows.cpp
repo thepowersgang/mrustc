@@ -99,6 +99,14 @@ ReadMemory::ReadMemory(LPVOID view, DWORD view_size, const MINIDUMP_MEMORY_LIST*
         }
     }
 }
+
+ReadMemory::ReadFail::ReadFail(const char* type_name, DWORD64 addr)
+    : type_name(type_name)
+    , addr(addr)
+    , msg( FMT_STRING("Can't read " << type_name << " at " << (void*)addr) )
+{
+}
+
 /*static*/ BOOL ReadMemory::read(HANDLE hProcess, DWORD64 qwBaseAddress, PVOID lpBuffer, DWORD nSize, PDWORD lpNumberOfBytesRead)
 {
     return s_self->read_inner(hProcess, qwBaseAddress, lpBuffer, nSize, lpNumberOfBytesRead);

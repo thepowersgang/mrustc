@@ -20,6 +20,12 @@ public:
         }
         bool is_pointer() const { return count == ~0u; }
     };
+    struct TypeNotLoaded: public ::std::exception {
+        std::string name;
+        std::string msg;
+        TypeNotLoaded(const std::string& name);
+        const char* what() const noexcept { return msg.c_str(); }
+    };
 
     std::vector<Wrapper>    wrappers;
     enum {
