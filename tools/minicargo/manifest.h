@@ -14,6 +14,11 @@
 #include <functional>
 #include <path.h>
 
+#ifdef __OpenBSD__
+# undef major
+# undef minor
+#endif
+
 class WorkspaceManifest;
 class PackageManifest;
 class Repository;
