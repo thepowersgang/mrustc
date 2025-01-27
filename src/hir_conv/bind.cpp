@@ -22,6 +22,7 @@ void ConvertHIR_Bind(::HIR::Crate& crate);
 
 namespace {
 
+    static const ::HIR::TypeRef  ty_Self = ::HIR::TypeRef::new_self();
 
     enum class Target {
         TypeItem,
@@ -762,16 +763,15 @@ namespace {
 
                 void enum_supertraits_in(const ::HIR::Trait& tr, ::HIR::TraitPath path)
                 {
-                    ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
                     TRACE_FUNCTION_F(path);
                     tp_stack.push_back(&path);
                     auto& params = path.m_path.m_params;
 
                     // Fill defaulted parameters.
                     // NOTE: Doesn't do much error checking.
-                    fix_param_count(sp, path.m_path, tr.m_params, path.m_path.m_params, false, &ty_self);
+                    fix_param_count(sp, path.m_path, tr.m_params, path.m_path.m_params, false, &ty_Self);
 
-                    auto monomorph_cb = MonomorphStatePtr(&ty_self, &params, nullptr);
+                    auto monomorph_cb = MonomorphStatePtr(&ty_Self, &params, nullptr);
                     auto monomorph_tp = [&](const HIR::TraitPath& tp)->HIR::TraitPath {
                         // TODO: if `path.m_path` has HRLs, then this needs HRLs (only if the HRLs get used?)
                         if( (tp.m_hrtbs && !tp.m_hrtbs->is_empty()) && (path.m_hrtbs && !path.m_hrtbs->is_empty()) ) {
@@ -810,7 +810,7 @@ namespace {
                             if( !b.is_TraitBound() )
                                 continue;
                             const auto& be = b.as_TraitBound();
-                            if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                            if( be.type != ty_Self )
                                 continue;
                             const auto& pt = be.trait;
                             if( pt.m_path.m_path == path.m_path.m_path )
@@ -896,7 +896,7 @@ namespace {
                 if( !b.is_TraitBound() )
                     continue;
                 const auto& be = b.as_TraitBound();
-                if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                if( be.type != ty_Self )
                     continue;
                 const auto& pt = be.trait;
 

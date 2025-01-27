@@ -1316,7 +1316,7 @@ bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data
         if( ! be.type.data().as_Path().binding.is_Opaque() )   continue ;
 
         const auto& be_type_pe = be.type.data().as_Path().path.m_data.as_UfcsKnown();
-        if( be_type_pe.type != ::HIR::TypeRef("Self", GENERIC_Self) )
+        if( be_type_pe.type != ::HIR::TypeRef::new_self() )
             continue ;
         if( be_type_pe.trait.m_path != pe.trait.m_path )
             continue ;
@@ -4943,7 +4943,7 @@ bool TraitResolution::find_method(const Span& sp,
 
         bool found_trait_object = false;
         ::HIR::GenericPath final_trait_path;
-        if( const auto* fcn_ptr = this->trait_contains_method(sp, e.m_trait.m_path, trait, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path) )
+        if( const auto* fcn_ptr = this->trait_contains_method(sp, e.m_trait.m_path, trait, ::HIR::TypeRef::new_self(), method_name,  final_trait_path) )
         {
             DEBUG("- Found trait " << final_trait_path << " (trait object)");
             // - If the receiver is valid, then it's correct (no need to check the type again)
@@ -4973,7 +4973,7 @@ bool TraitResolution::find_method(const Span& sp,
             const auto& trait = this->m_crate.get_trait_by_path(sp, trait_path.m_path.m_path);
 
             ::HIR::GenericPath final_trait_path;
-            if( const auto* fcn_ptr = this->trait_contains_method(sp, trait_path.m_path, trait, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path) )
+            if( const auto* fcn_ptr = this->trait_contains_method(sp, trait_path.m_path, trait, ::HIR::TypeRef::new_self(), method_name,  final_trait_path) )
             {
                 DEBUG("- Found trait " << final_trait_path << " (erased type)");
 
@@ -5011,7 +5011,7 @@ bool TraitResolution::find_method(const Span& sp,
             ::HIR::GenericPath final_trait_path;
 
             auto ty_self = ::HIR::TypeRef::new_path(
-                ::HIR::Path( ::HIR::TypeRef("Self", GENERIC_Self), bound.m_path.clone(), e.item ),
+                ::HIR::Path( ::HIR::TypeRef::new_self(), bound.m_path.clone(), e.item ),
                 HIR::TypePathBinding::make_Opaque({})
                 );
             if( const auto* fcn_ptr = this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ty_self, method_name,  final_trait_path) )
@@ -5046,7 +5046,7 @@ bool TraitResolution::find_method(const Span& sp,
             if( ! be.type.data().as_Path().binding.is_Opaque() )   continue ;
 
             const auto& be_type_pe = be.type.data().as_Path().path.m_data.as_UfcsKnown();
-            if( be_type_pe.type != ::HIR::TypeRef("Self", GENERIC_Self) )
+            if( be_type_pe.type != ::HIR::TypeRef::new_self() )
                 continue ;
             if( be_type_pe.trait.m_path != e.trait.m_path )
                 continue ;
@@ -5056,7 +5056,7 @@ bool TraitResolution::find_method(const Span& sp,
             // Found such a bound, now to test if it is useful
 
             ::HIR::GenericPath final_trait_path;
-            if( const auto* fcn_ptr = this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path) )
+            if( const auto* fcn_ptr = this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, ::HIR::TypeRef::new_self(), method_name,  final_trait_path) )
             {
                 DEBUG("- Found trait " << final_trait_path << " (UFCS Known, trait bounds)");
 
@@ -5091,7 +5091,7 @@ bool TraitResolution::find_method(const Span& sp,
 
         ::HIR::GenericPath final_trait_path;
         const ::HIR::Function* fcn_ptr;
-        if( !(fcn_ptr = this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path)) )
+        if( !(fcn_ptr = this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, ::HIR::TypeRef::new_self(), method_name,  final_trait_path)) )
             continue ;
         DEBUG("- Found trait " << final_trait_path << " (in scope)");
 

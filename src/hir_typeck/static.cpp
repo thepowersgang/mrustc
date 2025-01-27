@@ -504,7 +504,7 @@ bool StaticTraitResolve::find_impl(
                     continue ;
                 {
                     const auto& pe2 = be.type.data().as_Path().path.m_data.as_UfcsKnown();
-                    if( pe2.type != ::HIR::TypeRef("Self",GENERIC_Self) )
+                    if( pe2.type != ::HIR::TypeRef::new_self() )
                         continue ;
                     if( pe2.trait.m_path != pe.trait.m_path )
                         continue ;
@@ -1990,7 +1990,7 @@ bool StaticTraitResolve::iterate_aty_bounds(const Span& sp, const ::HIR::Path::D
         if( ! be.type.data().as_Path().binding.is_Opaque() )   continue ;
 
         const auto& be_type_pe = be.type.data().as_Path().path.m_data.as_UfcsKnown();
-        if( be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
+        if( be_type_pe.type != ::HIR::TypeRef::new_self() )
             continue ;
         if( be_type_pe.trait.m_path != pe.trait.m_path )
             continue ;
@@ -2050,7 +2050,7 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
         return true;
     }
 
-    auto ty_Self = HIR::TypeRef("Self", GENERIC_Self);
+    auto ty_Self = ::HIR::TypeRef::new_self();
     auto monomorph = MonomorphStatePtr(&ty_Self, &trait_path.m_params, nullptr);
     for(const auto& st : trait_ptr.m_all_parent_traits)
     {

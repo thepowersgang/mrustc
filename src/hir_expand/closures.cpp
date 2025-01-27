@@ -14,6 +14,15 @@
 
 namespace {
     inline HIR::ExprNodeP mk_exprnodep(HIR::ExprNode* en, ::HIR::TypeRef ty){ en->m_res_type = mv$(ty); return HIR::ExprNodeP(en); }
+
+    const RcString rcstring_Self = RcString::new_interned("Self");
+    const RcString rcstring_self = RcString::new_interned("self");
+    const RcString rcstring_arg  = RcString::new_interned("arg");
+    const RcString rcstring_args = RcString::new_interned("args");
+    const RcString rcstring_call_free = RcString::new_interned("call_free");
+    const RcString rcstring_call_once = RcString::new_interned("call_once");
+    const RcString rcstring_call_mut  = RcString::new_interned("call_mut");
+    const RcString rcstring_call      = RcString::new_interned("call");
 }
 #define NEWNODE(TY, CLASS, ...)  mk_exprnodep(new HIR::ExprNode_##CLASS(__VA_ARGS__), TY)
 
@@ -340,16 +349,16 @@ namespace {
             case ::HIR::ExprNode_Closure::Class::NoCapture:
             case ::HIR::ExprNode_Closure::Class::Shared:
                 self = NEWNODE(m_closure_type.clone(), Deref, sp,
-                    NEWNODE( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, m_closure_type.clone()), Variable, sp, "self", 0)
+                    NEWNODE( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, m_closure_type.clone()), Variable, sp, rcstring_self, 0)
                     );
                 break;
             case ::HIR::ExprNode_Closure::Class::Mut:
                 self = NEWNODE(m_closure_type.clone(), Deref, sp,
-                    NEWNODE( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, m_closure_type.clone()), Variable, sp, "self", 0)
+                    NEWNODE( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, m_closure_type.clone()), Variable, sp, rcstring_self, 0)
                     );
                 break;
             case ::HIR::ExprNode_Closure::Class::Once:
-                self = NEWNODE(m_closure_type.clone(), Variable, sp, "self", 0);
+                self = NEWNODE(m_closure_type.clone(), Variable, sp, rcstring_self, 0);
                 break;
             }
             return self;
@@ -434,7 +443,7 @@ namespace {
                 // - Get the new PathValue
                 const auto& str = *src_te.node->m_obj_ptr;
                 auto closure_type = ::HIR::TypeRef::new_path( src_te.node->m_obj_path.clone(), &str );
-                auto fn_path = ::HIR::Path(mv$(closure_type), "call_free");
+                auto fn_path = ::HIR::Path(mv$(closure_type), rcstring_call_free);
                 fn_path.m_data.as_UfcsInherent().impl_params = src_te.node->m_obj_path.m_params.clone();
 
                 DEBUG("PathValue " << fn_path);
@@ -537,7 +546,7 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), {}, mv$(closure_type),
                 make_map1(
-                    RcString::new_interned("call_free"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false,
+                    rcstring_call_free, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false,
                         ::HIR::Function( ::HIR::Function::Receiver::Free, ::HIR::GenericParams {}, mv$(args), ret_ty.clone(), mv$(code))
                         }
                     ),
@@ -561,12 +570,12 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
-                    RcString::new_interned("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                    rcstring_call_once, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         ::HIR::Function::Receiver::Value,
                         ::HIR::GenericParams {},
                         make_vec2(
                             ::std::make_pair(
-                                ::HIR::Pattern { HIR::PatternBinding {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
+                                ::HIR::Pattern { HIR::PatternBinding {false, ::HIR::PatternBinding::Type::Move, rcstring_self, 0}, {} },
                                 mv$(ty_of_self)
                                 ),
                             mv$( args_argent )
@@ -599,12 +608,12 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
-                    RcString::new_interned("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                    rcstring_call_mut, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         ::HIR::Function::Receiver::BorrowUnique,
                         mv$(fcn_params),
                         make_vec2(
                             ::std::make_pair(
-                                ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
+                                ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, rcstring_self, 0}, {} },
                                 mv$(ty_of_self)
                                 ),
                             mv$( args_argent )
@@ -633,12 +642,12 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
-                    RcString::new_interned("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                    rcstring_call, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         ::HIR::Function::Receiver::BorrowShared,
                         ::HIR::GenericParams {},
                         make_vec2(
                             ::std::make_pair(
-                                ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
+                                ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, rcstring_self, 0}, {} },
                                 mv$(ty_of_self)
                                 ),
                             mv$(args_argent)
@@ -1251,11 +1260,11 @@ namespace {
                         for(size_t i = 0; i < args_tup_inner.size(); i ++)
                         {
                             const auto& ty = args_tup_inner[i];
-                            dispatch_args.push_back( NEWNODE(ty.clone(), Field, sp,  NEWNODE(args_ty.clone(), Variable, sp, RcString::new_interned("arg"), 1), RcString::new_interned(FMT(i))) );
+                            dispatch_args.push_back( NEWNODE(ty.clone(), Field, sp,  NEWNODE(args_ty.clone(), Variable, sp, rcstring_arg, 1), RcString::new_interned(FMT(i))) );
                             dispatch_node_args_cache.push_back( ty.clone() );
                         }
                         dispatch_node_args_cache.push_back( ret_type.clone() );
-                        auto path = ::HIR::Path(closure_type.clone(), RcString::new_interned("call_free"));
+                        auto path = ::HIR::Path(closure_type.clone(), rcstring_call_free);
                         path.m_data.as_UfcsInherent().impl_params = closure_type.data().as_Path().path.m_data.as_Generic().m_params.clone();
                         HIR::ExprNodeP  dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
                                 mv$(path),
@@ -1264,7 +1273,7 @@ namespace {
                         dynamic_cast<::HIR::ExprNode_CallPath&>(*dispatch_node).m_cache.m_arg_types = mv$(dispatch_node_args_cache);
 
                         auto args_arg = ::std::make_pair(
-                            ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, RcString::new_interned("args"), 1}, {} },
+                            ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, rcstring_args, 1}, {} },
                             args_ty.clone()
                             );
                         HIR::TraitImpl fcn;
@@ -1314,15 +1323,15 @@ namespace {
                 // - FnOnce
                 {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
-                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), RcString::new_interned("call"), HIR::PathParams(HIR::LifetimeRef())),
+                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), rcstring_call, HIR::PathParams(HIR::LifetimeRef())),
                         make_vec2(
-                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Variable, sp, RcString::new_interned("self"), 0)),
-                            NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
+                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Variable, sp, rcstring_self, 0)),
+                            NEWNODE(args_ty.clone(), Variable, sp, rcstring_arg, 1)
                             )
                         );
                     dynamic_cast<::HIR::ExprNode_CallPath&>(*dispatch_node).m_cache.m_arg_types = make_vec3( method_self_ty.clone(), args_ty.clone(), ret_type.clone() );
                     auto args_arg = ::std::make_pair(
-                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "args", 1}, {} },
+                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, rcstring_args, 1}, {} },
                         args_ty.clone()
                         );
                     m_out.impls_closure.push_back(::std::make_pair(
@@ -1334,15 +1343,15 @@ namespace {
                 {
                     auto self_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, closure_type.clone() );
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
-                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), "call", HIR::PathParams(HIR::LifetimeRef())),
+                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), rcstring_call, HIR::PathParams(HIR::LifetimeRef())),
                         make_vec2(
-                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Deref, sp, NEWNODE(mv$(self_ty), Variable, sp, "self", 0))),
-                            NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
+                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Deref, sp, NEWNODE(mv$(self_ty), Variable, sp, rcstring_self, 0))),
+                            NEWNODE(args_ty.clone(), Variable, sp, rcstring_arg, 1)
                             )
                         );
                     dynamic_cast<::HIR::ExprNode_CallPath&>(*dispatch_node).m_cache.m_arg_types = make_vec3( method_self_ty.clone(), args_ty.clone(), ret_type.clone() );
                     auto args_arg = ::std::make_pair(
-                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "args", 1}, {} },
+                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, rcstring_args, 1}, {} },
                         args_ty.clone()
                         );
                     m_out.impls_closure.push_back(::std::make_pair(
@@ -1365,15 +1374,15 @@ namespace {
                 // - FnOnce
                 {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
-                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_FnMut, trait_params.clone()), "call_mut", HIR::PathParams(HIR::LifetimeRef())),
+                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_FnMut, trait_params.clone()), rcstring_call_mut, HIR::PathParams(HIR::LifetimeRef())),
                         make_vec2(
-                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Unique, NEWNODE(closure_type.clone(), Variable, sp, "self", 0)),
-                            NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
+                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Unique, NEWNODE(closure_type.clone(), Variable, sp, rcstring_self, 0)),
+                            NEWNODE(args_ty.clone(), Variable, sp, rcstring_arg, 1)
                             )
                         );
                     dynamic_cast<::HIR::ExprNode_CallPath&>(*dispatch_node).m_cache.m_arg_types = make_vec3( method_self_ty.clone(), args_ty.clone(), ret_type.clone() );
                     auto args_arg = ::std::make_pair(
-                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "args", 1}, {} },
+                        ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, rcstring_args, 1}, {} },
                         args_ty.clone()
                         );
                     m_out.impls_closure.push_back(::std::make_pair(
@@ -1886,7 +1895,7 @@ namespace {
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             auto _ = this->m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
-            ::HIR::TypeRef  self("Self", 0xFFFF);
+            ::HIR::TypeRef  self(rcstring_Self, 0xFFFF);
             m_self_type = &self;
             ::HIR::Visitor::visit_trait(p, item);
             m_self_type = nullptr;

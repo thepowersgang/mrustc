@@ -21,6 +21,7 @@
 
 namespace
 {
+    static const RcString rcstring_Self = RcString::new_interned("Self");
     AST::AbsolutePath sp_to_ap(const HIR::SimplePath& sp) {
         return AST::AbsolutePath(sp.crate_name(), sp.components().to_vec());
     }
@@ -121,7 +122,7 @@ namespace
 
             if( has_self ) {
                 //assert( level == GenericSlot::Level::Top );
-                data.types.push_back( Named<GenericSlot> { "Self", GenericSlot { level, 0xFFFF } } );
+                data.types.push_back( Named<GenericSlot> { rcstring_Self, GenericSlot { level, GENERIC_Self } } );
                 m_name_context.push_back( Ent::make_ConcreteSelf(nullptr) );
             }
             if( !params.m_params.empty() ) {
@@ -219,7 +220,7 @@ namespace
                         return e->clone();
                     }
                     else {
-                        return ::TypeRef(Span(), "Self", 0xFFFF);
+                        return ::TypeRef(Span(), rcstring_Self, GENERIC_Self);
                     }
                     )
                 )
@@ -651,7 +652,7 @@ namespace
                     }
                 TU_ARMA(ConcreteSelf, e) {
                     DEBUG("- ConcreteSelf");
-                    if( name == "Self" )
+                    if( name == rcstring_Self )
                     {
                         switch(mode)
                         {
@@ -2177,7 +2178,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         Resolve_Absolute_Type(context,  *e.inner);
         }
     TU_ARMA(Generic, e) {
-        if( e.name == "Self" )
+        if( e.name == rcstring_Self )
         {
             type = context.get_self();
         }

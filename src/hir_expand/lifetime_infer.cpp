@@ -1414,7 +1414,7 @@ namespace {
             auto ty = HIR::TypeRef::new_path(HIR::Path(
                 node.m_value->m_res_type.clone(),
                 HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(node.span(), "index"), { node.m_index->m_res_type.clone() }),
-                "Output"
+                RcString::new_interned("Output")
                 ), {});
             m_resolve.expand_associated_types(node.span(), ty);
             this->equate_types(node.span(), node.m_res_type, ty);
@@ -1426,7 +1426,7 @@ namespace {
                 auto ty = HIR::TypeRef::new_path(HIR::Path(
                     node.m_value->m_res_type.clone(),
                     HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(node.span(), "deref"), {}),
-                    "Target"
+                    RcString::new_interned("Target")
                     ), {});
                 m_resolve.expand_associated_types(node.span(), ty);
                 this->equate_types(node.span(), node.m_res_type, ty);

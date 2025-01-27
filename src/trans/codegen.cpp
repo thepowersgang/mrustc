@@ -185,7 +185,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
             // `is_extern` is set if there's no HIR (i.e. this function is from an external crate)
             bool is_extern = ! static_cast<bool>(fcn.m_code);
             // If this is a provided trait method, it needs to be monomorphised too.
-            bool is_method = ( fcn.m_args.size() > 0 && visit_ty_with(fcn.m_args[0].second, [&](const auto& x){return x == ::HIR::TypeRef("Self",0xFFFF);}) );
+            bool is_method = ( fcn.m_args.size() > 0 && visit_ty_with(fcn.m_args[0].second, [&](const auto& x){return x == ::HIR::TypeRef::new_self();}) );
             if( pp.has_types() || is_method )
             {
                 ASSERT_BUG(sp, ent.second->monomorphised.code, "Function that required monomorphisation wasn't monomorphised");

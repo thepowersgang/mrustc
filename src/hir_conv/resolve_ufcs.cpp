@@ -463,7 +463,7 @@ namespace resolve_ufcs {
                 if( def == HIR::TypeRef() ) {
                     ERROR(sp, E0000, "");
                 }
-                if( def == ::HIR::TypeRef("Self", 0xFFFF) )
+                if( def == ::HIR::TypeRef::new_self() )
                 {
                     // TODO: This has to be the _exact_ same type, including future ivars.
                     pp.m_types.push_back( pd.as_UfcsUnknown().type.clone() );
@@ -753,7 +753,7 @@ namespace resolve_ufcs {
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - Explicitly encoded because `Self::Type` has a different meaning to `MyType::Type` (the latter will search bounds first)
                 // - NOTE: Could be in an inherent block, where there's no trait
-                if( /*m_current_type &&*/ m_current_trait && e.type == ::HIR::TypeRef("Self", GENERIC_Self) )
+                if( /*m_current_type &&*/ m_current_trait && e.type == ::HIR::TypeRef::new_self() )
                 {
                     ::HIR::GenericPath  trait_path;
                     if( m_current_trait_path->trait_path() )

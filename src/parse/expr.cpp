@@ -1400,7 +1400,8 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
     // `self` can be a value, or start a path
     case TOK_RWORD_SELF:
         if( LOOK_AHEAD(lex) != TOK_DOUBLE_COLON ) {
-            return NEWNODE( AST::ExprNode_NamedValue, AST::Path("self") );
+            static const RcString rcstring_self = RcString::new_interned("self");
+            return NEWNODE( AST::ExprNode_NamedValue, AST::Path(rcstring_self) );
         }
         // Fall through to normal paths
     case TOK_DOUBLE_LT:

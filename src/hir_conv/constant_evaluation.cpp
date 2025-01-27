@@ -22,6 +22,7 @@
 #include <trans/codegen.hpp>    // For encoding as part of transmute
 
 namespace {
+    static const ::HIR::TypeRef  ty_Self = ::HIR::TypeRef::new_self();
 
     void ConvertHIR_ConstantEvaluate_Static(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Static& e);
     void ConvertHIR_ConstantEvaluate_FcnSig(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Function& fcn);
@@ -3047,12 +3048,11 @@ namespace HIR {
         }
 
         if( mir ) {
-            ::HIR::TypeRef  ty_self { "Self", GENERIC_Self };
             // Might want to have a fully-populated MonomorphState for expanding inside impl blocks
             // HACK: Generate a roughly-correct one
             const auto& top_ip = ip.get_top_ip();
             if( top_ip.trait && !top_ip.ty ) {
-                ms.self_ty = ty_self.clone();
+                ms.self_ty = ty_Self.clone();
             }
 
             assert( this->call_stack.empty() );
@@ -3185,7 +3185,7 @@ namespace {
         void visit_trait(::HIR::ItemPath ip, ::HIR::Trait& trait) override
         {
             auto pp_impl = get_params_for_def(trait.m_params);
-            m_monomorph_state.self_ty = ::HIR::TypeRef("Self", GENERIC_Self);
+            m_monomorph_state.self_ty = ::HIR::TypeRef::new_self();
             m_monomorph_state.pp_impl = &pp_impl;
             m_impl_params = &trait.m_params;
 

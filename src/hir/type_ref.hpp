@@ -96,8 +96,14 @@ public:
     TypeRef(::std::vector< ::HIR::TypeRef> sts);
     TypeRef(TypeData_FunctionPointer ft);
 
+    /// Return a refcount-clone of the global `Self` generic
+    static TypeRef new_self();
+    /// Return a refcount-clone of the global `()` type instance
     static TypeRef new_unit();
+    /// Return a refcount-clone of the global `!` type instance
     static TypeRef new_diverge();
+
+    // These all create a new instance, no attempt at de-duplication
     static TypeRef new_infer(unsigned int idx = ~0u, InferClass ty_class = InferClass::None);
     static TypeRef new_borrow(BorrowType bt, TypeRef inner);
     static TypeRef new_borrow(BorrowType bt, TypeRef inner, HIR::LifetimeRef lft);
@@ -110,11 +116,11 @@ public:
     static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr);
     static TypeRef new_generator(::HIR::ExprNode_Generator* node_ptr);
 
-    // Duplicate refcount
+    /// Create a new instance by incrementing refcount
     TypeRef clone() const;
-    // Duplicate data, inner refcount
+    /// Create a new instance by copying TypeData (only one layer deep)
     TypeRef clone_shallow() const;
-    /// Duplicate recursively
+    ///// Duplicate recursively
     //TypeRef clone_deep() const;
     void fmt(::std::ostream& os) const;
 

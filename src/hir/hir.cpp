@@ -234,7 +234,7 @@ bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const
     ::HIR::TypeData_FunctionPointer ft;
     ft.is_unsafe   = false;
     ft.is_variadic = false;
-    ft.m_abi = ABI_RUST;
+    ft.m_abi = RcString::new_interned(ABI_RUST);
     ft.m_rettype = std::move(ret_ty);
     ft.m_arg_types.reserve(fields.size());
     for(const auto& fld : fields)

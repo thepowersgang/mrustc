@@ -33,6 +33,10 @@ RcString    g_crate_name;
 ::HIR::Crate*   g_crate_ptr = nullptr;
 const ::AST::Crate* g_ast_crate_ptr;
 
+namespace {
+    const ::HIR::TypeRef ty_Self = HIR::TypeRef::new_self();
+}
+
 // --------------------------------------------------------------------
 HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
 {
@@ -184,7 +188,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         if( be->slot == GENERIC_Self )
         {
             // HACK: Return `<Self>::` (to be expanded later on)
-            return ::HIR::Path(::HIR::TypeRef("Self", GENERIC_Self), "");
+            return ::HIR::Path(HIR::TypeRef::new_self(), "");
         }
     }
     return LowerHIR_Path(sp, path, pc);
@@ -676,7 +680,6 @@ namespace {
             const Monomorphiser& ms
         )
         {
-            static ::HIR::TypeRef ty_self = HIR::TypeRef("Self", GENERIC_Self);
             TRACE_FUNCTION_F(path);
             if(pbe.hir)
             {
@@ -687,7 +690,7 @@ namespace {
                 if(it != trait.m_types.end()) {
                     return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
                 }
-                auto cb = MonomorphStatePtr(&ty_self, &path.m_params, nullptr);
+                auto cb = MonomorphStatePtr(&ty_Self, &path.m_params, nullptr);
                 for(const auto& st : trait.m_all_parent_traits)
                 {
                     // NOTE: st.m_trait_ptr isn't populated yet
@@ -713,7 +716,7 @@ namespace {
                     }
                 }
 
-                auto cb = MonomorphStatePtr(&ty_self, &path.m_params, nullptr);
+                auto cb = MonomorphStatePtr(&ty_Self, &path.m_params, nullptr);
                 for( const auto& st : trait.supertraits() )
                 {
                     auto b = LowerHIR_TraitPath(sp, *st.ent.path, st.ent.hrbs, true);
@@ -1475,7 +1478,7 @@ namespace {
     {
         auto this_trait = ::HIR::GenericPath( trait_path );
         this_trait.m_params = rv.m_params.make_nop_params(0);
-        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ {}, ::HIR::TypeRef("Self",0xFFFF), { {}, mv$(this_trait) } }) );
+        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ {}, ty_Self.clone(), { {}, mv$(this_trait) } }) );
     }
 
     for(const auto& item : f.items())
@@ -1527,8 +1530,7 @@ namespace {
                 }) );
             }
         TU_ARMA(Function, i) {
-            ::HIR::TypeRef  self_type {"Self", 0xFFFF};
-            auto fcn = LowerHIR_Function(item_path, item.attrs, i, self_type);
+            auto fcn = LowerHIR_Function(item_path, item.attrs, i, ty_Self);
             fcn.m_save_code = true;
             rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( mv$(fcn) )) );
             }
@@ -1572,7 +1574,6 @@ namespace {
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& real_self_type)
 {
     static Span sp;
-    static HIR::TypeRef explicit_self_type = HIR::TypeRef("Self", 0xFFFF);
 
     TRACE_FUNCTION_F(p);
 
@@ -1598,11 +1599,11 @@ namespace {
 
             bool is_valid_custom_receiver(::HIR::TypeRef& ty) const {
                 // - The path must include Self as a (the only?) type param.
-                if( ty == explicit_self_type ) {
+                if( ty == ty_Self ) {
                     return true;
                 }
                 else if( ty == real_self_type ) {
-                    ty = explicit_self_type.clone();
+                    ty = ty_Self.clone();
                     return true;
                 }
                 else if( auto* e = ty.data_mut().opt_Path() )
@@ -1633,11 +1634,11 @@ namespace {
             }
         } ivcr(sp, real_self_type);
 
-        if( arg_self_ty == explicit_self_type  || arg_self_ty == real_self_type ) {
+        if( arg_self_ty == ty_Self  || arg_self_ty == real_self_type ) {
             receiver = ::HIR::Function::Receiver::Value;
         }
         else if(auto* e = arg_self_ty.data_mut().opt_Borrow() ) {
-            if( e->inner == explicit_self_type || e->inner == real_self_type )
+            if( e->inner == ty_Self || e->inner == real_self_type )
             {
                 switch(e->type)
                 {
@@ -1660,9 +1661,9 @@ namespace {
                 auto p = g_crate_ptr->get_lang_item_path_opt("owned_box");
                 if( pe->m_path == p )
                 {
-                    if( pe->m_params.m_types.size() >= 1 && (pe->m_params.m_types[0] == explicit_self_type || pe->m_params.m_types[0] == real_self_type) )
+                    if( pe->m_params.m_types.size() >= 1 && (pe->m_params.m_types[0] == ty_Self || pe->m_params.m_types[0] == real_self_type) )
                     {
-                        pe->m_params.m_types[0] = explicit_self_type.clone();
+                        pe->m_params.m_types[0] = ty_Self.clone();
                         receiver = ::HIR::Function::Receiver::Box;
                     }
                 }

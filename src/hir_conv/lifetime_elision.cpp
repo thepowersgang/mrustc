@@ -775,7 +775,7 @@ namespace
                     H(const HIR::Crate& crate): m_crate(crate) {
                     }
                     bool enum_supertraits(const Span& sp, const HIR::Trait& tr, const HIR::GenericPath& tr_path, ::std::function<bool(HIR::GenericPath)> cb) {
-                        static const HIR::TypeRef   self = HIR::TypeRef("Self", GENERIC_Self);
+                        static const HIR::TypeRef   self = ::HIR::TypeRef::new_self();
                         MonomorphStatePtr   ms(&self, &tr_path.m_params, nullptr);
 
                         if( tr.m_all_parent_traits.size() > 0 ) {

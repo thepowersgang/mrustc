@@ -46,6 +46,7 @@ namespace {
         }
     };
     const RcString rcstring_drop = RcString::new_interned("drop");
+    const RcString rcstring_self = RcString::new_interned("self");
 }
 
 namespace {
@@ -183,7 +184,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
         ::HIR::Function::Receiver::BorrowShared,
         ::HIR::GenericParams {},
         /*m_args=*/::make_vec1(::std::make_pair(
-            ::HIR::Pattern( ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Move, "self", 0), ::HIR::Pattern::Data::make_Any({}) ),
+            ::HIR::Pattern( ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Move, rcstring_self, 0), ::HIR::Pattern::Data::make_Any({}) ),
             ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone())
             )),
         /*m_return=*/ty.clone(),
@@ -408,7 +409,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 ::HIR::Function::Receiver::Value,
                 ::HIR::GenericParams {},
                 /*m_args=*/::make_vec1(::std::make_pair(
-                    ::HIR::Pattern( ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Move, "self", 0), ::HIR::Pattern::Data::make_Any({}) ),
+                    ::HIR::Pattern( ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Move, rcstring_self, 0), ::HIR::Pattern::Data::make_Any({}) ),
                     ty.clone()
                 )),
                 /*m_return=*/std::move(out_ty),

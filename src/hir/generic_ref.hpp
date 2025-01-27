@@ -40,7 +40,7 @@ struct GenericRef
         assert(idx < 256);
     }
     static GenericRef new_self() {
-        return GenericRef("Self", GENERIC_Self);
+        return GenericRef(RcString::new_interned("Self"), GENERIC_Self);
     }
 
     bool is_self() const {

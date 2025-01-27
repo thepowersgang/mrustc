@@ -684,6 +684,14 @@ void Expand_Path(const ExpandState& es, ::AST::Module& mod, ::AST::Path& p)
         }
     }
 }
+namespace {
+    static AST::Path get_path(const RcString& core_crate, const char* c1, const char* c2) {
+        return AST::AbsolutePath(core_crate, { RcString::new_interned(c1), RcString::new_interned(c2) });
+    }
+    static AST::Path get_path(const RcString& core_crate, const char* c1, const char* c2, const char* c3) {
+        return AST::AbsolutePath(core_crate, { RcString::new_interned(c1), RcString::new_interned(c2), RcString::new_interned(c3) });
+    }
+}
 
 struct CExpandExpr:
     public ::AST::NodeVisitor
@@ -1210,11 +1218,14 @@ struct CExpandExpr:
         Expand_Pattern(this->expand_state, this->cur_mod(),  node.m_pattern, false);
         if(node.m_type == ::AST::ExprNode_Loop::FOR)
         {
+            static const RcString rcstring_into_iter = RcString::new_interned("into_iter");
+            static const RcString rcstring_next = RcString::new_interned("next");
+            static const RcString rcstring_it = RcString::new_interned("it");
             auto core_crate = crate.m_ext_cratename_core;
-            auto path_Some = ::AST::Path(core_crate, {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("Some")});
-            auto path_None = ::AST::Path(core_crate, {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("None")});
-            auto path_IntoIterator = ::AST::Path(core_crate, {::AST::PathNode("iter"), ::AST::PathNode("IntoIterator")});
-            auto path_Iterator = ::AST::Path(core_crate, {::AST::PathNode("iter"), ::AST::PathNode("Iterator")});
+            auto path_Some = get_path(core_crate, "option", "Option", "Some");
+            auto path_None = get_path(core_crate, "option", "Option", "None");
+            auto path_IntoIterator = get_path(core_crate, "iter", "IntoIterator");
+            auto path_Iterator     = get_path(core_crate, "iter", "Iterator"    );
             // Desugar into:
             // {
             //     match <_ as ::iter::IntoIterator>::into_iter(`m_cond`) {
@@ -1243,20 +1254,20 @@ struct CExpandExpr:
 
             replacement.reset(new ::AST::ExprNode_Match(
                 ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_IntoIterator, { ::AST::PathNode("into_iter") } ),
+                    ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_IntoIterator, { ::AST::PathNode(rcstring_into_iter) } ),
                     ::make_vec1( mv$(node.m_cond) )
                     )),
                 ::make_vec1(::AST::ExprNode_Match_Arm(
-                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "it") ),
+                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), rcstring_it) ),
                     {},
                     ::AST::ExprNodeP(new ::AST::ExprNode_Loop(
                         node.m_label,
                         ::AST::ExprNodeP(new ::AST::ExprNode_Match(
                             ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                                ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_Iterator, { ::AST::PathNode("next") } ),
+                                ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_Iterator, { ::AST::PathNode(rcstring_next) } ),
                                 ::make_vec1( ::AST::ExprNodeP(new ::AST::ExprNode_UniOp(
                                     ::AST::ExprNode_UniOp::REFMUT,
-                                    ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("it") ))
+                                    ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path(rcstring_it) ))
                                     )) )
                                 )),
                             mv$(arms)
@@ -1385,7 +1396,7 @@ struct CExpandExpr:
         * }
         */
 #if 1
-        Ident   label({}, "#iflet");
+        Ident   label({}, RcString::new_interned("#iflet"));
         auto node_body = desugar_let_chain(node.span(), node.m_conditions,
             AST::ExprNodeP { new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, label, std::move(node.m_true)) },
             [&](){ return AST::ExprNodeP { new AST::ExprNode_Block() }; }
@@ -1494,31 +1505,33 @@ struct CExpandExpr:
         if( this->in_assign_lhs ) {
             return;
         }
+        static const RcString rcstring_start = RcString::new_interned("start");
+        static const RcString rcstring_end   = RcString::new_interned("end");
         switch(node.m_type)
         {
         case ::AST::ExprNode_BinOp::RANGE: {
             // NOTE: Not language items pre 1.39
             auto core_crate = crate.m_ext_cratename_core;
-            auto path_Range     = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Range") });
-            auto path_RangeFrom = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeFrom") });
-            auto path_RangeTo   = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeTo") });
-            auto path_RangeFull = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeFull") });
+            auto path_Range     = get_path(core_crate, "ops", "Range"    );
+            auto path_RangeFrom = get_path(core_crate, "ops", "RangeFrom");
+            auto path_RangeTo   = get_path(core_crate, "ops", "RangeTo"  );
+            auto path_RangeFull = get_path(core_crate, "ops", "RangeFull");
 
             ::AST::ExprNode_StructLiteral::t_values values;
             if( node.m_left && node.m_right )
             {
-                values.push_back({ {}, "start", mv$(node.m_left ) });
-                values.push_back({ {}, "end"  , mv$(node.m_right) });
+                values.push_back({ {}, rcstring_start, mv$(node.m_left ) });
+                values.push_back({ {}, rcstring_end  , mv$(node.m_right) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_Range), nullptr, mv$(values)) );
             }
             else if( node.m_left )
             {
-                values.push_back({ {}, "start", mv$(node.m_left ) });
+                values.push_back({ {}, rcstring_start, mv$(node.m_left ) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeFrom), nullptr, mv$(values)) );
             }
             else if( node.m_right )
             {
-                values.push_back({ {}, "end"  , mv$(node.m_right) });
+                values.push_back({ {}, rcstring_end  , mv$(node.m_right) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeTo), nullptr, mv$(values)) );
             }
             else
@@ -1530,26 +1543,26 @@ struct CExpandExpr:
         case ::AST::ExprNode_BinOp::RANGE_INC: {
             // NOTE: Not language items pre 1.54
             auto core_crate = crate.m_ext_cratename_core;
-            auto path_None = ::AST::Path(core_crate, { ::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("None") });
-            auto path_RangeInclusive_NonEmpty = ::AST::Path(core_crate, { ::AST::PathNode("ops"), ::AST::PathNode("RangeInclusive") });
-            auto path_RangeToInclusive        = ::AST::Path(core_crate, { ::AST::PathNode("ops"), ::AST::PathNode("RangeToInclusive") });
+            auto path_None = get_path(core_crate, "option", "Option", "None");
+            auto path_RangeInclusive_NonEmpty = get_path(core_crate, "ops", "RangeInclusive"  );
+            auto path_RangeToInclusive        = get_path(core_crate, "ops", "RangeToInclusive");
 
             if( node.m_left )
             {
                 ::AST::ExprNode_StructLiteral::t_values values;
-                values.push_back({ {}, "start", mv$(node.m_left)  });
-                values.push_back({ {}, "end"  , mv$(node.m_right) });
+                values.push_back({ {}, rcstring_start, mv$(node.m_left)  });
+                values.push_back({ {}, rcstring_end  , mv$(node.m_right) });
                 switch(gTargetVersion)
                 {
                 case TargetVersion::Rustc1_19:
                     break;
                 case TargetVersion::Rustc1_29:
                 case TargetVersion::Rustc1_39:
-                    values.push_back({ {}, "is_empty", ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue(mv$(path_None))) });
+                    values.push_back({ {}, RcString::new_interned("is_empty"), ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue(mv$(path_None))) });
                     break;
                 case TargetVersion::Rustc1_54:
                 case TargetVersion::Rustc1_74:
-                    values.push_back({ {}, "exhausted", ::AST::ExprNodeP(new ::AST::ExprNode_Bool(false)) });
+                    values.push_back({ {}, RcString::new_interned("exhausted"), ::AST::ExprNodeP(new ::AST::ExprNode_Bool(false)) });
                     break;
                 }
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeInclusive_NonEmpty), nullptr, mv$(values)) );
@@ -1557,7 +1570,7 @@ struct CExpandExpr:
             else
             {
                 ::AST::ExprNode_StructLiteral::t_values values;
-                values.push_back({ {}, "end",  mv$(node.m_right) });
+                values.push_back({ {}, rcstring_end,  mv$(node.m_right) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeToInclusive), nullptr, mv$(values)) );
             }
             replacement->set_span( node.span() );
@@ -1577,16 +1590,18 @@ struct CExpandExpr:
             //auto it = crate.m_lang_items.find("try");
             //ASSERT_BUG(node.span(), it != crate.m_lang_items.end(), "Can't find the `try` lang item");
             //auto path_Try = it->second;
-            auto path_Try = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Try")});
+            auto path_Try = get_path(core_crate, "ops", "Try");
+            static const RcString rcstring_v = RcString::new_interned("v");
+            static const RcString rcstring_r = RcString::new_interned("r");
             if(TARGETVER_MOST_1_39)
             {
-                auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
-                auto path_Err = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
-                auto path_From = ::AST::Path(core_crate, {::AST::PathNode("convert"), ::AST::PathNode("From")});
+                auto path_Ok   = get_path(core_crate, "result", "Result", "Ok" );
+                auto path_Err  = get_path(core_crate, "result", "Result", "Err");
+                auto path_From = get_path(core_crate, "convert", "From");
                 path_From.nodes().back().args().m_entries.push_back( ::TypeRef(node.span()) );
 
-                auto path_Try_into_result = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode("into_result") });
-                auto path_Try_from_error  = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode("from_error") });
+                auto path_Try_into_result = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode(RcString::new_interned("into_result")) });
+                auto path_Try_from_error  = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode(RcString::new_interned("from_error" )) });
 
                 // Desugars into
                 // ```
@@ -1599,23 +1614,23 @@ struct CExpandExpr:
                 ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
                 // `Ok(v) => v,`
                 arms.push_back(::AST::ExprNode_Match_Arm(
-                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "v") )) ),
+                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), rcstring_v) )) ),
                     {},
-                    ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path("v") ) )
+                    ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(rcstring_v) ) )
                     ));
                 // `Err(e) => return Try::from_error(From::from(e)),`
                 arms.push_back(::AST::ExprNode_Match_Arm(
-                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "e") )) ),
+                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), rcstring_r) )) ),
                     {},
                     ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
-                        (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of return if in a try block.
+                        (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of `return` if in a try block.
                         (m_try_stack.empty() ? RcString("") : m_try_stack.back()),
                         ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
                             ::AST::Path(path_Try_from_error),
                             ::make_vec1(
                                 ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                                    ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), mv$(path_From), { ::AST::PathNode("from") }),
-                                    ::make_vec1( ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path("e") ) ) )
+                                    ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), mv$(path_From), { ::AST::PathNode(RcString::new_interned("from")) }),
+                                    ::make_vec1( ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(rcstring_r) ) ) )
                                     ))
                                 )
                             ))
@@ -1632,29 +1647,29 @@ struct CExpandExpr:
             }
             else  // 1.54+ - TryV2
             {
-                auto path_Try_branch = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode("branch") });
+                auto path_Try_branch = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode(RcString::new_interned("branch")) });
                 // Not a lang item
-                auto path_ControlFlow_Continue = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("ControlFlow"), ::AST::PathNode("Continue")});
-                auto path_ControlFlow_Break    = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("ControlFlow"), ::AST::PathNode("Break"   )});
-                auto path_FromResidual_from_residual = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("FromResidual"), ::AST::PathNode("from_residual")});
+                auto path_ControlFlow_Continue = get_path(core_crate, "ops", "ControlFlow", "Continue");
+                auto path_ControlFlow_Break    = get_path(core_crate, "ops", "ControlFlow", "Break"   );
+                auto path_FromResidual_from_residual = get_path(core_crate, "ops", "FromResidual", "from_residual");
 
                 ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
                 // `Continue(v) => v,`
                 arms.push_back(::AST::ExprNode_Match_Arm(
-                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_ControlFlow_Continue, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "v") )) ),
+                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_ControlFlow_Continue, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), rcstring_v) )) ),
                     {},
-                    ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path("v") ) )
+                    ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(rcstring_v) ) )
                     ));
                 // `Break(r) => return R::from_residual(r),`
                 arms.push_back(::AST::ExprNode_Match_Arm(
-                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_ControlFlow_Break, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "e") )) ),
+                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_ControlFlow_Break, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), rcstring_r) )) ),
                     {},
                     ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
                         (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of return if in a try block.
                         (m_try_stack.empty() ? RcString("") : m_try_stack.back()),
                         ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
                             ::AST::Path(path_FromResidual_from_residual),
-                            ::make_vec1(::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path("e") ) ))
+                            ::make_vec1(::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(rcstring_r) ) ))
                             ))
                         ))
                     ));

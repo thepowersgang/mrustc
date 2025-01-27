@@ -316,11 +316,17 @@ inline TypeRef::TypeRef(TypeData_FunctionPointer ft):
 {
 }
 
+inline TypeRef TypeRef::new_self() {
+    static const TypeRef rv = TypeRef(RcString::new_interned("Self"), GENERIC_Self);
+    return rv.clone();
+}
 inline TypeRef TypeRef::new_unit() {
-    return TypeRef(TypeData::make_Tuple({}));
+    static const TypeRef rv = TypeRef(TypeData::make_Tuple({}));
+    return rv.clone();
 }
 inline TypeRef TypeRef::new_diverge() {
-    return TypeRef(TypeData::make_Diverge({}));
+    static const TypeRef rv = TypeRef(TypeData::make_Diverge({}));
+    return rv.clone();
 }
 inline TypeRef TypeRef::new_infer(unsigned int idx /*= ~0u*/, InferClass ty_class /*= InferClass::None*/) {
     return TypeRef(TypeData::make_Infer({idx, ty_class}));

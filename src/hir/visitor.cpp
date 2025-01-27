@@ -223,7 +223,7 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
     }
     auto trait_sp = p.get_simple_path();
     auto trait_pp = item.m_params.make_nop_params(0);
-    static HIR::TypeRef ty_Self = ::HIR::TypeRef("Self", GENERIC_Self);
+    static const HIR::TypeRef ty_Self = ::HIR::TypeRef::new_self();
     ItemPath    trait_ip(ty_Self, trait_sp, trait_pp);
     TRACE_FUNCTION;
 

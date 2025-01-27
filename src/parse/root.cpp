@@ -459,6 +459,8 @@ AST::Function::Arg Parse_Function_Arg(TokenStream& lex, bool expect_named)
 AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_prototype, std::string abi, AST::Function::Flags flags)
 {
     TRACE_FUNCTION;
+    static const RcString rcstring_self = RcString::new_interned("self");
+    static const RcString rcstring_Self = RcString::new_interned("Self");
     ProtoSpan   ps = lex.start_span();
 
     Token   tok;
@@ -498,7 +500,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
             }
             CHECK_TOK(tok, TOK_RWORD_SELF);
             auto sp = lex.end_span(ps);
-            args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, ::std::move(lifetime), is_mut, TypeRef(sp, "Self", 0xFFFF))) );
+            args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, ::std::move(lifetime), is_mut, TypeRef(sp, rcstring_Self, 0xFFFF))) );
             if( allow_self == false )
                 ERROR(lex.point_span(), E0000, "Self binding not expected here");
 
@@ -518,7 +520,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
             auto binding_sp = lex.end_span(ps);
-            TypeRef ty = TypeRef( lex.point_span(), "Self", 0xFFFF );
+            TypeRef ty = TypeRef( lex.point_span(), rcstring_Self, 0xFFFF );
             if( GET_TOK(tok, lex) == TOK_COLON ) {
                 // Typed mut self
                 ty = Parse_Type(lex);
@@ -526,7 +528,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
             else {
                 PUTBACK(tok, lex);
             }
-            args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), binding_sp, "self"), mv$(ty)) );
+            args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), binding_sp, rcstring_self), mv$(ty)) );
             GET_TOK(tok, lex);
         }
     }
@@ -536,7 +538,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
         if( allow_self == false )
             throw ParseError::Generic(lex, "Self binding not expected");
         auto binding_sp = lex.end_span(ps);
-        TypeRef ty = TypeRef( lex.point_span(), "Self", 0xFFFF );
+        TypeRef ty = TypeRef( lex.point_span(), rcstring_Self, 0xFFFF );
         if( GET_TOK(tok, lex) == TOK_COLON ) {
             // Typed mut self
             ty = Parse_Type(lex);
@@ -544,7 +546,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
         else {
             PUTBACK(tok, lex);
         }
-        args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), binding_sp, "self"), mv$(ty)) );
+        args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), binding_sp, rcstring_self), mv$(ty)) );
         GET_TOK(tok, lex);
     }
     else
@@ -819,7 +821,7 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         if( GET_TOK(tok, lex) == TOK_COLON )
         {
             // Bounded associated type
-            Parse_TypeBound(lex, bounds, TypeRef(lex.point_span(), "Self", 0xFFFF));
+            Parse_TypeBound(lex, bounds, TypeRef(lex.point_span(), RcString::new_interned("Self"), 0xFFFF));
             GET_TOK(tok, lex);
         }
 

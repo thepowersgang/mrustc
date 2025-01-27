@@ -543,7 +543,8 @@ namespace {
         }
         for(auto ent : il)
         {
-            ap.nodes.push_back(ent);
+            // TODO: This could be slow (looking up the interned string), but most of these are repeated a LOT
+            ap.nodes.push_back(RcString::new_interned(ent));
         }
         toks.push_back(Token(InterpolatedFragment( std::move(ap) )));
     }

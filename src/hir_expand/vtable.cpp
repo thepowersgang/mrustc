@@ -130,7 +130,7 @@ namespace {
                         HIR::TypeRef monomorph_type(const Span& sp, const HIR::TypeRef& t, bool allow_infer=true) const override {
                             if(t.data().is_Path() && t.data().as_Path().path.m_data.is_UfcsKnown()) {
                                 const auto& pe = t.data().as_Path().path.m_data.as_UfcsKnown();
-                                bool is_self = (pe.type == ::HIR::TypeRef(RcString::new_interned("Self"), 0xFFFF));
+                                bool is_self = (pe.type == ::HIR::TypeRef::new_self());
                                 auto it = trait_ptr->m_type_indexes.find(pe.item);
                                 bool has_item = (it != trait_ptr->m_type_indexes.end());
                                 // TODO: Check the trait against m_type_indexes
@@ -148,7 +148,7 @@ namespace {
                     } m;
                     m.trait_ptr = trait_ptr;
                     auto clone_self_cb = [](const auto& t, auto&o) {
-                        if( t == ::HIR::TypeRef("Self", 0xFFFF) ) {
+                        if( t == ::HIR::TypeRef::new_self() ) {
                             o = ::HIR::TypeRef::new_unit();
                             return true;
                         }
@@ -164,7 +164,7 @@ namespace {
                             }
                             if( ::std::any_of(ve.m_params.m_bounds.begin(), ve.m_params.m_bounds.end(), [&](const auto& b){
                                 return b.is_TraitBound()
-                                    && b.as_TraitBound().type == ::HIR::TypeRef("Self", 0xFFFF)
+                                    && b.as_TraitBound().type == ::HIR::TypeRef::new_self()
                                     && b.as_TraitBound().trait.m_path.m_path == m_outer->m_lang_Sized;
                                 }) )
                             {
@@ -204,7 +204,7 @@ namespace {
 
                             // Detect use of `Self` and don't create the vtable if there is.
                             // NOTE: Associated types where replaced by clone_ty_with
-                            if( visit_ty_with(fcn_type, [&](const auto& t){ return (t == ::HIR::TypeRef("Self", 0xFFFF)); }) )
+                            if( visit_ty_with(fcn_type, [&](const auto& t){ return (t == ::HIR::TypeRef::new_self()); }) )
                             {
                                 DEBUG("- '" << vi.first << "' NOT object safe (uses Self), not creating vtable - " << fcn_type);
                                 return false;
@@ -234,7 +234,7 @@ namespace {
                     if( supertrait_flags ) {
                         supertrait_flags->reserve(tr.m_all_parent_traits.size());
                         for(const auto& st : tr.m_all_parent_traits) {
-                            ::HIR::TypeRef  self("Self", 0xFFFF);
+                            auto self = ::HIR::TypeRef::new_self();
                             auto st_mono = MonomorphStatePtr(&self, &trait_path.m_params, nullptr).monomorph_traitpath(sp, st, false);
                             // NOTE: Doesn't trigger non-object-safe
                             supertrait_flags->push_back( add_ents_from_trait(*st.m_trait_ptr, st.m_path, nullptr) );
@@ -249,7 +249,7 @@ namespace {
             ::HIR::TypeData_FunctionPointer ft;
             ft.is_unsafe = false;
             ft.is_variadic = false;
-            ft.m_abi = ABI_RUST;
+            ft.m_abi = RcString::new_interned(ABI_RUST);
             ft.m_rettype = ::HIR::TypeRef::new_unit();
             ft.m_arg_types.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ::HIR::TypeRef::new_unit()) );
             vtc.fields.push_back(::std::make_pair( "#drop_glue", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::TypeRef(mv$(ft)) } ));
@@ -292,7 +292,7 @@ namespace {
                     i ++;
                 }
                 for(const auto& ty : tr.m_type_indexes) {
-                    ::HIR::Path path( ::HIR::TypeRef("Self",0xFFFF), trait_path.clone(), ty.first );
+                    ::HIR::Path path( ::HIR::TypeRef::new_self(), trait_path.clone(), ty.first );
                     params.m_types.push_back( ::HIR::TypeRef::new_path( mv$(path), {} ) );
                 }
             }

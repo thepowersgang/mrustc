@@ -237,7 +237,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp, const ::H
         auto it = e.impl->m_types.find(name);
         if( it == e.impl->m_types.end() )
         {
-            static HIR::TypeRef ty_self { "Self", GENERIC_Self };
+            static const HIR::TypeRef ty_self = ::HIR::TypeRef::new_self();
             if( e.trait_ptr->m_types.count(name) && e.trait_ptr->m_types.at(name).m_default != HIR::TypeRef() ) {
                 // Monomorph twice, first from trait to trait impl, second from trait impl to current
                 auto def = MonomorphStatePtr(&ty_self, &e.impl->m_trait_args, nullptr).monomorph_type(sp, e.trait_ptr->m_types.at(name).m_default);

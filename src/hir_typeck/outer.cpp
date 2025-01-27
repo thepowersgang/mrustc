@@ -339,7 +339,7 @@ namespace {
                 m_current_lifetime.push_back(&e->lifetime);
             }
 
-            HIR::TypeRef    self("Self", GENERIC_Self);
+            auto self = ::HIR::TypeRef::new_self();
             if( ty.data().is_ErasedType() ) {
                 m_self_types.push_back(&self);
             }
@@ -787,8 +787,8 @@ namespace {
             m_current_trait_path = &p;
 
             auto _ = m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
-            ::HIR::TypeRef tr { "Self", 0xFFFF };
-            m_self_types.push_back(&tr);
+            auto self = ::HIR::TypeRef::new_self();
+            m_self_types.push_back(&self);
             ::HIR::Visitor::visit_trait(p, item);
             m_self_types.pop_back();
 
@@ -812,7 +812,7 @@ namespace {
         void visit_associatedtype(::HIR::ItemPath p, ::HIR::AssociatedType& item) override
         {
             // Push `Self = <Self as CurTrait>::Type` for processing defaults in the bounds.
-            auto path_aty = ::HIR::Path( ::HIR::TypeRef("Self", GENERIC_Self), this->get_current_trait_gp(), p.get_name() );
+            auto path_aty = ::HIR::Path( ::HIR::TypeRef::new_self(), this->get_current_trait_gp(), p.get_name() );
             auto ty_aty = ::HIR::TypeRef::new_path( mv$(path_aty), ::HIR::TypePathBinding::make_Opaque({}) );
             m_self_types.push_back(&ty_aty);
 

@@ -7467,7 +7467,7 @@ namespace
                     new_ty = te->decay(sp);
                 }
                 else if( const auto* t1_c = possible_tys[0].ty->data().opt_Closure() ) {
-                    auto ft = HIR::TypeData_FunctionPointer { HIR::GenericParams(), false, false, ABI_RUST, t1_c->node->m_return.clone(), {} };
+                    auto ft = HIR::TypeData_FunctionPointer { HIR::GenericParams(), false, false, RcString::new_interned(ABI_RUST), t1_c->node->m_return.clone(), {} };
                     for(const auto& t : t1_c->node->m_args)
                         ft.m_arg_types.push_back(t.second.clone());
                     new_ty = HIR::TypeRef(std::move(ft));

@@ -128,7 +128,7 @@ namespace {
                 method_path = ::HIR::Path(
                     ty_val.clone(),
                     ::HIR::GenericPath( m_crate.get_lang_item_path(sp, "fn"), mv$(trait_args) ),
-                    "call",
+                    RcString::new_interned("call"),
                     HIR::PathParams(HIR::LifetimeRef())
                     );
                 break;
@@ -138,7 +138,7 @@ namespace {
                 method_path = ::HIR::Path(
                     ty_val.clone(),
                     ::HIR::GenericPath( m_crate.get_lang_item_path(sp, "fn_mut"), mv$(trait_args) ),
-                    "call_mut",
+                    RcString::new_interned("call_mut"),
                     HIR::PathParams(HIR::LifetimeRef())
                     );
                 break;
@@ -147,7 +147,7 @@ namespace {
                 method_path = ::HIR::Path(
                     ty_val.clone(),
                     ::HIR::GenericPath( m_crate.get_lang_item_path(sp, "fn_once"), mv$(trait_args) ),
-                    "call_once"
+                    RcString::new_interned("call_once")
                     );
                 break;
 
@@ -607,7 +607,7 @@ namespace {
             pp_method.m_lifetimes.push_back(HIR::LifetimeRef());
 
             m_replacement = NEWNODE( ::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()), CallPath, sp,
-                ::HIR::Path(ty_val.clone(), mv$(trait), method, mv$(pp_method)),
+                ::HIR::Path(ty_val.clone(), mv$(trait), RcString::new_interned(method), mv$(pp_method)),
                 mv$(args)
                 );
             // Populate the cache for later passes

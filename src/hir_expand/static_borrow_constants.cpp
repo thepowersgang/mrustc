@@ -478,11 +478,11 @@ namespace static_borrow_constants {
             m_current_module_path = par_p;
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override {
-            ::HIR::TypeRef  self("Self", 0xFFFF);
+            auto self = ::HIR::TypeRef::new_self();
             m_self_type = &self;
             auto _ = m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
-            m_self_type = &self;
+            m_self_type = nullptr;
         }
         void visit_type_impl(::HIR::TypeImpl& impl) override {
             DEBUG("impl " << impl.m_params.fmt_args() << " " << impl.m_type << " (from " << impl.m_src_module << ")");
@@ -1164,11 +1164,11 @@ namespace static_borrow_constants {
             m_current_module_path = par_p;
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override {
-            ::HIR::TypeRef  self("Self", 0xFFFF);
+            auto self = ::HIR::TypeRef::new_self();
             m_self_type = &self;
             auto _ = m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
-            m_self_type = &self;
+            m_self_type = nullptr;
         }
         void visit_type_impl(::HIR::TypeImpl& impl) override {
             DEBUG("impl " << impl.m_params.fmt_args() << " " << impl.m_type << " (from " << impl.m_src_module << ")");

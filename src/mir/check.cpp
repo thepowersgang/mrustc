@@ -621,7 +621,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 
     {
-        HIR::TypeRef ty_Self = HIR::TypeRef("Self", GENERIC_Self);
+        HIR::TypeRef ty_Self = ::HIR::TypeRef::new_self();
         HIR::PathParams empty_params_i = resolve.m_impl_generics ? resolve.m_impl_generics->make_nop_params(0) : HIR::PathParams();
         HIR::PathParams empty_params_m = resolve.m_item_generics ? resolve.m_item_generics->make_nop_params(0) : HIR::PathParams();
         MonomorphStatePtr   m(&ty_Self, resolve.m_impl_generics ? &empty_params_i : nullptr, resolve.m_item_generics ? &empty_params_m : nullptr);

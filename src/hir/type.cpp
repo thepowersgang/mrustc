@@ -188,7 +188,7 @@ bool ::HIR::TypeData_ErasedType_AliasInner::is_public_to(const HIR::SimplePath& 
         ::HIR::TypeData_FunctionPointer ft {
             HIR::GenericParams(),   // TODO: Get HRLs
             false, false,
-            ABI_RUST,
+            RcString::new_interned(ABI_RUST),
             ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(enum_path), e.m_params.clone()), ::HIR::TypePathBinding::make_Enum(&enm) ),
             {}
             };
@@ -204,7 +204,7 @@ bool ::HIR::TypeData_ErasedType_AliasInner::is_public_to(const HIR::SimplePath& 
         ::HIR::TypeData_FunctionPointer ft {
             HIR::GenericParams(),   // TODO: Get HRLs
             false, false,
-            ABI_RUST,
+            RcString::new_interned(ABI_RUST),
             ::HIR::TypeRef::new_path( this->path.clone(), ::HIR::TypePathBinding::make_Struct(p) ),
             {}
             };
