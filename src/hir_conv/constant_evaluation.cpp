@@ -2245,7 +2245,8 @@ namespace HIR {
                     // which aren't available yet!
                     if( const auto* tep = dynamic_type_d->data().opt_TraitObject() )
                     {
-                        auto vtable_path = ::HIR::Path(dynamic_type_s->clone(), tep->m_trait.m_path.clone(), "vtable#");
+                        static const RcString rcstring_vtable = RcString::new_interned("vtable#");
+                        auto vtable_path = ::HIR::Path(dynamic_type_s->clone(), tep->m_trait.m_path.clone(), rcstring_vtable);
                         dst.slice(Target_GetPointerBits()/8).write_ptr(state, EncodedLiteral::PTR_BASE, local_state.get_staticref(std::move(vtable_path)));
                     }
                     else if( /*const auto* tep =*/ dynamic_type_d->data().opt_Slice() )

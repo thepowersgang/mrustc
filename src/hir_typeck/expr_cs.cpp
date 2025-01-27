@@ -937,7 +937,7 @@ namespace {
             // - If running in a mode after stablise (before defaults), fall
             // back to trait if the inherent is still ambigious.
             ::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
-            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method.c_str(),  possible_methods);
+            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  possible_methods);
         try_again:
             if( deref_count != ~0u )
             {
@@ -1232,7 +1232,7 @@ namespace {
                     DEBUG("Hit unbound path, returning early");
                     return ;
                 }
-                if( this->context.m_resolve.find_field(node.span(), ty, field_name.c_str(), out_type) ) {
+                if( this->context.m_resolve.find_field(node.span(), ty, field_name, out_type) ) {
                     this->context.equate_types(node.span(), node.m_res_type, out_type);
                     break;
                 }
@@ -6136,7 +6136,7 @@ namespace
 
                 DEBUG("Check <" << t << ">::" << node.m_method);
                 ::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
-                unsigned int deref_count = context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, t, node.m_method.c_str(),  possible_methods);
+                unsigned int deref_count = context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, t, node.m_method,  possible_methods);
                 DEBUG("> deref_count = " << deref_count << ", possible_methods={" << possible_methods << "}");
                 // TODO: Detect the above hitting an ivar, and use that instead of this hacky check of if it's `_` or `&_`
                 if( !(t.data().is_Infer() || TU_TEST1(t.data(), Borrow, .inner.data().is_Infer())) && possible_methods.empty() )

@@ -47,6 +47,7 @@ namespace {
     };
     const RcString rcstring_drop = RcString::new_interned("drop");
     const RcString rcstring_self = RcString::new_interned("self");
+    const RcString rcstring_drop_glue = RcString::new_interned("#drop_glue");
 }
 
 namespace {
@@ -723,7 +724,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             };
             // Drop glue
             trans_list.m_drop_glue.insert( type.clone() );
-            push_ptr(::HIR::Path(type.clone(), "#drop_glue"));
+            push_ptr(::HIR::Path(type.clone(), rcstring_drop_glue));
             // Size & align
             {
                 size_t  size, align;
@@ -795,7 +796,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             };
             // Drop glue
             trans_list.m_drop_glue.insert( type.clone() );
-            push_ptr(::HIR::Path(type.clone(), "#drop_glue"));
+            push_ptr(::HIR::Path(type.clone(), rcstring_drop_glue));
             // Size & align
             {
                 size_t  size, align;
@@ -925,11 +926,10 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             trans_list.m_drop_glue.insert( ty.first.clone() );
         }
 
-        auto drop_glue_name = RcString::new_interned("#drop_glue");
         for(const auto& ty : trans_list.m_drop_glue)
         {
             Span    sp;
-            auto path = ::HIR::Path(ty.clone(), drop_glue_name);
+            auto path = ::HIR::Path(ty.clone(), rcstring_drop_glue);
 
             HIR::Function   fcn;
             fcn.m_return = HIR::TypeRef::new_unit();

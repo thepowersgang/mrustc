@@ -433,7 +433,7 @@ namespace {
                 // - Get the result type (can't use `get_value` as that won't find the still-to-be stored impls)
                 // TODO: Get lifetime params?
                 const auto& src_node = *src_te.node;
-                ::HIR::TypeData_FunctionPointer    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, /*is_variadic=*/false, ABI_RUST, src_node.m_return.clone_shallow(), {} };
+                ::HIR::TypeData_FunctionPointer    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, /*is_variadic=*/false, RcString::new_interned(ABI_RUST), src_node.m_return.clone_shallow(), {} };
                 fcn_ty_inner.m_arg_types.reserve(src_node.m_args.size());
                 for(const auto& arg : src_node.m_args) {
                     fcn_ty_inner.m_arg_types.push_back( arg.second.clone_shallow() );
@@ -1779,7 +1779,7 @@ namespace {
             auto saved_nt = mv$(m_out.new_type);
             m_out.new_type = [&](const char* prefix, const char* suffix, auto s)->auto {
                 // TODO: Use a function on `mod` that adds a closure and makes the indexes be per suffix
-                auto name = RcString( FMT(prefix << suffix << (suffix[0] ? "_" : "") << closure_count) );
+                auto name = RcString::new_interned( FMT(prefix << suffix << (suffix[0] ? "_" : "") << closure_count) );
                 closure_count += 1;
                 auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(),  mv$(s) }) );
                 auto* ret_ptr = &boxed->ent; 

@@ -716,7 +716,7 @@ namespace static_borrow_constants {
             {
                 ASSERT_BUG(sp, m_self_type, "Missing self type (disagreement between m_resolve and ExprVisitor_Mutate)");
                 constructor_path_params.m_types.push_back( m_self_type->clone() );
-                params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
+                params.m_types.push_back( ::HIR::TypeParamDef { RcString::new_interned("Super"), {}, false } );  // TODO: Determine if parent Self is Sized
             }
             // - Top-level params come first
             unsigned ofs_impl_l = params.m_lifetimes.size();

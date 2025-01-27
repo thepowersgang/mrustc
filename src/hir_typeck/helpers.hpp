@@ -284,17 +284,17 @@ public:
     /// Locate the named method by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)
     unsigned int autoderef_find_method(const Span& sp,
-            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const char* method_name,
+            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const RcString& method_name,
             /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
             ) const;
     /// Locate the named field by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)
-    unsigned int autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const char* name,  /* Out -> */::HIR::TypeRef& field_type) const;
+    unsigned int autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const RcString& name,  /* Out -> */::HIR::TypeRef& field_type) const;
 
     /// Apply an automatic dereference
     const ::HIR::TypeRef* autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const;
 
-    bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const char* name,  /* Out -> */::HIR::TypeRef& field_type) const;
+    bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const RcString& name,  /* Out -> */::HIR::TypeRef& field_type) const;
 
     enum class MethodAccess {
         Shared,
@@ -313,12 +313,12 @@ public:
     };
     friend ::std::ostream& operator<<(::std::ostream& os, const AllowedReceivers& x);
     bool find_method(const Span& sp,
-            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const char* method_name, MethodAccess access,
+            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const RcString& method_name, MethodAccess access,
             AutoderefBorrow borrow_type, /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
             ) const;
 
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
-    const ::HIR::Function* trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const char* name,  ::HIR::GenericPath& out_path) const;
+    const ::HIR::Function* trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const RcString& name,  ::HIR::GenericPath& out_path) const;
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const char* name,  ::HIR::GenericPath& out_path) const;
 
     ::HIR::Compare type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;

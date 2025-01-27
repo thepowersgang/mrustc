@@ -1457,7 +1457,7 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
                     // TODO: How to emit this, maybe as a hacky intrinsic?
                     // ::"#intrinsics"::offset_of::<T>("field1",...)
                     // - Fiddly
-                    path = AST::Path(RcString("#intrinsics"), {AST::PathNode("offset_of")});
+                    path = AST::Path(RcString::new_interned("#intrinsics"), {AST::PathNode("offset_of")});
                     path.nodes().back().args().m_entries.push_back( std::move(ty) );
                     return NEWNODE(AST::ExprNode_CallPath, std::move(path), std::move(args));
                 }

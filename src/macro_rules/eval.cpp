@@ -487,7 +487,7 @@ public:
     MacroExpander(const MacroExpander& x) = delete;
 
     MacroExpander(
-        const ::std::string& macro_name,
+        const RcString& macro_name,
         const Span& sp,
         AST::Edition edition,
         bool is_macro_item,
@@ -499,7 +499,7 @@ public:
     ):
         TokenStream(ParseState()),
         m_log_index(s_next_log_index++),
-        m_this_span(sp, crate_name, macro_name.c_str()),
+        m_this_span(sp, crate_name, macro_name),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( sp ),
         m_invocation_edition( edition ),
@@ -608,7 +608,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 }
 
 /// Parse the input TokenTree according to the `macro_rules!` patterns and return a token stream of the replacement
-::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, const AST::Crate& crate, AST::Module& mod)
+::std::unique_ptr<TokenStream> Macro_InvokeRules(const RcString& name, const MacroRules& rules, const Span& sp, TokenTree input, const AST::Crate& crate, AST::Module& mod)
 {
     TRACE_FUNCTION_F("'" << name << "', " << input);
     DEBUG("rules.m_source_crate = " << rules.m_source_crate);

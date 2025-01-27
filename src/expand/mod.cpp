@@ -438,7 +438,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
             ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
         DEBUG("Invoking macro_rules " << path << " " << mr_ptr);
-        rv = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : FMT(path).c_str(), *mr_ptr, mi_span, mv$(input_tt), crate, mod);
+        rv = Macro_InvokeRules(path.is_trivial() ? path.as_trivial() : RcString::new_interned(FMT(path).c_str()), *mr_ptr, mi_span, mv$(input_tt), crate, mod);
         input_tt = TokenTree();
         }
     }
@@ -960,13 +960,13 @@ struct CExpandExpr:
         AST::ExprNodeP  ok_node;
         if(TARGETVER_MOST_1_39)
         {
-            auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
+            auto path_Ok  = get_path(core_crate, "result", "Result", "Ok");
             ok_node = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath( mv$(path_Ok), ::make_vec1(mv$(node.m_inner)) ));
         }
         else
         {
-            auto path_Try = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Try")});
-            auto path_Try_from_output  = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode("from_output") });
+            auto path_Try = get_path(core_crate, "ops", "Try");
+            auto path_Try_from_output = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode(RcString::new_interned("from_output")) });
             ok_node = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath( mv$(path_Try_from_output), ::make_vec1(mv$(node.m_inner)) ));
         }
         auto break_node = AST::ExprNodeP(new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, loop_name, mv$(ok_node)));
@@ -1004,8 +1004,8 @@ struct CExpandExpr:
         if( node.m_type == AST::ExprNode_Flow::YEET )
         {
             auto core_crate = crate.m_ext_cratename_core;
-            auto path_ops_Yeet = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Yeet")});
-            auto path_FromResidual_from_residual = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("FromResidual"), ::AST::PathNode("from_residual")});
+            auto path_ops_Yeet = get_path(core_crate, "ops", "Yeet");
+            auto path_FromResidual_from_residual = get_path(core_crate, "ops", "FromResidual", "from_residual");
 
             auto v = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
                 ::AST::Path(path_ops_Yeet),
@@ -2563,11 +2563,11 @@ void Expand(::AST::Crate& crate)
     switch( crate.m_load_std )
     {
     case ::AST::Crate::LOAD_STD:
-        std_crate_shortname = "std";
+        std_crate_shortname = RcString::new_interned("std");
         std_crate_name = crate.m_ext_cratename_std;
         break;
     case ::AST::Crate::LOAD_CORE:
-        std_crate_shortname = "core";
+        std_crate_shortname = RcString::new_interned("core");
         std_crate_name = crate.m_ext_cratename_core;
         break;
     case ::AST::Crate::LOAD_NONE:

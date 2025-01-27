@@ -542,7 +542,7 @@ public:
         if( const auto* n = ::std::strchr(p.name, '#') ) {
             if( n != p.name && n[1] ) {
                 auto path = p.get_simple_path();
-                path.update_last_component( RcString(p.name, n - p.name) );
+                path.update_last_component( RcString::new_interned(p.name, n - p.name) );
                 const auto& enm = m_crate.get_enum_by_path(Span(), path);
                 ty = HIR::TypeRef::new_path( HIR::GenericPath(std::move(path), str.m_params.make_nop_params(0)), &enm);
             }

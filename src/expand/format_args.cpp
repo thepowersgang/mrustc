@@ -283,7 +283,7 @@ namespace {
                         while( isalnum(*s) || *s == '_' || (*s < 0 || *s > 127) ) {
                             s ++;
                         }
-                        index = get_named(RcString(start, s - start));
+                        index = get_named(RcString::new_interned(start, s - start));
                     }
                 }
                 else {
@@ -382,7 +382,7 @@ namespace {
                         }
                         if( *s == '$' )
                         {
-                            args.width = get_named(RcString(start, s - start));
+                            args.width = get_named(RcString::new_interned(start, s - start));
                             args.width_is_arg = true;
 
                             s ++;
@@ -433,7 +433,7 @@ namespace {
                             }
                             if( *s == '$' )
                             {
-                                args.prec = get_named(RcString(start, s - start));
+                                args.prec = get_named(RcString::new_interned(start, s - start));
                                 args.prec_is_arg = true;
 
                                 s ++;

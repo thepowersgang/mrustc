@@ -21,6 +21,10 @@ enum class Lookup
     Value,  // Allow only value bindings
 };
 
+namespace {
+    const RcString rcstring_crate_builtins = RcString::new_interned(CRATE_BUILTINS);
+}
+
 
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, ::std::span< const ::AST::Module* > parent_modules={});
 ::AST::Path::Bindings Resolve_Use_GetBinding(
@@ -87,8 +91,8 @@ void Resolve_Use(::AST::Crate& crate)
             if( ct != CORETYPE_INVAL ) {
                 DEBUG("Found builtin type for `use` - " << path);
                 // TODO: only if the item doesn't already exist?
-                AST::Path   rv { CRATE_BUILTINS, path.nodes() };
-                rv.m_bindings.type.set( AST::AbsolutePath(CRATE_BUILTINS, {path.nodes().back().name()}), {} );
+                AST::Path   rv { rcstring_crate_builtins, path.nodes() };
+                rv.m_bindings.type.set( AST::AbsolutePath(rcstring_crate_builtins, {path.nodes().back().name()}), {} );
                 return rv;
             }
         }
@@ -1031,9 +1035,9 @@ namespace {
             DEBUG("E : Macro " << nodes.back().name() << " = " << item_ptr->tag_str());
 
             if( const auto* imp = item_ptr->opt_Import() ) {
-                if( imp->path.crate_name() == CRATE_BUILTINS )
+                if( imp->path.crate_name() == rcstring_crate_builtins )
                 {
-                    rv.macro.set( AST::AbsolutePath(CRATE_BUILTINS, {nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
+                    rv.macro.set( AST::AbsolutePath(rcstring_crate_builtins, {nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
                     return rv;
                 }
                 ASSERT_BUG(span, crate.m_extern_crates.count(imp->path.crate_name()) > 0, "Unable to find crate for " << imp->path);
@@ -1049,7 +1053,7 @@ namespace {
             {
                 TU_MATCH_HDRA( (*item_ptr), {)
                 TU_ARMA(Import, e) {
-                    if( e.path.crate_name() == CRATE_BUILTINS )
+                    if( e.path.crate_name() == rcstring_crate_builtins )
                         ;
                     else
                         BUG(span, "Recursive import in " << path << " - " << it->second->ent.as_Import().path << " -> " << e.path);
@@ -1103,15 +1107,15 @@ namespace {
     if( path.m_class.is_Absolute() && (path.m_class.as_Absolute().crate != "" && path.m_class.as_Absolute().crate != crate.m_crate_name_real) ) {
         const auto& path_abs = path.m_class.as_Absolute();
         // Builtin macro imports
-        if(path_abs.crate == CRATE_BUILTINS)
+        if(path_abs.crate == rcstring_crate_builtins)
         {
             ::AST::Path::Bindings   rv;
             ASSERT_BUG(span, !path_abs.nodes.empty(), "");
             if( coretype_fromstring(path.nodes()[0].name().c_str()) != CORETYPE_INVAL ) {
-                rv.type.set( AST::AbsolutePath(CRATE_BUILTINS, {path_abs.nodes.back().name()}), AST::PathBinding_Type::make_TypeAlias({nullptr}) );
+                rv.type.set( AST::AbsolutePath(rcstring_crate_builtins, {path_abs.nodes.back().name()}), AST::PathBinding_Type::make_TypeAlias({nullptr}) );
             }
             else {
-                rv.macro.set( AST::AbsolutePath(CRATE_BUILTINS, {path_abs.nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
+                rv.macro.set( AST::AbsolutePath(rcstring_crate_builtins, {path_abs.nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
             }
             return rv;
         }

@@ -3836,7 +3836,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 }
 
 namespace {
-    bool trait_contains_method_inner(const ::HIR::Trait& trait_ptr, const char* name,  const ::HIR::Function*& out_fcn_ptr)
+    bool trait_contains_method_inner(const ::HIR::Trait& trait_ptr, const RcString& name,  const ::HIR::Function*& out_fcn_ptr)
     {
         auto it = trait_ptr.m_values.find(name);
         if( it != trait_ptr.m_values.end() )
@@ -3851,7 +3851,7 @@ namespace {
     }
 }
 
-const ::HIR::Function* TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const char* name,  ::HIR::GenericPath& out_path) const
+const ::HIR::Function* TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const RcString& name,  ::HIR::GenericPath& out_path) const
 {
     TRACE_FUNCTION_FR("trait_path=" << trait_path << ",name=" << name, out_path);
     const ::HIR::Function* rv = nullptr;
@@ -4488,7 +4488,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
             if( tmp_type == ::HIR::TypeRef() )
             {
                 tmp_type = ::HIR::TypeRef::new_path(
-                    ::HIR::Path( ty.clone(), m_lang_Deref, "Target" ),
+                    ::HIR::Path( ty.clone(), m_lang_Deref, RcString::new_interned("Target") ),
                     ::HIR::TypePathBinding::make_Opaque({})
                     );
             }
@@ -4509,7 +4509,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
 }
 
 unsigned int TraitResolution::autoderef_find_method(const Span& sp,
-        const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const char* method_name,
+        const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const RcString& method_name,
         /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
         ) const
 {
@@ -4726,7 +4726,7 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
 }
 
 bool TraitResolution::find_method(const Span& sp,
-    const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const char* method_name, MethodAccess access,
+    const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const RcString& method_name, MethodAccess access,
     AutoderefBorrow borrow_type, /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
     ) const
 {
@@ -5135,7 +5135,7 @@ bool TraitResolution::find_method(const Span& sp,
     return rv;
 }
 
-unsigned int TraitResolution::autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const char* field_name,  /* Out -> */::HIR::TypeRef& field_type) const
+unsigned int TraitResolution::autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const RcString& field_name,  /* Out -> */::HIR::TypeRef& field_type) const
 {
     unsigned int deref_count = 0;
     ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
@@ -5175,7 +5175,7 @@ unsigned int TraitResolution::autoderef_find_field(const Span& sp, const ::HIR::
     this->m_ivars.dump();
     TODO(sp, "Error when no field could be found, but type is known - (: " << top_ty << ")." << field_name);
 }
-bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const char* name,  /* Out -> */::HIR::TypeRef& field_ty) const
+bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const RcString& name,  /* Out -> */::HIR::TypeRef& field_ty) const
 {
     if(const auto* e = ty.data().opt_Path())
     {

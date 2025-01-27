@@ -472,7 +472,7 @@ const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const 
             if( ! g_val_item_intrnsic_offsetof.as_Function().m_variadic ) {
                 auto& v =  g_val_item_intrnsic_offsetof.as_Function();
                 v.m_variadic = true;
-                v.m_params.m_types.push_back(HIR::TypeParamDef { RcString("T"), {}, true });
+                v.m_params.m_types.push_back(HIR::TypeParamDef { RcString::new_interned("T"), {}, true });
             }
             return g_val_item_intrnsic_offsetof;
         }

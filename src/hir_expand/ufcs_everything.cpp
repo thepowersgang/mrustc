@@ -331,7 +331,7 @@ namespace {
             args.push_back(NEWNODE( slot_type_refmut.clone(), Borrow, sp,  ::HIR::BorrowType::Unique, mv$(node.m_slot) ));
             args.push_back( mv$(node.m_value) );
             m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
-                ::HIR::Path(ty_slot.clone(), mv$(trait), opname, HIR::PathParams(HIR::LifetimeRef())),
+                ::HIR::Path(ty_slot.clone(), mv$(trait), RcString::new_interned(opname), HIR::PathParams(HIR::LifetimeRef())),
                 mv$(args)
                 );
 
@@ -397,7 +397,7 @@ namespace {
                 args.push_back(NEWNODE(ty_r_ref.clone(), Borrow, sp_right,  ::HIR::BorrowType::Shared, mv$(node.m_right) ));
 
                 m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
-                    ::HIR::Path(ty_l.clone(), mv$(trait), method, mv$(fcn_params)),
+                    ::HIR::Path(ty_l.clone(), mv$(trait), RcString::new_interned(method), mv$(fcn_params)),
                     mv$(args)
                     );
 
@@ -453,7 +453,7 @@ namespace {
             args.push_back( mv$(node.m_right) );
 
             m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
-                ::HIR::Path(ty_l.clone(), mv$(trait), method),
+                ::HIR::Path(ty_l.clone(), mv$(trait), RcString::new_interned(method)),
                 mv$(args)
                 );
 
@@ -530,7 +530,7 @@ namespace {
             args.push_back( mv$(node.m_value) );
 
             m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
-                ::HIR::Path(ty_val.clone(), mv$(trait), method),
+                ::HIR::Path(ty_val.clone(), mv$(trait), RcString::new_interned(method)),
                 mv$(args)
                 );
 
