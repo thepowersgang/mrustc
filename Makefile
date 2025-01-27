@@ -43,7 +43,7 @@ TAIL_COUNT ?= 10
 
 LINKFLAGS := -g
 LIBS := -lz
-CXXFLAGS := -g -Wall
+CXXFLAGS := -g -Wall -Wno-unqualified-std-cast-call
 CXXFLAGS += -std=c++14
 #CXXFLAGS += -Wextra
 CXXFLAGS += -O2
