@@ -497,6 +497,13 @@ namespace
                 ARCH_RISCV64
                 };
         }
+        else if(target_name == "riscv64-unknown-linux-musl")
+        {
+            return TargetSpec {
+                "unix", "linux", "musl", {CodegenMode::Gnu11, false, "riscv64-unknown-linux-musl", BACKEND_C_OPTS_GNU},
+                ARCH_RISCV64
+                };
+        }
         else if(target_name == "i586-pc-windows-gnu")
         {
             return TargetSpec {
