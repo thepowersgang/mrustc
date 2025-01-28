@@ -5441,6 +5441,7 @@ namespace {
                         // https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html
                         switch(c)
                         {
+                        // x86
                         case AsmCommon::RegisterClass::x86_reg: m_of << "r";   break;
                         case AsmCommon::RegisterClass::x86_reg_abcd: m_of << "Q";   break;
                         case AsmCommon::RegisterClass::x86_reg_byte: m_of << "q";   break;
@@ -5448,6 +5449,9 @@ namespace {
                         case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
                         case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
                         case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
+                        // riscv
+                        case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
+                        case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
                         }
                     TU_ARMA(Explicit, name) {
                         m_of << "r";
@@ -5478,6 +5482,7 @@ namespace {
                         TU_ARMA(Class, c)
                             switch(c)
                             {
+                            // x86
                             case AsmCommon::RegisterClass::x86_reg: m_of << "r";   break;
                             case AsmCommon::RegisterClass::x86_reg_abcd: m_of << "Q";   break;
                             case AsmCommon::RegisterClass::x86_reg_byte: m_of << "q";   break;
@@ -5485,6 +5490,9 @@ namespace {
                             case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
                             case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
                             case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
+                            // riscv
+                            case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
+                            case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
                             }
                         TU_ARMA(Explicit, name) {
                             auto it = ::std::find(outputs.begin(), outputs.end(), &r);

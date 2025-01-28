@@ -54,8 +54,8 @@ namespace AsmCommon {
         //nvptx_reg32,
         //nvptx_reg64,
         
-        //riscv_reg,
-        //riscv_freg,
+        riscv_reg,
+        riscv_freg,
         
         //hexagon_reg,
         
@@ -106,6 +106,8 @@ namespace AsmCommon {
         case RegisterClass::x86_ymm:    return "ymm_reg";
         case RegisterClass::x86_zmm:    return "zmm_reg";
         case RegisterClass::x86_kreg:   return "kreg";
+        case RegisterClass::riscv_reg:  return "reg";
+        case RegisterClass::riscv_freg: return "freg";
         }
         throw "";
     }
