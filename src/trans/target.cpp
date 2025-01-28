@@ -155,6 +155,22 @@ namespace
                         {
                             rv.m_arch = ARCH_M68K;
                         }
+                        else if( key_val.value.as_string() == ARCH_POWERPC32.m_name )
+                        {
+                            rv.m_arch = ARCH_POWERPC32;
+                        }
+                        else if( key_val.value.as_string() == ARCH_POWERPC64.m_name )
+                        {
+                            rv.m_arch = ARCH_POWERPC64;
+                        }
+                        else if( key_val.value.as_string() == ARCH_POWERPC64LE.m_name )
+                        {
+                            rv.m_arch = ARCH_POWERPC64LE;
+                        }
+                        else if( key_val.value.as_string() == ARCH_RISCV64.m_name )
+                        {
+                            rv.m_arch = ARCH_RISCV64;
+                        }
                         else
                         {
                             // Error.
