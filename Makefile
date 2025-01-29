@@ -43,7 +43,7 @@ TAIL_COUNT ?= 10
 
 LINKFLAGS := -g
 LIBS := -lz
-CXXFLAGS := -g -Wall -Wno-unqualified-std-cast-call
+CXXFLAGS := -g -Wall
 CXXFLAGS += -std=c++14
 #CXXFLAGS += -Wextra
 CXXFLAGS += -O2
@@ -56,6 +56,7 @@ CXXFLAGS += -Wno-pessimizing-move
 CXXFLAGS += -Wno-misleading-indentation
 #CXXFLAGS += -Wno-unused-private-field
 #CXXFLAGS += -Wno-unknown-warning-option
+#CXXFLAGS += -Wno-unqualified-std-cast-call
 
 CXXFLAGS += -Werror=return-type
 CXXFLAGS += -Werror=switch
