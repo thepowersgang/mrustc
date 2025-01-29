@@ -155,6 +155,22 @@ namespace
                         {
                             rv.m_arch = ARCH_M68K;
                         }
+                        else if( key_val.value.as_string() == ARCH_POWERPC32.m_name )
+                        {
+                            rv.m_arch = ARCH_POWERPC32;
+                        }
+                        else if( key_val.value.as_string() == ARCH_POWERPC64.m_name )
+                        {
+                            rv.m_arch = ARCH_POWERPC64;
+                        }
+                        else if( key_val.value.as_string() == ARCH_POWERPC64LE.m_name )
+                        {
+                            rv.m_arch = ARCH_POWERPC64LE;
+                        }
+                        else if( key_val.value.as_string() == ARCH_RISCV64.m_name )
+                        {
+                            rv.m_arch = ARCH_RISCV64;
+                        }
                         else
                         {
                             // Error.
@@ -478,6 +494,13 @@ namespace
         {
             return TargetSpec {
                 "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "riscv64-unknown-linux-gnu", BACKEND_C_OPTS_GNU},
+                ARCH_RISCV64
+                };
+        }
+        else if(target_name == "riscv64-unknown-linux-musl")
+        {
+            return TargetSpec {
+                "unix", "linux", "musl", {CodegenMode::Gnu11, false, "riscv64-unknown-linux-musl", BACKEND_C_OPTS_GNU},
                 ARCH_RISCV64
                 };
         }
