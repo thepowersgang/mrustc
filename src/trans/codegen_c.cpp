@@ -5439,6 +5439,7 @@ namespace {
                     TU_MATCH_HDRA((p.spec), {)
                     TU_ARMA(Class, c)
                         // https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html
+			// arm: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=37188
                         switch(c)
                         {
                         // x86
@@ -5452,6 +5453,11 @@ namespace {
                         // riscv
                         case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
                         case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
+                        // arm
+                        case AsmCommon::RegisterClass::arm_reg: m_of << "r"; break;
+                        case AsmCommon::RegisterClass::arm_sreg: m_of << "t"; break;
+                        case AsmCommon::RegisterClass::arm_dreg: m_of << "w"; break;
+                        case AsmCommon::RegisterClass::arm_qreg: m_of << "w"; break;
                         }
                     TU_ARMA(Explicit, name) {
                         m_of << "r";
@@ -5493,6 +5499,11 @@ namespace {
                             // riscv
                             case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
                             case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
+                            // arm
+                            case AsmCommon::RegisterClass::arm_reg: m_of << "r"; break;
+                            case AsmCommon::RegisterClass::arm_sreg: m_of << "t"; break;
+                            case AsmCommon::RegisterClass::arm_dreg: m_of << "w"; break;
+                            case AsmCommon::RegisterClass::arm_qreg: m_of << "w"; break;
                             }
                         TU_ARMA(Explicit, name) {
                             auto it = ::std::find(outputs.begin(), outputs.end(), &r);
