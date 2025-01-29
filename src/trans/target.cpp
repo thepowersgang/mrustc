@@ -462,6 +462,13 @@ namespace
                 ARCH_ARM32
                 };
         }
+        else if(target_name == "arm-linux-musl" || target_name == "arm-unknown-linux-musl")
+        {
+            return TargetSpec {
+                "unix", "linux", "musl", {CodegenMode::Gnu11, true, "arm-elf-eabi", BACKEND_C_OPTS_GNU},
+                ARCH_ARM32
+                };
+        }
         else if(target_name == "aarch64-linux-gnu" || target_name == "aarch64-unknown-linux-gnu")
         {
             return TargetSpec {
