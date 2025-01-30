@@ -14,6 +14,13 @@
 #include <functional>
 #include <path.h>
 
+#ifdef __OpenBSD__
+// major() and minor() are defined as macros in <sys/types.h> on OpenBSD
+// see: https://man.openbsd.org/major.3
+# undef major
+# undef minor
+#endif
+
 class WorkspaceManifest;
 class PackageManifest;
 class Repository;

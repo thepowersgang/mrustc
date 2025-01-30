@@ -210,7 +210,7 @@ $(RUSTC_SRC_TARBALL):
 	@rm -f $@
 	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
 rustc-$(RUSTC_VERSION)-src/extracted: $(RUSTC_SRC_TARBALL)
-	tar -xf $(RUSTC_SRC_TARBALL)
+	tar -xzf $(RUSTC_SRC_TARBALL)
 	touch $@
 $(RUSTC_SRC_DL): rustc-$(RUSTC_VERSION)-src/extracted rustc-$(RUSTC_VERSION)-src.patch
 	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;

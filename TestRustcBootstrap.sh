@@ -46,7 +46,7 @@ rm -rf ${WORKDIR}build
 #
 echo "=== Building rustc bootstrap mrustc stage0"
 mkdir -p ${WORKDIR}mrustc/
-tar -xf rustc-${RUSTC_VERSION_NEXT}-src.tar.gz -C ${WORKDIR}mrustc/
+tar -xzf rustc-${RUSTC_VERSION_NEXT}-src.tar.gz -C ${WORKDIR}mrustc/
 cat - > ${WORKDIR}mrustc/rustc-${RUSTC_VERSION_NEXT}-src/config.toml <<EOF
 [build]
 cargo = "${PREFIX}bin/cargo"
@@ -81,7 +81,7 @@ mv ${WORKDIR}output ${WORKDIR}mrustc-output
 #
 echo "=== Building rustc bootstrap downloaded stage0"
 mkdir -p ${WORKDIR}official/
-tar -xf rustc-${RUSTC_VERSION_NEXT}-src.tar.gz -C ${WORKDIR}official/
+tar -xzf rustc-${RUSTC_VERSION_NEXT}-src.tar.gz -C ${WORKDIR}official/
 cat - > ${WORKDIR}official/rustc-${RUSTC_VERSION_NEXT}-src/config.toml <<EOF
 [build]
 full-bootstrap = true
