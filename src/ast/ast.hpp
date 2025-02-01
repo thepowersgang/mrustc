@@ -101,8 +101,8 @@ public:
 
     //TypeAlias() {}
     TypeAlias(GenericParams params, TypeRef type):
-        m_params( move(params) ),
-        m_type( move(type) )
+        m_params( std::move(params) ),
+        m_type( std::move(type) )
     {}
     static TypeAlias new_associated_type(GenericParams params, GenericParams type_bounds, TypeRef default_type) {
         TypeAlias rv { std::move(params), std::move(default_type) };
@@ -164,8 +164,8 @@ public:
 
     Static(Class s_class, TypeRef type, Expr value):
         m_class(s_class),
-        m_type( move(type) ),
-        m_value( move(value) )
+        m_type( std::move(type) ),
+        m_value( std::move(value) )
     {}
 
     const Class& s_class() const { return m_class; }
@@ -420,9 +420,9 @@ public:
     } m_markings;
     
     Enum() {}
-    Enum( GenericParams params, ::std::vector<EnumVariant> variants ):
-        m_params( move(params) ),
-        m_variants( move(variants) )
+    Enum( GenericParams params, ::std::vector<EnumVariant> variants )
+        : m_params( ::std::move(params) )
+        , m_variants( ::std::move(variants) )
     {}
 
     const GenericParams& params() const { return m_params; }
@@ -478,16 +478,16 @@ public:
 
     Struct() {}
     Struct(GenericParams params):
-        m_params( mv$(params) ),
+        m_params( ::std::move(params) ),
         m_data( StructData::make_Unit({}) )
     {
     }
     Struct( GenericParams params, ::std::vector<StructItem> fields ):
-        m_params( move(params) ),
+        m_params( ::std::move(params) ),
         m_data( StructData::make_Struct({mv$(fields)}) )
     {}
     Struct( GenericParams params, ::std::vector<TupleItem> fields ):
-        m_params( move(params) ),
+        m_params( ::std::move(params) ),
         m_data( StructData::make_Tuple({mv$(fields)}) )
     {}
 
@@ -510,9 +510,9 @@ public:
         } repr = Repr::Rust;
     } m_markings;
 
-    Union( GenericParams params, ::std::vector<StructItem> fields ):
-        m_params( move(params) ),
-        m_variants( mv$(fields) )
+    Union( GenericParams params, ::std::vector<StructItem> fields )
+        : m_params( ::std::move(params) )
+        , m_variants( ::std::move(fields) )
     {}
 
     const GenericParams& params() const { return m_params; }

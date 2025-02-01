@@ -102,7 +102,7 @@ struct MacroPatEnt
         name( op ),
         name_index(index),
         tok( mv$(sep) ),
-        subpats( move(ents) ),
+        subpats( mv$(ents) ),
         type(PAT_LOOP)
     {
     }

@@ -243,9 +243,9 @@ Static Static::clone() const
 
 Function::Function(Span sp, ::std::string abi, Flags flags, GenericParams params, TypeRef ret_type, Arglist args, bool is_variadic):
     m_span(sp),
-    m_params( move(params) ),
-    m_rettype( move(ret_type) ),
-    m_args( move(args) ),
+    m_params( mv$(params) ),
+    m_rettype( mv$(ret_type) ),
+    m_args( mv$(args) ),
     m_is_variadic(is_variadic),
     m_abi( mv$(abi) ),
     m_flags(flags)

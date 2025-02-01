@@ -156,8 +156,8 @@ struct ExprNode_Asm2:
     ExprNode_Asm2(Span sp, AsmCommon::Options options, std::vector<AsmCommon::Line> lines, std::vector<Param> params)
         : ExprNode(mv$(sp))
         , m_options(options)
-        , m_lines( move(lines) )
-        , m_params( move(params) )
+        , m_lines( ::std::move(lines) )
+        , m_params( ::std::move(params) )
     {
     }
 
