@@ -1071,7 +1071,7 @@ namespace {
             mv$(args)
             };
         if( f.m_abi == "" )
-            f.m_abi = ABI_RUST;
+            f.m_abi = RcString::new_interned(ABI_RUST);
         return ::HIR::TypeRef( mv$(f) );
         }
     TU_ARMA(Generic, e) {
