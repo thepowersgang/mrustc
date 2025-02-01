@@ -22,7 +22,7 @@
 
 const bool DUPLICATION_TypeRef = false;
 const bool DUPLICATION_SimplePath = false;
-const bool DUPLICATION_RcString = false;
+const bool DUPLICATION_RcString = true;
 const bool DUPLICATION_stdstring = false;
 
 struct MemoryStats
@@ -836,18 +836,38 @@ const TypeRef& MemoryStats::get_real_type(const TypeRef& ty, DWORD64 addr) const
 
 void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_level/*=true*/)
 {
-    static std::vector<const TypeRef*> stack;
     static Indent s_indent = Indent(" ");
     static unsigned MAX_LOG_LEVEL = 5;
 #define DO_DEBUG_F(force, v) do { if(force || (true && s_indent.level < MAX_LOG_LEVEL)) { std::cout << s_indent << v << std::endl; } } while(0)
 #define DO_DEBUG(v) DO_DEBUG_F(false, v)
     auto _ = s_indent.inc();
+
+    static std::vector<std::pair<const TypeRef*,DWORD64>> stack;
     auto init_stack_size = stack.size();
-    stack.push_back(&val_ty);
+    stack.push_back(std::make_pair(&val_ty, addr));
+
+    auto dump_path = []() {
+        ::std::cout << "Path:";
+        for(const auto& se : stack) {
+            ::std::cout << " => " << *se.first;
+        }
+        ::std::cout << "\n";
+        ::std::cout << "Names:";
+        for(const auto& se : stack) {
+            if( se.first->is_udt_suffix("std::pair<RcString ") ) {
+                ::std::cout << " => " << virt_types::fmt_rcstring( ReadMemory::read_ptr(se.second) );
+            }
+            if( se.first->is_udt_suffix("std::pair<HIR::SimplePath ") ) {
+                ::std::cout << " => " << virt_types::fmt_simplepath( TypeRef::lookup_by_name("HIR::SimplePath"), se.second );
+            }
+        }
+        ::std::cout << "\n";
+    };
 
     try {
         DO_DEBUG("enum_type_at: >> " << val_ty << ", " << (void*)addr);
         const auto& ty = this->get_real_type(val_ty, addr);
+        stack.back().first = &ty;   // Now that we have the real type, update the stack entry
         if( is_top_level ) {
             ReadMemory::mark_seen(addr, static_cast<DWORD>(ty.size()));
 
@@ -856,11 +876,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                 static std::set<DWORD64>    visited_addrs;
                 if( ! visited_addrs.insert(addr).second ) {
                     ::std::cout << "DOUBLE VISIT: " << ty << " @ " << (void*)addr << "\n";
-                    ::std::cout << "Path: ";
-                    for(const auto* t : stack) {
-                        ::std::cout << " " << *t;
-                    }
-                    ::std::cout << "\n";
+                    dump_path();
                 }
             }
 #endif
@@ -1002,11 +1018,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
         auto warn_type = [&]() {
             if( warned_types.insert( FMT_STRING(ty) ).second ) {
                 ::std::cout << "Not recursing into type: " << ty << "\n";
-                ::std::cout << "Path: ";
-                for(const auto* t : stack) {
-                    ::std::cout << " " << *t;
-                }
-                ::std::cout << "\n";
+                dump_path();
             }
         };
 
@@ -1054,11 +1066,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                 auto ptr = ReadMemory::read_ptr(addr + 0);
                 if( len > 0x100'0000ul || len > cap ) {
                     ::std::cout << "std::string > indirect @" << (void*)ptr << " +" << len << "+" << cap << ": MALFORMED!\n";
-                    ::std::cout << "Path: ";
-                    for(const auto* t : stack) {
-                        ::std::cout << " " << *t;
-                    }
-                    ::std::cout << "\n";
+                    dump_path();
                     len = 0; cap = 0;
                 }
                 else {
@@ -1124,6 +1132,10 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
 
                     auto& list = m_duplicates_RcString;
                     auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(str_ptr, 0)) );
+                    if( dbg_name == "Rust" ) {
+                        ::std::cout << ">>> Seen: " << dbg_name << "\n";
+                        dump_path();
+                    }
                     it.first->second.second += 1;
                 }
                 num_rcstring_interned += (ReadMemory::read_u32(str_ptr + 8) != 0);
@@ -1154,8 +1166,8 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             auto end = ReadMemory::read_ptr(addr + 1*8);
             auto max = ReadMemory::read_ptr(addr + 2*8);
             ReadMemory::mark_seen(start, static_cast<DWORD>(end - start));
-            m_counts[FMT_STRING("~A " << ty)] += (max - start);
-            update_max(m_counts[FMT_STRING("~M " << ty)], max - start);
+            m_counts[FMT_STRING("~A " << ty)] += static_cast<unsigned>(max - start);
+            update_max(m_counts[FMT_STRING("~M " << ty)], static_cast<unsigned>(max - start));
             m_counts["~TOTAL"] += static_cast<unsigned>(end - start);
         }
         // std::vector
@@ -1187,9 +1199,9 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
             if(max - end > 1000) {
                 ::std::cout << ty << " wastage: " << max - end << "\n";
             }
-            m_counts[FMT_STRING("~A " << ty)] += (max - start);
-            update_max(m_counts[FMT_STRING("~M " << ty)], max - start);
-            m_counts[FMT_STRING("~Waste " << ty)] += (max - end);
+            m_counts[FMT_STRING("~A " << ty)] += static_cast<unsigned>(max - start);
+            update_max(m_counts[FMT_STRING("~M " << ty)], static_cast<unsigned>(max - start));
+            m_counts[FMT_STRING("~Waste " << ty)] += static_cast<unsigned>(max - end);
         }
         // std::vector
         else if( ty.is_udt_suffix("ThinVector<") ) {
@@ -1351,7 +1363,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                     total_bytes += list_node_ptr_ty.size();
                 }
             }
-            m_counts[FMT_STRING("~A " << ty)] += total_bytes;
+            m_counts[FMT_STRING("~A " << ty)] += static_cast<unsigned>(total_bytes);
             m_counts[FMT_STRING(">" << ty)] ++;
         }
         // ----
@@ -1466,10 +1478,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
     catch(const std::exception& e)
     {
         DO_DEBUG_F(true, "enum_type_at: << " << val_ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
-        ::std::cout << "Path:\n";
-        for(const auto* t : stack) {
-            ::std::cout << " " << *t << "\n";
-        }
+        dump_path();
     }
     stack.pop_back();
     assert(stack.size() == init_stack_size);
