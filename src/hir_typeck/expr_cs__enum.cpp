@@ -1565,23 +1565,35 @@ namespace typecheck
             const RcString& method_name = node.m_method;
             ::HIR::t_trait_list    possible_traits;
             unsigned int max_num_params = 0;
+            auto visit_trait_inner = [&method_name, &max_num_params, &possible_traits](const HIR::SimplePath& p, const HIR::Trait& tr) {
+
+                auto it = tr.m_values.find(method_name);
+                if( it == tr.m_values.end() )
+                    return ;
+                if( !it->second.is_Function() )
+                    return ;
+
+                if( ::std::none_of( possible_traits.begin(), possible_traits.end(), [&](const auto&x){return x.second == &tr;}) ) {
+                    DEBUG(p);
+                    possible_traits.push_back( std::make_pair(&p, &tr) );
+                    if( tr.m_params.m_types.size() > max_num_params )
+                        max_num_params = tr.m_params.m_types.size();
+                }
+                };
+            auto visit_trait = [&visit_trait_inner](const HIR::SimplePath& p, const HIR::Trait& trait) {
+                visit_trait_inner(p, trait);
+                for(const auto& pt : trait.m_all_parent_traits) {
+                    visit_trait_inner(pt.m_path.m_path, *pt.m_trait_ptr);
+                }
+                };
             for(const auto& trait_ref : ::reverse(m_traits))
             {
                 if( trait_ref.first == nullptr )
                     break;
-
-                // TODO: Search supertraits too
-                auto it = trait_ref.second->m_values.find(method_name);
-                if( it == trait_ref.second->m_values.end() )
-                    continue ;
-                if( !it->second.is_Function() )
-                    continue ;
-
-                if( ::std::none_of( possible_traits.begin(), possible_traits.end(), [&](const auto&x){return x.second == trait_ref.second;}) ) {
-                    possible_traits.push_back( trait_ref );
-                    if( trait_ref.second->m_params.m_types.size() > max_num_params )
-                        max_num_params = trait_ref.second->m_params.m_types.size();
-                }
+                visit_trait( *trait_ref.first, *trait_ref.second );
+            }
+            if( context.m_resolve.current_trait_path() ) {
+                visit_trait( context.m_resolve.current_trait_path()->m_path, context.m_resolve.m_crate.get_trait_by_path(node.span(), context.m_resolve.current_trait_path()->m_path) );
             }
             //  > Store the possible set of traits for later
             node.m_traits = mv$(possible_traits);

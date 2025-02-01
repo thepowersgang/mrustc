@@ -4736,7 +4736,7 @@ bool TraitResolution::find_method(const Span& sp,
 
     auto get_ivared_params = [&](const ::HIR::GenericParams& tpl)->::HIR::PathParams {
         unsigned int n_params = tpl.m_types.size();
-        assert(n_params <= ivars.size());
+        ASSERT_BUG(sp, n_params <= ivars.size(), "Not enough type ivars allocated for method: " << n_params << " needed but " << ivars.size() << " allocated by caller\ntpl = " << tpl.fmt_args());
         ::HIR::PathParams   trait_params;
         trait_params.m_types.reserve( n_params );
         for(unsigned int i = 0; i < n_params; i++) {
