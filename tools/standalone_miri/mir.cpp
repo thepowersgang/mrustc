@@ -31,18 +31,82 @@ namespace std {
 }
 #endif
 
+namespace {
+    unsigned num_ch(const std::string& s) {
+        uint8_t bits[128/8] = {0};
+        for(char c : s) {
+            if( 0 <= c && c < 128 ) {
+                bits[c / 8] |= (1 << (c % 8));
+            }
+        }
+        unsigned rv = 0;
+        for(uint8_t v : bits) {
+            for(int i = 0; i < 8; i ++) {
+                if(v & (1 << i)) {
+                    rv += 1;
+                }
+            }
+        }
+        return rv;
+    }
+    
+    const char* tyname(const HIR::CoreType& t) {
+        switch(t.raw_type)
+        {
+        case RawType::I8  : return "i8";
+        case RawType::I16 : return "i16";
+        case RawType::I32 : return "i32";
+        case RawType::I64 : return "i64";
+        case RawType::I128: return "i128";
+        case RawType::U8  : return "u8";
+        case RawType::U16 : return "u16";
+        case RawType::U32 : return "u32";
+        case RawType::U64 : return "u64";
+        case RawType::U128: return "u128";
+        
+        case RawType::ISize: return "isize";
+        case RawType::USize: return "usize";
+
+        case RawType::F32 : return "f32";
+        case RawType::F64 : return "f64";
+        
+        case RawType::Bool: return "bool";
+        case RawType::Char: return "char";
+        case RawType::Unit: return "?()";
+        case RawType::Str : return "?str";
+
+        case RawType::Unreachable: return "!";
+        case RawType::Function: return "?fn";
+        case RawType::Composite: return "?stuct";
+        case RawType::TraitObject: return "?dyn";
+        }
+        return "?";
+    }
+}
+
 namespace MIR {
     ::std::ostream& operator<<(::std::ostream& os, const Constant& v) {
         TU_MATCHA( (v), (e),
         (Int,
             os << (e.v < 0 ? "-" : "+");
             os << (e.v < 0 ? -e.v : e.v);
+            os << " " << tyname(e.t);
             ),
         (Uint,
-            os << e.v;
+            std::ostringstream  ss_dec, ss_hex;
+            ss_dec << e.v;
+            ss_hex << std::hex << e.v;
+            if( num_ch(ss_dec.str()) < num_ch(ss_hex.str()) ) {
+                os << e.v;
+            }
+            else {
+                os << std::hex << "0x" << e.v << std::dec;
+            }
+            os << " " << tyname(e.t);
             ),
         (Float,
             os << e.v;
+            os << " " << tyname(e.t);
             ),
         (Bool,
             os << (e.v ? "true" : "false");
@@ -72,6 +136,9 @@ namespace MIR {
             ),
         (Generic,
             os << e;
+            ),
+        (Function,
+            os << "addr{fn} " << *e.p;
             ),
         (ItemAddr,
             os << "addr " << *e;
@@ -439,6 +506,9 @@ namespace MIR {
             return ::ord(ae, be);
             ),
         (Const,
+            return ::ord(*ae.p, *be.p);
+            ),
+        (Function,
             return ::ord(*ae.p, *be.p);
             ),
         (Generic,

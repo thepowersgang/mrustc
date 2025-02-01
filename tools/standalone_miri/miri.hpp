@@ -51,6 +51,23 @@ struct GlobalState
     GlobalState(const ModuleTree& modtree);
 };
 
+struct VaArgsState {
+    struct Inner {
+        // TODO: how to handle advancing along with va_copy
+        std::vector<Value>  args;
+        Inner(const std::vector<Value>& args, size_t ofs);
+    };
+    FFIPointer  pointer;
+
+    ~VaArgsState() {
+        release("drop");
+    }
+
+    static const Inner& get_inner(Value& arg);
+    FFIPointer init(const std::vector<Value>& args, size_t ofs);
+    void release(const char* where);
+};
+
 class InterpreterThread
 {
     friend struct MirHelpers;
@@ -66,6 +83,7 @@ class InterpreterThread
         ::std::vector<Value>    args;
         ::std::vector<Value>    locals;
         ::std::vector<bool>     drop_flags;
+        VaArgsState va_args;
 
         unsigned    bb_idx;
         unsigned    stmt_idx;

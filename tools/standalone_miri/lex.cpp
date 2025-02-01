@@ -533,6 +533,7 @@ void Lexer::advance()
                         throw "";
                     ch = m_if.get();
                 } while(ch != '}');
+                assert(ch == '}');
 
                 if( v < 0x80 ) {
                     val.push_back(static_cast<char>(v));

@@ -576,7 +576,7 @@ struct ValueRef:
                 }
                 break;
             case RelocationPtr::Ty::Function:
-                LOG_TODO("");
+                LOG_TODO("Read from a function?");
             }
         }
     }

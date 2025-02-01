@@ -109,7 +109,7 @@ namespace FfiHelpers {
             }
             size_t width = 0;
             if( *s == '*' ) {
-                LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
+                LOG_ASSERT(cur_arg < args.size(), "*printf: Argument " << cur_arg << " >= " << args.size());
                 const auto& arg = args.at(cur_arg);
                 width = H::read_unsigned(arg);
                 cur_arg ++;
@@ -122,9 +122,13 @@ namespace FfiHelpers {
                     s ++;
                 }
             }
-            LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
+            LOG_ASSERT(cur_arg < args.size(), "*printf: Argument " << cur_arg << " >= " << args.size());
             const auto& arg = args.at(cur_arg);
-            LOG_DEBUG("printf> pad='" << pad << "', width=" << width << ", arg=" << arg);
+            if( *s == 'z' ) {
+                // Indicates a size_t argument, but that doesn't matter here.
+                s ++;
+            }
+            LOG_DEBUG("*printf> pad='" << pad << "', width=" << width << ", arg=" << arg);
             switch(*s)
             {
             case 'i':
@@ -145,11 +149,11 @@ namespace FfiHelpers {
                 output << FfiHelpers::read_cstr(arg, 0);
                 break;
             case 'p':
-                LOG_ASSERT(arg.size() == POINTER_SIZE, "Printf `%p` with wrong size integer - " << arg.size() << " != " << POINTER_SIZE);
+                LOG_ASSERT(arg.size() == POINTER_SIZE, "*printf `%p` with wrong size integer - " << arg.size() << " != " << POINTER_SIZE);
                 output << std::hex << "0x" << arg.read_usize(0);
                 break;
             default:
-                LOG_FATAL("Malformed printf string - unexpected character `" << *s << "`");
+                LOG_FATAL("Malformed *printf string - unexpected character `" << *s << "`");
             }
             cur_arg += 1;
         }
@@ -900,6 +904,23 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         }
         rv = Value::new_i64(retval);
     }
+    else if( link_name == "strtol" )
+    {
+        // long long strtoll(const char *nptr, char **endptr, int base);
+        size_t len = 0;
+        const char* nptr = FfiHelpers::read_cstr(args.at(0), 0, &len);
+        auto endptr_req = args.at(1).read_usize(0) != 0;
+        auto base = args.at(2).read_i32(0);
+        char* endptr_real;
+        auto retval = strtol(nptr, endptr_req ? &endptr_real : nullptr, base);
+        if(endptr_req) {
+            auto ofs = endptr_real - nptr;
+            args.at(1).read_pointer_valref_mut(0, ::HIR::TypeRef(RawType::USize).get_size())
+                .to_write()
+                .write_ptr(0, args.at(0).read_usize(0) + ofs, args.at(0).get_relocation(0));
+        }
+        rv = Value::new_i64(retval);
+    }
     else if( link_name == "malloc" )
     {
         auto size = args.at(0).read_usize(0);
@@ -1183,6 +1204,22 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         const auto* fmt = FfiHelpers::read_cstr(args.at(2), 0);
         auto out = format_string(fmt, args, 3);
+        LOG_DEBUG("out = " << out);
+        size_t len = args.at(1).read_usize(0);
+        if( len > 0 )
+        {
+            auto buf = args.at(0).read_pointer_valref_mut(0, len).to_write();
+            buf.write_bytes(0, out.data(), std::min(len-1, out.size()));
+            buf.write_u8( ::std::min(len-1, out.size()), 0 );
+        }
+        rv = Value::new_i32(static_cast<int32_t>(out.size()));
+    }
+    else if( link_name == "vsnprintf" )
+    {
+        const auto* fmt = FfiHelpers::read_cstr(args.at(2), 0);
+        const auto& va_args = VaArgsState::get_inner( args.at(3) );
+        auto out = format_string(fmt, va_args.args, 0);
+        LOG_DEBUG("out = " << out);
         size_t len = args.at(1).read_usize(0);
         if( len > 0 )
         {
@@ -1199,6 +1236,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
         const auto* mode = FfiHelpers::read_cstr(args.at(1), 0);
+        LOG_DEBUG("fopen(\"" << path << "\", \"" << mode << "\")");
         FILE* fp = fopen(path, mode);
         if(fp) {
             rv = Value::new_ffiptr(FFIPointer::new_void("FILE", fp));

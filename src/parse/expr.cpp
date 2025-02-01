@@ -840,6 +840,7 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_RWORD_FALSE:
     case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
+    case TOK_RWORD_CRATE:
     case TOK_RWORD_BOX:
     case TOK_RWORD_IN:
     case TOK_PAREN_OPEN:

@@ -36,12 +36,12 @@ Dependencies
 ------------
 - C++14-compatible compiler (tested with gcc 5.4 and gcc 6, and MSVC 2015)
 - C11 compatible C compiler (for output, see above)
-- `make` (for the mrustc makefiles)
-- `patch` (For doing minor edits to the rustc source)
-- `libz-dev` (used to reduce size of bytecode files, linux only - windows uses vcpkg to download it)
+- `GNU make` (for the mrustc makefiles)
+- `patch` (for doing minor edits to the rustc source)
+- `libz-dev` (used for reducing the size of bytecode files, linux only - windows uses vcpkg to download it)
 - `curl` (for downloading the rust source, linux only)
 - `cmake` (at least 3.4.3, required for building llvm in rustc)
-- `pkg-config` (required for find crate build deps, i.e libssl)
+- `pkg-config` (required for finding crate build deps, i.e libssl)
 - `python3` (required for building llvm in rustc)
 
 Linux GNU and macOS
@@ -56,8 +56,9 @@ Similar to Linux, but you might need to
 - specify the rustc default target explicitly
 - specify the compiler
 - use `gmake` to run GNU make
+- use `CC=gcc` or `CC=egcc` if `cc` is `clang`
 
-e.g. `gmake CC=cc RUSTC_TARGET=x86_64-unknown-freebsd -f minicargo.mk`
+e.g. `gmake CC=gcc RUSTC_TARGET=x86_64-unknown-freebsd -f minicargo.mk`
 
 Windows
 --------

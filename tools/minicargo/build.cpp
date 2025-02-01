@@ -902,7 +902,7 @@ RunnableJob Job_BuildTarget::start()
         }
         else {
             args.push_back("--target"); args.push_back(parent.m_opts.target_name);
-            args.push_back("-C"); args.push_back(format("emit-build-command=",outfile,".sh"));
+            //args.push_back("-C"); args.push_back(format("emit-build-command=",outfile,".sh"));
         }
     }
 

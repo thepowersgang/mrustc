@@ -168,13 +168,17 @@ bool Parser::parse_one()
         }
         auto p2 = p;
         if( tree.functions.count(p) == 0 ) {
-            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), ::std::move(rv_ty), ::std::move(ext), ::std::move(body) }) );
+            tree.functions.insert( ::std::make_pair(::std::move(p), Function {
+                ::std::move(p2),
+                ::std::move(arg_tys), ::std::move(rv_ty), is_variadic,
+                ::std::move(ext), ::std::move(body)
+                }) );
         }
         else {
             auto& exist = tree.functions[p];
 
             // Signature check
-            if( exist.args != arg_tys || exist.ret_ty != rv_ty ) {
+            if( exist.args != arg_tys || exist.ret_ty != rv_ty || exist.is_variadic != is_variadic ) {
                 LOG_NOTICE(lex << "Non-matching redefinition of " << p << "\n"
                     << exist.args << " " << exist.ret_ty << "\n"
                     << arg_tys << " " << rv_ty
@@ -1375,13 +1379,13 @@ RawType Parser::parse_core_type()
         }
         auto ft = FunctionType {
             is_unsafe,
+            is_variadic,
             ::std::move(abi),
             ::std::move(args),
             ::std::move(ret_ty)
             };
         const auto* ft_p = &*tree.function_types.insert(::std::move(ft)).first;
         return ::HIR::TypeRef(ft_p);
-        // TODO: Use abi/ret_ty/args as part of that
     }
     else if( lex.consume_if("dyn") )
     {

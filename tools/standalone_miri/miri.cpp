@@ -439,6 +439,10 @@ GlobalState::GlobalState(const ModuleTree& modtree):
         // - Statics need to always have an allocation (for references)
         val.ensure_allocation();
         val.write_bytes(0, s.init.bytes.data(), s.init.bytes.size());
+        this->m_statics.insert(std::make_pair(&s, std::move(val)));
+        });
+    m_modtree.iterate_statics([this](RcString name, const Static& s) {
+        auto& val = this->m_statics.at(&s);
         for(const auto& r : s.init.relocs)
         {
             RelocationPtr   ptr;
@@ -450,12 +454,18 @@ GlobalState::GlobalState(const ModuleTree& modtree):
             }
             else
             {
-                ptr = RelocationPtr::new_fcn(r.fcn_path);
+                if( const auto* target_s = m_modtree.get_static_opt(r.fcn_path) ) {
+                    ptr = RelocationPtr::new_alloc( this->m_statics.at(target_s).borrow(FMT_STRING("static " << name)) );
+                }
+                else if( m_modtree.get_function_opt(r.fcn_path) ) {
+                    ptr = RelocationPtr::new_fcn(r.fcn_path);
+                }
+                else {
+                    LOG_FATAL("Reference to unknown item in static " << name);
+                }
             }
             val.set_reloc( r.ofs, r.len, std::move(ptr) );
         }
-
-        this->m_statics.insert(std::make_pair(&s, std::move(val)));
         });
 
     //
@@ -1067,6 +1077,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::Bool: res = res != 0 ? res : Ops::do_compare(v_l.read_u8(0), v_r.read_u8(0)); break;  // TODO: `read_bool` that checks for bool values?
                         case RawType::U128: res = res != 0 ? res : Ops::do_compare(v_l.read_u128(0), v_r.read_u128(0));   break;
                         case RawType::I128: res = res != 0 ? res : Ops::do_compare(v_l.read_i128(0), v_r.read_i128(0));   break;
+                        // HACK for C code
+                        case RawType::Function: res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0)); break;
                         default:
                             LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                         }
@@ -1693,9 +1705,20 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 const auto& fe = te.fcn.as_Intrinsic();
                 auto ret_ty = state.get_lvalue_ty(te.ret_val);
                 if( fe.name == "va_start" ) {
-                    // Initialise the return value with the number of formal arguments
-                    //rv = Value::new_usize( cur_frame.fcn->m_args.size() );
-                    LOG_TODO("va_start");
+                    if( !cur_frame.fcn->is_variadic ) {
+                        LOG_FATAL("Calling va_start in a non-variadic function");
+                    }
+                    else if( cur_frame.va_args.pointer.inner ) {
+                        // Double-call?
+                        LOG_FATAL("Calling va_start while a previous argument list hasn't been ended");
+                    }
+                    else {
+                        rv = Value::new_ffiptr(cur_frame.va_args.init(cur_frame.args, cur_frame.fcn->args.size()));
+                    }
+                }
+                else if( fe.name == "va_end" ) {
+                    sub_args.at(0).read_pointer_tagged_nonnull(0, "va_args");
+                    sub_args.at(0).get_relocation(0).ffi().release();
                 }
                 else if( !this->call_intrinsic(rv, ret_ty, fe.name, fe.params, ::std::move(sub_args)) )
                 {
@@ -1841,6 +1864,34 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
         }
 
         return false;
+    }
+}
+
+VaArgsState::Inner::Inner(const std::vector<Value>& args, size_t ofs)
+{
+    assert(args.size() >= ofs);
+    this->args.reserve( args.size() - ofs );
+    for(size_t i = ofs; i < args.size(); i++) {
+        this->args.push_back(args[i].read_value(0, args[i].size()));
+    }
+}
+const VaArgsState::Inner& VaArgsState::get_inner(Value& arg)
+{
+    auto* p = reinterpret_cast<Inner*>(arg.read_pointer_tagged_nonnull(0, "va_args"));
+    return *p;
+}
+FFIPointer VaArgsState::init(const std::vector<Value>& args, size_t ofs)
+{
+    assert(!this->pointer.inner);
+    this->pointer = FFIPointer::new_void( "va_args", reinterpret_cast<const void*>(new Inner(args, ofs)) );
+    return this->pointer;
+}
+void VaArgsState::release(const char* where)
+{
+    if( pointer.inner ) {
+        auto* p = reinterpret_cast<Inner*>( pointer.inner->ptr_value );
+        delete p;
+        pointer.release();
     }
 }
 
