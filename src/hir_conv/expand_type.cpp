@@ -16,10 +16,14 @@ namespace {
     {
         auto pp = path.m_params.clone();
 
+        // Empty list, fill with ivars
         if( is_expr && pp.m_types.empty() )
         {
-            // Empty list, fill with ivars
             pp.m_types.resize( params_def.m_types.size() );
+        }
+        if( is_expr && pp.m_values.empty() )
+        {
+            pp.m_values.resize( params_def.m_values.size() );
         }
 
         // Shouldn't this error out if not in an expression?
@@ -29,13 +33,24 @@ namespace {
         }
 
         auto ms_o = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+
         pp.m_types.reserve( params_def.m_types.size() );
         while( pp.m_types.size() < params_def.m_types.size() && params_def.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
             pp.m_types.push_back( ms_o.monomorph_type(sp, params_def.m_types[pp.m_types.size()].m_default) );
         }
         if( pp.m_types.size() != params_def.m_types.size() ) {
-            ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << params_def.m_types.size() << " got " << pp.m_types.size());
+            ERROR(sp, E0000, "Mismatched type-generic count in " << path << ", expected " << params_def.m_types.size() << " got " << pp.m_types.size());
         }
+
+        pp.m_values.reserve( params_def.m_values.size() );
+        while( pp.m_values.size() < params_def.m_values.size() && params_def.m_values[pp.m_values.size()].m_default ) {
+            //pp.m_values.push_back( ms_o.monomorph_va(sp, params_def.m_values[pp.m_values.size()].m_default) );
+            TODO(sp, "Populate default value params");
+        }
+        if( pp.m_values.size() != params_def.m_values.size() ) {
+            ERROR(sp, E0000, "Mismatched const-generic count in " << path << ", expected " << params_def.m_values.size() << " got " << pp.m_values.size());
+        }
+
         return pp;
     }
 }
