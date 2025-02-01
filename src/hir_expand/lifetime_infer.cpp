@@ -1942,7 +1942,6 @@ namespace {
                         HIR::TypeRef    tmp_ty;
                         const auto* cap_ty_p = &m_binding_types_ptr->at(cap.root_slot);
                         HIR::TypeRef    deref_source;
-                        bool found_borrow = false;
                         for(const auto& n : cap.fields) {
                             if( n == RcString() ) {
                                 deref_source = cap_ty_p->clone();

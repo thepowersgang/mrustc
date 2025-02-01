@@ -506,10 +506,9 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
             is.putback(c);
 
             int64_t val = 0;
-            bool is_all_digit;
+            bool is_all_digit = true;
             if( str.size() > 2 && str[0] == '0' ) {
                 if(str[1] == 'x') {
-                    is_all_digit = true;
                     for(size_t i = 2; i < str.size(); i ++) {
                         c = str[i];
                         if( !isxdigit(c) ) {
@@ -521,7 +520,6 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                     }
                 }
                 else if(str[1] == 'o') {
-                    is_all_digit = true;
                     for(size_t i = 2; i < str.size(); i ++) {
                         c = str[i];
                         if( !('0' <= c && c <= '7') ) {
@@ -533,7 +531,6 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                     }
                 }
                 else if(str[1] == 'b') {
-                    is_all_digit = true;
                     for(size_t i = 2; i < str.size(); i ++) {
                         c = str[i];
                         if( !('0' <= c && c <= '1') ) {
@@ -549,7 +546,6 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                 }
             }
             else {
-                is_all_digit = true;
                 for(char c : str) {
                     if( !isdigit(c) ) {
                         is_all_digit = false;

@@ -156,7 +156,6 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         DEBUG("STATIC " << ent.first);
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
-        const auto& pp = ent.second->pp;
 
         if( stat.m_params.is_generic() )
         {
