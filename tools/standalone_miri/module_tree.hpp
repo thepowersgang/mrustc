@@ -21,6 +21,7 @@ struct Function
     RcString    my_path;
     ::std::vector<::HIR::TypeRef>   args;
     ::HIR::TypeRef   ret_ty;
+    bool is_variadic;
 
     // If `link_name` is non-empty, then the function is an external
     struct ExtInfo {
@@ -150,6 +151,7 @@ struct DataType
 struct FunctionType
 {
     bool    unsafe;
+    bool    is_variadic;
     ::std::string   abi;
     ::std::vector<HIR::TypeRef> args;
     HIR::TypeRef    ret;
@@ -157,6 +159,7 @@ struct FunctionType
     bool operator<(const FunctionType& x) const {
         #define _(f)    if(f != x.f) return f < x.f
         _(unsafe);
+        _(is_variadic);
         _(abi);
         _(args);
         _(ret);
