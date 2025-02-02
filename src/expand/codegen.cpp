@@ -511,6 +511,9 @@ class CHandler_Linkage:
         else if( linkage_str == "weak" ) {
             linkage = AST::Linkage::Weak;
         }
+        else if( linkage_str == "external" ) {
+            //linkage = AST::Linkage::External;
+        }
         else {
             TODO(sp, "#[linkage=\"" << linkage_str << "\"]");
         }
@@ -518,6 +521,7 @@ class CHandler_Linkage:
         if( auto* f = i.opt_Function() ){
             switch(linkage)
             {
+            case AST::Linkage::Default:
             case AST::Linkage::Weak:
                 break;
             default:
@@ -528,6 +532,7 @@ class CHandler_Linkage:
         else if( auto* f = i.opt_Static() ){
             switch(linkage)
             {
+            case AST::Linkage::Default:
             case AST::Linkage::Weak:
             case AST::Linkage::ExternWeak:
                 break;
