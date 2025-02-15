@@ -3,8 +3,8 @@
  * - By John Hodge (Mutabah/thePowersGang)
  *
  * mir/borrow_check.cpp
- * - Borrow Checker
- *
+ * - MIR Borrow Checker
+ * 
  */
 #include "main_bindings.hpp"
 #include "mir.hpp"
@@ -17,6 +17,7 @@
 #include <iomanip>
 
 namespace {
+    /// Value states
     enum class ValState
     {
         Uninit, // No value written yet
@@ -24,13 +25,16 @@ namespace {
         Shared, // immutably borrowed
         Frozen, // mutably borrowed
     };
+    /// Borrow status for a single variable
     struct VarState
     {
+        /// State bits, see `ValState`
         unsigned state : 2;
+        /// Index into `FcnState.inner` for the _first_ partially-borrowed for this variable
         unsigned partial_idx : 14;    // If non-zero, it's a partial init/borrow
 
         VarState(): state(static_cast<unsigned>(ValState::Uninit)), partial_idx(0) {}
-        VarState(ValState vs): state(static_cast<unsigned>(ValState::Shared)), partial_idx(0) {}
+        VarState(ValState vs): state(static_cast<unsigned>(vs)), partial_idx(0) {}
     };
 
     struct FcnState
@@ -38,6 +42,7 @@ namespace {
         VarState    retval;
         std::vector<VarState>   args;
         std::vector<VarState>   locals;
+        /// Mutable state flags for statics
         std::map<HIR::Path, VarState>   static_mut;
 
         std::vector<VarState>   inner;
@@ -61,6 +66,7 @@ namespace {
                 if( !cb(static_cast<ValState>(val_state.state)) )
                 {
                     // Error!
+                    //MIR_BUG(state, "Borrow check failure: ");
                 }
             }
         }
@@ -146,23 +152,95 @@ namespace {
             return rv;
         }
 
+        void set_state(const ::MIR::TypeResolve& state, const MIR::LValue& lv, ValState target) {
+            VarState* rv = &this->get_state_root_mut(lv.m_root);
+            for(const auto& w : lv.m_wrappers)
+            {
+                TU_MATCH_HDRA( (w), {)
+                TU_ARMA(Deref, e) {
+                    // Can't set to `Uninit` through a deref
+                    MIR_ASSERT(state, target != ValState::Uninit, "Attempting to move out of borrow");
+                    }
+                TU_ARMA(Field, e) {
+                    }
+                TU_ARMA(Downcast, e) {
+                    }
+                TU_ARMA(Index, e) {
+                    // Can't set to `Uninit` through an index
+                    MIR_ASSERT(state, target != ValState::Uninit, "Attempting to move through indexing");
+                    }
+                }
+            }
+            size_t i;
+            for(i = 0; i < lv.m_wrappers.size(); i ++)
+            {
+                const auto& w = lv.m_wrappers[i];
+                TU_MATCH_HDRA( (w), {)
+                TU_ARMA(Deref, e) {
+                    // Doesn't consume an inner, but stops the lookup?
+                    // - Could track borrows through a deref, but can't track/allow moves
+                    break;
+                    }
+                TU_ARMA(Field, e) {
+                    // Since partial is set, look it up
+                    //if( !rv->has_partial() ) {
+                    //    rv->partial_idx = this->allocate_partial(state, *ty_p);
+                    //}
+                    rv = &this->inner[static_cast<size_t>(rv->partial_idx) + e];
+                    }
+                TU_ARMA(Downcast, e) {
+                    // Doesn't consume an inner
+                    }
+                TU_ARMA(Index, e) {
+                    // Doesn't consume an inner, but stops the lookup
+                    break;
+                    }
+                }
+            }
+            while(i --)
+            {
+                switch(static_cast<ValState>(rv->state))
+                {
+                case ValState::Uninit:
+                case ValState::FullInit:
+                    rv->state = static_cast<unsigned>(target);
+                    break;
+                case ValState::Shared:
+                    rv->state = static_cast<unsigned>(target);
+                    break;
+                case ValState::Frozen:
+                    rv->state = static_cast<unsigned>(target);
+                    break;
+                }
+            }
+        }
+
         void move_lvalue(const ::MIR::TypeResolve& state, const MIR::LValue& lv) {
             // Must be `init` (or if Copy, `Shared`)
-            if( state.lvalue_is_copy(lv) )
-            {
+            if( state.lvalue_is_copy(lv) ) {
                 check_inner_state(state, lv, [&](const ValState vs){ return vs == ValState::FullInit || vs == ValState::Shared; });
             }
-            else
-            {
+            else {
                 check_inner_state(state, lv, [&](const ValState vs){ return vs == ValState::FullInit; });
-                // Need to update state
-                // - For this to work, we need a direct handle.
-                //auto* h = get_state_mut(state, lv, /*allow_parent=*/false);
+                set_state(state, lv, ValState::Uninit);
             }
         }
         void write_lvalue(const ::MIR::TypeResolve& state, const MIR::LValue& lv) {
+            check_inner_state(state, lv, [&](const ValState vs){ return vs != ValState::Shared || vs != ValState::Frozen; });
+            set_state(state, lv, ValState::FullInit);
         }
         void borrow_lvalue(const ::MIR::TypeResolve& state, ::HIR::BorrowType bt, const MIR::LValue& lv) {
+            switch(bt) {
+            case ::HIR::BorrowType::Owned:
+            case ::HIR::BorrowType::Unique:
+                check_inner_state(state, lv, [&](const ValState vs){ return vs == ValState::FullInit; });
+                set_state(state, lv, ValState::Frozen);
+                break;
+            case ::HIR::BorrowType::Shared:
+                check_inner_state(state, lv, [&](const ValState vs){ return vs == ValState::FullInit || vs == ValState::Shared; });
+                set_state(state, lv, ValState::Shared);
+                break;
+            }
         }
     };
 
