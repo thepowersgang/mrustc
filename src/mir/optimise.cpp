@@ -713,6 +713,15 @@ namespace
     };
     const ::MIR::Function* get_called_mir(const ::MIR::TypeResolve& state, const TransList* list, const ::HIR::Path& path, ParamsSet& params)
     {
+        MonomorphState  out_params;
+        auto e = state.m_resolve.get_value(state.sp, path, out_params, /*sig_only*/false, &params.impl_params_def);
+        DEBUG(e.tag_str() << " " << out_params);
+        params.fcn_params = out_params.get_method_params();
+        params.impl_params = out_params.pp_impl == nullptr ? ::HIR::PathParams()
+            : out_params.pp_impl == &out_params.pp_impl_data ? std::move(out_params.pp_impl_data)
+            : out_params.pp_impl->clone()
+            ;
+
         // If a TransList is avaliable, then all referenced functions must be in it.
         if( list )
         {
@@ -723,9 +732,12 @@ namespace
             }
             // TODO: Need identity params for most, but lifetime params need to be from the input.
             // Except, everything should already be monomorphised, so no identity required!
-            params.impl_params.m_lifetimes = it->second->pp.pp_impl.m_lifetimes;
-            params.fcn_params_tmp.m_lifetimes = it->second->pp.pp_method.m_lifetimes;
-            params.fcn_params = &params.fcn_params_tmp;
+            //params.impl_params.m_lifetimes    = it->second->pp.pp_impl.m_lifetimes;
+            //params.fcn_params_tmp.m_lifetimes = it->second->pp.pp_method.m_lifetimes;
+            //params.fcn_params = &params.fcn_params_tmp;
+            DEBUG("Found TransList " << it->first);
+            DEBUG("impl_params = " << params.impl_params);
+            DEBUG("fcn_params = " << *params.fcn_params);
 
             const auto& hir_fcn = *it->second->ptr;
             if( it->second->monomorphised.code ) {
@@ -746,14 +758,6 @@ namespace
             }
         }
 
-        MonomorphState  out_params;
-        auto e = state.m_resolve.get_value(state.sp, path, out_params, /*sig_only*/false, &params.impl_params_def);
-        DEBUG(e.tag_str() << " " << out_params);
-        params.fcn_params = out_params.get_method_params();
-        params.impl_params = out_params.pp_impl == nullptr ? ::HIR::PathParams()
-            : out_params.pp_impl == &out_params.pp_impl_data ? std::move(out_params.pp_impl_data)
-            : out_params.pp_impl->clone()
-            ;
         TU_MATCH_HDRA( (path.m_data), {)
         TU_ARMA(Generic, pe) {
             params.self_ty = nullptr;
@@ -6496,20 +6500,67 @@ void MIR_OptimiseCrate(::HIR::Crate& crate, bool do_minimal_optimisation)
     ov.visit_crate(crate);
 }
 
-void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
+void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list, bool post_save)
 {
     TRACE_FUNCTION;
-    for(const auto& fcn : list.m_functions)
-    {
-        DEBUG("FCN: " << fcn.first);
-    }
 
     ::StaticTraitResolve    resolve { crate };
 
-    bool did_inline_on_pass;
+    // If running after HIR has been serialised, we can eliminate calls to `const_eval_select` without
+    // impacting constant evaluation in downstream crates
+    if( post_save )
+    {
+        // Visit every function in the monomorph list and raplce `const_eval_select` calls with calls to the runtime function
+        for(auto& fcn_ent : list.m_functions)
+        {
+            auto& hir_fcn = *const_cast<::HIR::Function*>(fcn_ent.second->ptr);
+            ::MIR::Function* fcn_p;
+            if( fcn_ent.second->monomorphised.code ) {
+                DEBUG("Generic: " << fcn_ent.first);
+                fcn_p = &*fcn_ent.second->monomorphised.code;
+            }
+            else if( hir_fcn.m_code.m_mir ) {
+                DEBUG("Concrete: " << fcn_ent.first);
+                fcn_p = &hir_fcn.m_code.get_mir_or_error_mut(Span());
+            }
+            else {
+                // Ignore, this is an external function reference.
+                DEBUG("External: " << fcn_ent.first);
+                continue ;
+            }
 
-    size_t  MAX_ITERATIONS = 5; // TODO: Tune this.
+            auto& fcn = *fcn_p;
+            for( auto& block : fcn.blocks ) {
+                if(auto* te = block.terminator.opt_Call() ) {
+                    if( te->fcn.is_Intrinsic() && te->fcn.as_Intrinsic().name == "const_eval_select" ) {
+                        size_t n_args = te->fcn.as_Intrinsic().params.m_types.at(0).data().as_Tuple().size();
+                        const MIR::LValue arg = te->args.at(0).as_LValue().clone();
+                        // Note: arg 1 is the constant function
+                        const HIR::Path& fcn_path = *te->args.at(2).as_Constant().as_Function().p;
+
+                        DEBUG(fcn_path);
+                        te->fcn = fcn_path.clone();
+                        te->args.clear();
+                        te->args.reserve(n_args);
+                        for(size_t i = 0; i < n_args; i ++) {
+                            te->args.push_back( MIR::LValue::new_Field(arg.clone(), i) );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        for(const auto& fcn : list.m_functions)
+        {
+            DEBUG("FCN: " << fcn.first);
+        }
+    }
+
+    const size_t  MAX_ITERATIONS = 5; // TODO: Tune this.
     size_t  num_iterations = 0;
+    bool did_inline_on_pass;
     do
     {
         did_inline_on_pass = false;

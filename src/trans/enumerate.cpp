@@ -19,6 +19,7 @@
 #include <algorithm>
 #include "target.hpp"
 #include "mangling.hpp"
+#include <unordered_set>
 
 namespace {
     struct EnumState
@@ -26,6 +27,7 @@ namespace {
         const ::HIR::Crate& crate;
         StaticTraitResolve  resolve;
         TransList   rv;
+        const TransList*    orig_list;
 
         // Queue of items to enumerate
         ::std::deque<TransList_Function*>  fcn_queue;
@@ -33,10 +35,16 @@ namespace {
 
         ::std::set<std::string> emitted_functions;
 
+        // Map of locally-defined exported `link_name` functions
+        ::std::unordered_map<std::string, std::pair<HIR::SimplePath,const HIR::Function*>>    m_link_functions;
+
         EnumState(const ::HIR::Crate& crate):
             crate(crate)
             , resolve(crate)
-        {}
+            , orig_list(nullptr)
+        {
+            enumerate_link_functions();
+        }
 
         void enum_fcn(::HIR::Path p, const ::HIR::Function& fcn, Trans_Params pp)
         {
@@ -54,14 +62,47 @@ namespace {
                 fcn_queue.push_back(e);
             }
         }
+
+    private:
+        void enumerate_link_functions()
+        {
+            enumerate_link_functions_in(crate.m_root_module, HIR::ItemPath(crate.m_crate_name));
+            for(const auto& e_crate : crate.m_ext_crates)
+            {
+                enumerate_link_functions_in(e_crate.second.m_data->m_root_module, HIR::ItemPath(e_crate.first));
+            }
+        }
+        void enumerate_link_functions_in(const HIR::Module& mod, HIR::ItemPath mod_path)
+        {
+            for(const auto& vi : mod.m_value_items)
+            {
+                if( const auto* ip = vi.second->ent.opt_Function() )
+                {
+                    const auto& i = *ip;
+                    if( i.m_code.m_mir && i.m_linkage.name != "" )
+                    {
+                        m_link_functions[i.m_linkage.name] = std::make_pair( (mod_path + vi.first).get_simple_path(), &i );
+                    }
+                }
+            }
+
+            for(const auto& ti : mod.m_mod_items)
+            {
+                if( const auto* ip = ti.second->ent.opt_Module() )
+                {
+                    enumerate_link_functions_in(*ip, mod_path + ti.first);
+                }
+            }
+        }
     };
+    const RcString rcstring_drop = RcString::new_interned("drop");
 }
 
 TransList Trans_Enumerate_CommonPost(EnumState& state);
 void Trans_Enumerate_Types(EnumState& state);
 void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path);
-void Trans_Enumerate_FillFrom_Function(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp);
+void Trans_Enumerate_FillFrom_Function(EnumState& state, const ::HIR::Path& path, const ::HIR::Function& function, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_Static(EnumState& state, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
 void Trans_Enumerate_FillFrom_VTable (EnumState& state, ::HIR::Path vtable_path, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_Literal(EnumState& state, const EncodedLiteral& lit, const Trans_Params& pp);
@@ -127,6 +168,7 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
         auto main_path = crate.get_lang_item_path(Span(), "mrustc-main");
         const auto& main_fcn = crate.get_function_by_path(sp, main_path);
 
+        state.rv.m_roots.push_back(main_path);
         state.enum_fcn( main_path, main_fcn, {} );
 
         // "start" language item
@@ -141,13 +183,17 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
                 // With 1.29, this now takes main's return type as a type parameter
                 lang_start_pp.pp_method.m_types.push_back( main_fcn.m_return.clone() );
             }
-            state.enum_fcn( start_path, fcn, mv$(lang_start_pp) );
+            HIR::Path p = HIR::GenericPath(start_path, lang_start_pp.pp_method.clone());
+            state.rv.m_roots.push_back(p.clone() );
+            //state.enum_fcn( start_path, fcn, mv$(lang_start_pp) );
+            state.enum_fcn( std::move(p), fcn, mv$(lang_start_pp) );
         }
     }
     else
     {
         const auto& fcn = crate.get_function_by_path(sp, c_start_path);
 
+        state.rv.m_roots.push_back(c_start_path);
         state.enum_fcn( c_start_path, fcn, {} );
     }
 
@@ -178,7 +224,9 @@ namespace {
                     if( v.is_StructConstructor() || v.is_EnumConstructor() ) {
                     }
                     else {
-                        Trans_Enumerate_FillFrom_PathMono(state, ms.monomorph_path(sp, *path));
+                        auto p = ms.monomorph_path(sp, *path);
+                        state.rv.m_roots.push_back(p.clone());
+                        Trans_Enumerate_FillFrom_PathMono(state, std::move(p));
                     }
                 }
                 else {
@@ -211,6 +259,13 @@ namespace {
             } break;
         TU_ARM(vi, Constant, e) {
             if( is_visible ) {
+                // Visible constants need their relocations added as roots
+                // - Can't add this logic to `Trans_Enumerate_FillFrom_Literal` as it's used by non-public enumeration
+                for(const auto& r : e.m_value_res.relocations) {
+                    if( r.p ) {
+                        state.rv.m_roots.push_back(r.p->clone());
+                    }
+                }
                 Trans_Enumerate_FillFrom_Literal(state, e.m_value_res, Trans_Params());
             }
             } break;
@@ -231,6 +286,8 @@ namespace {
                 auto* ptr = state.rv.add_static( get_path() );
                 if(ptr)
                     Trans_Enumerate_FillFrom_Static(state, e, *ptr);
+
+                state.rv.m_roots.push_back(get_path());
             }
             } break;
         TU_ARM(vi, Function, e) {
@@ -261,9 +318,6 @@ namespace {
             if( e.m_params.is_generic() || (is_inline && is_visible) )
             {
                 const_cast<::HIR::Function&>(e).m_save_code = true;
-                // Enumerate concrete items used
-                // - These are functions that have to be emitted, even if they're not public themselves
-                Trans_Enumerate_GenericFunctionItems(state, sp, e, MonomorphStatePtr());
             }
             else
             {
@@ -271,7 +325,14 @@ namespace {
                     Trans_Params pp;
                     pp.pp_method = e.m_params.make_empty_params(/*lifetimes_only=*/true);
                     state.enum_fcn(get_path(), e, mv$(pp));
+
+                    state.rv.m_roots.push_back(get_path());
                 }
+            }
+            // Enumerate concrete items used
+            // - These are functions that have to be emitted, even if they're not public themselves
+            if( e.m_save_code ) {
+                Trans_Enumerate_GenericFunctionItems(state, sp, e, MonomorphStatePtr());
             }
             } break;
         }
@@ -373,6 +434,7 @@ namespace {
                         }
                     }
                     auto path = ::HIR::Path(cb_monomorph2.monomorph_type(sp, impl_ty), ::HIR::GenericPath(trait_path,  cb_monomorph2.monomorph_path_params(sp,impl.m_trait_args, false)), vi.first, mv$(pp));
+                    state.rv.m_roots.push_back(path.clone());
                     Trans_Enumerate_FillFrom_PathMono(state, mv$(path));
                     //state.enum_fcn(mv$(path), fcn.second.data, {});
                 }
@@ -441,16 +503,22 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
                     DEBUG("fn " << fcn.first << fcn.second.data.m_params.fmt_args());
                     if( !fcn.second.data.m_params.is_generic() )
                     {
-                        auto path = ::HIR::Path(impl.m_type.clone(), fcn.first);
-                        path.m_data.as_UfcsInherent().impl_params = impl_params.clone();
                         Trans_Params    pp;
                         pp.pp_impl = impl_params.clone();
                         pp.pp_method = fcn.second.data.m_params.make_empty_params(/*allow_lifetimes_only=*/true);
+                        auto path = ::HIR::Path( MonomorphStatePtr(nullptr, &impl_params, nullptr).monomorph_type(Span(), impl.m_type), fcn.first);
+                        path.m_data.as_UfcsInherent().impl_params = pp.pp_impl.clone();
+                        path.m_data.as_UfcsInherent().params      = pp.pp_method.clone();
+                        if( fcn.second.publicity.is_global() ) {
+                            state.rv.m_roots.push_back(path.clone());
+                        }
                         state.enum_fcn(mv$(path), fcn.second.data, mv$(pp));
                     }
                     else
                     {
                         fcn.second.data.m_save_code = true;
+                    }
+                    if( fcn.second.data.m_save_code ) {
                         Trans_Enumerate_GenericFunctionItems(state, Span(), fcn.second.data, ms);
                     }
                 }
@@ -468,6 +536,17 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
                 Trans_Params    tp;
                 tp.pp_impl = impl.m_params.make_empty_params(/*allow_lifetimes_only=*/true);
                 Trans_Enumerate_FillFrom_Literal(state, e.second.data.m_value_res, std::move(tp));
+
+                if( e.second.publicity.is_global() && !impl.m_params.is_generic() && !e.second.data.m_params.is_generic() )
+                {
+                    auto pp_method = e.second.data.m_params.make_empty_params(/*allow_lifetimes_only=*/true);
+                    for(const auto& r : e.second.data.m_value_res.relocations) {
+                        if(r.p) {
+                            // Still need to monomorph, as lifetimes aren't counted in `is_generic`
+                            state.rv.m_roots.push_back( MonomorphStatePtr(nullptr, &impl_params, &pp_method).monomorph_path(Span(), *r.p) );
+                        }
+                    }
+                }
             }
         }
     };
@@ -523,73 +602,184 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
     return rv;
 }
 
+namespace {
+    template<typename T>
+    void remove_missing(std::map<HIR::Path, T>& target, const std::map<HIR::Path, T>& tpl) {
+        auto it_new = tpl.begin();
+        for(auto it_in = target.begin(); it_in != target.end(); )
+        {
+            if( it_new == tpl.end() ) {
+                DEBUG("Remove (end) " << it_in->first);
+                it_in = target.erase(it_in);
+            }
+            else if( it_new->first == it_in->first ) {
+                DEBUG("Keep " << it_in->first);
+                ++ it_in;
+                ++ it_new;
+            }
+            else {
+                if( it_new->first < it_in->first ) {
+                    // Should this be possible? This implies that there's an item in `state.rv` that wasn't in `list`
+                    DEBUG("Added? " << it_new->first);
+                    ++it_new;
+                }
+                else {
+                    DEBUG("Remove " << it_in->first << " (next " << it_new->first << ")");
+                    it_in = target.erase(it_in);
+                }
+            }
+        }
+    }
+}
 void Trans_Enumerate_Cleanup(const ::HIR::Crate& crate, TransList& list)
 {
-    // NOTE: Disabled, as full filtering is nigh-on impossible
-    // - Could do partial filtering of unused locally generated versions of trait impls and inlines
-#if 0
-    EnumState   state { crate };
+#if 1
+    // Clear the function enum cache and re-generate
+    // - This is called after optimisation, so the cache may point to functions that have been optimised out
+    for(const auto& fcn_e : list.m_functions) {
+        auto& function = *fcn_e.second->ptr;
+        if(function.m_code.m_mir) {
+            function.m_code.m_mir->trans_enum_state = MIR::EnumCachePtr();
+        }
+    }
+    for(const auto& fcn_e : list.m_functions) {
+        auto& function = *fcn_e.second->ptr;
+        if( function.m_code.m_mir && !function.m_code.m_mir->trans_enum_state )
+        {
+            DEBUG( fcn_e.first );
+            auto* esp = new MIR::EnumCache();
+            Trans_Enumerate_FillFrom_MIR(*esp, *function.m_code.m_mir);
+            function.m_code.m_mir->trans_enum_state = ::MIR::EnumCachePtr(esp);
+        }
+    }
 
-
-    // Visit every function used and determine the items it uses
-    // - This doesn't consider the function itself as used, so unused functions will be pruned
-    Trans_Params    tp;
-    for(const auto& ent : list.m_functions)
+    // Completely re-run enumeration, but this time include the TransList so MIR recursion uses the optimised versions
+    EnumState state { crate };
+    state.orig_list = &list;
+    for(const auto& p : list.m_roots)
     {
-        const MIR::Function* mir;
-        if( ent.second->monomorphised.code )
-        {
-            mir = &*ent.second->monomorphised.code;
+        HIR::Path   path = p.clone();
+        MonomorphState  unused_params;
+        const auto& vi = state.resolve.get_value(Span(), path, unused_params, /*signature_only=*/true);
+        if( const auto* f = vi.opt_Function() ) {
+            TU_MATCH_HDRA( (path.m_data), {)
+            default:
+                break;
+            TU_ARMA(Generic, e) {
+                e.m_params.m_lifetimes.resize( (*f)->m_params.m_lifetimes.size() );
+                }
+            //TU_ARMA(Generic, e) {
+            //    e.m_params.m_lifetimes.resize( (*f)->m_params.m_lifetimes.size() );
+            //    }
+            }
         }
-        else if( ent.second->ptr->m_code.m_mir )
-        {
-            mir = &*ent.second->ptr->m_code.m_mir;
+        else {
+            // Statics don't have lifetime params
         }
-        else
+        Trans_Enumerate_FillFrom_PathMono(state, std::move(path));
+    }
+    auto new_list = Trans_Enumerate_CommonPost(state);
+
+    // Add stub entries to `new_list` for vtables and destructors, items that would be created by stages after enumerate
+    // - VTables
+    static RcString rcstring_drop_glue = RcString::new_interned("#drop_glue");
+    for( const auto& vtp : new_list.m_vtables )
+    {
+        static Span sp;
+        const auto& trait_path = vtp.first.m_data.as_UfcsKnown().trait;
+        const auto& type = vtp.first.m_data.as_UfcsKnown().type;
+
+        HIR::Path    drop_glue_fn(type.clone(), rcstring_drop_glue);
+        DEBUG("++ " << drop_glue_fn);
+        new_list.m_functions.insert(std::make_pair( std::move(drop_glue_fn), nullptr ));
+
+        DEBUG("++ " << vtp.first);
+        new_list.m_statics.insert(std::make_pair(vtp.first.clone(), nullptr));
+
+        if( trait_path.m_path == HIR::SimplePath() ) {
+            // Non-data traits
+            continue ;
+        }
+
+        const auto& trait = crate.get_trait_by_path(sp, trait_path.m_path);
+
+        auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
+        for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
         {
+            // Find the corresponding vtable entry
+            for(const auto& m : trait.m_value_indexes)
+            {
+                // NOTE: The "3" is the number of non-method vtable entries
+                if( m.second.first != 3+i )
+                    continue ;
+
+                auto trait_gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
+                auto item_path = ::HIR::Path(type.clone(), mv$(trait_gpath), m.first);
+
+                DEBUG("++ " << item_path);
+                new_list.m_functions.insert(std::make_pair( std::move(item_path), nullptr ));
+
+                // If the entry is a by-value function, then emit a reference to a shim
+                const auto& src_trait = state.resolve.m_crate.get_trait_by_path(sp, m.second.second.m_path);
+                const auto& item = src_trait.m_values.at(m.first);
+                if( item.is_Function() && item.as_Function().m_receiver == HIR::Function::Receiver::Value )
+                {
+                    trait_gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
+                    auto item_path = ::HIR::Path(type.clone(), mv$(trait_gpath), RcString::new_interned(FMT(m.first << "#ptr")));
+                    DEBUG("++ " << item_path);
+                    new_list.m_functions.insert(std::make_pair( std::move(item_path), nullptr ));
+                }
+            }
+        }
+    }
+    // - Drop Glue
+    for(const auto& ty : new_list.m_types)
+    {
+        Span    sp;
+        // Ignore shallow types
+        if( ty.second ) {
             continue;
         }
+        // TraitObject and Slice flag as needing drop glue... but don't actually get it generated
+        if(ty.first.data().is_TraitObject() || ty.first.data().is_Slice()) {
+            continue ;
+        }
+        if(!state.resolve.type_needs_drop_glue(sp, ty.first)) {
+            continue ;
+        }
 
-        MIR::EnumCache  ec;
-        Trans_Enumerate_FillFrom_MIR(ec, *mir);
-        ec.apply(state, tp);
-    }
-    for(const auto& ent : list.m_statics)
-    {
-        const auto& pp = ent.second->pp;
-        const auto& item = *ent.second->ptr;
-        if( ! item.m_value_res.is_Invalid() )
+        HIR::Path    drop_glue_fn(ty.first.clone(), rcstring_drop_glue);
+        DEBUG("++ " << drop_glue_fn);
+        new_list.m_functions.insert(std::make_pair( std::move(drop_glue_fn), nullptr ));
+
+        if( ty.first.data().is_Path() && ty.first.data().as_Path().binding.get_trait_markings()->has_drop_impl )
         {
-            Trans_Enumerate_FillFrom_Literal(state, item.m_value_res, pp);
+            auto fcn_path = ::HIR::Path(ty.first.clone(), state.resolve.m_lang_Drop, rcstring_drop);
+            DEBUG("++ " << fcn_path);
+            new_list.m_functions.insert(std::make_pair( std::move(fcn_path), nullptr ));
         }
     }
-
-    // Remove any item in `list.m_functions` that doesn't appear in `state.rv.m_functions`
-    for(auto it = list.m_functions.begin(); it != list.m_functions.end();)
+    for(const auto& ty : new_list.auto_clone_impls)
     {
-        auto it2 = state.rv.m_functions.find(it->first);
-        // TODO: Only remove if it is not exported
-        // - externally reachable
-        // - used by exported generic
-        // - part of a local trait impl
-        if( it2 == state.rv.m_functions.end() && false )
-        {
-            DEBUG("Remove " << it->first);
-            it = list.m_functions.erase(it);
-        }
-        else
-        {
-            DEBUG("Keep " << it->first);
-            ++ it;
-        }
+        static RcString rcstring_clone = RcString::new_interned("clone");
+        HIR::Path    fn_path(ty.clone(), crate.get_lang_item_path(Span(), "clone"), rcstring_clone);
+        DEBUG("++ " << fn_path);
+        new_list.m_functions.insert(std::make_pair( std::move(fn_path), nullptr ));
+    }
+    for(const auto& fn_path : new_list.trait_object_methods) {
+        DEBUG("++ " << fn_path);
+        new_list.m_functions.insert(std::make_pair( fn_path.clone(), nullptr ));
+    }
+    for(const auto& ty : new_list.auto_fnptr_impls) {
+        // - <fn(...) as FnPtr>::addr
+        static RcString rcstring_item = RcString::new_interned("addr");
+        HIR::Path    fn_path(ty.clone(), crate.get_lang_item_path(Span(), "fn_ptr_trait"), rcstring_item);
+        DEBUG("++ " << fn_path);
+        new_list.m_functions.insert(std::make_pair( std::move(fn_path), nullptr ));
     }
 
-    // Sanity check: all items in `state.rv.m_functions` must exist in `list.m_functions`
-    for(const auto& e : state.rv.m_functions)
-    {
-        auto it = list.m_functions.find(e.first);
-        ASSERT_BUG(Span(), it != list.m_functions.end(), "Enumerate Error - New function appeared after monomorphisation - " << e.first);
-    }
+    remove_missing(list.m_functions, new_list.m_functions);
+    remove_missing(list.m_statics  , new_list.m_statics  );
 #endif
 }
 
@@ -604,7 +794,7 @@ void Trans_Enumerate_CommonPost_Run(EnumState& state)
 
         TRACE_FUNCTION_F("Function " << ::std::find_if(state.rv.m_functions.begin(), state.rv.m_functions.end(), [&](const auto&x){ return x.second.get() == &fcn_out; })->first);
 
-        Trans_Enumerate_FillFrom_Function(state, *fcn_out.ptr, fcn_out.pp);
+        Trans_Enumerate_FillFrom_Function(state, *fcn_out.path,  *fcn_out.ptr, fcn_out.pp);
     }
 }
 TransList Trans_Enumerate_CommonPost(EnumState& state)
@@ -628,15 +818,17 @@ namespace
         const ::HIR::Crate& m_crate;
         ::StaticTraitResolve    m_resolve;
         ::std::vector< ::std::pair< ::HIR::TypeRef, bool> >& out_list;
+        const TransList* prev_list;
 
         // TODO: Have a list of indexes into `out_list`, sorted by typeref ordering
         ::std::vector<size_t>   visited_map;
         ::std::set< const ::HIR::TypeRef*, PtrComp> active_set;
 
-        TypeVisitor(const ::HIR::Crate& crate, ::std::vector< ::std::pair< ::HIR::TypeRef, bool > >& out_list):
+        TypeVisitor(const ::HIR::Crate& crate, ::std::vector< ::std::pair< ::HIR::TypeRef, bool > >& out_list, const TransList* prev_list):
             m_crate(crate),
-            m_resolve(crate),
-            out_list(out_list)
+            m_resolve(crate)
+            , out_list(out_list)
+            , prev_list(prev_list)
         {}
 
         ~TypeVisitor()
@@ -882,7 +1074,7 @@ namespace
             auto& tv = *this;
 
             ::HIR::TypeRef   tmp;
-            auto monomorph = [&](const auto& ty)->const auto& {
+            std::function<const HIR::TypeRef&(const HIR::TypeRef&)> monomorph = [&](const HIR::TypeRef& ty)->const HIR::TypeRef& {
                 return pp.maybe_monomorph(m_resolve, tmp, ty);
                 };
             DEBUG(fcn.m_return);
@@ -921,9 +1113,23 @@ namespace
                 tv.visit_type( monomorph(arg.second) );
             }
 
-            if( fcn.m_code.m_mir )
+            const MIR::Function* mir_p = nullptr;
+            if( fcn.m_code.m_mir ) {
+                mir_p = &*fcn.m_code.m_mir;
+            }
+            // If the previous list is populated, then this should be in it.
+            if( prev_list ) {
+                static Trans_Params empty_params;
+                auto it = prev_list->m_functions.find(path);
+                ASSERT_BUG(sp, it != prev_list->m_functions.end(), "Unable to find " << path << " in first-pass enumerate result");
+                if(it != prev_list->m_functions.end() && it->second && it->second->monomorphised.code) {
+                    mir_p = &*it->second->monomorphised.code;
+                    monomorph = [](const HIR::TypeRef& ty)->const auto& { return ty; };
+                }
+            }
+            if( mir_p )
             {
-                const auto& mir = *fcn.m_code.m_mir;
+                const MIR::Function& mir = *mir_p;
                 for(const auto& ty : mir.locals)
                     tv.visit_type(monomorph(ty));
 
@@ -964,17 +1170,23 @@ namespace
                                 };
                             const ::HIR::TypeRef*   ty_p = nullptr;;
                             // Recurse, if Deref get the type and add it to the visitor
-                            TU_MATCHA( (lv.m_root), (e),
-                            (Return,
+                            TU_MATCH_HDRA( (lv.m_root), {)
+                            TU_ARMA(Return, e) {
                                 MIR_TODO(mir_res, "Get return type for MIR type enumeration");
-                                ),
-                            (Argument,
+                                }
+                            TU_ARMA(Argument, e) {
                                 ty_p = &monomorph_outer(fcn.m_args[e].second);
-                                ),
-                            (Local,
-                                ty_p = &monomorph_outer(fcn.m_code.m_mir->locals[e]);
-                                ),
-                            (Static,
+                                }
+                            TU_ARMA(Local, e) {
+                                if( &mir_res.m_fcn == &*fcn.m_code.m_mir ) {
+                                    ty_p = &monomorph_outer(fcn.m_code.m_mir->locals[e]);
+                                }
+                                else {
+                                    
+                                    ty_p = &mir_res.m_fcn.locals[e];
+                                }
+                                }
+                            TU_ARMA(Static, e) {
                                 // TODO: Monomorphise the path then hand to MIR::TypeResolve?
                                 const auto& path = e;
                                 TU_MATCHA( (path.m_data), (pe),
@@ -992,8 +1204,8 @@ namespace
                                 (UfcsInherent,
                                     MIR_TODO(mir_res, "LValue::Static - UfcsInherent - " << path);
                                     )
-                                )
-                                )
+                                    }
+                                }
                             )
                             assert(ty_p);
                             for(const auto& w : lv.m_wrappers)
@@ -1065,7 +1277,7 @@ void Trans_Enumerate_Types(EnumState& state)
 {
     TRACE_FUNCTION;
     static Span sp;
-    TypeVisitor tv { state.crate, state.rv.m_types };
+    TypeVisitor tv { state.crate, state.rv.m_types, state.orig_list };
 
     unsigned int types_count = 0;
     bool constructors_added;
@@ -1174,6 +1386,7 @@ void Trans_Enumerate_Types(EnumState& state)
             if( ent.second )
                 continue ;
             const auto& ty = ent.first;
+            TRACE_FUNCTION_F(ty);
             if( ty.data().is_Path() )
             {
                 const auto& te = ty.data().as_Path();
@@ -1186,18 +1399,23 @@ void Trans_Enumerate_Types(EnumState& state)
                 if( markings_ptr->has_drop_impl && (gp.m_path.crate_name() == state.crate.m_crate_name || gp.m_params.has_params()) )
                 {
                     // Add the Drop impl to the codegen list
-                    Trans_Enumerate_FillFrom_PathMono(state,  ::HIR::Path( ty.clone(), state.crate.get_lang_item_path(sp, "drop"), RcString::new_interned("drop"), HIR::PathParams(HIR::LifetimeRef())));
+                    Trans_Enumerate_FillFrom_PathMono(state,  ::HIR::Path( ty.clone(), state.crate.get_lang_item_path(sp, "drop"), rcstring_drop, HIR::PathParams(HIR::LifetimeRef())));
                     constructors_added = true;
                 }
             }
 
-            if( TARGETVER_MOST_1_54 && /*const auto* ity =*/ tv.m_resolve.is_type_owned_box(ty) )
+            if( const auto* ity = tv.m_resolve.is_type_owned_box(ty) )
             {
-                // Reqire drop glue for inner type.
-                // - Should that already exist?
-                // Requires box_free lang item
-                const auto& p = ty.data().as_Path().path.m_data.as_Generic().m_params;
-                Trans_Enumerate_FillFrom_PathMono(state, ::HIR::GenericPath( state.crate.get_lang_item_path(sp, "box_free"), p.clone() ));
+                tv.visit_type(*ity);
+                
+                if( TARGETVER_MOST_1_54 )
+                {
+                    // Reqire drop glue for inner type.
+                    // - Should that already exist?
+                    // Requires box_free lang item
+                    const auto& p = ty.data().as_Path().path.m_data.as_Generic().m_params;
+                    Trans_Enumerate_FillFrom_PathMono(state, ::HIR::GenericPath( state.crate.get_lang_item_path(sp, "box_free"), p.clone() ));
+                }
             }
         }
         types_count = state.rv.m_types.size();
@@ -1304,6 +1522,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
 {
     Span    sp;
     TRACE_FUNCTION_F(path_mono);
+    // Don't want duplicates of lifetime-generic items
     ASSERT_BUG(sp, !monomorphise_path_needed(path_mono, /*ignore_lifetimes=*/false), "Path " << path_mono << " is generic");
     // TODO: If already in the list, return early
     if( state.rv.m_functions.count(path_mono) ) {
@@ -1717,50 +1936,48 @@ void Trans_Enumerate_FillFrom_Literal(EnumState& state, const EncodedLiteral& li
     }
 }
 
-namespace {
-    ::HIR::Function* find_function_by_link_name(const ::HIR::Module& mod, ::HIR::ItemPath mod_path,  const char* name,  ::HIR::SimplePath& out_path)
+void Trans_Enumerate_FillFrom_Function(EnumState& state, const HIR::Path& p, const ::HIR::Function& function, const Trans_Params& pp)
+{
+    TRACE_FUNCTION_F("Function " << p << " pp=" << pp.pp_impl << " + " << pp.pp_method);
+    if( !function.m_code.m_mir )
     {
-        for(const auto& vi : mod.m_value_items)
+        // External.
+        if( function.m_linkage.name != "" )
         {
-            TU_IFLET( ::HIR::ValueItem, vi.second->ent, Function, i,
-                if( i.m_code.m_mir && i.m_linkage.name != "" && i.m_linkage.name == name )
-                {
-                    out_path = (mod_path + vi.first).get_simple_path();
-                    return &i;
-                }
-            )
-        }
-
-        for(const auto& ti : mod.m_mod_items)
-        {
-            TU_IFLET( ::HIR::TypeItem, ti.second->ent, Module, i,
-                if( auto rv = find_function_by_link_name(i, mod_path + ti.first, name,  out_path) )
-                    return rv;
-            )
-        }
-
-        return nullptr;
-    }
-    ::HIR::Function* find_function_by_link_name(const ::HIR::Crate& crate, const char* name,  ::HIR::SimplePath& out_path)
-    {
-        if(auto rv = find_function_by_link_name(crate.m_root_module, {crate.m_crate_name}, name, out_path))
-            return rv;
-        for(const auto& e_crate : crate.m_ext_crates)
-        {
-            if(auto rv = find_function_by_link_name(e_crate.second.m_data->m_root_module, {e_crate.first}, name,  out_path))
+            // Search for a function with the same linkage name anywhere in the loaded crates
+            auto it = state.m_link_functions.find(function.m_linkage.name);
+            if( it != state.m_link_functions.end() )
             {
-                assert( out_path.crate_name() == e_crate.first );
-                return rv;
+                state.enum_fcn( ::HIR::Path(it->second.first), *it->second.second, Trans_Params(pp.sp) );
             }
         }
-        return nullptr;
     }
-}
-
-void Trans_Enumerate_FillFrom_Function(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp)
-{
-    TRACE_FUNCTION_F("Function pp=" << pp.pp_impl << " + " << pp.pp_method);
-    if( function.m_code.m_mir )
+    else if( state.orig_list )
+    {
+        auto it = state.orig_list->m_functions.find(p);
+        if( it != state.orig_list->m_functions.end() )
+        {
+            if( it->second->monomorphised.code ) {
+                DEBUG("Monomorphised");
+                MIR::EnumCache  ec;
+                Trans_Enumerate_FillFrom_MIR(ec, *it->second->monomorphised.code);
+                ec.apply(state, pp);
+            }
+            else if( it->second->ptr->m_code.m_mir ) {
+                DEBUG("Concrete");
+                MIR::EnumCache  ec;
+                Trans_Enumerate_FillFrom_MIR(ec, *it->second->ptr->m_code.m_mir);
+                ec.apply(state, pp);
+            }
+            else {
+                DEBUG("No code");
+            }
+        }
+        else {
+            ASSERT_BUG(Span(), it != state.orig_list->m_functions.end(), "Missing " << p << " in input TransList?");
+        }
+    }
+    else
     {
         const auto& mir_fcn = *function.m_code.m_mir;
         if( !mir_fcn.trans_enum_state )
@@ -1771,19 +1988,6 @@ void Trans_Enumerate_FillFrom_Function(EnumState& state, const ::HIR::Function& 
         }
         // TODO: Ensure that all types have drop glue generated too? (Iirc this is unconditional currently)
         mir_fcn.trans_enum_state->apply(state, pp);
-    }
-    else
-    {
-        if( function.m_linkage.name != "" )
-        {
-            // Search for a function with the same linkage name anywhere in the loaded crates
-            ::HIR::SimplePath   path;
-            if(const auto* f = find_function_by_link_name(state.crate, function.m_linkage.name.c_str(), path))
-            {
-                state.enum_fcn( ::HIR::Path(mv$(path)), *f, Trans_Params(pp.sp) );
-            }
-        }
-        // External.
     }
 }
 void Trans_Enumerate_FillFrom_Static(EnumState& state, const ::HIR::Static& item, TransList_Static& out_stat, Trans_Params pp)

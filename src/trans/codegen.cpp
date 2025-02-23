@@ -185,15 +185,15 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
             bool is_extern = ! static_cast<bool>(fcn.m_code);
             // If this is a provided trait method, it needs to be monomorphised too.
             bool is_method = ( fcn.m_args.size() > 0 && visit_ty_with(fcn.m_args[0].second, [&](const auto& x){return x == ::HIR::TypeRef::new_self();}) );
-            if( pp.has_types() || is_method )
-            {
-                ASSERT_BUG(sp, ent.second->monomorphised.code, "Function that required monomorphisation wasn't monomorphised");
 
+            bool is_monomorph = pp.has_types() || is_method;
+            if( ent.second->monomorphised.code ) {
                 // TODO: Flag that this should be a weak (or weak-er) symbol?
                 // - If it's from an external crate, it should be weak, but what about local ones?
-                codegen->emit_function_code(path, fcn, ent.second->pp, is_extern,  ent.second->monomorphised.code);
+                codegen->emit_function_code(path, fcn, pp, is_extern,  ent.second->monomorphised.code);
             }
             else {
+                ASSERT_BUG(sp, !is_monomorph, "Function that required monomorphisation wasn't monomorphised");
                 codegen->emit_function_code(path, fcn, pp, is_extern,  fcn.m_code.m_mir);
             }
         }

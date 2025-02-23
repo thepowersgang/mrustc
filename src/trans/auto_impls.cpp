@@ -45,6 +45,7 @@ namespace {
             }
         }
     };
+    const RcString rcstring_clone = RcString::new_interned("clone");
     const RcString rcstring_drop = RcString::new_interned("drop");
     const RcString rcstring_self = RcString::new_interned("self");
     const RcString rcstring_drop_glue = RcString::new_interned("#drop_glue");
@@ -72,11 +73,13 @@ namespace {
                     borrow_lv.clone(),
                     ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
                     }));
+            ::HIR::PathParams   pp;
+            pp.m_lifetimes.push_back(HIR::LifetimeRef(1*256+0)); // 'M:0
             bb.terminator = ::MIR::Terminator::make_Call({
                     static_cast<unsigned>(mir_fcn.blocks.size() + 2),  // return block (after the panic block below)
                     static_cast<unsigned>(mir_fcn.blocks.size() + 1),  // panic block (next block)
                     res_lv.clone(),
-                    ::MIR::CallTarget( ::HIR::Path(subty.clone(), lang_Clone, "clone") ),
+                    ::MIR::CallTarget( ::HIR::Path(subty.clone(), lang_Clone, rcstring_clone, std::move(pp)) ),
                     ::make_vec1<::MIR::Param>( ::std::move(borrow_lv) )
                     });
             mir_fcn.blocks.push_back(::std::move( bb ));
@@ -191,12 +194,13 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
         /*m_return=*/ty.clone(),
         ::HIR::ExprPtr {}
         };
+    fcn.m_params.m_lifetimes.push_back(HIR::LifetimeDef()); // 'M:0 - for the `&self` argument
     fcn.m_code.m_mir = ::MIR::FunctionPointer( new ::MIR::Function(mv$(mir_fcn)) );
 
     // Impl
     ::HIR::TraitImpl    impl;
     impl.m_type = mv$(ty);
-    impl.m_methods.insert(::std::make_pair( RcString::new_interned("clone"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::std::move(fcn) } ));
+    impl.m_methods.insert(::std::make_pair( rcstring_clone, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::std::move(fcn) } ));
 
     // Add impl to the crate
     auto& list = state.crate.m_trait_impls[state.lang_Clone].get_list_for_type_mut(impl.m_type);

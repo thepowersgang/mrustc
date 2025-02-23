@@ -114,6 +114,9 @@ public:
     TransList& operator=(TransList&&) = default;
     TransList& operator=(const TransList&) = delete;
 
+    /// Root-level items (exposed globals)
+    ::std::vector<HIR::Path>  m_roots;
+
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Function> > m_functions;
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Static> > m_statics;
     /// Constants that are still Defer

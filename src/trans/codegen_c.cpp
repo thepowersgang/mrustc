@@ -843,8 +843,16 @@ namespace {
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");
                 if( c_start_path == ::HIR::SimplePath() )
                 {
-                    m_of << "\treturn " << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
-                            << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
+                    auto main_path = m_crate.get_lang_item_path(Span(), "mrustc-main");
+                    const auto& main_fcn = m_crate.get_function_by_path(sp, main_path);
+
+                    auto start_gpath = ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start"));
+                    if( TARGETVER_LEAST_1_29 ) {
+                        // With 1.29, this now takes main's return type as a type parameter
+                        start_gpath.m_params.m_types.push_back( main_fcn.m_return.clone() );
+                    }
+                    m_of << "\treturn " << Trans_Mangle( start_gpath ) << "("
+                            << Trans_Mangle( ::HIR::GenericPath(main_path) ) << ", argc, (uint8_t**)argv"
                             ;
                     if( TARGETVER_LEAST_1_74 ) {
                         m_of << ", 0";  // `sigpipe` setting

@@ -176,6 +176,7 @@ void init_debug_list()
         "Trans Auto Impls",
         "Trans Monomorph",
         "MIR Optimise Inline",
+        "MIR Optimise Inline PostSave",
         "Trans Enumerate Cleanup",
         "Trans Codegen"
         });
@@ -868,40 +869,53 @@ int main(int argc, char *argv[])
         // - Generate monomorphised versions of all functions
         CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
         // - Do post-monomorph inlining
-        CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-        // - Clean up no-unused functions
-        CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
+        CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items, false); });
 
         memory_dump("Trans");
+
+        std::string hir_file;
+        switch(crate_type)
+        {
+        case ::AST::Crate::Type::RustLib:
+            // Save a loadable HIR dump
+            hir_file = params.outfile + ".hir";
+            CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(hir_file, *hir_crate); });
+            break;
+        case ::AST::Crate::Type::RustDylib:
+            // Save a loadable HIR dump
+            CompilePhaseV("HIR Serialise", [&]() {
+                //auto saved_ext_crates = ::std::move(hir_crate->m_ext_crates);
+                HIR_Serialise(hir_file, *hir_crate);
+                //hir_crate->m_ext_crates = ::std::move(saved_ext_crates);
+                });
+            break;
+        default:
+            break;
+        }
+
+
+        // - Do post-monomorph inlining
+        CompilePhaseV("MIR Optimise Inline PostSave", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items, true); });
+        // - Clean up ununused functions
+        CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
 
         switch(crate_type)
         {
         case ::AST::Crate::Type::Unknown:
             throw "";
         case ::AST::Crate::Type::RustLib:
-            // Save a loadable HIR dump
-            CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile + ".hir", *hir_crate); });
-            // Generate a loadable .o
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::StaticLibrary, trans_opt, *hir_crate, std::move(items), params.outfile + ".hir"); });
+            // Generate a linkable .o
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::StaticLibrary, trans_opt, *hir_crate, std::move(items), hir_file); });
             break;
         case ::AST::Crate::Type::RustDylib:
-            // Save a loadable HIR dump
-            CompilePhaseV("HIR Serialise", [&]() {
-                //auto saved_ext_crates = ::std::move(hir_crate->m_ext_crates);
-                HIR_Serialise(params.outfile + ".hir", *hir_crate);
-                //hir_crate->m_ext_crates = ::std::move(saved_ext_crates);
-                });
-            // Generate a .so
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::DynamicLibrary, trans_opt, *hir_crate, std::move(items), params.outfile + ".hir"); });
-            break;
         case ::AST::Crate::Type::CDylib:
             // Generate a .so/.dll
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::DynamicLibrary, trans_opt, *hir_crate, std::move(items), ""); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::DynamicLibrary, trans_opt, *hir_crate, std::move(items), hir_file); });
             break;
         case ::AST::Crate::Type::ProcMacro: {
             // Needs: An executable (the actual macro handler), metadata (for `extern crate foo;`)
             // - Metadata was done before enumerate
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, *hir_crate, std::move(items), params.outfile + ".hir"); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, *hir_crate, std::move(items), hir_file); });
             break; }
         case ::AST::Crate::Type::Executable:
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, *hir_crate, std::move(items), ""); });

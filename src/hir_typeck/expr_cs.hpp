@@ -74,11 +74,6 @@ struct Context
 
     struct IVarPossible
     {
-        // Strong disable (depends on a trait impl)
-        bool force_disable = false;
-        // 
-        bool force_no_to = false;
-        bool force_no_from = false;
         struct CoerceTy {
             enum Op {
                 Coercion,
@@ -92,12 +87,12 @@ struct Context
             {
             }
         };
-        // Target types for coercion/unsizing (these types are known to exist in the function)
-        ::std::vector<CoerceTy> types_coerce_to;
-        // Source types for coercion/unsizing (these types are known to exist in the function)
-        ::std::vector<CoerceTy> types_coerce_from;
-        // Possible default types (from generic defaults)
-        ::std::set<::HIR::TypeRef>   types_default;
+
+        // Strong disable (depends on a trait impl)
+        bool force_disable = false;
+        // 
+        bool force_no_to = false;
+        bool force_no_from = false;
 
         // Possible types from trait impls (may introduce new types)
         // - This is union of all input bounds
@@ -106,12 +101,32 @@ struct Context
         /// - If an existing type isn't in the incoming set, it is removed
         /// - But any type in an incoming set is accepted (even if it doesn't already exist)
         bool    bounds_include_self = false;
+        // Target types for coercion/unsizing (these types are known to exist in the function)
+        ::std::vector<CoerceTy> types_coerce_to;
+        // Source types for coercion/unsizing (these types are known to exist in the function)
+        ::std::vector<CoerceTy> types_coerce_from;
+        // Possible default types (from generic defaults)
+        ::std::set<::HIR::TypeRef>   types_default;
+
         ::std::vector<::HIR::TypeRef>   bounded;
 
         void reset() {
+#if 0
             auto tmp = mv$(this->types_default);
             *this = IVarPossible();
             this->types_default = mv$(tmp);
+#else
+            // Manually clear, to avoid needing to reallocate the lists all the time.
+            this->force_disable = false;
+            this->force_no_to = false;
+            this->force_no_from = false;
+            this->types_coerce_to.clear();
+            this->types_coerce_from.clear();
+            //this->types_default.clear();
+            this->has_bounded = false;
+            this->bounds_include_self = false;
+            this->bounded.clear();
+#endif
         }
         bool has_rules() const {
             if( force_disable )

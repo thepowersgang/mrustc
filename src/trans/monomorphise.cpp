@@ -489,7 +489,9 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         const auto& fcn = *fcn_ent.second->ptr;
         // Trait methods (which are the only case where `Self` can exist in the argument list at this stage) always need to be monomorphised.
         bool is_method = ( fcn.m_args.size() > 0 && visit_ty_with(fcn.m_args[0].second, [&](const auto& x){return x == ::HIR::TypeRef::new_self();}) );
-        if(fcn_ent.second->pp.has_types() || is_method)
+        bool monomorph_needed = fcn_ent.second->pp.has_types() || is_method;
+
+        if( monomorph_needed )
         {
             const auto& path = fcn_ent.first;
             const auto& pp = fcn_ent.second->pp;
