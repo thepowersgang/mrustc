@@ -1382,6 +1382,10 @@ void Trans_Enumerate_Types(EnumState& state)
                 tv.visit_type(gpath.m_params.m_types[0]);
             }
         }
+        for(const auto& ty : state.rv.auto_clone_impls)
+        {
+            tv.visit_type(ty);
+        }
 
         constructors_added = false;
         for(unsigned int i = types_count; i < state.rv.m_types.size(); i ++ )
