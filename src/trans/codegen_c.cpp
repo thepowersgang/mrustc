@@ -2986,12 +2986,12 @@ namespace {
             // Variables
             m_of << "\t"; emit_ctype(ret_type, FMT_CB(ss, ss << "rv";)); m_of << ";\n";
             for(unsigned int i = 0; i < code->locals.size(); i ++) {
-                DEBUG("var" << i << " : " << code->locals[i]);
-                m_of << "\t"; emit_ctype(code->locals[i], FMT_CB(ss, ss << "var" << i;));
                 // If the type is a ZST, initialise it (to avoid warnings)
                 if( this->type_is_bad_zst(code->locals[i]) ) {
-                    m_of << " = {0}";
+                    continue ;
                 }
+                DEBUG("var" << i << " : " << code->locals[i]);
+                m_of << "\t"; emit_ctype(code->locals[i], FMT_CB(ss, ss << "var" << i;));
                 m_of << ";";
                 m_of << "\t// " << code->locals[i];
                 m_of << "\n";
@@ -3414,6 +3414,15 @@ namespace {
                 return false;
             }
         }
+        bool lvalue_is_bad_zst(const ::MIR::LValue& lv) const {
+            if( m_options.disallow_empty_structs ) {
+                HIR::TypeRef    tmp;
+                return type_is_bad_zst(m_mir_res->get_lvalue_type(tmp, lv));
+            }
+            else {
+                return false;
+            }
+        }
         bool type_is_high_align(const ::HIR::TypeRef& ty) const
         {
             // Only applicable to MSVC (which doesn't like unaligned arguments)
@@ -3751,7 +3760,12 @@ namespace {
                 TU_ARMA(Borrow, ve) {
                     emit_lvalue(e.dst);
                     m_of << " = ";
-                    emit_borrow(mir_res, ve.type, ve.val);
+                    if( this->type_is_bad_zst(m_mir_res->get_lvalue_type(tmp, ve.val, ve.val.m_wrappers.size())) ) {
+                        m_of << "(void*)&rv";
+                    }
+                    else {
+                        emit_borrow(mir_res, ve.type, ve.val);
+                    }
                     }
                 TU_ARMA(Cast, ve) {
                     emit_rvalue_cast(mir_res, e.dst, ve);
@@ -3987,8 +4001,10 @@ namespace {
                     }
                 TU_ARMA(UnionVariant, ve) {
                     MIR_ASSERT(mir_res, m_crate.get_typeitem_by_path(sp, ve.path.m_path).is_Union(), "");
-                    emit_lvalue(e.dst);
-                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                    if( !this->type_is_bad_zst( m_mir_res->get_param_type(tmp, ve.val) ) ) {
+                        emit_lvalue(e.dst);
+                        m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                    }
                     }
                 TU_ARMA(EnumVariant, ve) {
                     const auto& tyi = m_crate.get_typeitem_by_path(sp, ve.path.m_path);
@@ -6401,7 +6417,9 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "black_box" ) {
-                emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
+                if( !lvalue_is_bad_zst(e.ret_val) ) {
+                    emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
+                }
             }
             // Overflowing Arithmetic
             // HACK: Uses GCC intrinsics
@@ -7539,6 +7557,9 @@ namespace {
                         m_of << indent << Trans_Mangle(p) << "((void*)&";
                         emit_lvalue(::MIR::LValue::CRef(slot).inner_ref());
                         m_of << ");\n";
+                    }
+                    else if( this->type_is_bad_zst(ty) && slot.m_wrappers.empty() ) {
+                        m_of << indent << Trans_Mangle(p) << "((void*)&rv);\n";
                     }
                     else
                     {
