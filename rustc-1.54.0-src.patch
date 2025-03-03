@@ -313,3 +313,20 @@
  #include <string>
  
  namespace llvm {
+
+# MSVC Cannot handle structs larger than 32-bit, so disable this for windows with mrustc
+--- vendor/hex-0.3.2/src/lib.rs
++++ vendor/hex-0.3.2/src/lib.rs
+@@ -232,3 +232,3 @@
+ 
+-#[cfg(target_pointer_width = "64")]
++#[cfg(all(target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ from_hex_array_impl! {
+--- vendor/hex/src/lib.rs
++++ vendor/hex/src/lib.rs
+@@ -227,3 +227,3 @@
+ 
+-#[cfg(target_pointer_width = "64")]
++#[cfg(all(target_pointer_width = "64", not(rust_compiler = "mrustc")))]
+ from_hex_array_impl! {
+
