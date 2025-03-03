@@ -4461,14 +4461,14 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             {
                 if( se->other == ~0u )
                 {
-                    known_drop_flags.insert(::std::make_pair( se->idx, se->new_val ));
+                    known_drop_flags[se->idx] = se->new_val;
                 }
                 else
                 {
                     auto it = known_drop_flags.find(se->other);
                     if( it != known_drop_flags.end() )
                     {
-                        known_drop_flags.insert(::std::make_pair( se->idx, se->new_val != it->second ));
+                        known_drop_flags[se->idx] = se->new_val != it->second;
                     }
                 }
             }
