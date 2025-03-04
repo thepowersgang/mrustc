@@ -7,6 +7,7 @@
 */
 #pragma once
 
+#include <utility>
 #include <rc_string.hpp>
 #include <span.hpp>
 
@@ -76,9 +77,8 @@ public:
     TypeRef();
     explicit TypeRef(const TypeRef& x);
     TypeRef(TypeRef&& x):
-        m_ptr(x.m_ptr)
+        m_ptr(::std::exchange(x.m_ptr, nullptr))
     {
-        x.m_ptr = nullptr;
     }
     ~TypeRef();
 
