@@ -9,6 +9,7 @@
 #define AST_PATH_HPP_INCLUDED
 
 #include "../common.hpp"
+#include <cstdint>
 #include <string>
 #include <stdexcept>
 #include <vector>

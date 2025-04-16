@@ -6,6 +6,7 @@
  * - Reference to a generic
  */
 #pragma once
+#include <cstdint>
 #include <rc_string.hpp>
 
 /// Binding index for a Generic that indicates "Self"

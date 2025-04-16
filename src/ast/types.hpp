@@ -8,6 +8,7 @@
 #ifndef TYPES_HPP_INCLUDED
 #define TYPES_HPP_INCLUDED
 
+#include <cstdint>
 #include <memory>
 
 #include "../common.hpp"

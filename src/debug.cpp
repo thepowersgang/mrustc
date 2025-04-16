@@ -5,6 +5,7 @@
  * debug.cpp
  * - Debug printing (with indenting)
  */
+#include <cstdint>
 #include <debug_inner.hpp>
 #include <debug.hpp>
 #include <set>
