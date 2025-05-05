@@ -20,6 +20,7 @@
 #include <fstream>
 #include <cassert>
 
+#include <cstdint>
 #include <unordered_map>
 #include <algorithm>    // sort/find_if
 
