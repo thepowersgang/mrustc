@@ -652,7 +652,10 @@ public:
     }
     virtual void visit(AST::ExprNode_BinOp& n) override {
         m_expr_root = false;
-        if( IS(*n.m_left, AST::ExprNode_BinOp) && dynamic_cast<AST::ExprNode_BinOp&>(*n.m_left).m_type == n.m_type ) {
+        if( !n.m_left ) {
+            m_os << "/*null*/";
+        }
+        else if( IS(*n.m_left, AST::ExprNode_BinOp) && dynamic_cast<AST::ExprNode_BinOp&>(*n.m_left).m_type == n.m_type ) {
             AST::NodeVisitor::visit(n.m_left);
         }
         else {
@@ -686,7 +689,10 @@ public:
         case AST::ExprNode_BinOp::PLACE_IN: m_os << "<-"; break;
         }
         m_os << " ";
-        if( IS(*n.m_right, AST::ExprNode_BinOp) && dynamic_cast<AST::ExprNode_BinOp&>(*n.m_right).m_type != n.m_type ) {
+        if( !n.m_right ) {
+            m_os << "/*null*/";
+        }
+        else if( IS(*n.m_right, AST::ExprNode_BinOp) && dynamic_cast<AST::ExprNode_BinOp&>(*n.m_right).m_type != n.m_type ) {
             paren_wrap(n.m_right);
         }
         else
