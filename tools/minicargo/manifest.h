@@ -222,6 +222,7 @@ enum class Edition
     Rust2015,
     Rust2018,
     Rust2021,
+    Rust2024,
 };
 struct PackageTarget
 {
@@ -348,6 +349,10 @@ class PackageManifest
     ::std::map<::std::string, ::std::vector<::std::string>>    m_features;
     ::std::vector<::std::string>    m_default_features;
     ::std::vector<::std::string>    m_active_features;
+
+    bool m_create_auto_lib = true;
+    bool m_create_auto_bins = true;
+
     // Set once `load_dependencies` runs, clears when a new feature is activated (as that may activate features in deps)
     bool m_dependencies_loaded = false;
 

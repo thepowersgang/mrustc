@@ -311,7 +311,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
 
     // Default targets
     // - If there's no library section, but src/lib.rs exists, add one
-    if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; }) )
+    if( rv.m_create_auto_lib && ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; }) )
     {
         // No library, add one pointing to lib.rs
         if( ::std::ifstream(package_dir / "src" / "lib.rs").good() )
@@ -321,7 +321,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
         }
     }
     // - If there's no binary section, but src/main.rs exists, add as a binary
-    if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Bin; }) )
+    if( rv.m_create_auto_bins && ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Bin; }) )
     {
         // No library, add one pointing to lib.rs
         if( ::std::ifstream(package_dir / "src" / "main.rs").good() )
@@ -506,13 +506,19 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
             }
             else if( key == "exclude"
                 || key == "include"
+                || key == "publish"
                 )
             {
                 // Packaging
             }
             else if( key == "metadata" )
             {
-                // Unknown.
+                // Explicitly ignored by `cargo`
+            }
+            else if( key == "resolver" )
+            {
+                // Resolver version, doesn't really matter for minicargo?
+                // - This applies only when in the root manifest, ignored in dependencies
             }
             else if( key == "rust-version" )
             {
@@ -540,6 +546,14 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
             else if( key == "autoexamples" )
             {
                 //rv.m_create_auto_example = key_val.value.as_bool();
+            }
+            else if( key == "autolib" )
+            {
+                rv.m_create_auto_lib = key_val.value.as_bool();
+            }
+            else if( key == "autobins" )
+            {
+                rv.m_create_auto_bins = key_val.value.as_bool();
             }
             else if( key == "workspace" )
             {
@@ -657,6 +671,10 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
         else if( section == "profile" )
         {
             // TODO: Various profiles (debug, release, ...)
+        }
+        else if( section == "lints" )
+        {
+            // Ignore the lints
         }
         else if( section == "target" )
         {
@@ -864,6 +882,9 @@ namespace
         }
         else if(value.as_string() == "2021") {
             dst = Edition::Rust2021;
+        }
+        else if(value.as_string() == "2024") {
+            dst = Edition::Rust2024;
         }
         else {
             eh.error("Unknown edition value ", value);
