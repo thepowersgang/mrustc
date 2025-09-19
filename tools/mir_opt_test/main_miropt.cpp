@@ -36,6 +36,7 @@ int main(int argc, char* argv[])
 {
     debug_init_phases("MIROPT_DEBUG", {
         "Parse",
+        "Bind",
         "Cleanup",
         "Validate",
         "Optimise",
@@ -55,7 +56,7 @@ int main(int argc, char* argv[])
 
     // Run HIR bind on the loaded code (makes sure that it's ready for use)
     {
-        auto ph = DebugTimedPhase("Cleanup");
+        auto ph = DebugTimedPhase("Bind");
         ConvertHIR_Bind(*file->m_crate);
     }
 
@@ -81,7 +82,7 @@ int main(int argc, char* argv[])
     opt.mode = "monomir";
     {
         auto ph = DebugTimedPhase("Codegen");
-        Trans_Codegen(opts.output, CodegenOutput::Object, opt, *file->m_crate, tl, "");
+        Trans_Codegen(opts.output, CodegenOutput::Object, opt, *file->m_crate, std::move(tl), "");
     }
 
     return 0;
