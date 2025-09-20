@@ -13,6 +13,7 @@
 #include <memory>
 #include <functional>
 #include <path.h>
+#include "cfg.hpp"
 
 #ifdef __OpenBSD__
 // major() and minor() are defined as macros in <sys/types.h> on OpenBSD
@@ -349,6 +350,7 @@ class PackageManifest
     ::std::map<::std::string, ::std::vector<::std::string>>    m_features;
     ::std::vector<::std::string>    m_default_features;
     ::std::vector<::std::string>    m_active_features;
+    AllowedCfg  m_lint_check_cfg;
 
     bool m_create_auto_lib = true;
     bool m_create_auto_bins = true;

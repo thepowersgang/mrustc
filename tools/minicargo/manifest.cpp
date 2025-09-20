@@ -674,7 +674,28 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
         }
         else if( section == "lints" )
         {
-            // Ignore the lints
+            if( key_val.path.size() == 4 && key_val.path[1] == "rust" && key_val.path[2] == "unexpected_cfgs" && key_val.path[3] == "check-cfg" ) {
+                // Array
+                if( key_val.value.m_type != TomlValue::Type::List ) {
+                    eh.error("check-cfg should be a list of strings");
+                }
+                const auto& ents = key_val.value.as_list();
+                for(const auto& e : ents) {
+                    if( e.m_type != TomlValue::Type::String ) {
+                        eh.error("check-cfg should be a list of strings");
+                    }
+                    const auto& s = e.as_string();
+                    try {
+                        m_lint_check_cfg.add_from_string(s.c_str());
+                    }
+                    catch(const std::exception& e) {
+                        eh.error("Failed to parse `check-cfg`: ", e.what());
+                    }
+                }
+            }
+            else {
+                // Ignore other lints
+            }
         }
         else if( section == "target" )
         {
@@ -688,13 +709,12 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
             // - It can be a target spec, or a cfg(foo) same as rustc
             // Parse and validate early
             if( cfg.substr(0, 4) == "cfg(" ) {
-                try {
-                    Cfg_Check(cfg.c_str(), {});
-                }
-                catch(const std::exception& e)
-                {
-                    eh.error(e.what());
-                }
+                //try {
+                //    Cfg_Check(cfg.c_str(), {});
+                //}
+                //catch(const std::exception& e) {
+                //    eh.error(e.what());
+                //}
             }
             else {
                 // It's a target name
@@ -1058,7 +1078,7 @@ void PackageManifest::iter_dep_groups(std::function<void(const Dependencies&)> c
         if( cfg.substr(0, 4) == "cfg(" ) {
             try {
                 // TODO: Pass feature list
-                success = Cfg_Check(cfg.c_str(), this->m_active_features);
+                success = Cfg_Check(cfg.c_str(), this->m_active_features, this->m_lint_check_cfg);
             }
             catch(const std::exception& /*e*/)
             {
