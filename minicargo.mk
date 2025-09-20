@@ -109,6 +109,8 @@ ifeq ($(RUSTC_VERSION),1.54.0)
   RUST_LIB_PREFIX := library/
 else ifeq ($(RUSTC_VERSION),1.74.0)
   RUST_LIB_PREFIX := library/
+else ifeq ($(RUSTC_VERSION),1.90.0)
+  RUST_LIB_PREFIX := library/
 else
   RUST_LIB_PREFIX := src/lib
 endif
