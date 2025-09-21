@@ -1562,6 +1562,7 @@ struct CExpandExpr:
                     break;
                 case TargetVersion::Rustc1_54:
                 case TargetVersion::Rustc1_74:
+                case TargetVersion::Rustc1_90:
                     values.push_back({ {}, RcString::new_interned("exhausted"), ::AST::ExprNodeP(new ::AST::ExprNode_Bool(false)) });
                     break;
                 }

@@ -951,6 +951,7 @@ namespace {
         case TargetVersion::Rustc1_39:  return "1.39";
         case TargetVersion::Rustc1_54:  return "1.54";
         case TargetVersion::Rustc1_74:  return "1.74";
+        case TargetVersion::Rustc1_90:  return "1.90";
         }
         return "?";
     }
@@ -975,8 +976,16 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         else if( strcmp(a, "1.74") == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_74;
         }
-        else {
+        else if( strcmp(a, "1.90") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_90;
         }
+        else {
+            ::std::cerr << "$MRUSTC_TARGET_VER set to an unknown value\n";
+            exit(1);
+        }
+    }
+    else {
+        ::std::cerr << "WARNING: $MRUSTC_TARGET_VER not set, defaulting to 1.29 mode (likely not intended)\n";
     }
 
     if( const auto* a = getenv("MRUSTC_LIBDIR") )
