@@ -397,8 +397,10 @@ namespace {
         case ::HIR::CoreType::I16: return ::MIR::Constant::make_Int({ lit.read_sint(2), te });
         case ::HIR::CoreType::I8:  return ::MIR::Constant::make_Int({ lit.read_sint(1), te });
 
+        case ::HIR::CoreType::F128:  return ::MIR::Constant::make_Float({ lit.read_float(16), te });
         case ::HIR::CoreType::F64:  return ::MIR::Constant::make_Float({ lit.read_float(8), te });
         case ::HIR::CoreType::F32:  return ::MIR::Constant::make_Float({ lit.read_float(4), te });
+        case ::HIR::CoreType::F16:  return ::MIR::Constant::make_Float({ lit.read_float(2), te });
         case ::HIR::CoreType::Bool: return ::MIR::Constant::make_Bool({ lit.read_uint(1) != 0 });
 
         case ::HIR::CoreType::Str:

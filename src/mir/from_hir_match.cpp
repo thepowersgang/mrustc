@@ -944,8 +944,10 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
     TU_ARMA(Primitive, e) {
         switch(e)
         {
+        case ::HIR::CoreType::F16:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ lit.read_float(2), e }) ) );    break;
         case ::HIR::CoreType::F32:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ lit.read_float(4), e }) ) );    break;
         case ::HIR::CoreType::F64:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ lit.read_float(8), e }) ) );    break;
+        case ::HIR::CoreType::F128: this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ lit.read_float(16), e }) ) );    break;
 
         case ::HIR::CoreType::U8:   this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(1), e}) ) );    break;
         case ::HIR::CoreType::U16:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(2), e}) ) );    break;
@@ -1215,8 +1217,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         static MIR::Constant get_pattern_value(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val, const ::HIR::CoreType& e) {
             switch(e)
             {
+            case ::HIR::CoreType::F16:
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64:
+            case ::HIR::CoreType::F128:
                 // Yes, this is valid.
                 return ::MIR::Constant::make_Float({ H::get_pattern_value_float(sp, pat, val), e});
             case ::HIR::CoreType::U8:
@@ -1248,8 +1252,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         static MIR::Constant get_pattern_value_min(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::CoreType& e) {
             switch(e)
             {
+            case ::HIR::CoreType::F16:
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64:
+            case ::HIR::CoreType::F128:
                 // Yes, this is valid.
                 return ::MIR::Constant::make_Float({ -std::numeric_limits<double>::infinity(), e});
             case ::HIR::CoreType::U8:
@@ -1281,8 +1287,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         static MIR::Constant get_pattern_value_max(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::CoreType& e) {
             switch(e)
             {
+            case ::HIR::CoreType::F16:
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64:
+            case ::HIR::CoreType::F128:
                 // Yes, this is valid.
                 return ::MIR::Constant::make_Float({ std::numeric_limits<double>::infinity(), e});
             case ::HIR::CoreType::U8:
@@ -2612,8 +2620,10 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     )
                 )
                 break;
+            case ::HIR::CoreType::F16:
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64:
+            case ::HIR::CoreType::F128:
                 TU_MATCH_DEF( PatternRule, (rule), (re),
                 (
                     BUG(sp, "PatternRule for float is not Value or ValueRange");
@@ -3586,8 +3596,10 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
         }
         break;
 
+    case ::HIR::CoreType::F16:
     case ::HIR::CoreType::F32:
-    case ::HIR::CoreType::F64: {
+    case ::HIR::CoreType::F64:
+    case ::HIR::CoreType::F128: {
         // NOTE: Rules are currently sorted
         // TODO: If there are Constant::Const values in the list, they need to come first!
         size_t tgt_ofs = 0;
@@ -3802,8 +3814,10 @@ void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const :
             lower_possible = (first.as_Uint().v > 0);
             upper_possible = is_inclusive ? (last.as_Uint().v <= 0x10FFFF) : (last.as_Uint().v < 0x10FFFF);
             break;
+        case ::HIR::CoreType::F16:
         case ::HIR::CoreType::F32:
         case ::HIR::CoreType::F64:
+        case ::HIR::CoreType::F128:
             // NOTE: No upper or lower limits
             lower_possible = (first.as_Float().v > -std::numeric_limits<double>::infinity());
             upper_possible = (last .as_Float().v <  std::numeric_limits<double>::infinity());

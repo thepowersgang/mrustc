@@ -90,8 +90,10 @@ namespace {
                 case HIR::CoreType::I16:
                 case HIR::CoreType::I8:
                     return ::MIR::Constant::make_Int({EncodedLiteralSlice(*ve).read_sint(ve->bytes.size()), ty});
+                case HIR::CoreType::F16:
                 case HIR::CoreType::F32:
                 case HIR::CoreType::F64:
+                case HIR::CoreType::F128:
                     return ::MIR::Constant::make_Float({EncodedLiteralSlice(*ve).read_float(ve->bytes.size()), ty});
                 case HIR::CoreType::Str:
                     BUG(params.sp, "Constant of type `str`?");

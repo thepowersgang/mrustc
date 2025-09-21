@@ -44,7 +44,7 @@ enum class CoreType
     U64, I64,
     U128, I128,
 
-    F32, F64,
+    F16, F32, F64, F128,
 
     Bool,
     Char, Str,
@@ -67,8 +67,10 @@ static inline bool is_integer(const CoreType& v) {
 static inline bool is_float(const CoreType& v) {
     switch(v)
     {
+    case CoreType::F16:
     case CoreType::F32:
     case CoreType::F64:
+    case CoreType::F128:
         return true;
     default:
         return false;

@@ -3813,8 +3813,8 @@ namespace {
                         }
                         break;
                     }
-                    else if( ve.op == ::MIR::eBinOp::MOD && (ty == ::HIR::CoreType::F32 || ty == ::HIR::CoreType::F64) ) {
-                        if( ty == ::HIR::CoreType::F32 )
+                    else if( ve.op == ::MIR::eBinOp::MOD && (ty == ::HIR::CoreType::F16 || ty == ::HIR::CoreType::F32 || ty == ::HIR::CoreType::F64 || ty == ::HIR::CoreType::F128) ) {
+                        if( ty == ::HIR::CoreType::F16 || ty == ::HIR::CoreType::F32 )
                             m_of << "remainderf";
                         else
                             m_of << "remainder";
@@ -4164,6 +4164,8 @@ namespace {
                         MIR_BUG(mir_res, "Unreachable");
                     }
                     break;
+                case ::HIR::CoreType::F16:
+                    MIR_TODO(mir_res, "f16 from i128/u128");
                 case ::HIR::CoreType::F32:
                     emit_lvalue(dst);
                     m_of << " = ";
@@ -4194,6 +4196,8 @@ namespace {
                         MIR_BUG(mir_res, "Unreachable");
                     }
                     break;
+                case ::HIR::CoreType::F128:
+                    MIR_TODO(mir_res, "f128 from i128/u128");
                 default:
                     MIR_BUG(mir_res, "Bad i128/u128 cast - " << ty << " to " << ve.type);
                 }
@@ -4383,8 +4387,10 @@ namespace {
                 case ::HIR::CoreType::I128: // TODO: Emulation
                 case ::HIR::CoreType::U128: // TODO: Emulation
                     break;
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     MIR_TODO(mir_res, "Floating point enum tag.");
                     break;
                 case ::HIR::CoreType::Str:
@@ -7274,8 +7280,10 @@ namespace {
                         case ::HIR::CoreType::U32:  rv.ty = Unsigned; break;
                         case ::HIR::CoreType::U64:  rv.ty = Unsigned; break;
                         //case ::HIR::CoreType::U128: rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::F16:  rv.ty = Float;  break;
                         case ::HIR::CoreType::F32:  rv.ty = Float;  break;
                         case ::HIR::CoreType::F64:  rv.ty = Float;  break;
+                        case ::HIR::CoreType::F128:  rv.ty = Float;  break;
                         default:
                             MIR_BUG(*self.m_mir_res, "Invalid SIMD type inner - " << ty_val);
                         }
@@ -7645,8 +7653,10 @@ namespace {
             case ::HIR::CoreType::U128: // TODO: Emulation
                 MIR_TODO(*m_mir_res, "Emulated i128 tag");
                 break;
+            case ::HIR::CoreType::F16:
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64:
+            case ::HIR::CoreType::F128:
                 MIR_TODO(*m_mir_res, "Floating point enum tag.");
                 break;
             case ::HIR::CoreType::Str:
@@ -7966,8 +7976,10 @@ namespace {
                 case ::HIR::CoreType::U128: m_of << "uint128_t"; break;
                 case ::HIR::CoreType::I128: m_of << "int128_t"; break;
 
+                case ::HIR::CoreType::F16: MIR_TODO(*m_mir_res, "codegen_c: f16");
                 case ::HIR::CoreType::F32: m_of << "float"; break;
                 case ::HIR::CoreType::F64: m_of << "double"; break;
+                case ::HIR::CoreType::F128: MIR_TODO(*m_mir_res, "codegen_c: f128");
 
                 case ::HIR::CoreType::Bool: m_of << "RUST_BOOL"; break;
                 case ::HIR::CoreType::Char: m_of << "RUST_CHAR";  break;

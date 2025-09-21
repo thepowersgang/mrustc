@@ -490,8 +490,10 @@ public:
                 m_os << "'\\u{" << ::std::hex << n.m_value << ::std::dec << "}'";
             }
             break;
+        case CORETYPE_F16:
         case CORETYPE_F32:
         case CORETYPE_F64:
+        case CORETYPE_F128:
             break;
         case CORETYPE_U8:
         case CORETYPE_U16:
@@ -516,12 +518,17 @@ public:
         m_expr_root = false;
         switch(n.m_datatype)
         {
+        case CORETYPE_F16:
         case CORETYPE_F32:
             m_os.precision(::std::numeric_limits<float>::max_digits10 + 1);
             m_os << n.m_value;
             break;
         case CORETYPE_ANY:
         case CORETYPE_F64:
+            m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
+            m_os << n.m_value;
+            break;
+        case CORETYPE_F128:
             m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
             m_os << n.m_value;
             break;

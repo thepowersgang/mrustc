@@ -477,10 +477,12 @@ Token Lexer::getTokenInt()
                         this->ungetc();
 
                         if(0)   ;
+                        else if(suffix == "f16") num_type = CORETYPE_F16;
                         else if(suffix == "f32") num_type = CORETYPE_F32;
                         else if(suffix == "f64") num_type = CORETYPE_F64;
+                        else if(suffix == "f128") num_type = CORETYPE_F128;
                         else
-                            ERROR(this->point_span(), E0000, "Unknown number suffix " << suffix);
+                            ERROR(this->point_span(), E0000, "Unknown float suffix " << suffix);
                     }
                     else
                     {
@@ -512,10 +514,12 @@ Token Lexer::getTokenInt()
                     else if(suffix == "u64") num_type = CORETYPE_U64;
                     else if(suffix == "u128") num_type = CORETYPE_U128;
                     else if(suffix == "usize") num_type = CORETYPE_UINT;
+                    else if(suffix == "f16") num_type = CORETYPE_F16;
                     else if(suffix == "f32") num_type = CORETYPE_F32;
                     else if(suffix == "f64") num_type = CORETYPE_F64;
+                    else if(suffix == "f128") num_type = CORETYPE_F128;
                     else
-                        throw ParseError::Generic(*this, FMT("Unknown integer suffix '" << suffix << "'"));
+                        ERROR(this->point_span(), E0000, "Unknown integer suffix " << suffix);
                     return Token(val, num_type);
                 }
                 else {
@@ -958,9 +962,9 @@ U128 Lexer::parseInt(NumMode* num_mode_out)
 // Takes the VERY lazy way of reading the float into a string then passing to strtod
 double Lexer::parseFloat(U128 whole)
 {
-    const int MAX_LEN = 63;
-    //const int MAX_SIG = MAX_LEN - 1 - 4;
     std::string  sbuf = FMT(whole << ".");
+    //const int MAX_LEN = 63;
+    //const int MAX_SIG = MAX_LEN - 1 - 4;
     //char buf[MAX_LEN+1];
     //int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
 

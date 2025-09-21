@@ -795,6 +795,10 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             out_size = g_target.m_arch.m_pointer_bits / 8;
             out_align = g_target.m_arch.m_alignments.ptr;
             return true;
+        case ::HIR::CoreType::F16:
+            out_size = 2;
+            out_align = g_target.m_arch.m_alignments.f32; //f16;
+            return true;
         case ::HIR::CoreType::F32:
             out_size = 4;
             out_align = g_target.m_arch.m_alignments.f32;
@@ -802,6 +806,10 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         case ::HIR::CoreType::F64:
             out_size = 8;
             out_align = g_target.m_arch.m_alignments.f64;
+            return true;
+        case ::HIR::CoreType::F128:
+            out_size = 16;
+            out_align = g_target.m_arch.m_alignments.f64; //f128;
             return true;
         case ::HIR::CoreType::Str:
             DEBUG("sizeof on a `str` - unsized");

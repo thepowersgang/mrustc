@@ -17,10 +17,12 @@ static const struct {
     const char* name;
     enum eCoreType  type;
 } CORETYPES[] = {
-    // NOTE: Sorted
+    // NOTE: Lexographically sorted (hence why 128 comes first)
     {"_", CORETYPE_ANY},
     {"bool", CORETYPE_BOOL},
     {"char", CORETYPE_CHAR},
+    {"f128", CORETYPE_F128},
+    {"f16", CORETYPE_F16},
     {"f32", CORETYPE_F32},
     {"f64", CORETYPE_F64},
     {"i128", CORETYPE_I128},
@@ -73,8 +75,10 @@ const char* coretype_name(const eCoreType ct ) {
     case CORETYPE_I64:  return "i64";
     case CORETYPE_U128: return "u128";
     case CORETYPE_I128: return "i128";
+    case CORETYPE_F16:  return "f16";
     case CORETYPE_F32:  return "f32";
     case CORETYPE_F64:  return "f64";
+    case CORETYPE_F128: return "f128";
     }
     DEBUG("Unknown core type?! " << ct);
     return "NFI";

@@ -1622,8 +1622,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     case ::HIR::CoreType::I64:  return ::MIR::Constant::make_Int({ v.read_sint(8), ty.data().as_Primitive() });
                     case ::HIR::CoreType::Isize:  return ::MIR::Constant::make_Int({ v.read_sint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
                     case ::HIR::CoreType::I128:  TODO(sp, "i128 const generic");
+                    case ::HIR::CoreType::F16:  return ::MIR::Constant::make_Float({ v.read_float(2), ty.data().as_Primitive() });
                     case ::HIR::CoreType::F32:  return ::MIR::Constant::make_Float({ v.read_float(4), ty.data().as_Primitive() });
                     case ::HIR::CoreType::F64:  return ::MIR::Constant::make_Float({ v.read_float(8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::F128: return ::MIR::Constant::make_Float({ v.read_float(16), ty.data().as_Primitive() });
                     case ::HIR::CoreType::Char: return ::MIR::Constant::make_Uint({ v.read_uint(4), ty.data().as_Primitive() });
                     case ::HIR::CoreType::Str:  BUG(sp, "`str` const generic");
                     }
@@ -3648,8 +3650,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 case HIR::CoreType::I16:
                                 case HIR::CoreType::I8:
                                     return ::MIR::Constant::make_Int({el.read_sint(el.m_size), ty});
+                                case HIR::CoreType::F16:
                                 case HIR::CoreType::F32:
                                 case HIR::CoreType::F64:
+                                case HIR::CoreType::F128:
                                     return ::MIR::Constant::make_Float({el.read_float(el.m_size), ty});
                                 case HIR::CoreType::Str:
                                     MIR_BUG(state, "Constant of type `str`?");
@@ -3907,8 +3911,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 {
                                 }
                                 break;
+                            case ::HIR::CoreType::F16:
                             case ::HIR::CoreType::F32:
                             case ::HIR::CoreType::F64:
+                            case ::HIR::CoreType::F128:
                                 // TODO: Cast to float
                                 break;
                             case ::HIR::CoreType::Char:
@@ -3951,8 +3957,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         case ::HIR::CoreType::Isize:
                             new_value = ::MIR::Constant::make_Int({ S128(U128(v)), ct });
                             break;
+                        case ::HIR::CoreType::F16:
                         case ::HIR::CoreType::F32:
                         case ::HIR::CoreType::F64:
+                        case ::HIR::CoreType::F128:
                             // TODO: Cast to float (can variants be casted to float?)
                             break;
                         case ::HIR::CoreType::Char:

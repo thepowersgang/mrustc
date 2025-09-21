@@ -252,8 +252,10 @@ namespace {
             switch(ct)
             {
             case CORETYPE_ANY:  return ::HIR::CoreType::Str;
+            case CORETYPE_F16:  return ::HIR::CoreType::F16;
             case CORETYPE_F32:  return ::HIR::CoreType::F32;
             case CORETYPE_F64:  return ::HIR::CoreType::F64;
+            case CORETYPE_F128: return ::HIR::CoreType::F128;
             default:
                 BUG(sp, "Unknown type for float literal in pattern - " << ct );
             }
@@ -873,8 +875,10 @@ namespace {
         case CORETYPE_BOOL: return ::HIR::TypeRef( ::HIR::CoreType::Bool );
         case CORETYPE_CHAR: return ::HIR::TypeRef( ::HIR::CoreType::Char );
         case CORETYPE_STR : return ::HIR::TypeRef( ::HIR::CoreType::Str );
+        case CORETYPE_F16:  return ::HIR::TypeRef( ::HIR::CoreType::F16 );
         case CORETYPE_F32:  return ::HIR::TypeRef( ::HIR::CoreType::F32 );
         case CORETYPE_F64:  return ::HIR::TypeRef( ::HIR::CoreType::F64 );
+        case CORETYPE_F128: return ::HIR::TypeRef( ::HIR::CoreType::F128 );
 
         case CORETYPE_I8 :  return ::HIR::TypeRef( ::HIR::CoreType::I8 );
         case CORETYPE_U8 :  return ::HIR::TypeRef( ::HIR::CoreType::U8 );

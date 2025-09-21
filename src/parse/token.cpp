@@ -74,8 +74,10 @@ Token Token::make_float(double val, enum eCoreType datatype)
     rv.m_data = Data::make_Float({datatype, val});
     switch(datatype)
     {
+    case CORETYPE_F16:
     case CORETYPE_F32:
     case CORETYPE_F64:
+    case CORETYPE_F128:
     case CORETYPE_ANY:
         break;
     default:

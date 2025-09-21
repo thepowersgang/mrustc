@@ -35,8 +35,10 @@ namespace HIR {
         case CoreType::U128: return os << "u128";
         case CoreType::I128: return os << "i128";
 
+        case CoreType::F16: return os << "f16";
         case CoreType::F32: return os << "f32";
         case CoreType::F64: return os << "f64";
+        case CoreType::F128:return os << "f128";
 
         case CoreType::Bool:    return os << "bool";
         case CoreType::Char:    return os << "char";
@@ -812,8 +814,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             {
                 switch(*te)
                 {
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     return Compare::Fuzzy;
                     //return true;
                 default:
@@ -860,8 +864,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             {
                 switch(*xe)
                 {
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     return Compare::Fuzzy;
                 default:
                     DEBUG("- Fuzz fail");
@@ -1349,8 +1355,10 @@ HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
             TU_ARMA(Primitive, re) {
                 switch(re)
                 {
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     return Compare::Fuzzy;
                 default:
                     return Compare::Unequal;
@@ -1410,8 +1418,10 @@ HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
             TU_ARMA(Primitive, le) {
                 switch(le)
                 {
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     return Compare::Fuzzy;
                 default:
                     return Compare::Unequal;

@@ -937,8 +937,10 @@ namespace {
             case ::HIR::CoreType::Bool: return TypeInfo { Unsigned, 1 };
 
 
+            case ::HIR::CoreType::F16:  return TypeInfo { Float, 16 };
             case ::HIR::CoreType::F32:  return TypeInfo { Float, 32 };
             case ::HIR::CoreType::F64:  return TypeInfo { Float, 64 };
+            case ::HIR::CoreType::F128: return TypeInfo { Float, 128 };
 
             case ::HIR::CoreType::Str:  return TypeInfo { Other, 0 };
             }
@@ -3553,8 +3555,10 @@ namespace {
                 case ::HIR::CoreType::U128: // TODO: Emulation
                     is_signed = false;
                     break;
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     TODO(Span(), "Floating point enum tag.");
                     break;
                 case ::HIR::CoreType::Str:
