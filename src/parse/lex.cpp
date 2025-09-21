@@ -480,7 +480,7 @@ Token Lexer::getTokenInt()
                         else if(suffix == "f32") num_type = CORETYPE_F32;
                         else if(suffix == "f64") num_type = CORETYPE_F64;
                         else
-                            throw ParseError::Generic( FMT("Unknown number suffix " << suffix) );
+                            ERROR(this->point_span(), E0000, "Unknown number suffix " << suffix);
                     }
                     else
                     {
@@ -959,7 +959,7 @@ U128 Lexer::parseInt(NumMode* num_mode_out)
 double Lexer::parseFloat(U128 whole)
 {
     const int MAX_LEN = 63;
-    const int MAX_SIG = MAX_LEN - 1 - 4;
+    //const int MAX_SIG = MAX_LEN - 1 - 4;
     std::string  sbuf = FMT(whole << ".");
     //char buf[MAX_LEN+1];
     //int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
@@ -1349,6 +1349,7 @@ Token Lex_FindReservedWord(const ::std::string& s, AST::Edition edition)
         break;
     case AST::Edition::Rust2018:
     case AST::Edition::Rust2021:
+    case AST::Edition::Rust2024:
         len = LEN(RWORDS_2018);
         RWORDS = RWORDS_2018;
         break;

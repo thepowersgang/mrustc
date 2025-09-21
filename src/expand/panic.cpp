@@ -42,6 +42,7 @@ class CExpander_panic:
             toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic_2015")) );
             break;
         case AST::Edition::Rust2021:
+        case AST::Edition::Rust2024:
             toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic_2021")) );
             break;
         }
@@ -84,6 +85,7 @@ class CExpander_unreachable:
             toks.push_back( Token(TOK_IDENT, RcString::new_interned("unreachable_2015")) );
             break;
         case AST::Edition::Rust2021:
+        case AST::Edition::Rust2024:
             toks.push_back( Token(TOK_IDENT, RcString::new_interned("unreachable_2021")) );
             break;
         }

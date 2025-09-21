@@ -1367,6 +1367,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 else if( strcmp(edition_str, "2021") == 0 ) {
                     this->edition = AST::Edition::Rust2021;
                 }
+                else if( strcmp(edition_str, "2024") == 0 ) {
+                    this->edition = AST::Edition::Rust2024;
+                }
                 else {
                     ::std::cerr << "Unknown value for " << arg << " - '" << edition_str << "'" << ::std::endl;
                     exit(1);

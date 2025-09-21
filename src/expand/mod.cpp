@@ -2588,6 +2588,9 @@ void Expand(::AST::Crate& crate)
             case ::AST::Edition::Rust2021:
                 crate.m_prelude_path = AST::Path(std_crate_name, {AST::PathNode("prelude"), AST::PathNode("rust_2021")});
                 break;
+            case ::AST::Edition::Rust2024:
+                crate.m_prelude_path = AST::Path(std_crate_name, {AST::PathNode("prelude"), AST::PathNode("rust_2024")});
+                break;
             }
         }
         AST::AttributeList  attrs;
