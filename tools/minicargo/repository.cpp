@@ -17,7 +17,7 @@
 
 void Repository::load_cache(const ::helpers::path& path)
 {
-    throw "";
+    throw ::std::runtime_error("TODO: Repository::load_cache");
 }
 void Repository::load_vendored(const ::helpers::path& path)
 {
@@ -108,6 +108,14 @@ void Repository::load_vendored(const ::helpers::path& path)
 
         m_path_cache.insert( ::std::make_pair(::std::move(path), rv) );
 
+        if( rv->name().compare(0, 6+4+10, "rustc-std-workspace-", 6+4+10) == 0 && m_cache.count(rv->name()) == 0 ) {
+            Entry   cache_ent;
+            cache_ent.manifest_path = path;
+            cache_ent.loaded_manifest = rv;
+            cache_ent.version = rv->version();
+            m_cache.insert(::std::make_pair(rv->name(), cache_ent));
+        }
+
         return rv;
     }
     else
@@ -176,7 +184,7 @@ void Repository::blacklist_dependency(const PackageManifest* dep_ptr)
         {
             if( best->manifest_path == "" )
             {
-                throw "TODO: Download package";
+                throw ::std::runtime_error("TODO: Download package");
             }
             try
             {

@@ -216,6 +216,11 @@ public:
 
     friend std::ostream& operator<<(std::ostream& os, const PackageRef& pr);
 };
+struct Dependencies {
+    ::std::vector<PackageRef>   main;
+    ::std::vector<PackageRef>   build;
+    ::std::vector<PackageRef>   dev;
+};
 
 enum class Edition
 {
@@ -335,11 +340,6 @@ class PackageManifest
 
     ::std::string   m_build_script;
 
-    struct Dependencies {
-        ::std::vector<PackageRef>   main;
-        ::std::vector<PackageRef>   build;
-        ::std::vector<PackageRef>   dev;
-    };
     Dependencies    m_dependencies;
     std::map<std::string,Dependencies>  m_target_dependencies;
 

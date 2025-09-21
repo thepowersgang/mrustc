@@ -108,6 +108,7 @@ namespace
 {
     void target_edit_from_kv(ErrorHandler& eh, PackageTarget& target, const TomlKeyValue& kv, unsigned base_idx);
     void parse_edition(Edition& dst, ErrorHandler& eh, const TomlValue& value);
+    std::vector<PackageRef>& get_dep_list(Dependencies& deps, const std::string& key);
 }
 
 void Manifest_LoadOverrides(const ::std::string& s)
@@ -208,12 +209,8 @@ WorkspaceManifest WorkspaceManifest::load_from_toml(const ::helpers::path& works
             }
             else if( key == "dependencies" ) {
                 auto& dep_group = rv.m_dependencies;
-                ::std::vector<PackageRef>& dep_list =
-                    key == "dependencies" ? dep_group.main :
-                    key == "build-dependencies" ? dep_group.build :
-                    /*key == "dev-dependencies" ? */ dep_group.dev /*:
-                                                                               throw ""*/
-                    ;
+                //auto& dep_list = get_dep_list(dep_group, key);
+                auto& dep_list = dep_group.main;
 
                 assert(key_val.path.size() > 2);
                 const auto& depname = key_val.path[2];
@@ -291,7 +288,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
         auto cb2 = [&](const PackageRef& dep) {
             rv.m_features[dep.key()].push_back( "dep:" + dep.key() );
             };
-        auto cb = [&](const PackageManifest::Dependencies& deps) {
+        auto cb = [&](const Dependencies& deps) {
             for(const auto& dep : deps.main) {
                 cb2(dep);
             }
@@ -642,13 +639,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
         }
         else if( section == "dependencies" || section == "build-dependencies" || section == "dev-dependencies" )
         {
-            auto& dep_group = rv.m_dependencies;
-            ::std::vector<PackageRef>& dep_list =
-                section == "dependencies" ? dep_group.main :
-                section == "build-dependencies" ? dep_group.build :
-                /*section == "dev-dependencies" ? */ dep_group.dev /*:
-                throw ""*/
-                ;
+            auto& dep_list = get_dep_list(rv.m_dependencies, section);
             assert(key_val.path.size() > 1);
 
             const auto& depname = key_val.path[1];
@@ -728,12 +719,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
                     || real_section == "build-dependencies" 
                     )
                 {
-                    ::std::vector<PackageRef>& dep_list =
-                        real_section == "dependencies" ? dep_group.main :
-                        real_section == "build-dependencies" ? dep_group.build :
-                        /*real_section == "dev-dependencies" ? */ dep_group.dev /*:
-                                                                                        throw ""*/
-                        ;
+                    auto& dep_list = get_dep_list(dep_group, real_section);
                     assert(key_val.path.size() > 3);
 
                     const auto& depname = key_val.path[3];
@@ -910,6 +896,19 @@ namespace
             eh.error("Unknown edition value ", value);
         }
     }
+    std::vector<PackageRef>& get_dep_list(Dependencies& deps, const std::string& key)
+    {
+        if( key == "dependencies" ) {
+            return deps.main;
+        }
+        if( key == "build-dependencies" ) {
+            return deps.build;
+        }
+        if( key == "dev-dependencies" ) {
+            return deps.dev;
+        }
+        throw ::std::runtime_error(format("Unreachable: Bad key to `get_dep_list`: \"", key, "\""));
+    }
 }
 
 void PackageRef::fill_from_kv(
@@ -930,12 +929,6 @@ void PackageRef::fill_from_kv(
                 eh.warning("Workspace dependency already added?");
             }
             const auto& src_deps = wm->dependencies();
-            //const auto& src_deps =
-            //    section == "dependencies" ? wm->dependencies() :
-            //    section == "build-dependencies" ? wm->build_dependencies() :
-            //    /*section == "dev-dependencies" ? */ wm->dev_dependencies() /*:
-            //    throw ""*/
-            //    ;
             auto s_it = ::std::find_if(src_deps.begin(), src_deps.end(), [&](const auto& x) { return x.m_key == depname; });
             if( s_it == src_deps.end() ) {
                 eh.error("Unable to find dependency `", depname, "` in workspace");
@@ -1408,7 +1401,7 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
     if( this->has_git() )
     {
         DEBUG("Load dependency " << this->name() << " from git");
-        throw "TODO: Git";
+        throw ::std::runtime_error("TODO: PackageRef::load_manifest_raw - Git");
     }
 
     if( !this->get_version().m_bounds.empty() )
@@ -1457,6 +1450,16 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
         if( m_name == "rustc-std-workspace-alloc" )
         {
             static std::shared_ptr<PackageManifest> s_manifest_alloc = std::make_shared<PackageManifest>(PackageManifest::magic_manifest("alloc"));
+            m_manifest = s_manifest_alloc;
+        }
+        if( m_name == "rustc-std-workspace-core" )
+        {
+            static std::shared_ptr<PackageManifest> s_manifest_alloc = std::make_shared<PackageManifest>(PackageManifest::magic_manifest("core"));
+            m_manifest = s_manifest_alloc;
+        }
+        if( m_name == "rustc-std-workspace-std" )
+        {
+            static std::shared_ptr<PackageManifest> s_manifest_alloc = std::make_shared<PackageManifest>(PackageManifest::magic_manifest("std"));
             m_manifest = s_manifest_alloc;
         }
     }

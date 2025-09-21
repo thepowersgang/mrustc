@@ -689,6 +689,10 @@ namespace {
             args.push_back("--edition");
             args.push_back("2021");
             break;
+        case Edition::Rust2024:
+            args.push_back("--edition");
+            args.push_back("2024");
+            break;
         }
     }
 }
