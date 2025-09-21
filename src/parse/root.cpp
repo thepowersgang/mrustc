@@ -1186,6 +1186,10 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
 
     Spanned<AST::Path>   trait_path;
 
+    if( lex.getTokenIf(TOK_RWORD_CONST) ) {
+        // TODO: Save the const flag?
+    }
+
     // - Handle negative impls specially, which must be a trait
     // "impl !Trait for Type {}"
     if( GET_TOK(tok, lex) == TOK_EXCLAM )
