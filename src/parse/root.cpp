@@ -250,6 +250,13 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
                 } ));
         }
         else {
+            if( tok.type() == TOK_TILDE ) {
+                GET_CHECK_TOK(tok, lex, TOK_RWORD_CONST);
+                GET_TOK(tok, lex);
+            }
+            else if( tok.type() == TOK_RWORD_CONST ) {
+                GET_TOK(tok, lex);
+            }
             ::AST::HigherRankedBounds inner_hrls;
             if( tok.type() == TOK_RWORD_FOR )
             {
@@ -623,6 +630,10 @@ AST::Function Parse_FunctionDefWithCode(TokenStream& lex, bool allow_self, std::
     }
     else if( tok.type() == TOK_INTERPOLATED_BLOCK ) {
     }
+    else if( tok.type() == TOK_SEMICOLON ) {
+        // Used for #[rustc_intrinsic] tagged functions
+        return ret;
+    }
     else {
         throw ParseError::Unexpected(lex, tok, { TOK_BRACE_OPEN, TOK_INTERPOLATED_BLOCK });
     }
@@ -911,6 +922,13 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
                 break;
             }
             else {
+                if( tok.type() == TOK_TILDE ) {
+                    GET_CHECK_TOK(tok, lex, TOK_RWORD_CONST);
+                    GET_TOK(tok, lex);
+                }
+                else if( tok.type() == TOK_RWORD_CONST ) {
+                    GET_TOK(tok, lex);
+                }
                 PUTBACK(tok, lex);
                 auto hrbs = Parse_HRB_Opt(lex);
                 supertraits.push_back( GET_SPANNED(Type_TraitPath, lex, (Type_TraitPath(mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE)) )) );
@@ -1390,6 +1408,17 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
         auto ps = lex.start_span();
 
         auto vis = Parse_Publicity(lex);
+        if( GET_TOK(tok, lex) == TOK_IDENT ) {
+            if( tok.ident() == "safe" ) {
+                // TODO: Check that the next token is TOK_RWORD_FN
+            }
+            else {
+                PUTBACK(tok, lex);
+            }
+        }
+        else {
+            PUTBACK(tok, lex);
+        }
         switch( GET_TOK(tok, lex) )
         {
         case TOK_RWORD_FN: {
@@ -2026,10 +2055,16 @@ namespace {
             else {
                 PUTBACK(tok, lex);
             }
-            GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  abi, AST::Function::Flags().set_unsafe()) );
+            if( lex.getTokenIf(TOK_BRACE_OPEN) ) {
+                item_name = "";
+                item_data = ::AST::Item( Parse_ExternBlock(lex, "C", meta_items) );
+            }
+            else {
+                GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                item_name = tok.ident().name;
+                item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  abi, AST::Function::Flags().set_unsafe()) );
+            }
             break; }
         // `unsafe fn`
         case TOK_RWORD_FN:
