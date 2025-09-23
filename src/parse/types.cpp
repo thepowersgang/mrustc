@@ -403,6 +403,11 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
         }
         else
         {
+            if( lex.getTokenIf(TOK_TILDE) ) {
+                GET_CHECK_TOK(tok, lex, TOK_RWORD_CONST);
+            }
+            else if( lex.getTokenIf(TOK_RWORD_CONST) ) {
+            }
             AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
             rv_data.traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
         }
