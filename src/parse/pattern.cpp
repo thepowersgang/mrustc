@@ -330,6 +330,8 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
     case TOK_DOUBLE_COLON:
         PUTBACK(tok, lex);
         return Parse_PatternReal_Path( lex, ps, Parse_Path(lex, PATH_GENERIC_EXPR) );
+    case TOK_DOUBLE_DOT:
+        return AST::Pattern(lex.end_span(ps), AST::Pattern::Data::make_ValueLeftInc({ {}, Parse_PatternValue(lex) }));
     case TOK_DASH:
     case TOK_FLOAT:
     case TOK_INTEGER:
