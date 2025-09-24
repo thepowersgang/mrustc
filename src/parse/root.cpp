@@ -1372,6 +1372,9 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     case TOK_RWORD_ASYNC:
         {
             fn_flags.is_async = true;
+            if( lex.getTokenIf(TOK_RWORD_UNSAFE) ) {
+                fn_flags.is_unsafe = true;
+            }
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_RWORD_FN);
@@ -2113,13 +2116,18 @@ namespace {
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
         }
         break;
-    case TOK_RWORD_ASYNC:
+    case TOK_RWORD_ASYNC: {
+        AST::Function::Flags    flags;
+        flags.is_async = true;;
+        if( lex.getTokenIf(TOK_RWORD_UNSAFE) ) {
+            flags.is_unsafe = true;
+        }
         GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = tok.ident().name;
         // - self not allowed, not prototype
-        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  ABI_RUST, AST::Function::Flags().set_async()) );
-        break;
+        item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, false,  ABI_RUST, flags) );
+        break; }
     // `fn`
     case TOK_RWORD_FN:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
