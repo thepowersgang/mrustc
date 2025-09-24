@@ -1444,7 +1444,29 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
                     std::vector<AST::ExprNodeP> args;
                     do {
                         GET_CHECK_TOK(tok, lex, TOK_COMMA);
-                        if( lex.lookahead(0) == TOK_INTEGER ) {
+                        if( lex.lookahead(0) == TOK_INTERPOLATED_EXPR ) {
+                            GET_CHECK_TOK(tok, lex, TOK_INTERPOLATED_EXPR);
+                            const auto* expr = &tok.frag_node();
+                            std::vector<AST::ExprNodeP>  expr_args;
+                            for(;;) {
+                                if( const auto* n = dynamic_cast<const AST::ExprNode_NamedValue*>(expr) ) {
+                                    expr_args.push_back( NEWNODE(AST::ExprNode_String, n->m_path.as_trivial().c_str(), {}) );
+                                    break;
+                                }
+                                else if( const auto* n = dynamic_cast<const AST::ExprNode_Field*>(expr) ) {
+                                    expr_args.push_back( NEWNODE(AST::ExprNode_String, n->m_name.c_str(), {}) );
+                                    expr = &*n->m_obj;
+                                }
+                                else {
+                                    TODO(lex.point_span(), "offset_of - " << *expr);
+                                }
+                            }
+                            while(!expr_args.empty()) {
+                                args.push_back( std::move(expr_args.back()) );
+                                expr_args.pop_back();
+                            }
+                        }
+                        else if( lex.lookahead(0) == TOK_INTEGER ) {
                             GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                             args.push_back( NEWNODE( AST::ExprNode_Integer, tok.intval(), tok.datatype() ) );
                         }
