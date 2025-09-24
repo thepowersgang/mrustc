@@ -387,7 +387,11 @@ struct ContentLoopVariableUse
                 auto ident = lex.getTokenCheck(TOK_IDENT).ident().name;
                 if( ident == "ignore" ) {
                     lex.getTokenCheck(TOK_PAREN_OPEN);
+                    lex.getTokenIf(TOK_DOLLAR); // 1.90 (2024 edition?) requires a $
                     GET_TOK(tok, lex);
+                    if( !(tok.type() == TOK_IDENT || Token::type_is_rword(tok.type())) ) {
+                        CHECK_TOK(tok, TOK_IDENT);
+                    }
                     auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
                     lex.getTokenCheck(TOK_PAREN_CLOSE);
                     const auto* ns = state.find_name(name);
@@ -409,7 +413,11 @@ struct ContentLoopVariableUse
                 }
                 else if( ident == "count" ) {
                     lex.getTokenCheck(TOK_PAREN_OPEN);
+                    lex.getTokenIf(TOK_DOLLAR); // 1.90 (2024 edition?) requires a $
                     GET_TOK(tok, lex);
+                    if( !(tok.type() == TOK_IDENT || Token::type_is_rword(tok.type())) ) {
+                        CHECK_TOK(tok, TOK_IDENT);
+                    }
                     auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
                     lex.getTokenCheck(TOK_PAREN_CLOSE);
                     const auto* ns = state.find_name(name);
@@ -434,6 +442,51 @@ struct ContentLoopVariableUse
                     lex.getTokenCheck(TOK_PAREN_OPEN);
                     lex.getTokenCheck(TOK_PAREN_CLOSE);
                     ret.push_back( MacroExpansionEnt(NAMEDVALUE_MAGIC_INDEX) );
+                }
+                else if( ident == "concat" ) {
+                    ::std::vector<MacroExpansionConcatEnt>  ents;
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    // A list of identifiers (which could be expansion entries)
+                    while(true) {
+                        if( lex.getTokenIf(TOK_DOLLAR) ) {
+                            if( lex.getTokenIf(TOK_RWORD_CRATE) ) {
+                                ents.push_back(MacroExpansionConcatEnt(NAMEDVALUE_MAGIC_CRATE));
+                            }
+                            else {
+                                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                                auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                                const auto* ns = state.find_name(name);
+                                if( !ns ) {
+                                    TODO(lex.point_span(), "concat - unmapped name");
+                                }
+                                else {
+                                    DEBUG("CONCAT $" << name << " #" << ns->idx << " [" << ns->loops << "]");
+
+                                    // If the current loop depth is smaller than the stack for this variable, then error
+                                    if( loop_depth < ns->loops.size() ) {
+                                        ERROR(lex.point_span(), E0000, "Variable $" << name << " is still repeating at this depth (" << loop_depth << " < " << ns->loops.size() << ")");
+                                    }
+
+                                    if( var_usage_ptr ) {
+                                        var_usage_ptr->insert( ::std::make_pair(ns->idx, ContentLoopVariableUse(ns->loops)) );
+                                    }
+                                    ents.push_back( MacroExpansionConcatEnt(ns->idx) );
+                                }
+                            }
+                        }
+                        else {
+                            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                            ents.push_back(MacroExpansionConcatEnt(tok.ident()));
+                        }
+                        if( !lex.getTokenIf(TOK_COMMA) ) {
+                            break;
+                        }
+                        if( lex.lookahead(0) == TOK_PAREN_CLOSE ) {
+                            break;
+                        }
+                    }
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    ret.push_back(MacroExpansionEnt(std::move(ents)));
                 }
                 else {
                     TODO(lex.point_span(), "Handle ${" << ident << "...}");

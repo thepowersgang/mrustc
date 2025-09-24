@@ -646,6 +646,9 @@
                 m_out.write_u8(e >> 24);
                 m_out.write_count(e & 0x00FFFFFF);
                 }
+            TU_ARMA(Concat, e) {
+                TODO(Span(), "Serialise concat");
+                }
             TU_ARMA(Loop, e) {
                 m_out.write_tag(2);
                 serialise_vec(e.entries);

@@ -2333,6 +2333,9 @@ Token MacroExpander::realGetToken()
                 } break;
             }
             }
+        TU_ARMA(Concat, e) {
+            TODO(this->point_span(), "concat");
+            }
         TU_ARMA(Loop, e) {
             //assert( e.joiner.tok() != TOK_NULL );
             DEBUG("[" << m_log_index << "] Loop joiner " << e.joiner);
@@ -2368,6 +2371,9 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
                 return &ent;
                 }
             TU_ARMA(NamedValue, e) {
+                return &ent;
+                }
+            TU_ARMA(Concat, e) {
                 return &ent;
                 }
             TU_ARMA(Loop, e) {

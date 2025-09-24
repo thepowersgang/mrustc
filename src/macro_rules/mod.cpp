@@ -274,12 +274,20 @@ MacroRulesPtr::~MacroRulesPtr()
         os << "=" << e;
         }
     TU_ARMA(NamedValue, e) {
-        if( e >> 30 ) {
-            os << "$crate";
-        }
-        else {
+        switch(e & ~NAMEDVALUE_VALMASK)
+        {
+        case 0:
             os << "$" << e;
+            break;
+        case NAMEDVALUE_TY_COUNT:
+            os << "${count(...)}";
+            break;
+        default:
+            os << "$?" << e;
         }
+        }
+    TU_ARMA(Concat, e) {
+        os << "${concat(...)}";
         }
     TU_ARMA(Loop, e) {
         os << "${" << e.controlling_input_loops << "}(" << e.entries << ") " << e.joiner;
