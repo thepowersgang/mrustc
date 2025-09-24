@@ -214,6 +214,27 @@ class CCfgExpander:
     }
 };
 
+class CCfgSelectExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        DEBUG("cfg_select!() - " << tt);
+        auto lex = TTStream(sp, ParseState(), tt);
+        for(;;)
+        {
+            bool rv = lex.getTokenIf(TOK_UNDERSCORE) || check_cfg_inner(lex);
+            lex.getTokenCheck(TOK_FATARROW);
+            auto t = Parse_TT(lex, true);
+            if(rv) {
+                return box$( TTStreamO(sp, ParseState(), std::move(t)) );
+            }
+        }
+        lex.getTokenCheck(TOK_EOF);
+
+        ERROR(sp, E0000, "cfg_select - Nothing matched");
+    }
+};
 
 class CCfgHandler:
     public ExpandDecorator
@@ -311,4 +332,5 @@ class CCfgHandler:
 };
 
 STATIC_MACRO("cfg", CCfgExpander);
+STATIC_MACRO("cfg_select", CCfgSelectExpander);
 STATIC_DECORATOR("cfg", CCfgHandler);
