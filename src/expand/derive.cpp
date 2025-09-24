@@ -1940,6 +1940,25 @@ public:
     }
 } g_derive_rustc_decodable;
 
+class Deriver_ConstParamTy:
+    public Deriver
+{
+    AST::Impl handle_generic(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, ::std::vector<TypeRef> types_to_bound) const
+    {
+        const AST::Path    trait_path = get_path(opts.core_name, "marker", "StructuralPartialEq");
+        AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        return mv$(rv);
+    }
+public:
+    const char* trait_name() const override { return "ConstParamTy"; }
+    AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override {
+        return handle_generic(sp, opts, p, type, this->get_field_bounds(str));
+    }
+    AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override {
+        return handle_generic(sp, opts, p, type, this->get_field_bounds(enm));
+    }
+} g_derive_const_param_ty;
 
 // --------------------------------------------------------------------
 // Select and dispatch the correct derive() handler
@@ -1958,6 +1977,7 @@ static const Deriver* find_impl(const RcString& trait_name)
     _(g_derive_hash)
     _(g_derive_rustc_encodable)
     _(g_derive_rustc_decodable)
+    _(g_derive_const_param_ty)
     #undef _
     return nullptr;
 }
