@@ -1210,7 +1210,8 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
 
     // - Handle negative impls specially, which must be a trait
     // "impl !Trait for Type {}"
-    if( GET_TOK(tok, lex) == TOK_EXCLAM )
+    // NOTE: Special case to handle `impl ! {}` (used for docs in 1.90)
+    if( GET_TOK(tok, lex) == TOK_EXCLAM && lex.lookahead(0) != TOK_BRACE_OPEN )
     {
         trait_path = GET_SPANNED(::AST::Path, lex, Parse_Path(lex, PATH_GENERIC_TYPE));
         GET_CHECK_TOK(tok, lex, TOK_RWORD_FOR);
