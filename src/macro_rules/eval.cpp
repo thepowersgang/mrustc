@@ -2168,17 +2168,41 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
     while(const auto* ent_ptr = state.next_ent())
     {
         DEBUG(*ent_ptr);
-        if(const auto* e = ent_ptr->opt_NamedValue()) {
-            switch(*e & ~NAMEDVALUE_VALMASK)
+        TU_MATCH_HDRA( (*ent_ptr), { )
+        TU_ARMA(Token, e) {}
+        TU_ARMA(Loop, e) {}
+        TU_ARMA(NamedValue, e) {
+            switch(e & ~NAMEDVALUE_VALMASK)
             {
             case 0:
             case NAMEDVALUE_TY_IGNORE:
                 // Increment a counter in `bound_tts`
-                bound_tts.inc_count(Span(), state.iterations(), *e & NAMEDVALUE_VALMASK);
+                bound_tts.inc_count(Span(), state.iterations(), e & NAMEDVALUE_VALMASK);
                 break;
             case NAMEDVALUE_TY_MAGIC:
             default:
                 break;
+            }
+            }
+        TU_ARMA(Concat, cc_ents) {
+            for(const auto& cc_ent : cc_ents) {
+                TU_MATCH_HDRA((cc_ent), {)
+                TU_ARMA(Ident, e) {}
+                TU_ARMA(Named, e) {
+                    switch(e & ~NAMEDVALUE_VALMASK)
+                    {
+                    case 0:
+                    case NAMEDVALUE_TY_IGNORE:
+                        // Increment a counter in `bound_tts`
+                        bound_tts.inc_count(Span(), state.iterations(), e & NAMEDVALUE_VALMASK);
+                        break;
+                    case NAMEDVALUE_TY_MAGIC:
+                    default:
+                        break;
+                    }
+                    }
+                }
+            }
             }
         }
     }
@@ -2334,7 +2358,35 @@ Token MacroExpander::realGetToken()
             }
             }
         TU_ARMA(Concat, e) {
-            TODO(this->point_span(), "concat");
+            std::string new_ident;
+            for(const auto& ent : e) {
+                TU_MATCH_HDRA( (ent), { )
+                TU_ARMA(Named, v) {
+                    bool can_steal = ( m_mappings.dec_count(this->point_span(), m_state.iterations(), v) == false );
+                    auto* frag = m_mappings.get(this->point_span(), m_state.iterations(), v);
+                    ASSERT_BUG(this->point_span(), frag, "Cannot find '" << v << "' for " << m_state.iterations());
+                    Token   tok;
+                    if( frag->m_type == InterpolatedFragment::TT )
+                    {
+                        auto res_tt = can_steal ? mv$(frag->as_tt()) : frag->as_tt().clone();
+                        TTStreamO   tts(this->outerSpan(), ParseState(), std::move(res_tt));
+                        tok = tts.getToken();
+                        tts.getTokenCheck(TOK_EOF);
+                    }
+                    else {
+                        tok = can_steal ? Token(Token::TagTakeIP(), mv$(*frag) ) : Token(*frag);
+                    }
+                    if( tok != TOK_IDENT ) {
+                        ERROR(this->point_span(), E0000, "concat with non-ident: " << tok);
+                    }
+                    new_ident += tok.ident().name.c_str();
+                    }
+                TU_ARMA(Ident, v) {
+                    new_ident += v.name.c_str();
+                    }
+                }
+            }
+            return Token(TOK_IDENT, Ident(realGetHygiene(), RcString::new_interned(new_ident)));
             }
         TU_ARMA(Loop, e) {
             //assert( e.joiner.tok() != TOK_NULL );
