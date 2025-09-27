@@ -2622,6 +2622,31 @@ public:
                                     throw std::runtime_error("Unknown node type");
                                 }
                             }
+                            void emit_path(const ::AST::Path& path) {
+                                TU_MATCH_HDRA( (path.m_class), {)
+                                default:
+                                    TODO(Span(), "Convert interpolated macro fragment: " << path);
+                                TU_ARMA(Relative, pc) {
+                                    for(const auto& n : pc.nodes) {
+                                        if( &n != &pc.nodes.front() )
+                                            out.push_back(Token(TOK_DOUBLE_COLON));
+                                        out.push_back(Token(TOK_IDENT, Ident(pc.hygiene, n.name())));
+                                        if( !n.args().is_empty() ) {
+                                            TODO(Span(), "Convert interpolated macro fragment (path node args): " << path);
+                                        }
+                                    }
+                                    }
+                                }
+                            }
+                            void emit_type(::TypeRef& ty) {
+                                TU_MATCH_HDRA( (ty.m_data), { )
+                                default:
+                                    TODO(Span(), "Convert interpolated macro fragment: " << ty);
+                                TU_ARMA(Path, p) {
+                                    emit_path(*p);
+                                    }
+                                }
+                            }
                             void emit_tokentree(TokenTree& tt) {
                                 if( tt.is_token() ) {
                                     emit_token(tt.tok());
@@ -2638,7 +2663,6 @@ public:
                                 switch(tok.type())
                                 {
                                 case TOK_INTERPOLATED_PATH:
-                                case TOK_INTERPOLATED_TYPE:
                                 case TOK_INTERPOLATED_PATTERN:
                                 case TOK_INTERPOLATED_STMT:
                                 case TOK_INTERPOLATED_BLOCK:
@@ -2646,6 +2670,9 @@ public:
                                 case TOK_INTERPOLATED_VIS:
                                     // Emit as a token tree with no separator
                                     TODO(Span(), "Convert interpolated macro fragment: " << tok);
+                                    break;
+                                case TOK_INTERPOLATED_TYPE:
+                                    emit_type(tok.frag_type());
                                     break;
                                 case TOK_INTERPOLATED_META: {
                                     auto& i = tok.frag_meta();
