@@ -1777,14 +1777,6 @@ namespace {
     {
         linkage.name = p.get_name();
     }
-    else if( const auto* a = attrs.get("lang") )
-    {
-        ASSERT_BUG(sp, a->data().size() == 2, "#[lang] should have two takens (= and a string), got " << a->data());
-        if( a->data()[1].tok().str() == "panic_fmt")
-        {
-            linkage.name = "rust_begin_unwind";
-        }
-    }
     else
     {
         // Leave linkage.name as empty

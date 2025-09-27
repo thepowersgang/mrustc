@@ -47,7 +47,7 @@ void handle_save(const Span& sp, AST::Crate& crate, const std::string& name, con
         DEBUG("Bind '"<<name<<"' to " << path);
     }
 }
-void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, eItemType type)
+void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, eItemType type, AST::Item& item)
 {
     // NOTE: MSVC has a limit to the number of if-else chains
     if(g_handlers.empty())
@@ -319,7 +319,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     // Functions
     else if( name == "panic" ) { }
     else if( name == "panic_bounds_check" ) { }
-    else if( name == "panic_fmt" ) { }
+    else if( name == "panic_fmt" ) {
+        item.as_Function().m_markings.link_name = "rust_begin_unwind";
+    }
     else if( name == "str_eq" ) { }
     else if( name == "drop_in_place" ) { }
     else if( name == "align_offset" ) { }
@@ -398,29 +400,29 @@ public:
             }
         TU_ARMA(Function, e) {
             if( e.code().is_valid() ) {
-                handle_lang_item(sp, crate, path, v, ITEM_FN);
+                handle_lang_item(sp, crate, path, v, ITEM_FN, i);
             }
             else {
-                handle_lang_item(sp, crate, path, v, ITEM_EXTERN_FN);
+                handle_lang_item(sp, crate, path, v, ITEM_EXTERN_FN, i);
             }
             }
         TU_ARMA(Type, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_TYPE_ALIAS);
+            handle_lang_item(sp, crate, path, v, ITEM_TYPE_ALIAS, i);
             }
         TU_ARMA(Static, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_STATIC);
+            handle_lang_item(sp, crate, path, v, ITEM_STATIC, i);
             }
         TU_ARMA(Struct, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_STRUCT);
+            handle_lang_item(sp, crate, path, v, ITEM_STRUCT, i);
             }
         TU_ARMA(Enum, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_ENUM);
+            handle_lang_item(sp, crate, path, v, ITEM_ENUM, i);
             }
         TU_ARMA(Union, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_UNION);
+            handle_lang_item(sp, crate, path, v, ITEM_UNION, i);
             }
         TU_ARMA(Trait, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_TRAIT);
+            handle_lang_item(sp, crate, path, v, ITEM_TRAIT, i);
             }
         }
     }
