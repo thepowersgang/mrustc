@@ -952,6 +952,20 @@ struct ExprNode_GeneratorWrapper:
     NODE_METHODS();
 };
 
+struct ExprNode_AsyncBlock
+    : public ExprNode
+{
+    ::HIR::ExprNodeP    m_code;
+    bool    m_is_move;
+
+    ExprNode_AsyncBlock(Span sp, ::HIR::ExprNodeP code, bool is_move)
+        : ExprNode(mv$(sp))
+        , m_code(std::move(code))
+        , m_is_move(is_move)
+    {}
+    NODE_METHODS();
+};
+
 #undef NODE_METHODS
 
 class ExprVisitor
@@ -1006,6 +1020,7 @@ public:
     NV(ExprNode_Closure);
     NV(ExprNode_Generator);
     NV(ExprNode_GeneratorWrapper);
+    NV(ExprNode_AsyncBlock);
     #undef NV
 };
 
@@ -1061,6 +1076,7 @@ public:
     NV(ExprNode_Closure);
     NV(ExprNode_Generator);
     NV(ExprNode_GeneratorWrapper);
+    NV(ExprNode_AsyncBlock);
     #undef NV
 
     virtual void visit_pattern(const Span& sp, ::HIR::Pattern& pat);

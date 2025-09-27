@@ -2051,6 +2051,10 @@ namespace typecheck
         {
             BUG(node.span(), "ExprNode_GeneratorWrapper unexpected at this time");
         }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            TODO(node.span(), "async {}");
+        }
 
     private:
         void push_traits(const ::HIR::t_trait_list& list) {

@@ -828,6 +828,15 @@ namespace {
             m_os << "| -> " << node.m_return << " ";
             this->visit_node_ptr( node.m_code );
         }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            if( node.m_is_move ) {
+                m_os << "move ";
+            }
+            m_os << "async {";
+            this->visit_node_ptr(node.m_code);
+            m_os << "}";
+        }
 
     private:
         RepeatLitStr indent() const {

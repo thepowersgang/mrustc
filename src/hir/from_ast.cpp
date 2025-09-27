@@ -1811,7 +1811,21 @@ namespace {
     rv.m_markings = markings;
 
     if( f.is_async() ) {
-        TODO(f.sp(), "Transform `async fn` into `fn(...) { async { ... } }`");
+        // Wrap the code in an async block
+        rv.m_code = HIR::ExprPtr(box$(::HIR::ExprNode_AsyncBlock(sp, std::move(rv.m_code.into_unique()), true) ));
+        // Make the return type be `impl Future<Output=Ret>`
+        HIR::TraitPath  future_path;
+        future_path.m_path.m_path = g_crate_ptr->get_lang_item_path(sp, "future_trait");
+        future_path.m_type_bounds.insert(std::make_pair(
+            RcString::new_interned("Output"),
+            ::HIR::TraitPath::AtyEqual { future_path.m_path.clone(), std::move(rv.m_return) }
+        ));
+        rv.m_return = ::HIR::TypeRef(::HIR::TypeData::make_ErasedType(::HIR::TypeData_ErasedType {
+            true,
+            ::make_vec1(std::move(future_path)),
+            {},
+            ::HIR::TypeData_ErasedType_Inner::Data_Fcn { ::HIR::Path(::HIR::SimplePath()), 0 }
+        }));
     }
 
     return rv;

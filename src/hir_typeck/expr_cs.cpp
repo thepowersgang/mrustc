@@ -1301,6 +1301,9 @@ namespace {
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override {
             no_revisit(node);
         }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override {
+            no_revisit(node);
+        }
     private:
         void no_revisit(::HIR::ExprNode& node) {
             BUG(node.span(), "Node revisit unexpected - " << typeid(node).name());
@@ -1917,6 +1920,9 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override {
+            no_revisit(node);
+        }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override {
             no_revisit(node);
         }
     private:

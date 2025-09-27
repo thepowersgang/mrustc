@@ -322,6 +322,16 @@ DEF_VISIT_H(ExprNode_GeneratorWrapper, node) {
         visit_node_ptr(node.m_code);
     }
 }
+DEF_VISIT_H(ExprNode_AsyncBlock, node) {
+    TRACE_FUNCTION_F("_AsyncBlock");
+    if(node.m_code)
+    {
+        visit_node_ptr(node.m_code);
+    }
+    else
+    {
+    }
+}
 
 #undef DEF_VISIT
 #undef DEF_VISIT_H

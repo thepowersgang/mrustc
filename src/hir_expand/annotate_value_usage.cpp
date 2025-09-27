@@ -920,6 +920,11 @@ namespace {
             BUG(node.span(), "");
         }
 
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            TODO(node.span(), "async block");
+        }
+
     private:
         void add_var_def_closure(const Span& sp, ClosureScope& e, unsigned int slot)
         {

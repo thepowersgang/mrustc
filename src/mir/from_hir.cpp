@@ -2773,6 +2773,10 @@ namespace {
         {
             BUG(node.span(), "Unexpected");
         }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            TODO(node.span(), "async block");
+        }
     };
 }
 

@@ -1016,6 +1016,7 @@ namespace {
                 NV(ExprNode_Closure);
                 NV(ExprNode_Generator);
                 NV(ExprNode_GeneratorWrapper);
+                NV(ExprNode_AsyncBlock);
                 #undef NV
 
                 void visit(HIR::ExprNode_Unsize& node) override {

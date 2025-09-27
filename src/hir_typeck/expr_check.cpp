@@ -1169,6 +1169,15 @@ namespace {
                 this->m_loops = ::std::move(loops);
             }
         }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            TRACE_FUNCTION_F(&node << " async { ... }");
+
+            if( node.m_code )
+            {
+                TODO(node.span(), "async block");
+            }
+        }
 
     private:
         void check_types_equal(const ::HIR::TypeRef& l, const ::HIR::ExprNodeP& node) const
