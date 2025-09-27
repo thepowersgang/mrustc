@@ -194,6 +194,74 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
             H::add("Poll"      , Handler(ITEM_ENUM  , handle_save));   // 1.74 - `::core::task::poll::Poll`
             H::add("Context"   , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::task::wake::Context`
         }
+        if( TARGETVER_LEAST_1_90 )
+        {
+            H::add("contract_build_check_ensures", Handler(ITEM_FN, handle_save));  // 1.90 - `::core::contracts::build_check_ensures`
+            H::add("contract_check_requires", Handler(ITEM_FN, handle_save));  // 1.90 - `::core::intrinsics::contract_check_requires`
+            H::add("contract_check_ensures" , Handler(ITEM_FN, handle_save));  // 1.90 - `::core::intrinsics::contract_check_ensures`
+            H::add("use_cloned", Handler(ITEM_TRAIT, handle_save)); // 1.90 - `::core::clone::use_cloned` - for the `.use` syntax
+
+            H::add("Ordering", Handler(ITEM_ENUM, handle_save));    // comparison ordering
+
+            H::add("meta_sized", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::MetaSized
+            H::add("pointee_sized", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::PointeeSized
+            H::add("bikeshed_guaranteed_no_drop", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::BikeshedGuaranteedNoDrop
+            H::add("unsafe_unpin", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::UnsafeUnpin
+            H::add("unsized_const_param_ty", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::UnsizedConstParamTy
+            H::add("coerce_pointee_validated", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::CoercePointeeValidated
+
+            H::add("async_fn", Handler(ITEM_TRAIT, handle_save));
+            H::add("async_fn_mut", Handler(ITEM_TRAIT, handle_save));
+            H::add("async_fn_once", Handler(ITEM_TRAIT, handle_save));
+
+            H::add("async_fn_kind_helper", Handler(ITEM_TRAIT, handle_save));   // ::core::ops::async_function::internal_implementation_detail::AsyncFnKindHelper
+            H::add("coroutine_state", Handler(ITEM_ENUM, handle_save)); // ::core::ops::coroutine::CoroutineState
+            H::add("coroutine", Handler(ITEM_TRAIT, handle_save)); // ::core::ops::coroutine::Coroutine
+            H::add("deref_pure", Handler(ITEM_TRAIT, handle_save)); // ::core::ops::deref::DerefPure
+            H::add("legacy_receiver", Handler(ITEM_TRAIT, handle_save)); // ::core::ops::deref::LegacyReceiver
+
+            H::add("type_id", Handler(ITEM_STRUCT, handle_save)); // ::core::any::TypeId
+
+            H::add("async_iterator", Handler(ITEM_TRAIT, handle_save)); // ::core::async_iter::async_iter::AsyncIterator
+            H::add("fused_iterator", Handler(ITEM_TRAIT, handle_save)); // ::core::iter::traits::marker::FusedIterator
+
+            // Various panic handlers
+            H::add("panic_const_add_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_sub_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_mul_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_div_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_rem_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_neg_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_shr_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_shl_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_div_by_zero", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_rem_by_zero", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_coroutine_resumed", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_fn_resumed", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_gen_fn_resumed", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_gen_fn_none", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_coroutine_resumed_panic", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_fn_resumed_panic", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_gen_fn_resumed_panic", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_gen_fn_none_panic", Handler(ITEM_FN, handle_save));
+
+            H::add("panic_const_coroutine_resumed_drop", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_fn_resumed_drop", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_gen_fn_resumed_drop", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_gen_fn_none_drop", Handler(ITEM_FN, handle_save));
+
+            H::add("panic_null_pointer_dereference", Handler(ITEM_FN, handle_save));
+            H::add("panic_invalid_enum_construction", Handler(ITEM_FN, handle_save));
+
+            H::add("unsafe_pinned", Handler(ITEM_STRUCT, handle_save)); // ::core::pin::unsafe_pinned::UnsafePinned
+
+            H::add("RangeCopy", Handler(ITEM_STRUCT, handle_save)); // ::core::range::Range
+            H::add("RangeInclusiveCopy", Handler(ITEM_STRUCT, handle_save)); // ::core::range::RangeInclusive
+            H::add("RangeFromCopy", Handler(ITEM_STRUCT, handle_save)); // ::core::range::RangeFrom
+
+            H::add("async_drop", Handler(ITEM_TRAIT, handle_save)); // ::core::future::async_drop::AsyncDrop
+            H::add("async_drop_in_place", Handler(ITEM_FN, handle_save)); // ::core::future::async_drop::async_drop_in_place
+        }
     }
     const char* real_name = nullptr;    // For when lang items have their name changed
     auto it = g_handlers.find(name.c_str());
