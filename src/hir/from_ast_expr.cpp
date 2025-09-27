@@ -744,8 +744,10 @@ TODO(v.span(), "while let (chained)");
         switch(v.m_datatype)
         {
         case CORETYPE_ANY:  ct = ::HIR::CoreType::Str;  break;
+        case CORETYPE_F16:  ct = ::HIR::CoreType::F16;  break;
         case CORETYPE_F32:  ct = ::HIR::CoreType::F32;  break;
         case CORETYPE_F64:  ct = ::HIR::CoreType::F64;  break;
+        case CORETYPE_F128: ct = ::HIR::CoreType::F128; break;
         default:
             BUG(v.span(), "Unknown type for float literal - " << coretype_name(v.m_datatype));
         }
