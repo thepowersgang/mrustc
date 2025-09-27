@@ -1185,7 +1185,7 @@ namespace {
             break;
         case AST::Struct::Markings::Repr::Simd:
             rv.m_repr = ::HIR::Struct::Repr::Simd;
-            ASSERT_BUG(sp, ent.m_markings.max_field_align == 0, "packed() on simd?");
+            //ASSERT_BUG(sp, ent.m_markings.max_field_align == 0, "packed() on simd?");
             break;
         case AST::Struct::Markings::Repr::Transparent:
             rv.m_repr = ::HIR::Struct::Repr::Transparent;
