@@ -409,6 +409,16 @@ namespace {
                     })
                 };
         }
+        else if( e.start.is_Invalid() ) {
+            return ::HIR::Pattern {
+                mv$(bindings),
+                ::HIR::Pattern::Data::make_Range({
+                    {},
+                    box$(H::lowerhir_pattern_value(pat.span(), e.end)),
+                    true
+                    })
+                };
+        }
         else {
             return ::HIR::Pattern {
                 mv$(bindings),
@@ -427,6 +437,16 @@ namespace {
                 ::HIR::Pattern::Data::make_Range({
                     box$(H::lowerhir_pattern_value(pat.span(), e.start)),
                     {},
+                    false
+                    })
+            };
+        }
+        if( e.start.is_Invalid() ) {
+            return ::HIR::Pattern {
+                mv$(bindings),
+                ::HIR::Pattern::Data::make_Range({
+                    {},
+                    box$(H::lowerhir_pattern_value(pat.span(), e.end)),
                     false
                     })
             };
@@ -1759,7 +1779,7 @@ namespace {
     }
     else if( const auto* a = attrs.get("lang") )
     {
-        assert(a->data().size() == 2);
+        ASSERT_BUG(sp, a->data().size() == 2, "#[lang] should have two takens (= and a string), got " << a->data());
         if( a->data()[1].tok().str() == "panic_fmt")
         {
             linkage.name = "rust_begin_unwind";
