@@ -1,0 +1,29 @@
+#
+# minicargo overrides file
+#
+
+## rustc needs rustc's libproc_macro (not mrustc's)
+[add.'compiler/rustc_expand'.dependencies]
+proc_macro = { path = "../../library/proc_macro" }
+[add.'compiler/rustc_builtin_macros'.dependencies]
+proc_macro = { path = "../../library/proc_macro" }
+[add.'compiler/rustc_metadata'.dependencies]
+proc_macro = { path = "../../library/proc_macro" }
+
+
+#[add.'library/std'.dependencies.compiler_builtins]
+#features = ["no-asm"]
+#[add.'library/panic_unwind'.dependencies.compiler_builtins]
+#features = ["no-asm"]
+
+
+[delete]
+# Allow rustc's libproc_macro to build by removing the std dependency (it's built during rustc build, not during std build)
+'library/proc_macro' = [
+	"dependencies.std",
+	"dependencies.core",
+	]
+## mrustc has already built a proc_macro, remove it from libtest's deps (used on linux)
+#'library/test' = [
+#	"dependencies.proc_macro",
+#	]
