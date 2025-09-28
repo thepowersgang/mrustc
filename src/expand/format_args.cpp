@@ -702,6 +702,55 @@ namespace {
             toks.push_back( Token(TOK_SEMICOLON) );
         }
 
+        struct H {
+            static void argument_list(::std::vector<TokenTree>& toks, const ::std::vector<FmtFrag>& fragments, const AST::Crate& crate)
+            {
+                toks.push_back( TokenTree(TOK_AMP) );
+                toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
+                for(const auto& frag : fragments )
+                {
+                    if(TARGETVER_LEAST_1_90)
+                    {
+                        // In 1.90.0, there's a collection of functions like `new_display`, one for each trait
+                        // Hacky option: Convert `LowerHex` into `_lower_hex`
+                        ::std::stringstream new_fn_ss;
+                        new_fn_ss << "new";
+                        for(const char* s = frag.trait_name; *s; s++) {
+                            if( isupper(*s) ) {
+                                new_fn_ss << "_" << char(tolower(*s));
+                            }
+                            else {
+                                new_fn_ss << *s;
+                            }
+                        }
+                        push_path(toks, crate, {"fmt", "rt", "Argument", new_fn_ss.str().c_str()});
+                        toks.push_back( Token(TOK_PAREN_OPEN) );
+                        toks.push_back( ident( FMT("a" << frag.arg_index).c_str() ) );
+                        toks.push_back( Token(TOK_PAREN_CLOSE) );
+                        toks.push_back( TokenTree(TOK_COMMA) );
+                    }
+                    else
+                    {
+                        if(TARGETVER_LEAST_1_74) {
+                            push_path(toks, crate, {"fmt", "rt", "Argument", "new"});
+                        }
+                        else {
+                            push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                        }
+                        toks.push_back( Token(TOK_PAREN_OPEN) );
+                        toks.push_back( ident( FMT("a" << frag.arg_index).c_str() ) );
+
+                        toks.push_back( TokenTree(TOK_COMMA) );
+
+                        push_path(toks, crate, {"fmt", frag.trait_name, "fmt"});
+                        toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+                        toks.push_back( TokenTree(TOK_COMMA) );
+                    }
+                }
+                toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+            }
+        };
+
         if( is_simple )
         {
             // ::fmt::Arguments::new_v1
@@ -713,26 +762,7 @@ namespace {
                 toks.push_back( ident("FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
 
-                toks.push_back( TokenTree(TOK_AMP) );
-                toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
-                for(const auto& frag : fragments )
-                {
-                    if(TARGETVER_LEAST_1_74) {
-                        push_path(toks, crate, {"fmt", "rt", "Argument", "new"});
-                    }
-                    else {
-                        push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
-                    }
-                    toks.push_back( Token(TOK_PAREN_OPEN) );
-                    toks.push_back( ident( FMT("a" << frag.arg_index).c_str() ) );
-
-                    toks.push_back( TokenTree(TOK_COMMA) );
-
-                    push_path(toks, crate, {"fmt", frag.trait_name, "fmt"});
-                    toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
-                    toks.push_back( TokenTree(TOK_COMMA) );
-                }
-                toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+                H::argument_list(toks, fragments, crate);
             }
             // )
             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
@@ -754,26 +784,7 @@ namespace {
 
                 // TODO: Fragments to format
                 // - The format stored by mrustc doesn't quite work with how rustc (and fmt::rt::v1) works
-                toks.push_back( TokenTree(TOK_AMP) );
-                toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
-                for(const auto& frag : fragments )
-                {
-                    if(TARGETVER_LEAST_1_74) {
-                        push_path(toks, crate, {"fmt", "rt", "Argument", "new"});
-                    }
-                    else {
-                        push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
-                    }
-                    toks.push_back( Token(TOK_PAREN_OPEN) );
-                    toks.push_back( ident(FMT("a" << frag.arg_index).c_str()) );
-
-                    toks.push_back( TokenTree(TOK_COMMA) );
-
-                    push_path(toks, crate, {"fmt", frag.trait_name, "fmt"});
-                    toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
-                    toks.push_back( TokenTree(TOK_COMMA) );
-                }
-                toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+                H::argument_list(toks, fragments, crate);
                 toks.push_back( TokenTree(TOK_COMMA) );
 
                 toks.push_back( TokenTree(TOK_AMP) );
@@ -804,9 +815,9 @@ namespace {
                         push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
                         toks.push_back( TokenTree(TOK_BRACE_OPEN) );
                     }
+                    push_toks(toks, ident("fill"), TOK_COLON, Token(U128(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
+                    if(TARGETVER_MOST_1_74)
                     {
-                        push_toks(toks, ident("fill"), TOK_COLON, Token(U128(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
-
                         push_toks(toks, ident("align"), TOK_COLON);
                         const char* align_var_name = nullptr;
                         switch( frag.args.align )
@@ -823,7 +834,9 @@ namespace {
                             push_path(toks, crate, {"fmt", "rt", "v1", "Alignment", align_var_name});
                         }
                         push_toks(toks, TOK_COMMA);
-
+                    }
+                    // Flags
+                    {
                         push_toks(toks, ident("flags"), TOK_COLON);
                         struct Flag {
                             enum V {
@@ -851,9 +864,35 @@ namespace {
                         case FmtArgs::Debug::LowerHex:  flags |= 1 << Flag::DebugLowerHex;    break;
                         case FmtArgs::Debug::UpperHex:  flags |= 1 << Flag::DebugUpperHex;    break;
                         }
+                        if( TARGETVER_LEAST_1_90 ) {
+                            // Flags shifted, with 21 being SignPlus now
+                            // See `rustc-1.90.0-src/library/core/src/fmt/mod.rs` `mod flags`
+                            flags <<= 21;
+
+                            // Width and precision flags
+                            if( frag.args.width_is_arg || frag.args.width != 0 ) {
+                                flags |= 1 << 27;
+                            }
+                            if( frag.args.prec_is_arg || frag.args.prec != 0 ) {
+                                flags |= 1 << 28;
+                            }
+
+                            // Algnment now a flag
+                            switch( frag.args.align )
+                            {
+                            case FmtArgs::Align::Unspec:    flags |= 3 << 29; break;
+                            case FmtArgs::Align::Left:      flags |= 0 << 29; break;
+                            case FmtArgs::Align::Center:    flags |= 1 << 29; break;
+                            case FmtArgs::Align::Right:     flags |= 2 << 29; break;
+                            }
+
+                            flags |= 1 << 31;
+                        }
                         push_toks(toks, Token(U128(flags), CORETYPE_U32));
                         push_toks(toks, TOK_COMMA);
-
+                    }
+                    // Counts (precision and width)
+                    {
                         auto push_path_count = [&](const char* variant) {
                             if(TARGETVER_LEAST_1_74) {
                                 push_path(toks, crate, {"fmt", "rt", "Count", variant});
