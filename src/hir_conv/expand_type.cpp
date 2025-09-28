@@ -146,6 +146,31 @@ public:
     {
         static Span sp;
 
+        if( auto* e = ty.data_mut().opt_ErasedType() )
+        {
+            for(auto it = e->m_traits.begin(); it != e->m_traits.end(); ++it)
+            {
+                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, *it, m_in_expr);
+                if(!n.empty())
+                {
+                    it = e->m_traits.erase(it);
+                    it = e->m_traits.insert(it, std::make_move_iterator(n.begin()), std::make_move_iterator(n.end()));
+                    --it;
+                }
+            }
+        }
+        else if(auto* e = ty.data().opt_TraitObject() )
+        {
+            if( e->m_trait.m_path != HIR::SimplePath() )
+            {
+                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, e->m_trait, m_in_expr);
+                if( n.size() > 0 )
+                {
+                    TODO(sp, "Expand trait alias in TraitObject? (markers only) - " << e->m_trait);
+                }
+            }
+        }
+
         ::HIR::Visitor::visit_type(ty);
 
         if( const auto* e = ty.data().opt_Path() ) 
@@ -182,7 +207,8 @@ public:
     {
         static Span sp;
         // 1. Make sure that the trait path isn't pointing at an alias (should have been handled by the caller, which can expand to multiple items)
-        ASSERT_BUG(sp, m_crate.get_typeitem_by_path(sp, tp.m_path.m_path).is_Trait(), "Bad trait path - " << tp.m_path);
+        ASSERT_BUG(sp, m_crate.get_typeitem_by_path(sp, tp.m_path.m_path).is_Trait(),
+            "Bad trait path - " << tp.m_path << " : " << m_crate.get_typeitem_by_path(sp, tp.m_path.m_path).tag_str());
         // 2. Handle AtyBounds
         for(auto& tb : tp.m_trait_bounds)
         {
