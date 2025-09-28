@@ -856,7 +856,7 @@ namespace {
 
                             if( v != ::HIR::TypeRef() )
                             {
-                                out_path.m_type_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyEqual { out_path.m_path.clone(), mv$(v) }) );
+                                out_path.m_type_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyEqual { out_path.m_path.clone(), {}, mv$(v) }) );
                             }
                         }
 
@@ -876,7 +876,7 @@ namespace {
                             DEBUG(ty.first << ": " << traits);
                             if( !traits.empty() )
                             {
-                                out_path.m_trait_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyBound { out_path.m_path.clone(), mv$(traits) }) );
+                                out_path.m_trait_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyBound { out_path.m_path.clone(), {}, mv$(traits) }) );
                             }
                         }
                     }

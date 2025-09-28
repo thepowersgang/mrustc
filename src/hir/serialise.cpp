@@ -315,11 +315,13 @@
         void serialise(const ::HIR::TraitPath::AtyEqual& e)
         {
             serialise(e.source_trait);
+            serialise_pathparams(e.aty_params);
             serialise(e.type);
         }
         void serialise(const ::HIR::TraitPath::AtyBound& e)
         {
             serialise(e.source_trait);
+            serialise_pathparams(e.aty_params);
             serialise_vec(e.traits);
         }
         void serialise_path(const ::HIR::Path& path)

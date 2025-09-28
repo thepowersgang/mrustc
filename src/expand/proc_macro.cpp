@@ -884,34 +884,91 @@ namespace {
             }
         }
 
+        void visit_path_node(const AST::PathNode& e, bool is_expr)
+        {
+            m_pmi.send_ident(e.name().c_str());
+            if( ! e.args().is_empty() )
+            {
+                if( e.args().m_is_paren ) {
+                    auto& t = e.args().m_entries.at(0).as_Type();
+                    this->visit_type(t);    // Should be a tuple
+                    auto& rv = e.args().m_entries.at(1).as_AssociatedTyEqual();
+                    m_pmi.send_symbol("->");
+                    this->visit_type(rv.second);
+                    return ;
+                }
+
+                if( is_expr )
+                    m_pmi.send_symbol("::");
+                m_pmi.send_symbol("<");
+                for(const auto& ent : e.args().m_entries)
+                {
+                    TU_MATCH_HDRA( (ent), {)
+                    TU_ARMA(Null, _) {}
+                    TU_ARMA(Lifetime, l) {
+                        m_pmi.send_lifetime(l.name().name.c_str());
+                        m_pmi.send_symbol(",");
+                        }
+                    TU_ARMA(Type, t) {
+                        this->visit_type(t);
+                        m_pmi.send_symbol(",");
+                        }
+                    TU_ARMA(Value, n) {
+                        m_pmi.send_symbol("{");
+                        this->visit_node(*n);
+                        m_pmi.send_symbol("}");
+                        m_pmi.send_symbol(",");
+                        }
+                    TU_ARMA(AssociatedTyEqual, a) {
+                        visit_path_node(a.first, false);
+                        m_pmi.send_symbol("=");
+                        this->visit_type(a.second);
+                        m_pmi.send_symbol(",");
+                        }
+                    TU_ARMA(AssociatedTyBound, a) {
+                        visit_path_node(a.first, false);
+                        m_pmi.send_symbol(":");
+                        for(const auto& p : a.second) {
+                            if( &p != a.second.data() )
+                                m_pmi.send_symbol("+");
+                            this->visit_path(p);
+                        }
+                        m_pmi.send_symbol(",");
+                        }
+                    }
+                }
+                m_pmi.send_symbol(">");
+            }
+        }
+
         void visit_path(const AST::Path& path, bool is_expr=false)
         {
             const ::std::vector<AST::PathNode>*  nodes = nullptr;
-            TU_MATCHA( (path.m_class), (pe),
-            (Invalid,
+            TU_MATCH_HDRA( (path.m_class), {)
+            TU_ARMA(Invalid, pe) {
                 BUG(sp, "Invalid path");
-                ),
-            (Local,
+                }
+            TU_ARMA(Local, pe) {
                 m_pmi.send_ident(pe.name.c_str());
-                ),
-            (Relative,
+                }
+            TU_ARMA(Relative, pe) {
                 // TODO: Send hygiene information
                 nodes = &pe.nodes;
-                ),
-            (Self,
+                }
+            TU_ARMA(Self, pe) {
                 m_pmi.send_rword("self");
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
-                ),
-            (Super,
+                }
+            TU_ARMA(Super, pe) {
                 for(unsigned i = 0; i < pe.count; i ++)
                 {
                     m_pmi.send_rword("super");
                     m_pmi.send_symbol("::");
                 }
                 nodes = &pe.nodes;
-                ),
-            (Absolute,
+                }
+            TU_ARMA(Absolute, pe) {
                 if( pe.crate == "" ) {
                     m_pmi.send_rword("crate");
                 }
@@ -921,8 +978,8 @@ namespace {
                 }
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
-                ),
-            (UFCS,
+                }
+            TU_ARMA(UFCS, pe) {
                 m_pmi.send_symbol("<");
                 this->visit_type(*pe.type);
                 if( pe.trait )
@@ -933,63 +990,15 @@ namespace {
                 m_pmi.send_symbol(">");
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
-                )
-            )
+                }
+            }
             bool first = true;
             for(const auto& e : *nodes)
             {
                 if(!first)
                     m_pmi.send_symbol("::");
                 first = false;
-                m_pmi.send_ident(e.name().c_str());
-                if( ! e.args().is_empty() )
-                {
-                    if( e.args().m_is_paren ) {
-                        auto& t = e.args().m_entries.at(0).as_Type();
-                        this->visit_type(t);    // Should be a tuple
-                        auto& rv = e.args().m_entries.at(1).as_AssociatedTyEqual();
-                        m_pmi.send_symbol("->");
-                        this->visit_type(rv.second);
-                        continue ;
-                    }
-
-                    if( is_expr )
-                        m_pmi.send_symbol("::");
-                    m_pmi.send_symbol("<");
-                    for(const auto& ent : e.args().m_entries)
-                    {
-                        TU_MATCH_HDRA( (ent), {)
-                        TU_ARMA(Null, _) {}
-                        TU_ARMA(Lifetime, l) {
-                            m_pmi.send_lifetime(l.name().name.c_str());
-                            m_pmi.send_symbol(",");
-                            }
-                        TU_ARMA(Type, t) {
-                            this->visit_type(t);
-                            m_pmi.send_symbol(",");
-                            }
-                        TU_ARMA(Value, n) {
-                            m_pmi.send_symbol("{");
-                            this->visit_node(*n);
-                            m_pmi.send_symbol("}");
-                            m_pmi.send_symbol(",");
-                            }
-                        TU_ARMA(AssociatedTyEqual, a) {
-                            m_pmi.send_ident(a.first.c_str());
-                            m_pmi.send_symbol("=");
-                            this->visit_type(a.second);
-                            m_pmi.send_symbol(",");
-                            }
-                        TU_ARMA(AssociatedTyBound, a) {
-                            m_pmi.send_ident(a.first.c_str());
-                            m_pmi.send_symbol(":");
-                            this->visit_path(a.second);
-                            m_pmi.send_symbol(",");
-                            }
-                        }
-                    }
-                    m_pmi.send_symbol(">");
-                }
+                visit_path_node(e, is_expr);
             }
         }
         void visit_params(const AST::GenericParams& params)

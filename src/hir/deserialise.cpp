@@ -1007,6 +1007,7 @@ namespace {
         auto src = d.deserialise_genericpath();
         return ::HIR::TraitPath::AtyEqual {
             mv$(src),
+            d.deserialise_pathparams(),
             d.deserialise_type()
         };
     )
@@ -1014,6 +1015,7 @@ namespace {
         auto src = d.deserialise_genericpath();
         return ::HIR::TraitPath::AtyBound {
             mv$(src),
+            d.deserialise_pathparams(),
             d.deserialise_vec<HIR::TraitPath>()
         };
     );

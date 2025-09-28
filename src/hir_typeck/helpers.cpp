@@ -1388,8 +1388,8 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         if( const auto* ty_e = type.data().opt_Generator() )
         {
             ::HIR::TraitPath::assoc_list_t   assoc;
-            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait.clone(), ty_e->node->m_yield_ty.clone() }));
-            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait.clone(), ty_e->node->m_return.clone() }));
+            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait.clone(), {}, ty_e->node->m_yield_ty.clone() }));
+            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait.clone(), {}, ty_e->node->m_return.clone() }));
             HIR::PathParams params;
             if( TARGETVER_LEAST_1_74 )
             {
@@ -1413,6 +1413,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
             ::HIR::TraitPath::assoc_list_t   assoc_list;
             assoc_list.insert(std::make_pair( name_Discriminant, HIR::TraitPath::AtyEqual {
                 trait,
+                {},
                 HIR::TypeRef::new_path(
                     HIR::Path(type.clone(), trait.clone(), name_Discriminant),
                     HIR::TypePathBinding::make_Opaque({})
@@ -1427,6 +1428,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
             ::HIR::TraitPath::assoc_list_t   assoc_list;
             assoc_list.insert(std::make_pair( name_Discriminant, HIR::TraitPath::AtyEqual {
                 trait,
+                {},
                 std::move(tag_ty)
                 } ));
             return callback(ImplRef(type.clone(), {}, std::move(assoc_list)), ::HIR::Compare::Equal);
@@ -1435,6 +1437,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
             ::HIR::TraitPath::assoc_list_t   assoc_list;
             assoc_list.insert(std::make_pair( name_Discriminant, HIR::TraitPath::AtyEqual {
                 trait,
+                {},
                 HIR::TypeRef::new_unit()
                 } ));
             return callback(ImplRef(type.clone(), {}, std::move(assoc_list)), ::HIR::Compare::Equal);
@@ -1495,7 +1498,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         DEBUG("<" << type << " as Pointee>::Metadata = " << meta_ty);
         ::HIR::TraitPath::assoc_list_t  assoc_list;
         if(meta_ty != HIR::TypeRef()) {
-            assoc_list.insert(std::make_pair( RcString::new_interned("Metadata"), HIR::TraitPath::AtyEqual { trait, mv$(meta_ty) } ));
+            assoc_list.insert(std::make_pair( RcString::new_interned("Metadata"), HIR::TraitPath::AtyEqual { trait, {}, mv$(meta_ty) } ));
         }
 
         return callback( ImplRef(type.clone(), {}, std::move(assoc_list)), ::HIR::Compare::Equal );
@@ -1642,7 +1645,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 ::HIR::PathParams   pp;
                 pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
                 ::HIR::TraitPath::assoc_list_t  types;
-                types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), e.node->m_return.clone()} ) );
+                types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), {}, e.node->m_return.clone()} ) );
                 return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
             }
             else
@@ -1683,7 +1686,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::HIR::TraitPath::assoc_list_t  types;
-            types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), e.m_rettype.clone()} ) );
+            types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), {}, e.m_rettype.clone()} ) );
             return callback( ImplRef(e.hrls.clone(), type.clone(), mv$(pp), mv$(types)), cmp );
         }
         }
@@ -1726,7 +1729,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
             ::HIR::TraitPath::assoc_list_t  types;
-            types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), e.m_rettype.clone()} ) );
+            types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), {}, e.m_rettype.clone()} ) );
             return callback( ImplRef(e.hrls.clone(), type.clone(), mv$(pp), mv$(types)), cmp );
         }
         }
@@ -1895,7 +1898,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 // TODO: Monormophise and EAT associated types
                 ::HIR::TraitPath::assoc_list_t  b_atys;
                 for(const auto& aty : bound.m_type_bounds)
-                    b_atys.insert(::std::make_pair( aty.first, ::HIR::TraitPath::AtyEqual { monomorph_cb.monomorph_genericpath(sp, aty.second.source_trait, false), monomorph_cb.monomorph_type(sp, aty.second.type) } ));
+                    b_atys.insert(::std::make_pair( aty.first, ::HIR::TraitPath::AtyEqual { monomorph_cb.monomorph_genericpath(sp, aty.second.source_trait, false), {}, monomorph_cb.monomorph_type(sp, aty.second.type) } ));
 
                 if( bound.m_path.m_path == trait )
                 {
@@ -4387,6 +4390,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
                         TODO(sp, "Monomorph " << aty.second.source_trait << " from " << de->m_trait.m_path.m_params << " to " << tmp_e.m_trait.m_path.m_params);
                         tmp_e.m_trait.m_type_bounds[aty.first] = ::HIR::TraitPath::AtyEqual {
                             aty.second.source_trait.clone(),    // TODO: Monomorph from `de->m_trait.m_path.m_params` to `tmp_e.m_trait.m_path.m_params`
+                            {},
                             mv$(atyv)
                         };
                     }

@@ -641,10 +641,14 @@ void Expand_PathParams(const ExpandState& es, ::AST::Module& mod, ::AST::PathPar
             Expand_Expr(es, node);
             }
         TU_ARMA(AssociatedTyEqual, aty) {
+            Expand_PathParams(es, mod, aty.first.args());
             Expand_Type(es, mod, aty.second);
             }
         TU_ARMA(AssociatedTyBound, aty) {
-            Expand_Path(es, mod, aty.second);
+            Expand_PathParams(es, mod, aty.first.args());
+            for(auto& p : aty.second) {
+                Expand_Path(es, mod, p);
+            }
             }
         }
     }

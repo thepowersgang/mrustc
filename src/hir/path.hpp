@@ -246,16 +246,19 @@ public:
     // TODO: Each bound should list its origin trait
     struct AtyEqual {
         ::HIR::GenericPath  source_trait;
+        ::HIR::PathParams   aty_params;
         ::HIR::TypeRef  type;
 
         Ordering ord(const AtyEqual& x) const {
             ORD(source_trait, x.source_trait);
+            ORD(aty_params, x.aty_params);
             ORD(type, x.type);
             return OrdEqual;
         }
         AtyEqual clone() const {
             return AtyEqual {
                 source_trait.clone(),
+                aty_params.clone(),
                 type.clone()
                 };
         }
@@ -268,10 +271,12 @@ public:
     /// Associated type trait bounds (`Type: Trait`)
     struct AtyBound {
         ::HIR::GenericPath  source_trait;
+        ::HIR::PathParams   aty_params;
         std::vector<::HIR::TraitPath>   traits;
 
         Ordering ord(const AtyBound& x) const {
             ORD(source_trait, x.source_trait);
+            ORD(aty_params, x.aty_params);
             ORD(traits, x.traits);
             return OrdEqual;
         }
@@ -282,6 +287,7 @@ public:
                 new_traits.push_back(t.clone());
             return AtyBound {
                 source_trait.clone(),
+                aty_params.clone(),
                 ::std::move(new_traits)
             };
         }

@@ -68,6 +68,7 @@ bool StaticTraitResolve::find_impl(
                     ::HIR::TraitPath::assoc_list_t   assoc_list;
                     assoc_list.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
                         m_lang_DiscriminantKind,
+                        {},
                         std::move(tag_ty)
                         } ));
                     return found_cb(ImplRef(type.clone(), {}, std::move(assoc_list)), false);
@@ -81,6 +82,7 @@ bool StaticTraitResolve::find_impl(
             if(assoc_unit.empty()) {
                 assoc_unit.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
                     m_lang_DiscriminantKind,
+                    {},
                     HIR::TypeRef::new_unit()
                     } ));
             }
@@ -94,10 +96,12 @@ bool StaticTraitResolve::find_impl(
                 name_Metadata = RcString::new_interned("Metadata");
                 assoc_unit.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
                     m_lang_Pointee,
+                    {},
                     HIR::TypeRef::new_unit()
                     } ));
                 assoc_slice.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
                     m_lang_Pointee,
+                    {},
                     HIR::CoreType::Usize
                     } ));
             }
@@ -118,6 +122,7 @@ bool StaticTraitResolve::find_impl(
                 ::HIR::TraitPath::assoc_list_t   assoc_list;
                 assoc_list.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
                     m_lang_Pointee,
+                    {},
                     ::HIR::TypeRef::new_path(::HIR::GenericPath(m_lang_DynMetadata, HIR::PathParams(type.clone())), &m_crate.get_struct_by_path(sp, m_lang_DynMetadata))
                     } ));
                 return found_cb(ImplRef(type.clone(), {}, std::move(assoc_list)), false);
@@ -229,7 +234,7 @@ bool StaticTraitResolve::find_impl(
             HIR::PathParams params;
             params.m_types.push_back(HIR::TypeRef::new_tuple(std::move(arg_types)));
             ::HIR::TraitPath::assoc_list_t  assoc;
-            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, params.clone()), e.m_rettype.clone() }) );
+            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, params.clone()), {}, e.m_rettype.clone() }) );
             return found_cb( ImplRef(e.hrls.clone(), type.clone(), mv$(params), mv$(assoc)), false );
         }
         // 1.74: Magic impls of `eq` for function pointers
@@ -265,7 +270,7 @@ bool StaticTraitResolve::find_impl(
             HIR::PathParams params;
             params.m_types.push_back(HIR::TypeRef::new_tuple(std::move(arg_types)));
             ::HIR::TraitPath::assoc_list_t  assoc;
-            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, params.clone()), e.m_rettype.clone() }) );
+            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, params.clone()), {}, e.m_rettype.clone() }) );
             return found_cb( ImplRef(e.hrls.clone(), type.clone(), mv$(params), mv$(assoc)), false );
         }
         }
@@ -305,7 +310,7 @@ bool StaticTraitResolve::find_impl(
                 break;
             }
             ::HIR::TraitPath::assoc_list_t  assoc;
-            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, trait_params->clone()), e.node->m_return.clone() }) );
+            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, trait_params->clone()), {}, e.node->m_return.clone() }) );
             return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
         }
         }
@@ -313,8 +318,8 @@ bool StaticTraitResolve::find_impl(
         if( TARGETVER_LEAST_1_39 && trait_path == m_lang_Generator )
         {
             ::HIR::TraitPath::assoc_list_t   assoc;
-            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait_path.clone(), e.node->m_yield_ty.clone() }));
-            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait_path.clone(), e.node->m_return.clone() }));
+            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait_path.clone(), {}, e.node->m_yield_ty.clone() }));
+            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait_path.clone(), {}, e.node->m_return.clone() }));
             HIR::PathParams params;
             if( TARGETVER_LEAST_1_74 )
             {
@@ -438,7 +443,7 @@ bool StaticTraitResolve::find_impl(
                                     auto aty = monomorph_cb.monomorph_type(sp, tb.second.type, false);
                                     expand_associated_types(sp, aty);
                                     expand_associated_types_params(sp, src.m_params);
-                                    atys.insert(::std::make_pair( tb.first, ::HIR::TraitPath::AtyEqual { mv$(src), mv$(aty) } ));
+                                    atys.insert(::std::make_pair( tb.first, ::HIR::TraitPath::AtyEqual { mv$(src), {}, mv$(aty) } ));
                                 }
                             }
                             if( found_cb( ImplRef(type.clone(), mv$(params_mono_o), mv$(atys)), false ) )

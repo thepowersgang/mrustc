@@ -915,10 +915,13 @@ void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::A
             Resolve_Absolute_ExprNode(context, *n);
             }
         TU_ARMA(AssociatedTyEqual, a) {
+            Resolve_Absolute_PathParams(context, sp, a.first.args());
             Resolve_Absolute_Type(context, a.second);
             }
         TU_ARMA(AssociatedTyBound, a) {
-            Resolve_Absolute_Path(context, sp, Context::LookupMode::Type, a.second);
+            Resolve_Absolute_PathParams(context, sp, a.first.args());
+            for(auto& p : a.second)
+                Resolve_Absolute_Path(context, sp, Context::LookupMode::Type, p);
             }
         }
     }

@@ -189,7 +189,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 params = ::AST::PathParams();
                 params.m_is_paren = true;
                 params.m_entries.push_back( TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(args)) );
-                params.m_entries.push_back( ::std::make_pair( RcString::new_interned("Output"), mv$(ret_type) ) );
+                params.m_entries.push_back( ::std::make_pair( AST::PathNode(RcString::new_interned("Output")), mv$(ret_type) ) );
             }
             else
             {
@@ -251,27 +251,6 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             PUTBACK(tok, lex);
             rv.m_entries.push_back( Parse_Expr13(lex) );
             break;
-        case TOK_IDENT:
-            if( LOOK_AHEAD(lex) == TOK_EQUAL )
-            {
-                auto name = tok.ident().name;
-                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-                rv.m_entries.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
-                break;
-            }
-            if( LOOK_AHEAD(lex) == TOK_COLON )
-            {
-                auto name = tok.ident().name;
-                GET_CHECK_TOK(tok, lex, TOK_COLON);
-                // TODO: Trait list instead of duplicating the name
-                do {
-                    rv.m_entries.push_back( ::std::make_pair( name, Parse_Path(lex, PATH_GENERIC_TYPE) ) );
-                    if(lex.lookahead(0) != TOK_PLUS)
-                        break;
-                    GET_CHECK_TOK(tok, lex, TOK_PLUS);
-                } while(true);
-                break;
-            }
         default:
             PUTBACK(tok, lex);
             rv.m_entries.push_back( Parse_Type(lex) );
@@ -293,18 +272,19 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 auto n = std::move(p.m_class.as_Relative().nodes[0]);
                 rv.m_entries.pop_back();
                 if( lex.getTokenIf(TOK_EQUAL) ) {
-                    auto name = n.name();
-                    rv.m_entries.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
+                    rv.m_entries.push_back( ::std::make_pair( mv$(n), Parse_Type(lex,false) ) );
                 }
                 else if( lex.getTokenIf(TOK_COLON) ) {
-                    auto name = n.name();
+                    std::vector<AST::Path>  traits;
                     // TODO: Trait list instead of duplicating the name
-                    do {
-                        rv.m_entries.push_back( ::std::make_pair( name, Parse_Path(lex, PATH_GENERIC_TYPE) ) );
+                    for(;;)
+                    {
+                        traits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
                         if(lex.lookahead(0) != TOK_PLUS)
                             break;
                         GET_CHECK_TOK(tok, lex, TOK_PLUS);
-                    } while(true);
+                    }
+                    rv.m_entries.push_back( ::std::make_pair( mv$(n), std::move(traits) ) );
                 }
                 else {
                     throw "Unreachable";

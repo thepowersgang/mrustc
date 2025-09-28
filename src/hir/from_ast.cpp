@@ -753,19 +753,31 @@ namespace {
             }
             return ::HIR::GenericPath();
         }
+        static std::pair<RcString,HIR::PathParams> get_aty_node(const Span& sp, const ::AST::PathNode& pn)
+        {
+            auto args = LowerHIR_PathParams(sp, pn.args(), false);
+            if( args.has_params() ) {
+                TODO(sp, "Handle ATYs with args");
+            }
+            return std::make_pair(pn.name(), std::move(args));
+        }
     };
 
     for(const auto& e : path.nodes().back().args().m_entries)
     {
+        ThinVector<HIR::LifetimeRef>   lfts;
         TU_MATCH_HDRA( (e), {)
         TU_ARMA(Null, _) {}
         TU_ARMA(Lifetime, _) {}
         TU_ARMA(Type, _) {}
         TU_ARMA(Value, _) {}
         TU_ARMA(AssociatedTyEqual, assoc) {
-            auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), assoc.first, MonomorphiserNop());
+            auto name_args = H::get_aty_node(sp, assoc.first);
+            auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), name_args.first, MonomorphiserNop());
             DEBUG("src_trait = " << src_trait << " for " << assoc.first);
-            rv.m_type_bounds.insert(::std::make_pair( assoc.first, ::HIR::TraitPath::AtyEqual { std::move(src_trait), LowerHIR_Type(assoc.second) } ));
+            rv.m_type_bounds.insert(::std::make_pair( name_args.first, ::HIR::TraitPath::AtyEqual {
+                std::move(src_trait), std::move(name_args.second), LowerHIR_Type(assoc.second)
+            } ));
             }
         TU_ARMA(AssociatedTyBound, assoc) {
             if( !ignore_bounds )
@@ -774,12 +786,15 @@ namespace {
             }
             else
             {
-                auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), assoc.first, MonomorphiserNop());
+                auto name_args = H::get_aty_node(sp, assoc.first);
+                auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), name_args.first, MonomorphiserNop());
                 DEBUG("src_trait = " << src_trait << " for " << assoc.first);
                 //if(src_trait == ::HIR::GenericPath())
                 //    ERROR(sp, E0000, "Unable to find source trait for " << b->first << " in " << bound_trait_path.m_path);
-                auto it = rv.m_trait_bounds.insert(std::make_pair(assoc.first, ::HIR::TraitPath::AtyBound { std::move(src_trait), {} }));
-                it.first->second.traits.push_back( LowerHIR_TraitPath(sp, assoc.second, {}, /*ignore_bounds*/false) );
+                auto it = rv.m_trait_bounds.insert(std::make_pair(name_args.first, ::HIR::TraitPath::AtyBound { std::move(src_trait), std::move(name_args.second), {} }));
+                for(const auto& trait : assoc.second) {
+                    it.first->second.traits.push_back( LowerHIR_TraitPath(sp, trait, {}, /*ignore_bounds*/false) );
+                }
 
             }
             }
@@ -1811,6 +1826,7 @@ namespace {
     rv.m_markings = markings;
 
     if( f.is_async() ) {
+        //rv.m_markings.is_async = true;
         // Wrap the code in an async block
         rv.m_code = HIR::ExprPtr(box$(::HIR::ExprNode_AsyncBlock(sp, std::move(rv.m_code.into_unique()), true) ));
         // Make the return type be `impl Future<Output=Ret>`
@@ -1818,7 +1834,7 @@ namespace {
         future_path.m_path.m_path = g_crate_ptr->get_lang_item_path(sp, "future_trait");
         future_path.m_type_bounds.insert(std::make_pair(
             RcString::new_interned("Output"),
-            ::HIR::TraitPath::AtyEqual { future_path.m_path.clone(), std::move(rv.m_return) }
+            ::HIR::TraitPath::AtyEqual { future_path.m_path.clone(), {}, std::move(rv.m_return) }
         ));
         rv.m_return = ::HIR::TypeRef(::HIR::TypeData::make_ErasedType(::HIR::TypeData_ErasedType {
             true,

@@ -189,7 +189,11 @@ Ordering PathParamEnt::ord(const PathParamEnt& x) const
         return ::ord(v1, v2);
         }
     TU_ARMA(AssociatedTyBound, v1, v2) {
-        return ::ord(v1, v2);
+        ORD(v1.first, v2.first);
+        ORD(v1.second.size(), v2.second.size());
+        for(size_t i = 0; i < v1.second.size(); i++)
+            ORD(v1.second[i], v2.second[i]);
+        return ::OrdEqual;
         }
     }
     throw "";

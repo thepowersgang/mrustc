@@ -515,6 +515,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
             assoc.first,
             HIR::TraitPath::AtyEqual {
                 this->monomorph_genericpath(sp, assoc.second.source_trait, allow_infer, false),
+                {},
                 this->monomorph_type(sp, assoc.second.type, allow_infer)
                 }
             ));

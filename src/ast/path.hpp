@@ -697,8 +697,8 @@ TAGGED_UNION_EX(PathParamEnt, (), Null, (
     (Lifetime, LifetimeRef),
     (Type, TypeRef),
     (Value, AST::ExprNodeP),
-    (AssociatedTyEqual, ::std::pair<RcString, TypeRef>),
-    (AssociatedTyBound, ::std::pair<RcString, Path>)
+    (AssociatedTyEqual, ::std::pair<PathNode, TypeRef>),
+    (AssociatedTyBound, ::std::pair<PathNode, std::vector<Path>>)
     ),
     (), (),
     (
