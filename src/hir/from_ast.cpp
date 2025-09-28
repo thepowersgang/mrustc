@@ -119,11 +119,12 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             {
                 const auto& name = bound.first;
                 const auto& src_trait = bound.second.source_trait;
+                const auto& params = bound.second.aty_params;
                 for(auto& trait : bound.second.traits)
                 {
                     rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
                         box$(LowerHIR_HigherRankedBounds(e.outer_hrbs)),
-                        ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), src_trait.clone(), name), {} ),
+                        ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), src_trait.clone(), name, params.clone()), {} ),
                         std::move(trait)
                         }));
                 }

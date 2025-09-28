@@ -754,11 +754,13 @@ namespace
                     for(auto& assoc : tp.m_type_bounds)
                     {
                         this->visit_generic_path(assoc.second.source_trait, ::HIR::Visitor::PathContext::TYPE);
+                        this->visit_path_params(assoc.second.aty_params);
                         this->visit_type(assoc.second.type);
                     }
                     for(auto& assoc : tp.m_trait_bounds)
                     {
                         this->visit_generic_path(assoc.second.source_trait, ::HIR::Visitor::PathContext::TYPE);
+                        this->visit_path_params(assoc.second.aty_params);
                         for(auto& trait : assoc.second.traits)
                             this->visit_trait_path(trait);
                     }
