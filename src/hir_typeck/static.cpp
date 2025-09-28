@@ -159,6 +159,34 @@ bool StaticTraitResolve::find_impl(
             }
             return found_cb( ImplRef(&null_hrls, &type, trait_params, &assoc_unit), false );
         }
+        else if( TARGETVER_LEAST_1_90 && trait_path == m_lang_PointeeSized ) {
+            // Lowest level of sizedness: This _might_ be sized (i.e. it's not an extern type?)
+            return found_cb( ImplRef(&null_hrls, &type, &null_params, &null_assoc), false );
+            //switch( this->metadata_type(sp, type) )
+            //{
+            //case MetadataType::Unknown:
+            //    break;
+            //case MetadataType::None:
+            //case MetadataType::Slice:
+            //case MetadataType::TraitObject:
+            //case MetadataType::Zero:
+            //    return found_cb( ImplRef(&null_hrls, &type, &null_params, &null_assoc), false );
+            //}
+        }
+        else if( TARGETVER_LEAST_1_90 && trait_path == m_lang_MetaSized ) {
+            // Next level of sizedness: There's metadata that allows getting the size
+            // - No difference to the above?
+            switch( this->metadata_type(sp, type) )
+            {
+            case MetadataType::Unknown:
+                break;
+            case MetadataType::None:
+            case MetadataType::Slice:
+            case MetadataType::TraitObject:
+            case MetadataType::Zero:    // TODO: Does zero apply here?
+                return found_cb( ImplRef(&null_hrls, &type, &null_params, &null_assoc), false );
+            }
+        }
     }
 
     // Special case: Generic placeholder

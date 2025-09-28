@@ -28,6 +28,8 @@
 ::HIR::GenericParams LowerHIR_HigherRankedBounds(const AST::HigherRankedBounds& hrbs);
 
 ::HIR::SimplePath path_Sized;
+::HIR::SimplePath path_PointeeSized;
+::HIR::SimplePath path_MetadataSized;
 RcString    g_core_crate;
 RcString    g_crate_name;
 ::HIR::Crate*   g_crate_ptr = nullptr;
@@ -108,6 +110,21 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, e.inner_hrbs, /*allow_bounds=*/true);
             auto tp_bounds = mv$(bound_trait_path.m_trait_bounds);
             bound_trait_path.m_trait_bounds.clear();
+
+            // 1.90 added some traits that imply ?Sized
+            if( bound_trait_path.m_path.m_path == path_PointeeSized || bound_trait_path.m_path.m_path == path_MetadataSized ) {
+                if( const auto* ge = type.data().opt_Generic() )
+                {
+                    if( ge->binding == GENERIC_Self ) {
+                        *self_is_sized = false;
+                    }
+                    else {
+                        auto idx = ge->idx();
+                        ASSERT_BUG(bound.span, idx < rv.m_types.size(), "Bounded type out of bounds: " << ge->binding << " " << type);
+                        rv.m_types[idx].m_is_sized = false;
+                    }
+                }
+            }
 
             rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
                 box$(LowerHIR_HigherRankedBounds(e.outer_hrbs)),
@@ -2515,6 +2532,8 @@ public:
         rv.m_ext_crates.insert( ::std::make_pair( ext_crate.first, ::HIR::ExternCrate { mv$(ext_crate.second.m_hir), crate_file, ext_crate.second.m_filename } ) );
     }
     path_Sized = rv.get_lang_item_path(sp, "sized");
+    path_PointeeSized = rv.get_lang_item_path_opt("pointee_sized");
+    path_MetadataSized = rv.get_lang_item_path_opt("metadata_sized");
 
     rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath(rv.m_crate_name) );
     for(auto& e : macros)

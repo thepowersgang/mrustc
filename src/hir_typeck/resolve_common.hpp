@@ -83,6 +83,8 @@ struct TraitResolveCommon
     ::HIR::SimplePath   m_lang_DiscriminantKind;    // 1.54
     ::HIR::SimplePath   m_lang_Pointee;    // 1.54
     ::HIR::SimplePath   m_lang_DynMetadata;    // 1.54
+    ::HIR::SimplePath   m_lang_PointeeSized;    // 1.90
+    ::HIR::SimplePath   m_lang_MetaSized;    // 1.90
 
     TraitResolveCommon(const ::HIR::Crate& crate):
         m_crate(crate),
@@ -104,6 +106,8 @@ struct TraitResolveCommon
         m_lang_DiscriminantKind = m_crate.get_lang_item_path_opt("discriminant_kind");
         m_lang_Pointee = m_crate.get_lang_item_path_opt("pointee_trait");
         m_lang_DynMetadata = m_crate.get_lang_item_path_opt("dyn_metadata");
+        m_lang_PointeeSized = m_crate.get_lang_item_path_opt("pointee_sized");
+        m_lang_MetaSized = m_crate.get_lang_item_path_opt("meta_sized");
     }
 
     bool has_self() const {
