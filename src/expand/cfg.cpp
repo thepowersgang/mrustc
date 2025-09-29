@@ -22,6 +22,8 @@
 ::std::map< ::std::string, ::std::function<bool(const ::std::string&)> >   g_cfg_value_fcns;
 ::std::set< ::std::string >   g_cfg_flags;
 
+static const RcString rcstring_cfg = RcString::new_interned("cfg");
+
 void Cfg_Dump(::std::ostream& os) {
     for(const auto& v : g_cfg_values) {
         os << ">" << v.first << "=" << v.second << std::endl;
@@ -100,7 +102,10 @@ namespace {
         case TOK_PAREN_OPEN:
             GET_TOK(tok, lex);
 
-            if( name == "any" || name == "cfg" ) {
+            static const RcString rcstring_any = RcString::new_interned("any");
+            static const RcString rcstring_not = RcString::new_interned("not");
+            static const RcString rcstring_all = RcString::new_interned("all");
+            if( name == rcstring_any || name == rcstring_cfg ) {
                 bool rv = false;
                 while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
                     rv |= check_cfg_inner(lex);
@@ -111,14 +116,14 @@ namespace {
                 GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                 return rv;
             }
-            else if( name == "not" ) {
+            else if( name == rcstring_not ) {
                 bool rv = check_cfg_inner(lex);
                 // Allow a trailing comma
                 lex.getTokenIf(TOK_COMMA);
                 GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                 return !rv;
             }
-            else if( name == "all" ) {
+            else if( name == rcstring_all ) {
                 bool rv = true;
                 while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
                     rv &= check_cfg_inner(lex);
@@ -169,7 +174,7 @@ bool check_cfg_attrs(const ::AST::AttributeList& attrs)
 {
     for( auto& a : attrs.m_items )
     {
-        if( a.name() == "cfg" ) {
+        if( a.name() == rcstring_cfg ) {
             if( !check_cfg(a.span(), a) ) {
                 return false;
             }
@@ -301,7 +306,7 @@ class CCfgHandler:
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::StructItem& si) const override {
         DEBUG("#[cfg] struct item - " << mi);
         if( !check_cfg(sp, mi) ) {
-            si.m_name = "";
+            si.m_name = RcString();
         }
     }
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::TupleItem& i) const override {
@@ -313,7 +318,7 @@ class CCfgHandler:
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::EnumVariant& i) const override {
         DEBUG("#[cfg] enum variant - " << mi);
         if( !check_cfg(sp, mi) ) {
-            i.m_name = "";
+            i.m_name = RcString();
         }
     }
 
