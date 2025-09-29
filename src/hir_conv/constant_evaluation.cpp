@@ -2522,7 +2522,7 @@ namespace HIR {
                     else
                         throw Defer();
                 }
-                else if( te->name == "min_align_of" ) {
+                else if( te->name == "align_of" || te->name == "min_align_of" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     size_t  align_val;
                     if( Target_GetAlignOf(state.sp, this->resolve, ty, align_val) )
@@ -2780,7 +2780,7 @@ namespace HIR {
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1), true);
                 }
                 // ---
-                else if( te->name == "transmute" ) {
+                else if( te->name == "transmute" || te->name == "transmute_unchecked" ) {
                     local_state.write_param(dst, e.args.at(0));
                 }
                 else if( te->name == "unlikely" ) {
