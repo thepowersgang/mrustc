@@ -96,7 +96,7 @@ class CMacroUseHandler:
         }
         else if(const auto* ec_item = i.opt_Crate())
         {
-            const auto& ec = crate.m_extern_crates.at(ec_item->name.c_str());
+            const auto& ec = crate.m_extern_crates.at(ec_item->name);
 
             DEBUG(ec.m_hir->m_exported_macro_names.size() << " exported macros");
             for(const auto& name : ec.m_hir->m_exported_macro_names)
@@ -302,7 +302,7 @@ class CMacroReexportHandler:
         }
 
         const auto& crate_name = i.as_Crate().name;
-        auto& ext_crate = *crate.m_extern_crates.at(crate_name.c_str()).m_hir;
+        auto& ext_crate = *crate.m_extern_crates.at(crate_name).m_hir;
 
         mi.parse_paren_ident_list([&](const Span& sp, RcString name) {
             auto it = ::std::find(ext_crate.m_exported_macro_names.begin(), ext_crate.m_exported_macro_names.end(), name);
