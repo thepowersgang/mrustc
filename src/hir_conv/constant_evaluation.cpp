@@ -2957,7 +2957,7 @@ namespace HIR {
                         MIR_TODO(state, "panic in constant evaluation");
                     }
                     else {
-                        MIR_TODO(state, "Call extern function `" << fcn.m_linkage.name << "`");
+                        MIR_TODO(state, "Call extern function `" << fcn.m_linkage.name << "` (" << *fcnp << ")");
                     }
                 }
 

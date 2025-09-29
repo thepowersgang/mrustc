@@ -265,6 +265,7 @@ public:
     const Span& sp() const { return m_span; }
 
     const ::std::string& abi() const { return m_abi; };
+    void set_abi(std::string s) { m_abi = std::move(s); }
     bool is_const() const { return m_flags.is_const; }
     bool is_unsafe() const { return m_flags.is_unsafe; }
     bool is_async() const { return m_flags.is_async; }

@@ -558,3 +558,23 @@ class CHandler_TargetFeature:
     }
 };
 STATIC_DECORATOR("target_feature", CHandler_TargetFeature);
+
+
+class CHandler_RustcIntrinsic:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Post; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        if(auto* e = i.opt_Function()) {
+            if( e->abi() != ABI_RUST ) {
+                ERROR(sp, E0000, "#[rustc_intrinsic] on function with ABI already set (`" << e->abi() << "`)");
+            }
+            e->set_abi( "rust-intrinsic" );
+        }
+        else {
+            ERROR(sp, E0000, "#[rustc_intrinsic] on non-function");
+        }
+    }
+};
+STATIC_DECORATOR("rustc_intrinsic", CHandler_RustcIntrinsic);
