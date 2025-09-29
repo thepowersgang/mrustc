@@ -15,6 +15,7 @@
 #include <hir_expand/main_bindings.hpp>
 #include <mir/main_bindings.hpp>
 #include <trans/target.hpp>
+#include <floats.hpp>
 
 namespace {
     bool is_unbounded_infer(const ::HIR::TypeRef& type) {
@@ -1446,9 +1447,11 @@ double EncodedLiteralSlice::read_float(size_t size/*=0*/) const {
     assert(size <= m_size);
     switch(size)
     {
+    case 2: { F16 v; memcpy(&v, &m_base.bytes[m_ofs], 2); return v; }
     case 4: { float v; memcpy(&v, &m_base.bytes[m_ofs], 4); return v; }
     case 8: { double v; memcpy(&v, &m_base.bytes[m_ofs], 8); return v; }
-    default: abort();
+    case 16: { F128 v; memcpy(&v,  &m_base.bytes[m_ofs], 16); return v; }
+    default: BUG(Span(), "Unexpected float size");
     }
 }
 const Reloc* EncodedLiteralSlice::get_reloc() const {

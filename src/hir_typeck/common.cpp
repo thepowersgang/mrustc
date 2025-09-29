@@ -829,11 +829,13 @@ void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HI
     case ::HIR::InferClass::Float:
         switch(ct)
         {
+        case ::HIR::CoreType::F16:
         case ::HIR::CoreType::F32:
         case ::HIR::CoreType::F64:
+        case ::HIR::CoreType::F128:
             break;
         default:
-            ERROR(sp, E0000, "Type unificiation of integer literal with non-integer - " << type);
+            ERROR(sp, E0000, "Type unificiation of float literal with non-float - " << type);
         }
         break;
     case ::HIR::InferClass::Integer:

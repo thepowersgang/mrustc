@@ -805,8 +805,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             bool good = false;
                             if( dst_ty.data().is_Primitive() ) {
                                 switch( dst_ty.data().as_Primitive() ) {
+                                case ::HIR::CoreType::F16:
                                 case ::HIR::CoreType::F32:
                                 case ::HIR::CoreType::F64:
+                                case ::HIR::CoreType::F128:
                                     good = true;
                                     break;
                                 default:

@@ -16,6 +16,7 @@
 #include <trans/target.hpp>
 #include <hir/expr_state.hpp>
 #include <int128.h> // 128 bit integer support
+#include <floats.hpp>
 
 #include "constant_evaluation.hpp"
 #include <trans/monomorphise.hpp>   // For handling monomorph of MIR in provided associated constants
@@ -384,9 +385,7 @@ namespace MIR { namespace eval {
         }
         uint8_t* ext_write_bytes(size_t ofs, size_t len) override
         {
-            assert(ofs <= length);
-            assert(len <= length);
-            assert(ofs+len <= length);
+            ASSERT_BUG(Span(), ofs <= length && len <= length && ofs+len <= length, "OOB write: " << ofs << "+" << len << " out of " << length);
             // Set the mask
             {
                 auto* m = this->get_mask();
@@ -546,6 +545,7 @@ namespace MIR { namespace eval {
         uint16_t    mask;
     };
 #endif
+
     /// Reference to a value
     class ValueRef
     {
@@ -636,10 +636,12 @@ namespace MIR { namespace eval {
         void write_float(const MIR::TypeResolve& state, unsigned bits, double v) {
             switch(bits)
             {
+            case 16: { F16 v_f = v; write_bytes(state, &v_f, sizeof(v_f)); } break;
             case 32: { float  v_f32 = v; write_bytes(state, &v_f32, sizeof(v_f32)); } break;
             case 64: { double v_f64 = v; write_bytes(state, &v_f64, sizeof(v_f64)); } break;
+            case 128: { F128 v_f128 = v; write_bytes(state, &v_f128, 16); } break;
             default:
-                MIR_BUG(state, "Unexpected float size: " << bits);
+                MIR_BUG(state, "Unexpected float size (write): " << bits);
             }
         }
         void write_uint(const MIR::TypeResolve& state, unsigned bits, uint64_t v) {
@@ -689,6 +691,7 @@ namespace MIR { namespace eval {
             {
             case 32: { float  v_f32 = 0; read_bytes(state, &v_f32, sizeof(v_f32)); return v_f32; } break;
             case 64: { double v_f64 = 0; read_bytes(state, &v_f64, sizeof(v_f64)); return v_f64; } break;
+            case 128:{ F128 v_f; read_bytes(state, &v_f, sizeof(v_f)); return v_f; } break;
             default:
                 MIR_BUG(state, "Unexpected float size: " << bits);
             }
@@ -2572,7 +2575,7 @@ namespace HIR {
 #else
                     unsigned rv = __builtin_popcountll(val.get_lo()) + __builtin_popcountll(val.get_hi());
 #endif
-                    dst.write_uint(state, ti.bits, U128(rv));
+                    dst.write_uint(state, TARGETVER_LEAST_1_90 ? 32 : ti.bits, U128(rv));
                 }
                 // - CounT Trailing Zeros
                 else if( te->name == "cttz" ) {
@@ -2591,7 +2594,7 @@ namespace HIR {
                             rv += 1;
                         }
                     }
-                    dst.write_uint(state, ti.bits, U128(rv));
+                    dst.write_uint(state, TARGETVER_LEAST_1_90 ? 32 : ti.bits, U128(rv));
                 }
                 // - CounT Lrailing Zeros
                 else if( te->name == "ctlz" ) {
@@ -2607,7 +2610,7 @@ namespace HIR {
                         rv += 1;
                     }
                     // Then subtract from the total bit count (no shift needed = max bits)
-                    dst.write_uint(state, ti.bits, U128(ti.bits - rv));
+                    dst.write_uint(state, TARGETVER_LEAST_1_90 ? 32 : ti.bits, U128(ti.bits - rv));
                 }
                 else if( te->name == "bswap" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
@@ -2913,6 +2916,9 @@ namespace HIR {
                     MIR_ASSERT(state, ty.data().as_Path().binding.is_Enum(), "`variant_count` on non-enum - " << ty);
                     const auto* enm = ty.data().as_Path().binding.as_Enum();
                     dst.write_uint(state, Target_GetPointerBits(), enm->num_variants());
+                }
+                else if( te->name == "is_val_statically_known" ) {
+                    dst.write_uint(state, 8, e.args.at(0).is_Constant() || e.args.at(0).is_Borrow());
                 }
                 else {
                     MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << terminator);
