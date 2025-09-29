@@ -2198,9 +2198,20 @@ namespace {
                 }
                 else if( fcn.m_abi == "rust-intrinsic" )
                 {
+                    auto name = gpath.m_path.components().back();
+                    if( name == "ptr_metadata" ) {
+                        auto& v = values.front();
+                        m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue::make_DstMeta({ std::move(v.as_LValue()) }));
+                        m_builder.set_result(node.span(), std::move(res));
+                        return ;
+                    }
+                    if( name == "ub_checks" ) {
+                        m_builder.set_result(node.span(), ::MIR::Constant::make_Bool({true}));
+                        return ;
+                    }
                     m_builder.end_block(::MIR::Terminator::make_Call({
                         next_block, panic_block,
-                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ gpath.m_path.components().back(), gpath.m_params.clone() }),
+                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ name, gpath.m_params.clone() }),
                         mv$(values)
                         }));
                 }
