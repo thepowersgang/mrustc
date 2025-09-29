@@ -3443,7 +3443,8 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 auto fit = impl.m_methods.find(pe.item);
                 if( fit != impl.m_methods.end() )
                 {
-                    ASSERT_BUG(sp, impl.m_params.m_types.size() == pe.impl_params.m_types.size(), "Mismatch in param counts " << p << ", params are " << impl.m_params.fmt_args());
+                    ASSERT_BUG(sp, impl.m_params.m_types.size() == out_params.pp_impl->m_types.size(),
+                        "Mismatch in param counts `" << *out_params.pp_impl << "`, params are `" << impl.m_params.fmt_args() << "`\n- in " << p);
                     DEBUG("- Contains method, good");
                     rv = ValuePtr { &fit->second.data };
                     return true;
