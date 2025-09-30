@@ -2205,6 +2205,14 @@ namespace {
                         m_builder.set_result(node.span(), std::move(res));
                         return ;
                     }
+                    // aggregate_raw_ptr: Lowers to mrustc's MakeDst (rustc's `Aggregate` with `AggregateKind::RawPtr`)
+                    if( name == "aggregate_raw_ptr" ) {
+                        auto& v_ptr = values.at(0);
+                        auto& v_meta = values.at(1);
+                        m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue::make_MakeDst({ std::move(v_ptr), std::move(v_meta) }));
+                        m_builder.set_result(node.span(), std::move(res));
+                        return ;
+                    }
                     if( name == "ub_checks" ) {
                         m_builder.set_result(node.span(), ::MIR::Constant::make_Bool({true}));
                         return ;

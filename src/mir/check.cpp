@@ -70,6 +70,13 @@ namespace {
             }
             return ::HIR::TypeRef();
         }
+        else if( TARGETVER_LEAST_1_90 && unsized_ty.data().is_Generic() )
+        {
+            ::HIR::Path p { unsized_ty.clone(), state.m_resolve.m_lang_Pointee, "Metadata" };
+            auto rv = ::HIR::TypeRef::new_path(std::move(p), {});
+            state.m_resolve.expand_associated_types(sp, rv);
+            return rv;
+        }
         else
         {
             return ::HIR::TypeRef();
