@@ -159,6 +159,10 @@ namespace {
 
         unsigned m_in_expr;
 
+        ::HIR::ItemPath* m_fcn_path = nullptr;
+        ::HIR::Function* m_fcn_ptr = nullptr;
+        unsigned int m_fcn_erased_count = 0;
+
     public:
         Visitor(const ::HIR::Crate& crate):
             m_crate(crate),
@@ -447,6 +451,91 @@ namespace {
                     const auto& trait = m_crate.get_trait_by_path(sp, t.m_path.m_path);
                     fix_param_count(sp, t.m_path, trait.m_params, t.m_path.m_params, /*fill_infer=*/m_in_expr, &ty_eself);
                 }
+
+                // TODO: Do this in bind?
+                if( auto* ee = te->m_inner.opt_Fcn() )
+                {
+                    DEBUG("Set origin of ErasedType - " << ty);
+                    DEBUG("&ty.data() = " << &ty.data());
+                    // If not, figure out what to do with it
+
+                    // If the function path is set, we're processing the return type of a function
+                    // - Add this to the list of erased types associated with the function
+                    if( ee->m_origin != HIR::SimplePath() )
+                    {
+                        // Already set, somehow (maybe we're visiting the function after expansion)
+                    }
+                    else if( m_fcn_path )
+                    {
+                        assert(m_fcn_ptr);
+                        DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
+
+                        ::HIR::PathParams    params = m_fcn_ptr->m_params.make_nop_params(1);
+                        // Populate with function path
+                        ee->m_origin = m_fcn_path->get_full_path();
+                        TU_MATCH_HDRA( (ee->m_origin.m_data), {)
+                        TU_ARMA(Generic, e2) {
+                            e2.m_params = mv$(params);
+                            }
+                        TU_ARMA(UfcsInherent, e2) {
+                            e2.params = mv$(params);
+                            // Impl params, just directly references the parameters.
+                            // - Downstream monomorph will fix that
+                            e2.impl_params = m_ms.m_impl_generics->make_nop_params(0);
+                            }
+                        TU_ARMA(UfcsKnown, e2) {
+                            e2.params = mv$(params);
+                            }
+                        TU_ARMA(UfcsUnknown, e2) {
+                            throw "";
+                            }
+                        }
+                        ee->m_index = m_fcn_erased_count++;
+                    }
+                    // If the function _pointer_ is set (but not the path), then we're in the function arguments
+                    // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
+                    else if( m_fcn_ptr )
+                    {
+                        size_t idx = m_fcn_ptr->m_params.m_types.size();
+                        auto name = RcString::new_interned(FMT("erased$" << idx));
+                        auto new_ty = ::HIR::TypeRef( name, 256 + idx );
+                        m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), te->m_is_sized });
+                        for( auto& trait : te->m_traits )
+                        {
+                            struct M: MonomorphiserNop {
+                                const HIR::TypeRef& new_ty;
+                                M(const HIR::TypeRef& ty): new_ty(ty) {}
+                                ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
+                                    if( ty.binding == GENERIC_ErasedSelf ) {
+                                        return new_ty.clone();
+                                    }
+                                    return HIR::TypeRef(ty);
+                                }
+                            } m { new_ty };
+                            // TODO: Monomorph the trait to replace `Self` with this generic?
+                            // - Except, that should it be?
+                            m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                                nullptr,
+                                new_ty.clone(),
+                                m.monomorph_traitpath(sp, trait, false)
+                                }));
+                        }
+                        for(const auto& lft : te->m_lifetimes)
+                        {
+                            m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
+                                new_ty.clone(),
+                                lft
+                                }));
+                        }
+                        ty = ::std::move(new_ty);
+                    }
+                    else
+                    {
+                        // TODO: If we're in a top-level `type`, then it must be used as the return type of a function.
+                        // https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html#type-alias
+                        ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
+                    }
+                }
             }
             else if( auto* te = ty.data_mut().opt_TraitObject() )
             {
@@ -542,6 +631,30 @@ namespace {
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override
         {
             auto _ = this->m_ms.set_item_generics(item.m_params);
+            m_fcn_ptr = &item;
+
+            // Visit arguments
+            // - Used to convert `impl Trait` in argument position into generics
+            // - Done first so the path in return-position `impl Trait` is valid
+            //m_cur_params = &item.m_params;
+            //m_cur_params_level = 1;
+            for(auto& arg : item.m_args)
+            {
+                TRACE_FUNCTION_F("ARG " << arg);
+                visit_type(arg.second);
+            }
+            //m_cur_params = nullptr;
+
+            // Visit return type (populates path for `impl Trait` in return position
+            m_fcn_path = &p;
+            m_fcn_erased_count = 0;
+            {
+                TRACE_FUNCTION_F("RET " << item.m_return);
+                visit_type(item.m_return);
+            }
+            m_fcn_path = nullptr;
+            m_fcn_ptr = nullptr;
+
             ::HIR::Visitor::visit_function(p, item);
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
