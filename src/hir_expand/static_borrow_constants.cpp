@@ -1375,9 +1375,12 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), std::move(vi) } ));
         crate.m_new_values.push_back( ::std::make_pair(name, mv$(boxed)) );
         {
-            auto& s = crate.m_new_values.back().second->ent.as_Static();
-            s.m_value.m_state->m_impl_generics = nullptr;
-            s.m_value.m_state->m_item_generics = &s.m_params;
+            auto& e = crate.m_new_values.back().second->ent;
+            ASSERT_BUG(sp, e.is_Static() || e.is_Constant(), "");
+            auto& p = e.is_Static() ? e.as_Static().m_params : e.as_Constant().m_params;
+            auto& v = e.is_Static() ? e.as_Static().m_value : e.as_Constant().m_value;
+            v.m_state->m_impl_generics = nullptr;
+            v.m_state->m_item_generics = &p;
         }
         return path;
         }, exp);
