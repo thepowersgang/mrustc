@@ -2910,12 +2910,23 @@ namespace HIR {
                     ValueRef vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
                     memset(vr_dst.ext_write_bytes(state, nbytes), val.truncate_u64(), nbytes);
                 }
+                // Innards of `core::ptr::read` (on 1.90+)
+                else if( te->name == "read_via_copy" ) {
+                    auto ptr_src = local_state.read_param_ptr(e.args.at(0));
+                    auto vr_src = ValueRef(ptr_src.second, ptr_src.first - EncodedLiteral::PTR_BASE);
+                    dst.copy_from(state, vr_src);
+                }
                 else if( te->name == "variant_count" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Path(), "`variant_count` on non-enum - " << ty);
                     MIR_ASSERT(state, ty.data().as_Path().binding.is_Enum(), "`variant_count` on non-enum - " << ty);
                     const auto* enm = ty.data().as_Path().binding.as_Enum();
                     dst.write_uint(state, Target_GetPointerBits(), enm->num_variants());
+                }
+                else if( te->name == "assert_zero_valid" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    MIR_ASSERT(state, !ty.data().is_Borrow(), "`assert_zero_valid`: Borrow cannot be zero");
+                    // TODO: Other cases?
                 }
                 else if( te->name == "is_val_statically_known" ) {
                     dst.write_uint(state, 8, e.args.at(0).is_Constant() || e.args.at(0).is_Borrow());
