@@ -2461,7 +2461,8 @@ namespace {
                     BUG(sp, "All references via imports should be replaced");
                     }
                 TU_ARMA(Constant, e) {
-                    auto tmp = m_builder.new_temporary( e.m_type );
+                    auto ty = MonomorphStatePtr(nullptr, nullptr, &pe.m_params).monomorph_type(sp, e.m_type);
+                    auto tmp = m_builder.new_temporary( ty );
                     m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_Const({box$(node.m_path.clone())}) );
                     m_builder.set_result( node.span(), mv$(tmp) );
                     }

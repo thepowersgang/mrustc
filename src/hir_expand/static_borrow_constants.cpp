@@ -1001,10 +1001,11 @@ namespace static_borrow_constants {
                 // - (Currently) there shouldn't be any generics, need to solve that later on?
                 auto static_ty = MonomorphLifetimesStatic().monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
                 resolve.expand_associated_types(sp, static_ty);
+                DEBUG("ConstBlock: static_ty = " << static_ty);
 
                 auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
                 auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
-                DEBUG("new_res_ty = " << new_res_ty);
+                DEBUG("ConstBlock: new_res_ty = " << new_res_ty);
 
                 auto path = m_new_static_cb(sp, mv$(static_ty), mv$(val_expr), mv$(params_def), true);
                 DEBUG("> " << path << constr_params);
