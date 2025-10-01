@@ -2597,7 +2597,7 @@ namespace HIR {
                     dst.write_uint(state, TARGETVER_LEAST_1_90 ? 32 : ti.bits, U128(rv));
                 }
                 // - CounT Lrailing Zeros
-                else if( te->name == "ctlz" ) {
+                else if( te->name == "ctlz" || te->name == "ctlz_nonzero" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`ctlz` with non-primitive " << ty);
                     auto ti = TypeInfo::for_type(ty);
