@@ -2188,4 +2188,7 @@ public:
 };
 
 STATIC_DECORATOR("derive", Decorator_Derive)
+// TODO: `derive_const` should generate const impls, but mrustc doesn't care
+class Decorator_DeriveConst: public Decorator_Derive {};
+STATIC_DECORATOR("derive_const", Decorator_DeriveConst)
 
