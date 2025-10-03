@@ -187,6 +187,10 @@ bool StaticTraitResolve::find_impl(
                 return found_cb( ImplRef(&null_hrls, &type, &null_params, &null_assoc), false );
             }
         }
+        else if( TARGETVER_LEAST_1_90 && trait_path == m_lang_Destruct ) {
+            // is there anything indestructible? Maybe extern types
+            return found_cb( ImplRef(&null_hrls, &type, &null_params, &null_assoc), false );
+        }
     }
 
     // Special case: Generic placeholder

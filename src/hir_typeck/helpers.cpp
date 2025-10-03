@@ -1593,6 +1593,16 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         //}
     }
 
+    if( TARGETVER_LEAST_1_90 && trait == m_lang_Destruct )
+    {
+        // Inidicates that something is droppable
+        // - Applies to everything?
+        if( find_trait_impls_bound(sp, trait, params, type, callback) )
+            return true;
+        // Lowest level of sizedness: This _might_ be sized (i.e. it's not an extern type?)
+        return callback( ImplRef(type.clone(), {}, ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Equal );
+    }
+
     return false;
 }
 
