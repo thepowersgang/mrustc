@@ -882,32 +882,13 @@ namespace {
             TODO(sp, "Handle EnumConstructor - " << path);
         TU_ARMA(EnumValue, e)
             TODO(sp, "Handle EnumValue - " << path);
-        TU_ARMA(StructConstructor, e)
-            TODO(sp, "Handle StructConstructor - " << path);
+        TU_ARMA(StructConstructor, e) {
+            return e.s;
+        }
         TU_ARMA(StructConstant, e)
             TODO(sp, "Handle StructConstant - " << path);
         }
         throw "";
-    }
-    const ::HIR::Function& get_function(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::Path& path, MonomorphState& out_ms, const ::HIR::GenericParams*& out_impl_params_def)
-    {
-        auto rv = get_ent_fullpath(sp, resolve, path, EntNS::Value, out_ms, &out_impl_params_def);
-        if(const auto* fcn_p = rv.opt_Function()) {
-            const HIR::Function& fcn = **fcn_p;
-            const auto& ep = fcn.m_code;
-            if( ep && ep.m_state->stage < ::HIR::ExprState::Stage::ConstEval)
-            {
-                auto prev = ep.m_state->stage;
-                ep.m_state->stage = ::HIR::ExprState::Stage::ConstEvalRequest;
-                // Run consteval on the arguments and return type
-                ConvertHIR_ConstantEvaluate_FcnSig(resolve.m_crate, out_impl_params_def, path, const_cast<HIR::Function&>(fcn));
-                ep.m_state->stage = prev;
-            }
-            return fcn;
-        }
-        else {
-            TODO(sp, "Could not find function for " << path << " - " << rv.tag_str());
-        }
     }
 
 
@@ -2848,25 +2829,9 @@ namespace HIR {
                         vr.copy_from(state, arg_val.slice(f.offset, size));
                     }
 
-                    MonomorphState  fcn_ms;
-                    const ::HIR::GenericParams* impl_params_def = nullptr;
-                    auto& fcn = get_function(this->root_span, this->resolve, *fcn_path, fcn_ms, impl_params_def);
-
-                    // Monomorphised argument types
-                    ::HIR::Function::args_t arg_defs;
-                    for(const auto& a : fcn.m_args) {
-                        arg_defs.push_back( ::std::make_pair(::HIR::Pattern(), this->resolve.monomorph_expand(this->root_span, a.second, fcn_ms)) );
+                    if( this->call_function(local_state, e.ret_val, std::move(fcn_path), std::move(call_args)) ) {
+                        return TERM_RET_PUSHED;
                     }
-                    auto ret_ty = this->resolve.monomorph_expand(this->root_span, fcn.m_return, fcn_ms);
-
-                    const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(*fcn_path), fcn );
-                    MIR_ASSERT(state, mir != nullptr, "No MIR for function " << *fcn_path);
-
-                    push_stack_entry(::FmtLambda([=](std::ostream& os){ os << *fcn_path; }), *mir,
-                        std::move(fcn_ms), std::move(ret_ty), ::std::move(arg_defs), std::move(call_args),
-                        &fcn.m_params, impl_params_def
-                        );
-                    return TERM_RET_PUSHED;
                 }
                 // ---
                 else if( te->name == "copy_nonoverlapping" ) {
@@ -2940,11 +2905,8 @@ namespace HIR {
             else if( const auto* te = e.fcn.opt_Path() )
             {
                 const auto& fcnp_raw = *te;
+                DEBUG("ms=" << ms);
                 auto fcnp = std::make_shared<HIR::Path>(ms.monomorph_path(state.sp, fcnp_raw));
-
-                MonomorphState  fcn_ms;
-                const ::HIR::GenericParams* impl_params_def = nullptr;
-                auto& fcn = get_function(this->root_span, this->resolve, *fcnp, fcn_ms, impl_params_def);
 
                 // Argument values
                 ::std::vector<AllocationPtr>  call_args;
@@ -2958,36 +2920,14 @@ namespace HIR {
                     local_state.write_param( vr, a );
                 }
 
-                // Monomorphised argument types
-                ::HIR::Function::args_t arg_defs;
-                for(const auto& a : fcn.m_args) {
-                    arg_defs.push_back( ::std::make_pair(::HIR::Pattern(), this->resolve.monomorph_expand(this->root_span, a.second, fcn_ms)) );
+                if( this->call_function(local_state, e.ret_val, std::move(fcnp), std::move(call_args)) ) {
+                    return TERM_RET_PUSHED;
                 }
-                auto ret_ty = this->resolve.monomorph_expand(this->root_span, fcn.m_return, fcn_ms);
-
-                // TODO: Set m_const during parse and check here
-
-                if( !fcn.m_code && !fcn.m_code.m_mir ) {
-                    if( fcn.m_linkage.name == "" ) {
-                    }
-                    else if( fcn.m_linkage.name == "panic_impl" ) {
-                        MIR_TODO(state, "panic in constant evaluation");
-                    }
-                    else {
-                        MIR_TODO(state, "Call extern function `" << fcn.m_linkage.name << "` (" << *fcnp << ")");
-                    }
+                else {
+                    auto dst = local_state.get_lval(e.ret_val);
+                    DEBUG("> E" << this->eval_index << " F" << local_state.frame_index << " " << e.ret_val << " := " << dst);
+                    return e.ret_block;
                 }
-
-                // Call by invoking evaluate_constant on the function
-                const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(*fcnp), fcn );
-                MIR_ASSERT(state, mir, "No MIR for function " << fcnp);
-
-                push_stack_entry(
-                    ::FmtLambda([=](std::ostream& os){ os << *fcnp; }),
-                    *mir, std::move(fcn_ms), std::move(ret_ty), ::std::move(arg_defs), std::move(call_args),
-                    &fcn.m_params, impl_params_def
-                    );
-                return TERM_RET_PUSHED;
             }
             else
             {
@@ -2996,6 +2936,121 @@ namespace HIR {
             }
         }
         throw std::runtime_error("Unreachable?");
+    }
+
+    /// @brief Call a function (handling `Fn*` traits, and struct/enum constructors)
+    /// @param local_state 
+    /// @param rv_slot 
+    /// @param fcn_path 
+    /// @param call_args 
+    /// @return `true` is a new stack frame was pushed
+    bool Evaluator::call_function(CallStackEntry& local_state, const MIR::LValue& rv_slot, ::std::shared_ptr<HIR::Path> fcn_path, ::std::vector<AllocationPtr> call_args)
+    {
+        const auto& state = local_state.state;
+        MonomorphState  fcn_ms;
+        const ::HIR::GenericParams* impl_params_def = nullptr;
+
+        const auto* path_p = fcn_path.get();
+        if( const auto* e = path_p->m_data.opt_UfcsKnown() ) {
+            if( e->type.data().is_Function() || e->type.data().is_NamedFunction() ) {
+                if( e->trait.m_path == resolve.m_lang_Fn
+                || e->trait.m_path == resolve.m_lang_FnMut
+                || e->trait.m_path == resolve.m_lang_FnOnce
+                    ) {
+                    if( const auto* nf = e->type.data().opt_NamedFunction() ) {
+                        path_p = &nf->path;
+                    }
+                    else {
+                        MIR_TODO(local_state.state, "Get function from fn-ptr - " << e->type);
+                    }
+                    // TODO: Convert `call_args` - discard the first and extract tuple from the second
+                    const auto& arg_tuple_ty = e->trait.m_params.m_types.at(0);
+                    const auto* arg_tuple_repr = Target_GetTypeRepr(state.sp, state.m_resolve, arg_tuple_ty);
+                    auto arg_tuple_v = std::move( call_args.at(1) );
+                    ValueRef    arg_tuple(arg_tuple_v);
+                    call_args.clear();
+                    call_args.reserve(arg_tuple_repr->fields.size());
+                    for(const auto& fld : arg_tuple_repr->fields)
+                    {
+                        auto size = local_state.size_of_or_bug(fld.ty);
+                        call_args.push_back(AllocationPtr::allocate(state.m_resolve, state, fld.ty));
+                        auto vr = ValueRef(call_args.back());
+                        vr.copy_from(state, arg_tuple.slice(fld.offset, size));
+                    }
+                }
+                else {
+                    // Ignore: Not a fn trait
+                }
+            }
+        }
+        const auto& path = *path_p;
+
+        auto rv = get_ent_fullpath(local_state.state.sp, resolve, path, EntNS::Value, fcn_ms, &impl_params_def);
+        if(const auto* fcn_p = rv.opt_Function()) {
+            const HIR::Function& fcn = **fcn_p;
+            const auto& ep = fcn.m_code;
+            if( ep && ep.m_state->stage < ::HIR::ExprState::Stage::ConstEval)
+            {
+                auto prev = ep.m_state->stage;
+                ep.m_state->stage = ::HIR::ExprState::Stage::ConstEvalRequest;
+                // Run consteval on the arguments and return type
+                ConvertHIR_ConstantEvaluate_FcnSig(resolve.m_crate, impl_params_def, path, const_cast<HIR::Function&>(fcn));
+                ep.m_state->stage = prev;
+            }
+
+            DEBUG("Call function " << *fcn_path << ": fcn_ms=" << fcn_ms);
+
+            // TODO: Set m_const during parse and check here
+            if( !fcn.m_code && !fcn.m_code.m_mir ) {
+                if( fcn.m_linkage.name == "" ) {
+                }
+                else if( fcn.m_linkage.name == "panic_impl" ) {
+                    MIR_TODO(state, "panic in constant evaluation");
+                }
+                else {
+                    MIR_TODO(state, "Call extern function `" << fcn.m_linkage.name << "` (" << *fcn_path << ")");
+                }
+            }
+
+            // Call by invoking evaluate_constant on the function
+            const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(*fcn_path), fcn );
+            MIR_ASSERT(state, mir, "No MIR for function " << *fcn_path);
+
+            // Monomorphised argument types
+            ::HIR::Function::args_t arg_defs;
+            for(const auto& a : fcn.m_args) {
+                arg_defs.push_back( ::std::make_pair(::HIR::Pattern(), this->resolve.monomorph_expand(this->root_span, a.second, fcn_ms)) );
+            }
+            auto ret_ty = this->resolve.monomorph_expand(this->root_span, fcn.m_return, fcn_ms);
+
+            push_stack_entry(
+                ::FmtLambda([=](std::ostream& os){ os << *fcn_path; }),
+                *mir, std::move(fcn_ms), std::move(ret_ty), ::std::move(arg_defs), std::move(call_args),
+                &fcn.m_params, impl_params_def
+                );
+            return true;
+        }
+        else if( rv.is_Struct() ) {
+            // Set destination, same way as `RValue::Struct` does
+            auto dst = local_state.get_lval(rv_slot);
+            
+            ::HIR::TypeRef tmp;
+            const auto& ty = state.get_lvalue_type(tmp, rv_slot);
+            auto* repr = Target_GetTypeRepr(state.sp, resolve, ty);
+            if(!repr)   throw Defer();
+            MIR_ASSERT(state, repr->fields.size() == call_args.size(), "");
+            for(size_t i = 0; i < call_args.size(); i ++)
+            {
+                size_t sz = local_state.size_of_or_bug(repr->fields[i].ty);
+                auto local_dst = dst.slice(repr->fields[i].offset, sz);
+                local_dst.copy_from(state, ValueRef(call_args[i]));
+                DEBUG("@" << repr->fields[i].offset << " = " << local_dst);
+            }
+            return false;
+        }
+        else {
+            MIR_TODO(state, "Could not find function for " << path << " - " << rv.tag_str());
+        }
     }
 
     EncodedLiteral Evaluator::allocation_to_encoded(const ::HIR::TypeRef& ty, const ::MIR::eval::Allocation& a)
