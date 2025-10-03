@@ -815,9 +815,9 @@ namespace {
                         push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
                         toks.push_back( TokenTree(TOK_BRACE_OPEN) );
                     }
-                    push_toks(toks, ident("fill"), TOK_COLON, Token(U128(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
                     if(TARGETVER_MOST_1_74)
                     {
+                        push_toks(toks, ident("fill"), TOK_COLON, Token(U128(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
                         push_toks(toks, ident("align"), TOK_COLON);
                         const char* align_var_name = nullptr;
                         switch( frag.args.align )
@@ -868,6 +868,8 @@ namespace {
                             // Flags shifted, with 21 being SignPlus now
                             // See `rustc-1.90.0-src/library/core/src/fmt/mod.rs` `mod flags`
                             flags <<= 21;
+                            // NOTE: The fill character is in the low 21 bits (max size of a codepoint)
+                            flags |= frag.args.align_char & 0x1FFFFF;
 
                             // Width and precision flags
                             if( frag.args.width_is_arg || frag.args.width != 0 ) {
