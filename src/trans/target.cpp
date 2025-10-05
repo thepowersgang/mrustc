@@ -942,24 +942,8 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         out_align = g_target.m_arch.m_pointer_bits / 8;
         return true;
         }
-    TU_ARMA(Closure, te) {
-#if 1
-        //BUG(sp, "Encountered closure type at trans stage - " << ty);
-        return false;
-#else
-        const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
-        if( !repr )
-        {
-            DEBUG("Cannot get type repr for " << ty);
-            return false;
-        }
-        out_size  = repr->size;
-        out_align = repr->align;
-        return true;
-#endif
-        }
-    TU_ARMA(Generator, te) {
-        //BUG(sp, "Encountered generator type at trans stage - " << ty);
+    TU_ARMA(NodeType, te) {
+        //BUG(sp, "Encountered NodeType type at trans stage - " << ty);
         return false;
         }
     }

@@ -342,7 +342,7 @@ namespace {
         ::HIR::ExprNodeP get_self(const Span& sp) const
         {
             ::HIR::ExprNodeP    self;
-            switch( m_closure_type.data().as_Closure().node->m_class )
+            switch( m_closure_type.data().as_NodeType().as_Closure()->m_class )
             {
             case ::HIR::ExprNode_Closure::Class::Unknown:
                 // Assume it's NoCapture
@@ -415,14 +415,14 @@ namespace {
         {
             const Span& sp = node.span();
             // Handle casts from closures to function pointers
-            if( node.m_value->m_res_type.data().is_Closure() )
+            if( TU_TEST1(node.m_value->m_res_type.data(), NodeType, .is_Closure()) )
             {
                 TRACE_FUNCTION_FR("_Cast: " << &node << " " << node.m_value->m_res_type, node.m_value->m_res_type);
 
-                const auto& src_te = node.m_value->m_res_type.data().as_Closure();
+                const auto* src_nodep = node.m_value->m_res_type.data().as_NodeType().as_Closure();
                 ASSERT_BUG(sp, node.m_res_type.data().is_Function(), "Cannot convert closure to non-fn type");
                 //const auto& dte = node.m_res_type.m_data.as_Function();
-                if( src_te.node->m_class != ::HIR::ExprNode_Closure::Class::NoCapture )
+                if( src_nodep->m_class != ::HIR::ExprNode_Closure::Class::NoCapture )
                 {
                     ERROR(sp, E0000, "Cannot cast a closure with captures to a fn() type");
                 }
@@ -432,7 +432,7 @@ namespace {
 
                 // - Get the result type (can't use `get_value` as that won't find the still-to-be stored impls)
                 // TODO: Get lifetime params?
-                const auto& src_node = *src_te.node;
+                const auto& src_node = *src_nodep;
                 ::HIR::TypeData_FunctionPointer    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, /*is_variadic=*/false, RcString::new_interned(ABI_RUST), src_node.m_return.clone_shallow(), {} };
                 fcn_ty_inner.m_arg_types.reserve(src_node.m_args.size());
                 for(const auto& arg : src_node.m_args) {
@@ -441,10 +441,10 @@ namespace {
                 auto res_ty = m_monomorphiser.monomorph_type(node.span(), ::HIR::TypeRef(mv$(fcn_ty_inner)));
 
                 // - Get the new PathValue
-                const auto& str = *src_te.node->m_obj_ptr;
-                auto closure_type = ::HIR::TypeRef::new_path( src_te.node->m_obj_path.clone(), &str );
+                const auto& str = *src_node.m_obj_ptr;
+                auto closure_type = ::HIR::TypeRef::new_path( src_node.m_obj_path.clone(), &str );
                 auto fn_path = ::HIR::Path(mv$(closure_type), rcstring_call_free);
-                fn_path.m_data.as_UfcsInherent().impl_params = src_te.node->m_obj_path.m_params.clone();
+                fn_path.m_data.as_UfcsInherent().impl_params = src_node.m_obj_path.m_params.clone();
 
                 DEBUG("PathValue " << fn_path);
                 node.m_value = NEWNODE(mv$(res_ty), PathValue, sp, mv$(fn_path), ::HIR::ExprNode_PathValue::FUNCTION);
@@ -454,9 +454,9 @@ namespace {
 
         void visit(::HIR::ExprNode_CallValue& node) override
         {
-            if( const auto* e = node.m_value->m_res_type.data().opt_Closure() )
+            if( const auto* node_pp = TU_OPT1(node.m_value->m_res_type.data(), NodeType, .opt_Closure()) )
             {
-                switch(e->node->m_class)
+                switch((*node_pp)->m_class)
                 {
                 case ::HIR::ExprNode_Closure::Class::Unknown:
                     BUG(node.span(), "References an ::Unknown closure");
@@ -482,21 +482,27 @@ namespace {
                 const Monomorphiser&    monomorphiser;
                 M(const Monomorphiser& monomorphiser): monomorphiser(monomorphiser) {}
                 ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& ty, bool allow_infer) const override {
-                    if( const auto* e = ty.data().opt_Closure() )
+                    if( const auto* e = ty.data().opt_NodeType() )
                     {
-                        DEBUG("Closure: " << e->node->m_obj_path_base); // TODO: Why does this use the `_base`
-                        auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path_base, false);
-                        const auto& str = *e->node->m_obj_ptr;
-                        DEBUG(ty << " -> " << path);
-                        return ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
-                    }
-                    if(const auto* e = ty.data().opt_Generator() )
-                    {
-                        DEBUG("Generator: " << e->node->m_obj_path);
-                        auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path, false);
-                        const auto& str = *e->node->m_obj_ptr;
-                        DEBUG(ty << " -> " << path);
-                        return ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
+                        TU_MATCH_HDRA((*e), {)
+                        TU_ARMA(Closure, node_p) {
+                            DEBUG("Closure: " << node_p->m_obj_path_base); // TODO: Why does this use the `_base`
+                            auto path = monomorphiser.monomorph_genericpath(sp, node_p->m_obj_path_base, false);
+                            const auto& str = *node_p->m_obj_ptr;
+                            DEBUG(ty << " -> " << path);
+                            return ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
+                            }
+                        TU_ARMA(Generator, node_p) {
+                            DEBUG("Generator: " << node_p->m_obj_path);
+                            auto path = monomorphiser.monomorph_genericpath(sp, node_p->m_obj_path, false);
+                            const auto& str = *node_p->m_obj_ptr;
+                            DEBUG(ty << " -> " << path);
+                            return ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
+                            }
+                        TU_ARMA(Async, node_p) {
+                            TODO(sp, "async");
+                            }
+                        }
                     }
 
                     auto rv = MonomorphiserNop::monomorph_type(sp, ty, allow_infer);

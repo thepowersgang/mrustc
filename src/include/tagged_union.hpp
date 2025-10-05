@@ -147,9 +147,9 @@
     */for(bool tu_lc = true; tu_lc; tu_lc=false) for(TU_ARMA_Decl(TAG, __VA_ARGS__); TU_EXP1( TU_GMO(__VA_ARGS__)(TU_ARMA_IgnVal, __VA_ARGS__) ) tu_lc; tu_lc=false)
 
 //#define TU_TEST(VAL, ...)    (VAL.is_##TAG() && VAL.as_##TAG() TEST)
-#define TU_TEST1(VAL, TAG1, TEST)    ((VAL).is_##TAG1() && (VAL).as_##TAG1() TEST)
+#define TU_TEST1(VAL, TAG1, TEST)    ((VAL).is_##TAG1() && ((VAL).as_##TAG1() TEST))
 #define TU_TEST2(VAL, TAG1, FLD1,TAG2, TEST)    ((VAL).is_##TAG1() && (VAL).as_##TAG1() FLD1.is_##TAG2() && (VAL).as_##TAG1() FLD1.as_##TAG2() TEST)
-
+#define TU_OPT1(VAL, TAG1, GET) ((VAL).is_##TAG1() ? ((VAL).as_##TAG1() GET) : nullptr)
 
 #define TU_DATANAME(name)   Data_##name
 // Internals of TU_CONS

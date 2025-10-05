@@ -438,9 +438,14 @@ namespace {
                             ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - argument " << i << " different");
                     }
                     }
-                TU_ARMA(Closure, se) {
-                    // Allowed, but won't exist after expansion
-                    // TODO: Check argument types
+                TU_ARMA(NodeType, se) {
+                    if( se.is_Closure() ) {
+                        // Allowed, but won't exist after expansion
+                        // TODO: Check argument types
+                    }
+                    else {
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - not a function");
+                    }
                     }
                 }
                 }
@@ -995,9 +1000,9 @@ namespace {
             {
                 ASSERT_BUG(sp, is_index, "Non-index _Field on tuple");
             }
-            else if( str_ty.data().is_Closure() )
+            else if( str_ty.data().is_NodeType() )
             {
-                ASSERT_BUG(sp, is_index, "Non-index _Field on closure");
+                ASSERT_BUG(sp, is_index, "Non-index _Field on magic type");
             }
             else
             {

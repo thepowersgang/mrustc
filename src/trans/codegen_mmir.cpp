@@ -110,8 +110,7 @@ namespace
                 os << fmt(t) << ", ";
             os << ") -> " << fmt(e.m_rettype);
             } break;
-        case ::HIR::TypeData::TAG_Closure:
-        case ::HIR::TypeData::TAG_Generator:
+        case ::HIR::TypeData::TAG_NodeType:
             BUG(Span(), "Unexpected type in trans: " << x.e);
             break;
         }

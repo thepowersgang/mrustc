@@ -24,6 +24,7 @@ class ConstGeneric;
 class ExprPtr;
 struct ExprNode_Closure;
 struct ExprNode_Generator;
+struct ExprNode_AsyncBlock;
 
 enum Compare {
     Equal,
@@ -116,6 +117,7 @@ public:
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding);
     static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr);
     static TypeRef new_generator(::HIR::ExprNode_Generator* node_ptr);
+    static TypeRef new_async(::HIR::ExprNode_AsyncBlock* node_ptr);
 
     /// Create a new instance by incrementing refcount
     TypeRef clone() const;

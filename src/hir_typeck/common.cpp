@@ -158,10 +158,8 @@ struct TyVisitor
             }
             return visit_type(e.m_rettype);
             }
-        TU_ARMA(Closure, e) {
-            }
-        TU_ARMA(Generator, e) {
-            // Visits?
+        TU_ARMA(NodeType, e) {
+            // These just have a node pointer, no visiting
             }
         }
         return false;
@@ -425,15 +423,8 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         return ::HIR::TypeRef( mv$(ft) );
         }
     // Closures and generators are just passed through, needed for hackery in type checking (erasing HRLs)
-    TU_ARMA(Closure, e) {
-        ::HIR::TypeData::Data_Closure  oe;
-        oe.node = e.node;
-        return ::HIR::TypeRef( mv$(oe) );
-        }
-    TU_ARMA(Generator, e) {
-        ::HIR::TypeData::Data_Generator oe;
-        oe.node = e.node;
-        return ::HIR::TypeRef( mv$(oe) );
+    TU_ARMA(NodeType, e) {
+        return ::HIR::TypeRef(e.clone());
         }
     }
     throw "";

@@ -341,19 +341,21 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
         this->print_type(os, e.inner, stack);
         os << "; " << e.size << "]";
         }
-    TU_ARMA(Closure, e) {
-        os << "{" << e.node << "}";
-        os << "(";
-        for(const auto& arg : e.node->m_args) {
-            this->print_type(os, arg.second, stack);
-            os << ",";
+    TU_ARMA(NodeType, e) {
+        e.fmt(os);
+        TU_MATCH_HDRA((e), {)
+        TU_ARMA(Closure, node_p) {
+            os << "(";
+            for(const auto& arg : node_p->m_args) {
+                this->print_type(os, arg.second, stack);
+                os << ",";
+            }
+            os << ")->";
+            this->print_type(os, node_p->m_return, stack);
+            }
+        TU_ARMA(Generator, node_p) {}
+        TU_ARMA(Async, node_p) {}
         }
-        os << ")->";
-        this->print_type(os, e.node->m_return, stack);
-        }
-    TU_ARMA(Generator, e) {
-        os << "{gen:" << e.node << "}";
-        // TODO: Print the types?
         }
     TU_ARMA(NamedFunction, e) {
         os << "fn{";
@@ -547,9 +549,7 @@ void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
         for(auto& ty : e.m_arg_types)
             this->expand_ivars(ty);
         }
-    TU_ARMA(Closure, e) {
-        }
-    TU_ARMA(Generator, e) {
+    TU_ARMA(NodeType, e) {
         }
     }
 }
@@ -637,10 +637,7 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
         for(auto& ty : e.m_arg_types)
             add_ivars(ty);
         }
-    TU_ARMA(Closure, e) {
-        // Shouldn't be possible
-        }
-    TU_ARMA(Generator, e) {
+    TU_ARMA(NodeType, e) {
         // Shouldn't be possible
         }
     }
@@ -1022,11 +1019,7 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty, bool only_u
     (Array,
         return type_contains_ivars(e.inner, only_unbound);
         ),
-    (Closure,
-        return false;
-        ),
-    (Generator,
-        // Generator types don't contain their own ivars.
+    (NodeType,
         return false;
         ),
     (NamedFunction,
@@ -1162,11 +1155,8 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
             return false;
         return types_equal(le.inner, re.inner);
         ),
-    (Closure,
-        return le.node == re.node;
-        ),
-    (Generator,
-        return le.node == re.node;
+    (NodeType,
+        return le == re;
         ),
     (NamedFunction,
         return H::compare_path(*this, le.path, re.path);
@@ -1385,15 +1375,16 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
     // Generator
     if( TARGETVER_LEAST_1_39 && trait == m_lang_Generator )
     {
-        if( const auto* ty_e = type.data().opt_Generator() )
+        if( type.data().is_NodeType() && type.data().as_NodeType().is_Generator() )
         {
+            const auto* node_p = type.data().as_NodeType().as_Generator();
             ::HIR::TraitPath::assoc_list_t   assoc;
-            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait.clone(), {}, ty_e->node->m_yield_ty.clone() }));
-            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait.clone(), {}, ty_e->node->m_return.clone() }));
+            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait.clone(), {}, node_p->m_yield_ty.clone() }));
+            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait.clone(), {}, node_p->m_return.clone() }));
             HIR::PathParams params;
             if( TARGETVER_LEAST_1_74 )
             {
-                params.m_types.push_back(ty_e->node->m_resume_ty.clone());
+                params.m_types.push_back(node_p->m_resume_ty.clone());
             }
             return callback( ImplRef(type.clone(), mv$(params), mv$(assoc)), ::HIR::Compare::Equal );
         }
@@ -1642,50 +1633,58 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     TU_MATCH_HDRA( (type.data()), {)
     default:
         break;
-    // Magic impls of the Fn* traits for closure types
-    TU_ARMA(Closure, e) {
-        DEBUG("Closure, " << trait << " ?= Fn*");
-        if( trait == m_lang_Fn || trait == m_lang_FnMut || trait == m_lang_FnOnce ) {
-            if( params.m_types.size() != 1 )
-                BUG(sp, "Fn* traits require a single tuple argument");
-            if( !params.m_types[0].data().is_Tuple() )
-                BUG(sp, "Fn* traits require a single tuple argument");
+    TU_ARMA(NodeType, e) {
+        TU_MATCH_HDRA((e), {)
+        // Magic impls of the Fn* traits for closure types
+        TU_ARMA(Closure, node_p) {
+            DEBUG("Closure, " << trait << " ?= Fn*");
+            if( trait == m_lang_Fn || trait == m_lang_FnMut || trait == m_lang_FnOnce ) {
+                if( params.m_types.size() != 1 )
+                    BUG(sp, "Fn* traits require a single tuple argument");
+                if( !params.m_types[0].data().is_Tuple() )
+                    BUG(sp, "Fn* traits require a single tuple argument");
 
-            const auto& args_des = params.m_types[0].data().as_Tuple();
-            if( args_des.size() != e.node->m_args.size() ) {
-                return false;
+                const auto& args_des = params.m_types[0].data().as_Tuple();
+                if( args_des.size() != node_p->m_args.size() ) {
+                    return false;
+                }
+
+                auto cmp = ::HIR::Compare::Equal;
+                ::std::vector< ::HIR::TypeRef>  args;
+                for(unsigned int i = 0; i < node_p->m_args.size(); i ++)
+                {
+                    const auto& at = node_p->m_args[i].second;
+                    args.push_back( at.clone() );
+                    DEBUG(at << " ?= " << args_des[i]);
+                    cmp &= at.compare_with_placeholders(sp, args_des[i], this->m_ivars.callback_resolve_infer());
+                }
+                if( cmp != ::HIR::Compare::Unequal )
+                {
+                    // NOTE: This is a conditional "true", we know nothing about the move/mut-ness of this closure yet
+                    // - Could we?
+                    // - Not until after the first stage of typeck
+
+                    DEBUG("Closure Fn* impl - cmp = " << cmp);
+
+                    ::HIR::PathParams   pp;
+                    pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
+                    ::HIR::TraitPath::assoc_list_t  types;
+                    types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), {}, node_p->m_return.clone()} ) );
+                    return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
+                }
+                else
+                {
+                    DEBUG("Closure Fn* impl - cmp = Compare::Unequal");
+                    return false;
+                }
             }
-
-            auto cmp = ::HIR::Compare::Equal;
-            ::std::vector< ::HIR::TypeRef>  args;
-            for(unsigned int i = 0; i < e.node->m_args.size(); i ++)
-            {
-                const auto& at = e.node->m_args[i].second;
-                args.push_back( at.clone() );
-                DEBUG(at << " ?= " << args_des[i]);
-                cmp &= at.compare_with_placeholders(sp, args_des[i], this->m_ivars.callback_resolve_infer());
             }
-            if( cmp != ::HIR::Compare::Unequal )
-            {
-                // NOTE: This is a conditional "true", we know nothing about the move/mut-ness of this closure yet
-                // - Could we?
-                // - Not until after the first stage of typeck
-
-                DEBUG("Closure Fn* impl - cmp = " << cmp);
-
-                ::HIR::PathParams   pp;
-                pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
-                ::HIR::TraitPath::assoc_list_t  types;
-                types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, pp.clone()), {}, e.node->m_return.clone()} ) );
-                return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
+        TU_ARMA(Generator, node_p) {
             }
-            else
-            {
-                DEBUG("Closure Fn* impl - cmp = Compare::Unequal");
-                return false;
+        TU_ARMA(Async, node_p) {
             }
         }
-        }
+    }
     // Magic Fn* trait impls for function pointers
     TU_ARMA(Function, e) {
         if( trait == m_lang_Fn || trait == m_lang_FnMut || trait == m_lang_FnOnce ) {
@@ -2148,11 +2147,7 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         // Recurse?
         return false;
         }
-    TU_ARMA(Closure, e) {
-        // Recurse?
-        return false;
-        }
-    TU_ARMA(Generator, e) {
+    TU_ARMA(NodeType, e) {
         // Recurse?
         return false;
         }
@@ -2306,11 +2301,8 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
             expand_associated_types_inplace(sp, ty, stack);
         expand_associated_types_inplace(sp, e.m_rettype, stack);
         }
-    TU_ARMA(Closure, e) {
-        // Recurse?
-        }
-    TU_ARMA(Generator, e) {
-        // Recurse?
+    TU_ARMA(NodeType, e) {
+        // Recurse? Nah.
         }
     }
 }
@@ -2367,35 +2359,42 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     TU_MATCH_HDRA( (pe.type.data()), {)
     default:
         // No special handling
-    // - If it's a closure, then the only trait impls are those generated by typeck
-    TU_ARMA(Closure, te) {
-        if( pe.trait.m_path == m_lang_Fn || pe.trait.m_path == m_lang_FnMut || pe.trait.m_path == m_lang_FnOnce  ) {
-            if( pe.item == "Output" ) {
-                input = te.node->m_return.clone();
-                return ;
+    TU_ARMA(NodeType, te) {
+        TU_MATCH_HDRA((te), {)
+        // - If it's a closure, then the only trait impls are those generated by typeck
+        TU_ARMA(Closure, node_p) {
+            if( pe.trait.m_path == m_lang_Fn || pe.trait.m_path == m_lang_FnMut || pe.trait.m_path == m_lang_FnOnce  ) {
+                if( pe.item == "Output" ) {
+                    input = node_p->m_return.clone();
+                    return ;
+                }
+                else {
+                    ERROR(sp, E0000, "No associated type " << pe.item << " for trait " << pe.trait);
+                }
             }
-            else {
-                ERROR(sp, E0000, "No associated type " << pe.item << " for trait " << pe.trait);
+            // TODO: Fall through? Maybe there's a generic impl that could match.
+            }
+        TU_ARMA(Generator, node_p) {
+            if( pe.trait.m_path == this->m_lang_Generator )
+            {
+                if( pe.item == "Return" ) {
+                    input = node_p->m_return.clone();
+                    return ;
+                }
+                else if( pe.item == "Yield" ) {
+                    input = node_p->m_yield_ty.clone();
+                    return ;
+                }
+                else {
+                    ERROR(sp, E0000, "No associated type " << pe.item << " for trait " << pe.trait);
+                }
+            }
+            // Fall through for generic impls
+            }
+        TU_ARMA(Async, node_p) {
+            // TODO: `Future` impl
             }
         }
-        // TODO: Fall through? Maybe there's a generic impl that could match.
-        }
-    TU_ARMA(Generator, te) {
-        if( pe.trait.m_path == this->m_lang_Generator )
-        {
-            if( pe.item == "Return" ) {
-                input = te.node->m_return.clone();
-                return ;
-            }
-            else if( pe.item == "Yield" ) {
-                input = te.node->m_yield_ty.clone();
-                return ;
-            }
-            else {
-                ERROR(sp, E0000, "No associated type " << pe.item << " for trait " << pe.trait);
-            }
-        }
-        // Fall through for generic impls
         }
     TU_ARMA(Function, te) {
         if( te.m_abi == ABI_RUST && !te.is_unsafe )
@@ -4113,7 +4112,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     TU_ARMA(Function, e) {
         return ::HIR::Compare::Equal;
         }
-    TU_ARMA(Closure, e) {
+    TU_ARMA(NodeType, e) {
         // NOTE: This isn't strictly true, we're leaving the actual checking up to the validate pass
         return ::HIR::Compare::Equal;
         }
@@ -4200,7 +4199,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     TU_ARMA(Function, e) {
         return ::HIR::Compare::Equal;
         }
-    TU_ARMA(Closure, e) {
+    TU_ARMA(NodeType, e) {
         // NOTE: This isn't strictly true, we're leaving the actual checking up to the validate pass
         // TODO: Determine captures earlier and check captures here
         return ::HIR::Compare::Equal;

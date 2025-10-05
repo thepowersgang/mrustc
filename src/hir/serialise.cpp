@@ -275,8 +275,7 @@
                 serialise_vec(e.m_arg_types);
                 }
                 break;
-            case ::HIR::TypeData::TAG_Closure:
-            case ::HIR::TypeData::TAG_Generator:
+            case ::HIR::TypeData::TAG_NodeType:
                 BUG(Span(), "Encountered invalid type when serialising - " << ty);
                 break;
             }

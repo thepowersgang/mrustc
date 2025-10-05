@@ -978,7 +978,6 @@ public:
 
     NV(ExprNode_Block)
     NV(ExprNode_ConstBlock)
-    //NV(ExprNode_AsyncBlock)
     NV(ExprNode_Asm)
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)

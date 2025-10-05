@@ -455,13 +455,7 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         }
         this->visit_type(e.m_rettype);
         ),
-    (Closure,
-        //for(auto& t : e.m_closure_arg_types) {
-        //    this->visit_type(t);
-        //}
-        //this->visit_type(e.m_closure_rettype);
-        ),
-    (Generator,
+    (NodeType,
         )
     )
 }

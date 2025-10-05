@@ -7510,8 +7510,7 @@ namespace {
             TU_ARMA(Diverge, te) {}
             TU_ARMA(Infer, te) {}
             TU_ARMA(ErasedType, te) {}
-            TU_ARMA(Closure, te) {}
-            TU_ARMA(Generator, te) {}
+            TU_ARMA(NodeType, te) {}
             TU_ARMA(Generic, te) {}
 
             // Nothing
@@ -8057,9 +8056,8 @@ namespace {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 }
                 break;
-            case ::HIR::TypeData::TAG_Closure:
-            case ::HIR::TypeData::TAG_Generator:
-                MIR_BUG(*m_mir_res, "Closure during trans - " << ty);
+            case ::HIR::TypeData::TAG_NodeType:
+                MIR_BUG(*m_mir_res, "NodeType during trans - " << ty);
                 break;
             }
         }

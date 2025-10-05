@@ -199,6 +199,19 @@ TAGGED_UNION_EX(TypeData_NamedFunction_Ty, (), Function, (
         TypeData_NamedFunction_Ty clone() const;
     )
 );
+/// "magic structs": Any type generated from a node
+TAGGED_UNION_EX(TypeData_NodeType, (), Closure, (
+    (Closure, const ::HIR::ExprNode_Closure*),
+    (Generator, const ::HIR::ExprNode_Generator*),  // Aka a coroutine
+    (Async, const ::HIR::ExprNode_AsyncBlock*)
+    ), (), (), (
+        bool operator==(const TypeData_NodeType& x) const;
+        bool operator!=(const TypeData_NodeType& x) const { return !(*this == x); }
+        Ordering ord(const ::HIR::TypeData_NodeType& x) const;
+        TypeData_NodeType clone() const;
+        void fmt(::std::ostream& os) const;
+    )
+);
 
 TAGGED_UNION(TypeData, Diverge,
     (Infer, struct {
@@ -248,12 +261,7 @@ TAGGED_UNION(TypeData, Diverge,
         TypeData_FunctionPointer decay(const Span& sp) const;
         }),
     (Function, TypeData_FunctionPointer),   // TODO: Pointer wrap, this is quite large
-    (Closure, struct {
-        const ::HIR::ExprNode_Closure*  node;
-        }),
-    (Generator, struct {
-        const ::HIR::ExprNode_Generator* node;
-        })
+    (NodeType, TypeData_NodeType)
     );
 
 class TypeInner
@@ -356,10 +364,13 @@ inline TypeRef TypeRef::new_path(::HIR::Path path, TypePathBinding binding) {
     return TypeRef(TypeData::make_Path({ mv$(path), mv$(binding) }));
 }
 inline TypeRef TypeRef::new_closure(::HIR::ExprNode_Closure* node_ptr) {
-    return TypeRef(TypeData::make_Closure({ node_ptr }));
+    return TypeRef(TypeData::make_NodeType({ node_ptr }));
 }
 inline TypeRef TypeRef::new_generator(::HIR::ExprNode_Generator* node_ptr) {
-    return TypeRef(TypeData::make_Generator({ node_ptr }));
+    return TypeRef(TypeData::make_NodeType({ node_ptr }));
+}
+inline TypeRef TypeRef::new_async(::HIR::ExprNode_AsyncBlock* node_ptr) {
+    return TypeRef(TypeData::make_NodeType({ node_ptr }));
 }
 
 inline const ::HIR::SimplePath* TypeRef::get_sort_path() const {

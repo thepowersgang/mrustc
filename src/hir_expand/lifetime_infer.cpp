@@ -718,11 +718,8 @@ namespace {
             TU_ARMA(Function, l, r) {
                 // Handling required?
                 }
-            TU_ARMA(Closure, l, r) {
-                ASSERT_BUG(sp, l.node == r.node, "");
-                }
-            TU_ARMA(Generator, l, r) {
-                ASSERT_BUG(sp, l.node == r.node, "");
+            TU_ARMA(NodeType, l, r) {
+                ASSERT_BUG(sp, l == r, "Mismatched types: " << lhs << " != " << rhs);
                 }
             }
         }
@@ -1204,8 +1201,8 @@ namespace {
                     }
                     this->equate_types(node.span(), ms_d.monomorph_type(sp, de->m_rettype), ms_s.monomorph_type(sp, se->m_rettype));
                 }
-                else if( const auto* se = src.data().opt_Closure() ) {
-                    const HIR::ExprNode_Closure& cnode = *se->node;
+                else if( const auto* node_pp = TU_OPT1(src.data(), NodeType, .opt_Closure()) ) {
+                    const HIR::ExprNode_Closure& cnode = **node_pp;
                     ASSERT_BUG(node.span(), de->m_arg_types.size() == cnode.m_args.size(), "");
                     for(size_t i = 0; i < de->m_arg_types.size(); i ++) {
                         this->equate_types(node.span(), ms_d.monomorph_type(sp, de->m_arg_types[i]), cnode.m_args[i].second);
@@ -1455,9 +1452,9 @@ namespace {
                 ASSERT_BUG(sp, is_index, "Non-index _Field on tuple");
                 this->equate_types(sp, node.m_res_type, te->at(index));
             }
-            else if( str_ty.data().is_Closure() )
+            else if( str_ty.data().is_NodeType() )
             {
-                BUG(sp, "Closure type being accessed too early");
+                BUG(sp, "Magic type type being accessed too early");
             }
             else
             {
@@ -1555,16 +1552,16 @@ namespace {
                 }
                 this->equate_types(node.span(), node.m_res_type, ms.monomorph_type(node.span(), tep->m_rettype, false));
             }
-            else if( const auto* tep = val_ty.data().opt_Closure() ) {
-                if( tep->node->m_obj_path.m_path != HIR::SimplePath() ) {
+            else if( const auto* node_pp = TU_OPT1(val_ty.data(), NodeType, .opt_Closure()) ) {
+                if( (*node_pp)->m_obj_path.m_path != HIR::SimplePath() ) {
                     TODO(node.span(), "Handle CallValue (expanded) - " << val_ty);
                 }
                 else {
-                    ASSERT_BUG(node.span(), tep->node->m_args.size() == node.m_args.size(), "");
+                    ASSERT_BUG(node.span(), (*node_pp)->m_args.size() == node.m_args.size(), "");
                     for(size_t i = 0; i < node.m_args.size(); i ++) {
-                        this->equate_types(node.m_args[i]->span(), tep->node->m_args[i].second, node.m_args[i]->m_res_type);
+                        this->equate_types(node.m_args[i]->span(), (*node_pp)->m_args[i].second, node.m_args[i]->m_res_type);
                     }
-                    this->equate_types(node.span(), node.m_res_type, tep->node->m_return);
+                    this->equate_types(node.span(), node.m_res_type, (*node_pp)->m_return);
                 }
             }
             else if( val_ty.data().is_Path() || val_ty.data().is_Generic() || val_ty.data().is_ErasedType() || val_ty.data().is_TraitObject() ) {

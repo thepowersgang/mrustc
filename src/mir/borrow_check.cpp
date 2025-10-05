@@ -341,8 +341,7 @@ namespace {
                 type_assign_pp(de.m_trait.m_path.m_params, se.m_trait.m_path.m_params);
                 // TODO: Markers
                 }
-            TU_ARMA(Closure, de, se) MIR_BUG(state, "Unexpected Closure");
-            TU_ARMA(Generator, de, se) MIR_BUG(state, "Unexpected Generator");
+            TU_ARMA(NodeType, de, se) MIR_BUG(state, "Unexpected NodeType");
             TU_ARMA(ErasedType, de, se) MIR_BUG(state, "Unexpected ErasedType");
             TU_ARMA(Path, de, se) {
                 MIR_ASSERT(state, de.binding == se.binding, dst_ty << " != " << src_ty);

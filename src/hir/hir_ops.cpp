@@ -123,11 +123,8 @@ namespace {
         TU_ARMA(Diverge, le) {
             BUG(sp, "Hit diverge");
             }
-        TU_ARMA(Closure, le) {
-            BUG(sp, "Hit closure");
-            }
-        TU_ARMA(Generator, le) {
-            BUG(sp, "Hit generator");
+        TU_ARMA(NodeType, le) {
+            BUG(sp, "Hit " << left);
             }
         TU_ARMA(Primitive, le) {
             if(const auto* re = right.data().opt_Primitive() )
@@ -599,11 +596,8 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 }
             TU_ARMA(Diverge, ae, be) {
                 }
-            TU_ARMA(Closure, ae, be) {
-                BUG(sp, "Hit closure");
-                }
-            TU_ARMA(Generator, ae, be) {
-                BUG(sp, "Hit generator");
+            TU_ARMA(NodeType, ae, be) {
+                BUG(sp, "Hit node-magic type (closure/generator/async) - " << a << " " << b);
                 }
             TU_ARMA(Primitive, ae, be) {
                 if( ae != be )

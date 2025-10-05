@@ -1846,7 +1846,9 @@ namespace {
     if( f.is_async() ) {
         //rv.m_markings.is_async = true;
         // Wrap the code in an async block
-        rv.m_code = HIR::ExprPtr(box$(::HIR::ExprNode_AsyncBlock(sp, std::move(rv.m_code.into_unique()), true) ));
+        if( rv.m_code ) {
+            rv.m_code = HIR::ExprPtr(box$(::HIR::ExprNode_AsyncBlock(sp, std::move(rv.m_code.into_unique()), true) ));
+        }
         // Make the return type be `impl Future<Output=Ret>`
         HIR::TraitPath  future_path;
         future_path.m_path.m_path = g_crate_ptr->get_lang_item_path(sp, "future_trait");

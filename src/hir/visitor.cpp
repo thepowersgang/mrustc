@@ -475,9 +475,7 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         }
         this->visit_type(e.m_rettype);
         }
-    TU_ARMA(Closure, e) {
-        }
-    TU_ARMA(Generator, e) {
+    TU_ARMA(NodeType, e) {
         }
     }
 }

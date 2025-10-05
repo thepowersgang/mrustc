@@ -93,12 +93,12 @@ namespace {
 
             // - If the called value is a local closure, figure out how it's being used.
             // TODO: You can call via &-ptrs, but that currently isn't handled in typeck
-            if(const auto* e = node.m_value->m_res_type.data().opt_Closure() )
+            if(const auto* node_pp = TU_OPT1(node.m_value->m_res_type.data(), NodeType, .opt_Closure()) )
             {
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
                     // NOTE: Closure node still exists, and will do until MIR construction deletes the HIR
-                    switch(e->node->m_class)
+                    switch( (*node_pp)->m_class)
                     {
                     case ::HIR::ExprNode_Closure::Class::Unknown:
                         BUG(sp, "References an ::Unknown closure");

@@ -33,7 +33,7 @@ bool StaticTraitResolve::find_impl(
         }
         else if( TARGETVER_LEAST_1_29 && trait_path == m_lang_Clone ) {
             // NOTE: Duplicated check for enumerate
-            if( type.data().is_Tuple() || type.data().is_Array() || type.data().is_Function() || type.data().is_Closure() || type.data().is_NamedFunction()
+            if( type.data().is_Tuple() || type.data().is_Array() || type.data().is_Function() || type.data().is_NodeType() || type.data().is_NamedFunction()
                     || TU_TEST1(type.data(), Path, .is_closure()) )
             {
                 if( this->type_is_clone(sp, type) ) {
@@ -306,58 +306,65 @@ bool StaticTraitResolve::find_impl(
             return found_cb( ImplRef(e.hrls.clone(), type.clone(), mv$(params), mv$(assoc)), false );
         }
         }
-    TU_ARMA(Closure, e) {
-        if( trait_path == m_lang_Fn || trait_path == m_lang_FnMut || trait_path == m_lang_FnOnce )
-        {
-            if( trait_params )
+    TU_ARMA(NodeType, e) {
+        TU_MATCH_HDRA((e), {)
+        TU_ARMA(Closure, node_p) {
+            if( trait_path == m_lang_Fn || trait_path == m_lang_FnMut || trait_path == m_lang_FnOnce )
             {
-                const auto& des_arg_tys = trait_params->m_types.at(0).data().as_Tuple();
-                if( des_arg_tys.size() != e.node->m_args.size() ) {
-                    return false;
-                }
-                for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
+                if( trait_params )
                 {
-                    if( des_arg_tys[i].compare_with_placeholders(sp, e.node->m_args[i].second, HIR::ResolvePlaceholdersNop()) == ::HIR::Compare::Unequal ) {
+                    const auto& des_arg_tys = trait_params->m_types.at(0).data().as_Tuple();
+                    if( des_arg_tys.size() != node_p->m_args.size() ) {
                         return false;
                     }
+                    for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
+                    {
+                        if( des_arg_tys[i].compare_with_placeholders(sp, node_p->m_args[i].second, HIR::ResolvePlaceholdersNop()) == ::HIR::Compare::Unequal ) {
+                            return false;
+                        }
+                    }
                 }
+                else
+                {
+                    trait_params = &null_params;
+                }
+                switch( node_p->m_class )
+                {
+                case ::HIR::ExprNode_Closure::Class::Unknown:
+                    break;
+                case ::HIR::ExprNode_Closure::Class::NoCapture:
+                    break;
+                case ::HIR::ExprNode_Closure::Class::Once:
+                    if( trait_path == m_lang_FnMut )
+                        return false;
+                case ::HIR::ExprNode_Closure::Class::Mut:
+                    if( trait_path == m_lang_Fn )
+                        return false;
+                case ::HIR::ExprNode_Closure::Class::Shared:
+                    break;
+                }
+                ::HIR::TraitPath::assoc_list_t  assoc;
+                assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, trait_params->clone()), {}, node_p->m_return.clone() }) );
+                return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
             }
-            else
+            }
+        TU_ARMA(Generator, node_p) {
+            if( TARGETVER_LEAST_1_39 && trait_path == m_lang_Generator )
             {
-                trait_params = &null_params;
+                ::HIR::TraitPath::assoc_list_t   assoc;
+                assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait_path.clone(), {}, node_p->m_yield_ty.clone() }));
+                assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait_path.clone(), {}, node_p->m_return.clone() }));
+                HIR::PathParams params;
+                if( TARGETVER_LEAST_1_74 )
+                {
+                    params.m_types.push_back(node_p->m_resume_ty.clone());
+                }
+                return found_cb( ImplRef(type.clone(), mv$(params), mv$(assoc)), ::HIR::Compare::Equal );
             }
-            switch( e.node->m_class )
-            {
-            case ::HIR::ExprNode_Closure::Class::Unknown:
-                break;
-            case ::HIR::ExprNode_Closure::Class::NoCapture:
-                break;
-            case ::HIR::ExprNode_Closure::Class::Once:
-                if( trait_path == m_lang_FnMut )
-                    return false;
-            case ::HIR::ExprNode_Closure::Class::Mut:
-                if( trait_path == m_lang_Fn )
-                    return false;
-            case ::HIR::ExprNode_Closure::Class::Shared:
-                break;
             }
-            ::HIR::TraitPath::assoc_list_t  assoc;
-            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, trait_params->clone()), {}, e.node->m_return.clone() }) );
-            return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
-        }
-        }
-    TU_ARMA(Generator, e) {
-        if( TARGETVER_LEAST_1_39 && trait_path == m_lang_Generator )
-        {
-            ::HIR::TraitPath::assoc_list_t   assoc;
-            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait_path.clone(), {}, e.node->m_yield_ty.clone() }));
-            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait_path.clone(), {}, e.node->m_return.clone() }));
-            HIR::PathParams params;
-            if( TARGETVER_LEAST_1_74 )
-            {
-                params.m_types.push_back(e.node->m_resume_ty.clone());
+        TU_ARMA(Async, node_p) {
+            TODO(sp, "async impl");
             }
-            return found_cb( ImplRef(type.clone(), mv$(params), mv$(assoc)), ::HIR::Compare::Equal );
         }
         }
     // ----
@@ -1652,11 +1659,7 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
             expand_associated_types_inner(sp, ty);
         expand_associated_types_inner(sp, e.m_rettype);
         }
-    TU_ARMA(Closure, e) {
-        }
-    TU_ARMA(Generator, e) {
-        // TODO: Call into the node?
-        // - This should never be monomorphed, so useless?
+    TU_ARMA(NodeType, e) {
         }
     }
 }
@@ -1746,23 +1749,24 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         return false;
         }
     // - If it's a closure, then the only trait impls are those generated by typeck
-    TU_ARMA(Closure, te) {
-        //if( te.node->m_obj_path == ::HIR::GenericPath() )
-        //{
+    TU_ARMA(NodeType, te) {
+        TU_MATCH_HDRA((te), {)
+        TU_ARMA(Closure, node_p) {
             if( e2.trait.m_path == m_lang_Fn || e2.trait.m_path == m_lang_FnMut || e2.trait.m_path == m_lang_FnOnce  ) {
                 if( e2.item == "Output" ) {
-                    input = te.node->m_return.clone();
+                    input = node_p->m_return.clone();
                     return true;
                 }
                 else {
                     ERROR(sp, E0000, "No associated type " << e2.item << " for trait " << e2.trait);
                 }
             }
-        //}
-        //else
-        //{
-        //    // TODO: Locate impl _without_ binding params too hard?
-        //}
+            }
+        TU_ARMA(Generator, node_p) {
+            }
+        TU_ARMA(Async, node_p) {
+            }
+        }
         }
     // If it's a TraitObject, then maybe we're asking for a bound
     TU_ARMA(TraitObject, te) {
@@ -2151,17 +2155,20 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         // The ! type is kinda Copy ...
         return true;
         }
-    TU_ARMA(Closure, e) {
-        if( TARGETVER_LEAST_1_29 )
-        {
-            // TODO: Auto-gerated impls
-            return e.node->m_is_copy;
+    TU_ARMA(NodeType, e) {
+        TU_MATCH_HDRA((e), {)
+        TU_ARMA(Closure, node_p) {
+            return TARGETVER_MOST_1_29 ? node_p->m_is_copy : false;
+            }
+        TU_ARMA(Generator, node_p) {
+            // NOTE: Generators aren't Copy
+            return false;
+            }
+        TU_ARMA(Async, node_p) {
+            // NOTE: Async blocks aren't Copy? Can they be?
+            return false;
+            }
         }
-        return false;
-        }
-    TU_ARMA(Generator, e) {
-        // NOTE: Generators aren't Copy
-        return false;
         }
     TU_ARMA(Infer, e) {
         // Shouldn't be hit
@@ -2259,15 +2266,22 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
         // The ! type is kinda Copy/Clone ...
         return true;
         }
-    TU_ARMA(Closure, e) {
-        if( TARGETVER_LEAST_1_29 )
-        {
-            return e.node->m_is_copy;
+    TU_ARMA(NodeType, e) {
+        TU_MATCH_HDRA((e), {)
+        TU_ARMA(Closure, node_p) {
+            if( TARGETVER_LEAST_1_29 )
+            {
+                return node_p->m_is_copy;
+            }
+            return false;
+            }
+        TU_ARMA(Generator, node_p) {
+            TODO(sp, "type_is_clone - Generator");
+            }
+        TU_ARMA(Async, node_p) {
+            TODO(sp, "type_is_clone - Async");
+            }
         }
-        return false;
-        }
-    TU_ARMA(Generator, e) {
-        TODO(sp, "type_is_clone - Generator");
         }
     TU_ARMA(Infer, e) {
         // Shouldn't be hit
@@ -2768,35 +2782,42 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
         }
         return HIR::Compare::Unequal;
         }
-    TU_ARMA(Closure, e) {
-        // Return fuzzy (i.e. might be) if the closure class is still unknown.
-        if( e.node->m_class == HIR::ExprNode_Closure::Class::Unknown) {
-            return HIR::Compare::Fuzzy;
-        }
-        // Shortcut: Copy closures won't be imut
-        if( e.node->m_is_copy ) {
+    TU_ARMA(NodeType, e) {
+        TU_MATCH_HDRA((e), {)
+        TU_ARMA(Closure, node_p) {
+            // Return fuzzy (i.e. might be) if the closure class is still unknown.
+            if( node_p->m_class == HIR::ExprNode_Closure::Class::Unknown) {
+                return HIR::Compare::Fuzzy;
+            }
+            // Shortcut: Copy closures won't be imut
+            if( node_p->m_is_copy ) {
+                return HIR::Compare::Unequal;
+            }
+            // Check all captures
+            for(const auto& c : node_p->m_captures) {
+                auto rv = this->type_is_interior_mutable(sp, c->m_res_type);
+                if( rv != HIR::Compare::Unequal ) {
+                    return rv;
+                }
+            }
+            // If no capture possibly imut, then return no
             return HIR::Compare::Unequal;
-        }
-        // Check all captures
-        for(const auto& c : e.node->m_captures) {
-            auto rv = this->type_is_interior_mutable(sp, c->m_res_type);
-            if( rv != HIR::Compare::Unequal ) {
-                return rv;
+            }
+        TU_ARMA(Generator, node_p) {
+            // Check all captures
+            for(const auto& c : node_p->m_captures) {
+                auto rv = this->type_is_interior_mutable(sp, c->m_res_type);
+                if( rv != HIR::Compare::Unequal ) {
+                    return rv;
+                }
+            }
+            // If no capture possibly imut, then return no
+            return HIR::Compare::Unequal;
+            }
+        TU_ARMA(Async, node_p) {
+            TODO(sp, "type_is_interior_mutable on async");
             }
         }
-        // If no capture possibly imut, then return no
-        return HIR::Compare::Unequal;
-        }
-    TU_ARMA(Generator, e) {
-        // Check all captures
-        for(const auto& c : e.node->m_captures) {
-            auto rv = this->type_is_interior_mutable(sp, c->m_res_type);
-            if( rv != HIR::Compare::Unequal ) {
-                return rv;
-            }
-        }
-        // If no capture possibly imut, then return no
-        return HIR::Compare::Unequal;
         }
     // Borrow and pointer are not interior mutable (they might point to something, but that doesn't matter)
     TU_ARMA(Borrow, e) {
@@ -3044,11 +3065,8 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
     TU_ARMA(Diverge, e) {
         return false;
         }
-    TU_ARMA(Closure, e) {
-        // Note: Copy already covered above
-        return true;
-        }
-    TU_ARMA(Generator, e) {
+    TU_ARMA(NodeType, e) {
+        // All magic node types need glue
         return true;
         }
     TU_ARMA(Infer, e) {

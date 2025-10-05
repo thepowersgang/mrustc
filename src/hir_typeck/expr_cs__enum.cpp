@@ -2053,7 +2053,14 @@ namespace typecheck
         }
         void visit(::HIR::ExprNode_AsyncBlock& node) override
         {
-            TODO(node.span(), "async {}");
+            TRACE_FUNCTION_F(&node << " async { ... }");
+            ASSERT_BUG(node.span(), node.m_code, "empty async?");
+            this->context.add_ivars(node.m_code->m_res_type);
+
+            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_async(&node) );
+            // TODO: Save/clear/restore loop labels
+            auto _ = this->push_inner_coerce_scoped(true);
+            node.m_code->visit( *this );
         }
 
     private:

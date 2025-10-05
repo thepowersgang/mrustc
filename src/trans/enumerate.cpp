@@ -965,11 +965,8 @@ namespace
                 TU_ARMA(ErasedType, te) {
                     //BUG(sp, "ErasedType hit in enumeration - " << ty);
                     }
-                TU_ARMA(Closure, te) {
-                    BUG(sp, "Closure type hit in enumeration - " << ty);
-                    }
-                TU_ARMA(Generator, te) {
-                    BUG(sp, "Generator type hit in enumeration - " << ty);
+                TU_ARMA(NodeType, te) {
+                    BUG(sp, "NodeType type hit in enumeration - " << ty);
                     }
                 // Nothing to do
                 TU_ARMA(Diverge, te) {

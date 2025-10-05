@@ -540,13 +540,13 @@ namespace {
             // TODO: Different usage based on trait.
             ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Borrow;
 
-            if( const auto* closure = node.m_value->m_res_type.data().opt_Closure() ) {
-                assert(closure->node);
-                if( closure->node->m_class == ::HIR::ExprNode_Closure::Class::Unknown ) {
+            if( const auto* node_pp = TU_OPT1(node.m_value->m_res_type.data(), NodeType, .opt_Closure()) ) {
+                assert(*node_pp);
+                if( (*node_pp)->m_class == ::HIR::ExprNode_Closure::Class::Unknown ) {
                     auto _ = push_usage( ::HIR::ValueUsage::Move );
                     this->visit_node_ptr(node.m_value);
                 }
-                switch(closure->node->m_class)
+                switch((*node_pp)->m_class)
                 {
                 case ::HIR::ExprNode_Closure::Class::Unknown:
                     BUG(node.span(), "CallValue with unknown closure class - " << node.m_value->m_res_type);

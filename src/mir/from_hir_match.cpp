@@ -1170,11 +1170,8 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
     TU_ARMA(Function, e) {
         ERROR(sp, E0000, "Attempting to match over a functon pointer");
         }
-    TU_ARMA(Closure, e) {
-        ERROR(sp, E0000, "Attempting to match over a closure");
-        }
-    TU_ARMA(Generator, e) {
-        ERROR(sp, E0000, "Attempting to match over a generator");
+    TU_ARMA(NodeType, e) {
+        ERROR(sp, E0000, "Attempting to match over a magic type");
         }
     }
 }
@@ -1959,18 +1956,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             ERROR(sp, E0000, "Attempting to match over a functon pointer");
         }
         }
-    TU_ARMA(Closure, e) {
+    TU_ARMA(NodeType, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
-            ERROR(sp, E0000, "Attempting to match over a closure");
-        }
-        }
-    TU_ARMA(Generator, e) {
-        if( pat.m_data.is_Any() ) {
-        }
-        else {
-            ERROR(sp, E0000, "Attempting to match over a generator");
+            ERROR(sp, E0000, "Attempting to match over a closure/generator/async");
         }
         }
     }
@@ -2383,11 +2373,8 @@ namespace {
             TU_ARMA(Function, e) {
                 ERROR(sp, E0000, "Attempting to match over a functon pointer");
                 }
-            TU_ARMA(Closure, e) {
-                ERROR(sp, E0000, "Attempting to match over a closure");
-                }
-            TU_ARMA(Generator, e) {
-                ERROR(sp, E0000, "Attempting to match over a generator");
+            TU_ARMA(NodeType, e) {
+                ERROR(sp, E0000, "Attempting to match over a magic type");
                 }
             }
         }
@@ -2839,11 +2826,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         TU_ARMA(Function, te) {
             BUG(sp, "Attempting to match a function pointer - " << rule << " against " << ty);
             }
-        TU_ARMA(Closure, te) {
-            BUG(sp, "Attempting to match a closure");
-            }
-        TU_ARMA(Generator, te) {
-            BUG(sp, "Attempting to match a generator");
+        TU_ARMA(NodeType, te) {
+            BUG(sp, "Attempting to match a magic type - " << rule << " against " << ty);
             }
         }
     }
@@ -3445,11 +3429,8 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
         // TODO: Could this actually be valid?
         BUG(sp, "Attempting to match a function pointer - " << ty);
         }
-    TU_ARMA(Closure, te) {
-        BUG(sp, "Attempting to match a closure");
-        }
-    TU_ARMA(Generator, te) {
-        BUG(sp, "Attempting to match a generator");
+    TU_ARMA(NodeType, te) {
+        BUG(sp, "Attempting to match a magic type - " << ty);
         }
     }
 }
