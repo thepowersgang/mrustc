@@ -910,9 +910,12 @@ namespace {
                             push_toks(toks, TOK_PAREN_OPEN);
                             if( frag.args.prec_is_arg ) {
                                 push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.prec).c_str()) );
+                                if( TARGETVER_LEAST_1_90 ) {
+                                    push_toks(toks, TOK_RWORD_AS, ident("u16"));
+                                }
                             }
                             else {
-                                push_toks(toks, Token(U128(frag.args.prec), CORETYPE_UINT) );
+                                push_toks(toks, Token(U128(frag.args.prec), TARGETVER_LEAST_1_90 ? CORETYPE_U16 : CORETYPE_UINT) );
                             }
                             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                         }
@@ -927,9 +930,12 @@ namespace {
                             push_toks(toks, TOK_PAREN_OPEN);
                             if( frag.args.width_is_arg ) {
                                 push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.width).c_str()) );
+                                if( TARGETVER_LEAST_1_90 ) {
+                                    push_toks(toks, TOK_RWORD_AS, ident("u16"));
+                                }
                             }
                             else {
-                                push_toks(toks, Token(U128(frag.args.width), CORETYPE_UINT) );
+                                push_toks(toks, Token(U128(frag.args.width), TARGETVER_LEAST_1_90 ? CORETYPE_U16 : CORETYPE_UINT) );
                             }
                             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                         }
