@@ -895,7 +895,8 @@ struct ExprNode_Generator:
     bool    m_is_move;
     bool    m_is_pinned;
 
-    struct {
+    // AnnotateValueUsage cache/information
+    struct AvuCache {
         ::std::vector<unsigned int> local_vars;
         ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> > captured_vars;
     } m_avu_cache;
@@ -957,6 +958,8 @@ struct ExprNode_AsyncBlock
 {
     ::HIR::ExprNodeP    m_code;
     bool    m_is_move;
+
+    ExprNode_Generator::AvuCache m_avu_cache;
 
     ExprNode_AsyncBlock(Span sp, ::HIR::ExprNodeP code, bool is_move)
         : ExprNode(mv$(sp))
