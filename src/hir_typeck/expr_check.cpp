@@ -1178,10 +1178,7 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " async { ... }");
 
-            if( node.m_code )
-            {
-                TODO(node.span(), "async block");
-            }
+            node.m_code->visit( *this );
         }
 
     private:

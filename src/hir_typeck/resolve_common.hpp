@@ -86,6 +86,7 @@ struct TraitResolveCommon
     ::HIR::SimplePath   m_lang_PointeeSized;    // 1.90
     ::HIR::SimplePath   m_lang_MetaSized;    // 1.90
     ::HIR::SimplePath   m_lang_Destruct;    // 1.90
+    ::HIR::SimplePath   m_lang_Future;    // 1.90 (well, added earlier)
 
     TraitResolveCommon(const ::HIR::Crate& crate):
         m_crate(crate),
@@ -111,6 +112,7 @@ struct TraitResolveCommon
         m_lang_PointeeSized = m_crate.get_lang_item_path_opt("pointee_sized");
         m_lang_MetaSized = m_crate.get_lang_item_path_opt("meta_sized");
         m_lang_Destruct = m_crate.get_lang_item_path_opt("destruct");
+        m_lang_Future = m_crate.get_lang_item_path_opt("future_trait");
     }
 
     bool has_self() const {

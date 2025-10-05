@@ -1372,24 +1372,6 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         }
     }
 
-    // Generator
-    if( TARGETVER_LEAST_1_39 && trait == m_lang_Generator )
-    {
-        if( type.data().is_NodeType() && type.data().as_NodeType().is_Generator() )
-        {
-            const auto* node_p = type.data().as_NodeType().as_Generator();
-            ::HIR::TraitPath::assoc_list_t   assoc;
-            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait.clone(), {}, node_p->m_yield_ty.clone() }));
-            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait.clone(), {}, node_p->m_return.clone() }));
-            HIR::PathParams params;
-            if( TARGETVER_LEAST_1_74 )
-            {
-                params.m_types.push_back(node_p->m_resume_ty.clone());
-            }
-            return callback( ImplRef(type.clone(), mv$(params), mv$(assoc)), ::HIR::Compare::Equal );
-        }
-    }
-
     // - `DiscriminantKind`
     if( TARGETVER_LEAST_1_54 && trait == this->m_crate.get_lang_item_path(sp, "discriminant_kind") )
     {
@@ -1680,8 +1662,29 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             }
             }
         TU_ARMA(Generator, node_p) {
+            if( TARGETVER_LEAST_1_39 && trait == m_lang_Generator )
+            {
+                static const RcString rcstring_Yield  = RcString::new_interned("Yield" );
+                static const RcString rcstring_Return = RcString::new_interned("Return");
+                ::HIR::TraitPath::assoc_list_t   assoc;
+                assoc.insert(::std::make_pair(rcstring_Yield , ::HIR::TraitPath::AtyEqual { trait.clone(), {}, node_p->m_yield_ty.clone() }));
+                assoc.insert(::std::make_pair(rcstring_Return, ::HIR::TraitPath::AtyEqual { trait.clone(), {}, node_p->m_return.clone() }));
+                HIR::PathParams params;
+                if( TARGETVER_LEAST_1_74 )
+                {
+                    params.m_types.push_back(node_p->m_resume_ty.clone());
+                }
+                return callback( ImplRef(type.clone(), mv$(params), mv$(assoc)), ::HIR::Compare::Equal );
+            }
             }
         TU_ARMA(Async, node_p) {
+            if( TARGETVER_LEAST_1_74 && trait == m_lang_Future )
+            {
+                static const RcString rcstring_Output = RcString::new_interned("Output");
+                ::HIR::TraitPath::assoc_list_t   assoc;
+                assoc.insert(::std::make_pair(rcstring_Output, ::HIR::TraitPath::AtyEqual { trait.clone(), {}, node_p->m_code->m_res_type.clone() }));
+                return callback( ImplRef(type.clone(), {}, mv$(assoc)), ::HIR::Compare::Equal );
+            }
             }
         }
     }
