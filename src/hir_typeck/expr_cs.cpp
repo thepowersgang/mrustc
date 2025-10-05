@@ -1400,7 +1400,7 @@ namespace {
                 )
                 }
             TU_ARMA(Range, e) {
-                if( e.end && e.start->is_Named() ) {
+                if( e.start && e.start->is_Named() ) {
                     this->check_type_resolved_path(sp, e.start->as_Named().path);
                 }
                 if( e.end && e.end->is_Named() ) {
