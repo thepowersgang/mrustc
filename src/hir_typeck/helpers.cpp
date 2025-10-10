@@ -5037,7 +5037,7 @@ bool TraitResolution::find_method(const Span& sp,
 
         // `Self` = `*.type`
         // `/*I:#*/` := `e.trait.m_params`
-        auto monomorph_cb = MonomorphStatePtr(&e.type, &e.trait.m_params, nullptr);
+        auto monomorph_cb = MonomorphStatePtr(&e.type, &e.trait.m_params, &e.params);
 
         const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
         const auto& assoc_ty = trait.m_types.at( e.item );

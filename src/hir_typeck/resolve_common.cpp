@@ -112,10 +112,13 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::H
         if( a_ty.second.m_trait_bounds.empty() )
             continue ;
 
+        ASSERT_BUG(sp, !a_ty.second.m_generics.is_generic(), "Handle type generic ATYs - " << a_ty.first << a_ty.second.m_generics.fmt_args());
         auto ty_a = ::HIR::TypeRef::new_path(
-            ::HIR::Path( type.clone(), trait_path.m_path.clone(), a_ty.first ),
+            // TODO: Empty params works for now, as there's no type generics (yet)
+            ::HIR::Path( type.clone(), trait_path.m_path.clone(), a_ty.first, a_ty.second.m_generics.make_empty_params(true) ),
             ::HIR::TypePathBinding::make_Opaque({})
         );
+        monomorph.pp_method = &ty_a.data().as_Path().path.m_data.as_UfcsKnown().params;
 
         for( const auto& a_ty_b : a_ty.second.m_trait_bounds )
         {
@@ -137,6 +140,8 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::H
                 prep_indexes__add_equality( sp, inner_hrtbs, mv$(ty_l), std::move(tb.second.type) );
             }
         }
+
+        monomorph.pp_method = nullptr;
     }
 
     for(const auto& st : trait.m_all_parent_traits)

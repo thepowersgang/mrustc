@@ -1658,8 +1658,9 @@ namespace {
                 this->equate_types(n->span(), arg_ty, n->m_res_type);
                 this->equate_types(n->span(), node.m_cache.m_arg_types[i], arg_ty);
             }
-            DEBUG("RET " << fcn.m_return);
-            this->equate_types(node.span(), node.m_cache.m_arg_types.back(), m_resolve.monomorph_expand(node.span(), fcn.m_return, ms));
+            auto ret_mono = m_resolve.monomorph_expand(node.span(), fcn.m_return, ms);
+            DEBUG("RET " << ret_mono);
+            this->equate_types(node.span(), node.m_cache.m_arg_types.back(), ret_mono);
             this->equate_types(node.span(), node.m_res_type, node.m_cache.m_arg_types.back());
         }
 
