@@ -928,6 +928,7 @@ struct ExprNode_GeneratorWrapper:
     public ExprNode
 {
     //ExprNode_Closure::args_t    m_args;
+    bool m_is_future;
     ::HIR::TypeRef  m_return;
     ::HIR::TypeRef  m_yield_ty;
     ::HIR::ExprNodeP    m_code;
@@ -943,8 +944,9 @@ struct ExprNode_GeneratorWrapper:
 
     ::std::vector<HIR::ValueUsage> m_capture_usages;
 
-    ExprNode_GeneratorWrapper(Span sp, /*ExprNode_Closure::args_t args,*/ ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move, bool is_pinned):
+    ExprNode_GeneratorWrapper(Span sp, /*ExprNode_Closure::args_t args,*/ ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move, bool is_pinned, bool is_future):
         ExprNode(mv$(sp)),
+        m_is_future(is_future),
         //m_args( ::std::move(args) ),
         m_return( ::std::move(rv) ),
         m_code( ::std::move(code) )
@@ -960,6 +962,14 @@ struct ExprNode_AsyncBlock
     bool    m_is_move;
 
     ExprNode_Generator::AvuCache m_avu_cache;
+
+    // Generated type information
+    const ::HIR::Struct*    m_obj_ptr = nullptr;
+    ::HIR::GenericPath  m_obj_path;
+    // Captured variables (used for emitting the constructor)
+    ::std::vector< ::HIR::ExprNodeP>    m_captures;
+    // State data type (needed for initialising)
+    ::HIR::TypeRef  m_state_data_type;
 
     ExprNode_AsyncBlock(Span sp, ::HIR::ExprNodeP code, bool is_move)
         : ExprNode(mv$(sp))

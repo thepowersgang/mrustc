@@ -84,6 +84,9 @@ namespace {
             std::vector<State>  states;
 
             ::HIR::SimplePath   state_idx_enm_path;
+            
+            /// Is this coroutine a future?
+            bool is_future = false;
         } m_generator_state;
 
     public:
@@ -92,8 +95,9 @@ namespace {
             m_variable_types(var_types),
             m_is_generator(is_generator != nullptr)
         {
-            if(m_is_generator)
+            if( m_is_generator )
             {
+                m_generator_state.is_future = is_generator->m_is_future;
                 m_generator_state.state_idx_enm_path = is_generator->m_state_idx_enum;
                 m_generator_state.bb_open = builder.pause_cur_block();
                 m_generator_state.states.push_back(GeneratorState::State(builder.new_bb_unlinked()));
@@ -662,6 +666,7 @@ namespace {
 
             if( m_is_generator )
             {
+                // TODO: Handle difference between generators and futures (different return/yield types)
                 ::HIR::GenericPath enm_path;
                 m_builder.with_val_type(node.span(), ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
                     const auto& te = ty.data().as_Path();

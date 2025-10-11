@@ -20,6 +20,7 @@
 
 constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
 constexpr const char* GENERATOR_PATH_PREFIX = "generator#";
+constexpr const char* PATH_PREFIX_FUTURE = "future#";
 
 namespace HIR {
 
@@ -138,6 +139,12 @@ struct TypeData_Path
         return path.m_data.is_Generic()
             && path.m_data.as_Generic().m_path.components().back().size() > 8
             && path.m_data.as_Generic().m_path.components().back().compare(0,strlen(GENERATOR_PATH_PREFIX), GENERATOR_PATH_PREFIX) == 0
+            ;
+    }
+    bool is_future() const {
+        return path.m_data.is_Generic()
+            && path.m_data.as_Generic().m_path.components().back().size() > 8
+            && path.m_data.as_Generic().m_path.components().back().compare(0,strlen(PATH_PREFIX_FUTURE), PATH_PREFIX_FUTURE) == 0
             ;
     }
 };
