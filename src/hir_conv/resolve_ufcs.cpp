@@ -122,10 +122,9 @@ namespace resolve_ufcs {
         }
         void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override {
             // NOTE: Disabled, because generics in type aliases are never checked
-#if 0
+            // Re-enabled to resolve a UFCS properly (1.90.0 libcore)
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_type_alias(p, item);
-#endif
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
             //TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type << " (mod=" << impl.m_src_module << ")");
