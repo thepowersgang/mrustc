@@ -628,6 +628,9 @@ namespace static_borrow_constants {
         void visit_node_ptr(::HIR::ExprPtr& root) {
             root->visit(*this);
         }
+        void visit_node_ptr(::std::unique_ptr<::HIR::ExprNode>& root) override {
+            root->visit(*this);
+        }
 
         struct Monomorph: public Monomorphiser
         {
