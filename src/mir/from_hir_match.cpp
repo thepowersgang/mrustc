@@ -2041,6 +2041,15 @@ namespace {
             }
             else if( const auto* be = b.opt_ValueRange() )
             {
+                // First ends before the second starts (or vice-versa): Disjoint
+                if( ae->last < be->first )
+                    return false;
+                if( be->last < ae->first )
+                    return false;
+                // If the starts are the same (always inclusive) then overlap
+                if( ae->first == be->first )
+                    return true;
+
                 //auto check_ends = []( const PatternRule::Data_ValueRange& lo, const PatternRule::Data_ValueRange& hi)->bool {
                 //    return lo.is_inclusive == hi.is_inclusive ? lo.last <= hi.last
                 //        : (lo.is_inclusive
@@ -2048,6 +2057,11 @@ namespace {
                 //            : throw "TODO" // Lower side is excl, higher side incl - lower+1 < higher = lower < higher-1 = lower
                 //            );
                 //    };
+                ASSERT_BUG(Span(), ae->is_inclusive && be->is_inclusive, "TODO: Handle overlap with exclusive ranges: "
+                    << ae->first << ".." << (ae->is_inclusive ? "=" : "") << ae->last
+                    << " and "
+                    << be->first << ".." << (be->is_inclusive ? "=" : "") << be->last
+                    );
                 assert(ae->is_inclusive && "TODO: Exclusive ranges");
                 assert(be->is_inclusive && "TODO: Exclusive ranges");
                 // Start of B within A
