@@ -13,6 +13,105 @@
 #include <algorithm>    // ::std::any_of
 
 namespace {
+    class Visitor_ImplTrait:
+        public ::HIR::Visitor
+    {
+        ::HIR::Trait* m_target_trait = nullptr;
+        ::HIR::TraitImpl*   m_target_impl = nullptr;
+
+        const ::HIR::TypeRef* m_self_ty = nullptr;
+        const ::HIR::SimplePath* m_trait_path = nullptr;
+        const ::HIR::PathParams* m_trait_args = nullptr;
+        const char* m_method_name = nullptr;
+        const HIR::GenericParams* m_method_params = nullptr;
+        unsigned m_var_index = 0;
+
+    public:
+        Visitor_ImplTrait()
+        {
+        }
+
+    private:
+        void visit_type(::HIR::TypeRef& ty) override {
+            if( m_method_name )
+            {
+                ::HIR::Visitor::visit_type(ty);
+
+                if( const auto* e = ty.data().opt_ErasedType() )
+                {
+                    auto ty_name = RcString::new_interned(FMT("erased#" << m_method_name << "_" << m_var_index));
+                    m_var_index += 1;
+                    
+                    if( m_target_impl ) {
+                        m_target_impl->m_types.insert(std::make_pair(ty_name, HIR::TraitImpl::ImplEnt<HIR::TypeRef> { false, std::move(ty) }));
+                    }
+                    else if( m_target_trait ) {
+                        ::std::vector<HIR::TraitPath>   traits;
+                        for(const auto& t : e->m_traits) {
+                            traits.push_back(t.clone());
+                        }
+                        m_target_trait->m_types.insert(std::make_pair(ty_name, HIR::AssociatedType {
+                            m_method_params->clone(),
+                            e->m_is_sized,
+                            {}, // TODO: Lifetime
+                            std::move(traits),
+                            {}  //std::move(ty)
+                        }));
+                    }
+                    else {
+                        BUG(Span(), "Neither target impl nor target trait set");
+                    }
+
+                    ty = HIR::TypeRef::new_path(
+                        HIR::Path(
+                            HIR::TypeRef::new_self(),
+                            HIR::GenericPath(m_trait_path->clone(), m_trait_args->clone()),
+                            ty_name,
+                            m_method_params->make_nop_params(1)
+                        ),
+                        {}
+                    );
+                }
+            }
+        }
+        void handle_method(const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& trait_args, const HIR::TypeRef& self_ty, const RcString& name, ::HIR::Function& fcn)
+        {
+            m_trait_path = &trait_path;
+            m_trait_args = &trait_args;
+            m_self_ty = &self_ty;
+            m_method_name = name.c_str();
+            m_method_params = &fcn.m_params;
+            m_var_index = 0;
+            visit_type(fcn.m_return);
+            m_method_name = nullptr;
+
+            if( m_target_trait && m_var_index > 0 && fcn.m_code ) {
+                TODO(Span(), "Handle erased types with provided impls - " << trait_path << " fn " << name);
+            }
+        }
+    public:
+        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& tr) override
+        {
+            auto self = HIR::TypeRef::new_self();
+            auto path = p.get_simple_path();
+            auto params = tr.m_params.make_nop_params(0);
+            m_target_trait = &tr;
+            for(auto& v : tr.m_values) {
+                if(auto* f = v.second.opt_Function()) {
+                    handle_method(path, params, self, v.first, *f);
+                }
+            }
+            m_target_trait = nullptr;
+        }
+        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
+        {
+            m_target_impl = &impl;
+            for(auto& v : impl.m_methods) {
+                handle_method(trait_path, impl.m_trait_args, impl.m_type, v.first, v.second.data);
+            }
+            m_target_impl = nullptr;
+        }
+    };
     class OuterVisitor:
         public ::HIR::Visitor
     {
@@ -447,6 +546,11 @@ namespace {
 
 void HIR_Expand_VTables(::HIR::Crate& crate)
 {
+    {
+        Visitor_ImplTrait   v;//(crate);
+        v.visit_crate(crate);
+    }
+
     OuterVisitor    ov(crate);
     ov.visit_crate( crate );
 

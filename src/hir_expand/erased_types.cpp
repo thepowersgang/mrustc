@@ -22,6 +22,7 @@ namespace {
         TU_ARMA(Fcn, ee) {
             MonomorphState    monomorph_cb;
             auto val = m_resolve.get_value(sp, ee.m_origin, monomorph_cb);
+            ASSERT_BUG(sp, val.is_Function(), "ErasedType with Fcn type doesn't point at a function: " << ee.m_origin << ": " << val.tag_str());
             const auto& fcn = *val.as_Function();
             const auto& erased_types = fcn.m_code.m_erased_types;
 
