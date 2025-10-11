@@ -1178,7 +1178,11 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " async { ... }");
 
-            node.m_code->visit( *this );
+            // Can be null after generation
+            if( node.m_code )
+            {
+                node.m_code->visit( *this );
+            }
         }
 
     private:
