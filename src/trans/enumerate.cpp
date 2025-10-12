@@ -1435,6 +1435,10 @@ namespace {
         TRACE_FUNCTION_F(path);
         StaticTraitResolve  resolve { crate };
 
+        if( path.m_data.is_UfcsInherent() && path.m_data.as_UfcsInherent().item == "#type_id") {
+            return EntPtr::make_AutoGenerate( {} );
+        }
+
         MonomorphState  ms;
         impl_def = nullptr;
         auto ent = resolve.get_value(sp, path, ms, /*signature_only=*/false, &impl_def);
@@ -1573,6 +1577,10 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
             // Leave generation of struct/enum constructors to codgen
             // TODO: Add to a list of required constructors
             state.rv.m_constructors.insert( mv$(path_mono.m_data.as_Generic()) );
+        }
+        // - <T>::#type_id
+        else if( path_mono.m_data.is_UfcsInherent() && path_mono.m_data.as_UfcsInherent().item == "#type_id" )
+        {
         }
         // - <T as U>::#vtable
         else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().item == "vtable#" )
