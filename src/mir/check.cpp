@@ -849,7 +849,11 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             ::HIR::TypeRef  tmp;
                             TU_MATCH_HDRA( (v), {)
                             TU_ARMA(NotFound, ve)
-                                MIR_BUG(state, "Unable to find item: " << *c);
+                                if( c->m_data.is_UfcsInherent() && c->m_data.as_UfcsInherent().item == "#type_id") {
+                                }
+                                else {
+                                    MIR_BUG(state, "Unable to find item: " << *c);
+                                }
                             TU_ARMA(NotYetKnown, ve)
                                 MIR_BUG(state, "NotYetKnown returned with sig_only=true? for " << *c);
                             TU_ARMA(Constant, ve)
@@ -1051,7 +1055,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         }
                         else
                         {
-                            MIR_BUG(state, "DstMeta on invalid type - " << ity);
+                            if( TARGETVER_MOST_1_74 ) {
+                                MIR_BUG(state, "DstMeta on invalid type - " << ity);
+                            }
                         }
                         // TODO: Check return type
                         }

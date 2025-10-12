@@ -53,24 +53,22 @@ const ::MIR::BasicBlock& ::MIR::TypeResolve::get_block(::MIR::BasicBlockId id) c
 
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_static_type(::HIR::TypeRef& tmp, const ::HIR::Path& path) const
 {
-    TU_MATCH_HDRA( (path.m_data), {)
-    TU_ARMA(Generic, pe) {
-        const auto& s = m_crate.get_static_by_path(sp, pe.m_path);
-        tmp = MonomorphStatePtr(nullptr, nullptr, &pe.m_params).monomorph_type(sp, s.m_type);
+    if( path.m_data.is_UfcsInherent() && path.m_data.as_UfcsInherent().item == "#type_id") {
+        static ::HIR::TypeRef   ty_unit = ::HIR::TypeRef::new_unit();
+        return ty_unit;
+    }
+    MonomorphState  ms;
+    auto v = m_resolve.get_value(this->sp, path, ms, /*signature_only*/true);
+    MIR_ASSERT(*this, v.is_Static(), "LValue::Static not a static - " << path << " : " << v.tag_str() );
+    MIR_ASSERT(*this, v.as_Static(), "LValue::Static is null? - " << path << " : " << v.tag_str() );
+    if( ms.has_types() ) {
+        tmp = ms.monomorph_type(sp, v.as_Static()->m_type);
         m_resolve.expand_associated_types(this->sp, tmp);
         return tmp;
-        }
-    TU_ARMA(UfcsKnown, pe) {
-        MIR_TODO(*this, "LValue::Static - UfcsKnown - " << path);
-        }
-    TU_ARMA(UfcsUnknown, pe) {
-        MIR_BUG(*this, "Encountered UfcsUnknown in LValue::Static - " << path);
-        }
-    TU_ARMA(UfcsInherent, pe) {
-        MIR_TODO(*this, "LValue::Static - UfcsInherent - " << path);
-        }
     }
-    throw "";
+    else {
+        return v.as_Static()->m_type;
+    }
 }
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val, unsigned wrapper_skip_count/*=0*/) const
 {
