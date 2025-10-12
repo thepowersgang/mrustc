@@ -136,7 +136,8 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             }
             return &it->second; }
         case HIR::Constant::ValueState::Unknown:
-            MIR_BUG(state, "Unevaluated constant - " << path);
+            MIR_ASSERT(state, monomorphise_path_needed(path, true), "Unevaluated constant - " << path);
+            return nullptr;
         }
         throw "";
     }
