@@ -233,7 +233,7 @@ struct MonomorphState:
 
 
     bool has_types() const {
-        return pp_method->m_types.size() > 0 || pp_impl->m_types.size() > 0;
+        return (pp_method && pp_method->has_params()) || (pp_impl && pp_impl->has_params());
     }
 
 
