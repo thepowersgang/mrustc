@@ -311,6 +311,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
         }
     TU_ARMA(ItemAddr, e) {
         MonomorphState  p;
+        ASSERT_BUG(sp, e, "get_const_type - " << c);
         auto v = m_resolve.get_value(this->sp, *e, p, /*signature_only=*/true);
         TU_MATCH_HDRA( (v), {)
         TU_ARMA(NotFound, ve) {

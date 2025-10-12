@@ -32,11 +32,10 @@ namespace {
 
                 auto vtable_ty = trait.get_vtable_type(state.sp, state.m_resolve.m_crate, *tep);
 
-                // TODO: This should be a pointer
-                return vtable_ty;
+                return ::HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, std::move(vtable_ty));
             }
         }
-        else if( unsized_ty.data().is_Slice() )
+        else if( unsized_ty.data().is_Slice() || (unsized_ty.data().is_Primitive() && unsized_ty.data().as_Primitive() == HIR::CoreType::Str) )
         {
             return ::HIR::CoreType::Usize;
         }
@@ -630,7 +629,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     {
         HIR::TypeRef ty_Self = ::HIR::TypeRef::new_self();
         HIR::PathParams empty_params_i = resolve.m_impl_generics ? resolve.m_impl_generics->make_nop_params(0) : HIR::PathParams();
-        HIR::PathParams empty_params_m = resolve.m_item_generics ? resolve.m_item_generics->make_nop_params(0) : HIR::PathParams();
+        HIR::PathParams empty_params_m = resolve.m_item_generics ? resolve.m_item_generics->make_nop_params(1) : HIR::PathParams();
         MonomorphStatePtr   m(&ty_Self, resolve.m_impl_generics ? &empty_params_i : nullptr, resolve.m_item_generics ? &empty_params_m : nullptr);
         for(const auto& ty : fcn.locals)
         {
@@ -1107,9 +1106,18 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         auto meta = get_metadata_type(state, *ity_p);
                         if( meta == ::HIR::TypeRef() )
                         {
-                            MIR_BUG(state, "MakeDst requires a pointer to an unsized type as output, got " << dst_ty);
+                            if( TARGETVER_MOST_1_74 ) {
+                                MIR_BUG(state, "MakeDst requires a pointer to an unsized type as output, got " << dst_ty);
+                            }
+                            // In 1.90, this gets used for thin pointers too
+                            meta = ::HIR::TypeRef::new_unit();
                         }
-                        // TODO: Check metadata type?
+                        // TODO: Check metadata type? 
+                        // > Borrows vs pointers are fun
+                        #if 0
+                        HIR::TypeRef    tmp;
+                        check_types( meta, state.get_param_type(tmp, e.meta_val) );
+                        #endif
 
                         // NOTE: Output type checked above.
                         }
