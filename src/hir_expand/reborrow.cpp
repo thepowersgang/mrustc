@@ -130,6 +130,13 @@ namespace {
             }
         }
 
+        void visit(::HIR::ExprNode_Match& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            for(auto& arm : node.m_arms) {
+                arm.m_code = do_reborrow(std::move(arm.m_code));
+            }
+        }
+
         void visit(::HIR::ExprNode_ArrayList& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             for(auto& arg : node.m_vals) {
