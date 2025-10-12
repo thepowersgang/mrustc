@@ -825,6 +825,12 @@ namespace {
                     << "static inline uint"<<sz<<"_t __mrustc_op_and_not"<<sz<<"(uint"<<sz<<"_t a, uint"<<sz<<"_t b) { return ~(a & b); }\n"
                     ;
             }
+
+            // Float16 and Float128
+            m_of
+                << "typedef struct f16 { uint16_t v; } f16;"
+                << "typedef struct f128 { uint128_t v; } f128;"
+                ;
         }
 
         ~CodeGenerator_C() {}
@@ -6163,6 +6169,14 @@ namespace {
                 m_of << size;
                 m_of << "))";
             }
+            else if( name == "three_way_compare" ) {
+                emit_lvalue(e.ret_val); m_of << " = (";
+                    emit_param(e.args.at(0)); m_of << " == "; emit_param(e.args.at(1));
+                    m_of << " ? 0 : (";
+                    emit_param(e.args.at(0)); m_of << " < "; emit_param(e.args.at(1));
+                    m_of << " ? -1 : 1));";
+                return;
+            }
             else if( name == "forget" ) {
                 // Nothing needs to be done, this just stops the destructor from running.
             }
@@ -6528,7 +6542,6 @@ namespace {
                     }
                 }
 
-#if 1
                 if( name == "saturating_add" )
                 {
                     m_of << ") { ";
@@ -6579,7 +6592,6 @@ namespace {
                     }
                     m_of << "; }";
                 }
-#endif
             }
             else if( name == "overflowing_sub" || name == "wrapping_sub"
                 || name == "saturating_sub"
@@ -6616,8 +6628,6 @@ namespace {
                     }
                 }
 
-
-#if 1
                 if( name == "saturating_sub" )
                 {
                     m_of << ") { ";
@@ -6667,7 +6677,6 @@ namespace {
                     }
                     m_of << "; }";
                 }
-#endif
             }
             else if( name == "overflowing_mul" || name == "wrapping_mul" || name == "unchecked_mul" ) {
                 if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
@@ -7236,8 +7245,8 @@ namespace {
             else if( name == "va_copy" ) {
                 m_of << "va_copy( *(va_list*)&"; emit_param(e.args.at(0)); m_of << ", *(va_list*)&"; emit_param(e.args.at(1)); m_of << ")";
             }
-            // -- Platform Intrinsics --
-            else if( name.compare(0, 9, "platform:") == 0 ) {
+            // -- Platform Intrinsics (and SIMD) --
+            else if( name.compare(0, 9, "platform:") == 0 || name.compare(0, 5, "simd_") == 0 ) {
                 struct SimdInfo {
                     unsigned count;
                     unsigned item_size;
@@ -7448,16 +7457,16 @@ namespace {
                 else if(name == "platform:simd_gt")   simd_cmp(">" );
                 else if(name == "platform:simd_ge")   simd_cmp(">=");
                 // Arithmetic
-                else if(name == "platform:simd_add")    simd_arith("+");
-                else if(name == "platform:simd_sub")    simd_arith("-");
-                else if(name == "platform:simd_mul")    simd_arith("*");
-                else if(name == "platform:simd_div")    simd_arith("/");
-                else if(name == "platform:simd_and")    simd_arith("&");
-                else if(name == "platform:simd_or" )    simd_arith("|");
-                else if(name == "platform:simd_xor")    simd_arith("^");
-                else if(name == "platform:simd_xor")    simd_arith("^");
-                else if(name == "platform:simd_shr")    simd_arith(">>");
-                else if(name == "platform:simd_shl")    simd_arith("<<");
+                else if(name == "platform:simd_add" || name == "simd_add")    simd_arith("+");
+                else if(name == "platform:simd_sub" || name == "simd_sub")    simd_arith("-");
+                else if(name == "platform:simd_mul" || name == "simd_mul")    simd_arith("*");
+                else if(name == "platform:simd_div" || name == "simd_div")    simd_arith("/");
+                else if(name == "platform:simd_and" || name == "simd_and")    simd_arith("&");
+                else if(name == "platform:simd_or"  || name == "simd_or" )    simd_arith("|");
+                else if(name == "platform:simd_xor" || name == "simd_xor")    simd_arith("^");
+                else if(name == "platform:simd_xor" || name == "simd_xor")    simd_arith("^");
+                else if(name == "platform:simd_shr" || name == "simd_shr")    simd_arith(">>");
+                else if(name == "platform:simd_shl" || name == "simd_shl")    simd_arith("<<");
                 // platform:simd_reduce_and
                 // platform:simd_reduce_max
                 // platform:simd_reduce_min
@@ -7975,10 +7984,10 @@ namespace {
                 case ::HIR::CoreType::U128: m_of << "uint128_t"; break;
                 case ::HIR::CoreType::I128: m_of << "int128_t"; break;
 
-                case ::HIR::CoreType::F16: MIR_TODO(*m_mir_res, "codegen_c: f16");
+                case ::HIR::CoreType::F16: m_of << "f16"; break;
                 case ::HIR::CoreType::F32: m_of << "float"; break;
                 case ::HIR::CoreType::F64: m_of << "double"; break;
-                case ::HIR::CoreType::F128: MIR_TODO(*m_mir_res, "codegen_c: f128");
+                case ::HIR::CoreType::F128: m_of << "f128"; break;
 
                 case ::HIR::CoreType::Bool: m_of << "RUST_BOOL"; break;
                 case ::HIR::CoreType::Char: m_of << "RUST_CHAR";  break;
