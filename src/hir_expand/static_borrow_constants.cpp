@@ -878,6 +878,16 @@ namespace static_borrow_constants {
                     node.m_binding = monomorph.get_value(node.span(), HIR::GenericRef("", node.m_binding)).as_Generic().binding;
                     is_generic = true;
                 }
+                void visit(HIR::ExprNode_ArraySized& node) override {
+                    if( auto* n = node.m_size.opt_Unevaluated() )
+                    {
+                        if( auto* g = n->opt_Generic() )
+                        {
+                            *g = monomorph.get_value(node.span(), *g).as_Generic();
+                            is_generic = true;
+                        }
+                    }
+                }
             } v(resolve, monomorph);
             node->visit(v);
             v.visit_type(node->m_res_type);
