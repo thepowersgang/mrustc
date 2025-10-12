@@ -2721,21 +2721,17 @@ namespace {
                 mv$(vals)
                 }) );
         }
-        void visit(::HIR::ExprNode_Generator& node) override
+        void visit_common_cr(const Span& sp, const HIR::GenericPath& obj_path, const HIR::TypeRef& state_type, ::std::vector<::HIR::ExprNodeP>& captures)
         {
-            TRACE_FUNCTION_F("_Generator - " << node.m_obj_path);
-            ASSERT_BUG(node.span(), node.m_obj_ptr, "Generator not created");
-            ASSERT_BUG(node.span(), !node.m_code, "Encountered outer generator wrapper");
             auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
             ::std::vector< ::MIR::Param>   vals;
-            vals.reserve( 1 + node.m_captures.size() );
+            vals.reserve( 1 + captures.size() );
 
             // Zero the state index
             {
-                const ::HIR::TypeRef& state_type = node.m_state_data_type;
-                const auto& lang_MaybeUninit = m_builder.resolve().m_crate.get_lang_item_path(node.span(), "maybe_uninit");
-                const auto& unm_MaybeUninit = m_builder.resolve().m_crate.get_union_by_path(node.span(), lang_MaybeUninit);
+                const auto& lang_MaybeUninit = m_builder.resolve().m_crate.get_lang_item_path(sp, "maybe_uninit");
+                const auto& unm_MaybeUninit = m_builder.resolve().m_crate.get_union_by_path(sp, lang_MaybeUninit);
                 auto slot_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_MaybeUninit, ::HIR::PathParams(state_type.clone())), &unm_MaybeUninit );
 
                 auto res_slot = m_builder.new_temporary( slot_type.clone() );
@@ -2751,16 +2747,24 @@ namespace {
                 vals.push_back( std::move(res_slot) );
             }
             // Populate the rest
-            for(auto& arg : node.m_captures)
+            for(auto& arg : captures)
             {
                 this->visit_node_ptr(arg);
                 vals.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
             }
 
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                node.m_obj_path.clone(),
+            m_builder.set_result( sp, ::MIR::RValue::make_Struct({
+                obj_path.clone(),
                 mv$(vals)
                 }) );
+        }
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            TRACE_FUNCTION_F("_Generator - " << node.m_obj_path);
+            ASSERT_BUG(node.span(), node.m_obj_ptr, "Generator not created");
+            ASSERT_BUG(node.span(), !node.m_code, "Encountered outer generator wrapper");
+
+            visit_common_cr(node.span(), node.m_obj_path, node.m_state_data_type, node.m_captures);
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override
         {
@@ -2771,41 +2775,8 @@ namespace {
             TRACE_FUNCTION_F("_AsyncBlock - " << node.m_obj_path);
             ASSERT_BUG(node.span(), node.m_obj_ptr, "Future not created");
             ASSERT_BUG(node.span(), !node.m_code, "Encountered code inside post-expand async block");
-            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
-            ::std::vector< ::MIR::Param>   vals;
-            vals.reserve( 1 + node.m_captures.size() );
-
-            // Zero the state index
-            {
-                const ::HIR::TypeRef& state_type = node.m_state_data_type;
-                const auto& lang_MaybeUninit = m_builder.resolve().m_crate.get_lang_item_path(node.span(), "maybe_uninit");
-                const auto& unm_MaybeUninit = m_builder.resolve().m_crate.get_union_by_path(node.span(), lang_MaybeUninit);
-                auto slot_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_MaybeUninit, ::HIR::PathParams(state_type.clone())), &unm_MaybeUninit );
-
-                auto res_slot = m_builder.new_temporary( slot_type.clone() );
-                auto size__panic = m_builder.new_bb_unlinked();
-                auto size__ok = m_builder.new_bb_unlinked();
-                m_builder.end_block(::MIR::Terminator::make_Call({
-                    size__ok, size__panic,
-                    res_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "init", ::HIR::PathParams(mv$(slot_type)) }), // I.e. `mem::zeroed`
-                    {}
-                    }));
-                m_builder.set_cur_block(size__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
-                m_builder.set_cur_block(size__ok);
-                vals.push_back( std::move(res_slot) );
-            }
-            // Populate the rest
-            for(auto& arg : node.m_captures)
-            {
-                this->visit_node_ptr(arg);
-                vals.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
-            }
-
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                node.m_obj_path.clone(),
-                mv$(vals)
-                }) );
+            visit_common_cr(node.span(), node.m_obj_path, node.m_state_data_type, node.m_captures);
         }
     };
 }
