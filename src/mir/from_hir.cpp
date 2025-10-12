@@ -655,6 +655,32 @@ namespace {
                 m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             }
         }
+        // Common code used by both `ExprNode_Return` and the final return of a GeneratorWrapper
+        void coroutine_return(const Span& sp, const ::HIR::TypeRef& value_ty)
+        {
+            static RcString rcstring_Complete = RcString::new_interned("Complete");
+            static RcString rcstring_Ready = RcString::new_interned("Ready");   // TODO: This is a lang item
+            const auto& variant_name = m_generator_state.is_future ? rcstring_Ready : rcstring_Complete;
+            // TODO: Handle difference between generators and futures (different return/yield types)
+            ::HIR::GenericPath enm_path;
+            size_t variant_index = SIZE_MAX;
+            m_builder.with_val_type(sp, ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
+                const auto& te = ty.data().as_Path();
+                enm_path = te.path.m_data.as_Generic().clone();
+                variant_index = te.binding.as_Enum()->find_variant(variant_name);
+                });
+            ASSERT_BUG(sp, enm_path.m_path != HIR::SimplePath(), "Failed to get path from return type?");
+            ASSERT_BUG(sp, variant_index != SIZE_MAX, "Unable to find variant " << variant_name << " in " << enm_path << " for coroutine return");
+
+            ::std::vector< ::MIR::Param>   values;
+            values.push_back( m_builder.get_result_in_param(sp, value_ty) );
+            auto res = ::MIR::RValue::make_EnumVariant({
+                std::move(enm_path),
+                variant_index,
+                std::move(values)
+                });
+            m_builder.push_stmt_assign( sp, ::MIR::LValue::new_Return(), std::move(res) );
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F("_Return");
@@ -666,22 +692,7 @@ namespace {
 
             if( m_is_generator )
             {
-                // TODO: Handle difference between generators and futures (different return/yield types)
-                ::HIR::GenericPath enm_path;
-                m_builder.with_val_type(node.span(), ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
-                    const auto& te = ty.data().as_Path();
-                    enm_path = te.path.m_data.as_Generic().clone();
-                    ASSERT_BUG(node.span(), te.binding.as_Enum()->find_variant("Complete") == 1, "");
-                    });
-
-                ::std::vector< ::MIR::Param>   values;
-                values.push_back( m_builder.get_result_in_param(node.span(), node.m_value->m_res_type) );
-                auto res = ::MIR::RValue::make_EnumVariant({
-                    mv$(enm_path),
-                    1,  // Complete is the second variant
-                    mv$(values)
-                    });
-                m_builder.push_stmt_assign( node.span(), ::MIR::LValue::new_Return(), mv$(res) );
+                coroutine_return(node.span(), node.m_value->m_res_type);
             }
             else
             {
@@ -2847,21 +2858,7 @@ namespace {
             gen_node->m_code->visit(ev);
             if( builder.block_active() && builder.has_result() )
             {
-                ::std::vector< ::MIR::Param>   values;
-                values.push_back( builder.get_result_in_param(sp, gen_node->m_code->m_res_type) );
-
-                ::HIR::GenericPath enm_path;
-                builder.with_val_type(sp, ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
-                    const auto& te = ty.data().as_Path();
-                    enm_path = te.path.m_data.as_Generic().clone();
-                    ASSERT_BUG(sp, te.binding.as_Enum()->find_variant("Complete") == 1, "");
-                    });
-
-                builder.set_result(sp, ::MIR::RValue::make_EnumVariant({
-                    mv$(enm_path),
-                    1,  // Complete is the second variant
-                    mv$(values)
-                    }) );
+                ev.coroutine_return(sp, gen_node->m_code->m_res_type);
             }
             builder.final_cleanup();
 
