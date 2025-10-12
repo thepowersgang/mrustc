@@ -138,6 +138,12 @@ public:
     bool lvalue_is_copy(const ::MIR::LValue& val) const;
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 
+    /// @brief Handler for the `offset_of` intrinsic
+    /// @param ty Type
+    /// @param params Field names (must be Const::String)
+    /// @return Offset in bytes
+    size_t intrinsic_offset_of(const ::HIR::TypeRef& ty, const ::std::vector<MIR::Param>& params) const;
+
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeResolve& x) {
         x.fmt_pos(os);
         return os;

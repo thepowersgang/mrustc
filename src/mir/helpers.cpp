@@ -11,6 +11,7 @@
 #include <hir/type.hpp>
 #include <mir/mir.hpp>
 #include <algorithm>    // ::std::find
+#include <trans/target.hpp>
 
 void ::MIR::TypeResolve::fmt_pos(::std::ostream& os, bool include_path/*=false*/) const
 {
@@ -385,6 +386,50 @@ bool ::MIR::TypeResolve::lvalue_is_copy(const ::MIR::LValue& val) const
 const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef& ty) const
 {
     return m_resolve.is_type_owned_box(ty);
+}
+
+size_t ::MIR::TypeResolve::intrinsic_offset_of(const ::HIR::TypeRef& ty, const ::std::vector<MIR::Param>& values) const
+{
+    const auto* cur_ty = &ty;
+    size_t base_ofs = 0;
+    for(size_t i = 0; i < values.size(); i ++)
+    {
+        MIR_ASSERT(*this, values[i].is_Constant(), "Arguments to `offset_of` must be constants");
+        size_t idx = 0;
+        TU_MATCH_HDRA( (values[i].as_Constant()), { )
+        default:
+            MIR_TODO(*this, "offset_of: field " << values[i]);
+        TU_ARMA(StaticString, field_name) {
+            if( false ) {
+            }
+            else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Struct() ) {
+                const auto& str = **bep;
+                const auto& fields = str.m_data.as_Named();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == field_name; } ) - fields.begin();
+            }
+            else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Union() ) {
+                const auto& unm = **bep;
+                const auto& fields = unm.m_variants;
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == field_name; } ) - fields.begin();
+            }
+            else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Enum() ) {
+                const auto& enm = **bep;
+                const auto& fields = enm.m_data.as_Data();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
+            }
+            else {
+                MIR_TODO(*this, "offset_of: named field/variant - " << field_name);
+            }
+            }
+        }
+        auto* repr = Target_GetTypeRepr(this->sp, m_resolve, *cur_ty);
+        if(!repr) {
+            MIR_BUG(*this, "Calling `offset_of!` on type with non-defined repr: " << *cur_ty);
+        }
+        cur_ty = &repr->fields[idx].ty;
+        base_ofs += repr->fields[idx].offset;
+    }
+    return base_ofs;
 }
 
 using namespace MIR::visit;
