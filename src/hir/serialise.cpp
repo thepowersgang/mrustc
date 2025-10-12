@@ -648,13 +648,25 @@
                 m_out.write_count(e & 0x00FFFFFF);
                 }
             TU_ARMA(Concat, e) {
-                TODO(Span(), "Serialise concat");
+                serialise_vec(e);
                 }
             TU_ARMA(Loop, e) {
                 m_out.write_tag(2);
                 serialise_vec(e.entries);
                 serialise(e.joiner);
                 serialise(e.controlling_input_loops);
+                }
+            }
+        }
+        void serialise(const ::MacroExpansionConcatEnt& e) {
+            m_out.write_tag(e.tag());
+            TU_MATCH_HDRA((e), {)
+            TU_ARMA(Ident, i) {
+                serialise(i.hygiene);
+                m_out.write_string(i.name);
+                }
+            TU_ARMA(Named, i) {
+                serialise(i);
                 }
             }
         }
