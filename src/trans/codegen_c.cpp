@@ -3970,16 +3970,23 @@ namespace {
                     {
                     case MetadataType::Slice:
                         m_of << "make_sliceptr";
+                        m_of << "("; emit_param(ve.ptr_val); m_of << ", "; emit_param(ve.meta_val); m_of << ")";
                         break;
                     case MetadataType::TraitObject:
                         m_of << "make_traitobjptr";
+                        m_of << "("; emit_param(ve.ptr_val); m_of << ", "; emit_param(ve.meta_val); m_of << ")";
                         break;
                     case MetadataType::Zero:
                     case MetadataType::Unknown:
                     case MetadataType::None:
-                        MIR_BUG(mir_res, "MakeDst on type without metadata");
+                        if( TARGETVER_MOST_1_74 ) {
+                            MIR_BUG(mir_res, "MakeDst on type without metadata");
+                        }
+                        else {
+                            emit_param(ve.ptr_val);
+                        }
+                        break;
                     }
-                    m_of << "("; emit_param(ve.ptr_val); m_of << ", "; emit_param(ve.meta_val); m_of << ")";
                     }
                 TU_ARMA(Tuple, ve) {
                     emit_composite_assign(mir_res, [&](){  emit_lvalue(e.dst); }, ve.vals, indent_level);
