@@ -2229,6 +2229,29 @@ namespace {
                         m_builder.set_result(node.span(), std::move(res));
                         return ;
                     }
+
+                    // Floating point operations that can be algebraically optimised
+                    // Lazy: Just conver to base operations
+                    if( name == "fadd_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::ADD, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "fsub_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::SUB, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "fmul_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::MUL, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "fdiv_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::DIV, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "frem_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::MOD, std::move(values[1]) }));
+                        return ;
+                    }
                     m_builder.end_block(::MIR::Terminator::make_Call({
                         next_block, panic_block,
                         res.clone(), ::MIR::CallTarget::make_Intrinsic({ name, gpath.m_params.clone() }),
