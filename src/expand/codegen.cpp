@@ -570,7 +570,10 @@ class CHandler_RustcIntrinsic:
             if( e->abi() != ABI_RUST ) {
                 ERROR(sp, E0000, "#[rustc_intrinsic] on function with ABI already set (`" << e->abi() << "`)");
             }
-            e->set_abi( "rust-intrinsic" );
+            // Only add if there's no body
+            if( !e->code() ) {
+                e->set_abi( "rust-intrinsic" );
+            }
         }
         else {
             ERROR(sp, E0000, "#[rustc_intrinsic] on non-function");
