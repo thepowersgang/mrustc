@@ -6998,68 +6998,92 @@ namespace {
                 m_of << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             // --- Floating Point
-            // > Round to nearest integer, half-way rounds away from zero
-            else if( name == "roundf32" || name == "roundf64"
-                || name == "rintf32" || name == "rintf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "fabsf32" || name == "fabsf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = fabs" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "copysignf32" || name == "copysignf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = copysign" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
-            }
-            // > Returns the integer part of an `f32`.
-            else if( name == "truncf32" || name == "truncf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = trunc" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "powif32" || name == "powif64" ) {
-                emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
-            }
-            else if( name == "powf32" || name == "powf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
-            }
-            else if( name == "expf32" || name == "expf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = exp" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "exp2f32" || name == "exp2f64" ) {
-                emit_lvalue(e.ret_val); m_of << " = exp2" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "logf32" || name == "logf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = log" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "log10f32" || name == "log10f64" ) {
-                emit_lvalue(e.ret_val); m_of << " = log10" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "log2f32" || name == "log2f64" ) {
-                emit_lvalue(e.ret_val); m_of << " = log2" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "sqrtf32" || name == "sqrtf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = sqrt" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "ceilf32" || name == "ceilf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = ceil" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "floorf32" || name == "floorf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = floor" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "roundf32" || name == "roundf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "cosf32" || name == "cosf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = cos" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "sinf32" || name == "sinf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = sin" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "fmaf32" || name == "fmaf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = fma" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
-            }
-            else if( name == "maxnumf32" || name == "maxnumf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " > "; emit_param(e.args.at(1)); m_of << ") ? "; emit_param(e.args.at(0)); m_of << " : "; emit_param(e.args.at(1));
-            }
-            else if( name == "minnumf32" || name == "minnumf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " < "; emit_param(e.args.at(1)); m_of << ") ? "; emit_param(e.args.at(0)); m_of << " : "; emit_param(e.args.at(1));
+            else if(
+                (name.size() > 3 && name.compare(name.size() - 3, 3, "f16") == 0)
+                || (name.size() > 3 && name.compare(name.size() - 3, 3, "f32") == 0)
+                || (name.size() > 3 && name.compare(name.size() - 3, 3, "f64") == 0)
+                || (name.size() > 4 && name.compare(name.size() - 4, 4, "f128") == 0)
+            ) {
+                if( name.compare(name.size() - 3, 3, "f16") == 0 ) {
+                    m_of << "abort();";
+                    return ;
+                }
+                if( name.compare(name.size() - 4, 4, "f128") == 0 ) {
+                    m_of << "abort();";
+                    return ;
+                }
+                auto emit1 = [&](const char* op) {
+                    if( name.compare(name.size() - 3, 3, "f16") == 0 ) {
+                        m_of << "abort();";
+                        return ;
+                    }
+                    emit_lvalue(e.ret_val); m_of << " = " << op << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
+                };
+                // > Round to nearest integer, half-way rounds away from zero
+                if( name == "rintf32" || name == "rintf64" ) {
+                    emit1("round");
+                }
+                else if( name == "fabsf32" || name == "fabsf64" ) {
+                    emit1("fabs");
+                }
+                else if( name == "copysignf32" || name == "copysignf64" ) {
+                    emit_lvalue(e.ret_val); m_of << " = copysign" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                }
+                // > Returns the integer part of an `f32`.
+                else if( name == "truncf32" || name == "truncf64" ) {
+                    emit1("trunc");
+                }
+                else if( name == "powif32" || name == "powif64" ) {
+                    emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                }
+                else if( name == "powf32" || name == "powf64" ) {
+                    emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                }
+                else if( name == "expf32" || name == "expf64" ) {
+                    emit1("exp");
+                }
+                else if( name == "exp2f32" || name == "exp2f64" ) {
+                    emit1("exp2");
+                }
+                else if( name == "logf32" || name == "logf64" ) {
+                    emit1("log");
+                }
+                else if( name == "log10f32" || name == "log10f64" ) {
+                    emit1("log10");
+                }
+                else if( name == "log2f32" || name == "log2f64" ) {
+                    emit1("log2");
+                }
+                else if( name == "sqrtf32" || name == "sqrtf64" ) {
+                    emit1("sqrt");
+                }
+                else if( name == "ceilf16" || name == "ceilf32" || name == "ceilf64" ) {
+                    emit1("ceil");
+                }
+                else if( name == "floorf32" || name == "floorf64" ) {
+                    emit1("floor");
+                }
+                else if( name == "roundf32" || name == "roundf64" ) {
+                    emit1("round");
+                }
+                else if( name == "cosf32" || name == "cosf64" ) {
+                    emit1("cos");
+                }
+                else if( name == "sinf32" || name == "sinf64" ) {
+                    emit1("sin");
+                }
+                else if( name == "fmaf32" || name == "fmaf64" ) {
+                    emit_lvalue(e.ret_val); m_of << " = fma" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
+                }
+                else if( name == "maxnumf32" || name == "maxnumf64" ) {
+                    emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " > "; emit_param(e.args.at(1)); m_of << ") ? "; emit_param(e.args.at(0)); m_of << " : "; emit_param(e.args.at(1));
+                }
+                else if( name == "minnumf32" || name == "minnumf64" ) {
+                    emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " < "; emit_param(e.args.at(1)); m_of << ") ? "; emit_param(e.args.at(0)); m_of << " : "; emit_param(e.args.at(1));
+                }
+                else {
+                    MIR_BUG(mir_res, "Unknown float intrinsic '" << name << "'");
+                }
             }
             // --- Volatile Load/Store
             else if( name == "volatile_load" ) {
