@@ -328,7 +328,7 @@ namespace {
                         ::HIR::BorrowType   bt = H::get_borrow_type(sp, *b.binding);
                         ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
                             ::HIR::TypeRef::new_borrow( bt, std::move(inner_type) ),
-                            ::MIR::RValue::make_Borrow({ bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
+                            ::MIR::RValue::make_Borrow({ bt, false, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
                         );
 
                         // 3. Create a slice pointer
@@ -352,8 +352,8 @@ namespace {
                     // - Should add a MIR op for `BorrowRaw`
                     ::HIR::BorrowType   bt = H::get_borrow_type(sp, *b.binding);
                     ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
-                        ::HIR::TypeRef::new_borrow( bt, std::move(inner_type) ),
-                        ::MIR::RValue::make_Borrow({ bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
+                        ::HIR::TypeRef::new_pointer( bt, std::move(inner_type) ),
+                        ::MIR::RValue::make_Borrow({ bt, true, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
                     );
 
                     // 3. Create a slice pointer
@@ -392,7 +392,7 @@ namespace {
                         m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
 
-                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(lval) });
+                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, mv$(lval) });
                     break;
                 case ::HIR::PatternBinding::Type::MutRef:
                     if(m_borrow_raise_target)
@@ -400,7 +400,7 @@ namespace {
                         DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
                         m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
-                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, mv$(lval) });
+                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, mv$(lval) });
                     break;
                 }
                 m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv) );
@@ -676,7 +676,7 @@ namespace {
             values.push_back( m_builder.get_result_in_param(sp, value_ty) );
             auto res = ::MIR::RValue::make_EnumVariant({
                 std::move(enm_path),
-                variant_index,
+                static_cast<unsigned>(variant_index),
                 std::move(values)
                 });
             m_builder.push_stmt_assign( sp, ::MIR::LValue::new_Return(), std::move(res) );
@@ -1419,7 +1419,7 @@ namespace {
                 m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
             }
 
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, mv$(val) }) );
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, false, mv$(val) }) );
         }
         void visit(::HIR::ExprNode_RawBorrow& node) override
         {
@@ -1437,14 +1437,7 @@ namespace {
                 m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
             }
 
-            // TODO: MIR op too?
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, mv$(val) }) );
-
-            // HACK: Insert a cast
-            {
-                auto val = m_builder.get_result_in_lvalue(node.span(), ::HIR::TypeRef::new_borrow(node.m_type, ty_val.clone()));
-                m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(val), node.m_res_type.clone() }));
-            }
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, true, mv$(val) }) );
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
@@ -1805,7 +1798,7 @@ namespace {
                     ::std::vector<::MIR::Param>    args;
                     args.push_back( m_builder.lvalue_or_temp(sp,
                                 ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone()),
-                                ::MIR::RValue::make_Borrow({ bt, mv$(val) })
+                                ::MIR::RValue::make_Borrow({ bt, false, mv$(val) })
                                 ) );
                     m_builder.moved_lvalue(node.span(), args[0].as_LValue());
                     val = m_builder.new_temporary(::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()));
@@ -1912,7 +1905,7 @@ namespace {
             auto place_raw__ok = m_builder.new_bb_unlinked();
             {
                 auto place_refmut__type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, place_type.clone());
-                auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, place.clone() }));
+                auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, place.clone() }));
                 // <typeof(place) as ops::Place<T>>::pointer (T = inner)
                 auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer", ::HIR::PathParams(HIR::LifetimeRef()));
                 m_builder.moved_lvalue(node.span(), place_refmut);
@@ -2199,6 +2192,41 @@ namespace {
                     }
                     if( name == "ub_checks" ) {
                         m_builder.set_result(node.span(), ::MIR::Constant::make_Bool({true}));
+                        return ;
+                    }
+                    // `slice_get_unchecked`: Acts like `&mut foo[idx]`, but handles all inner types
+                    if( name == "slice_get_unchecked" ) {
+                        ::MIR::LValue   slot;
+                        TU_MATCH_HDRA((values[0]), {)
+                        TU_ARMA(LValue, lv) {
+                            slot = ::MIR::LValue::new_Deref(std::move(lv));
+                            }
+                        TU_ARMA(Constant, c) TODO(node.span(), "");
+                        TU_ARMA(Borrow, v) {
+                            slot = std::move(v.val);
+                            }
+                        }
+                        ::MIR::LValue   index_lv = m_builder.new_temporary(HIR::CoreType::Usize);
+                        TU_MATCH_HDRA((values[1]), {)
+                        TU_ARMA(LValue, lv) {
+                            m_builder.push_stmt_assign(node.span(), index_lv.clone(), std::move(lv));
+                            }
+                        TU_ARMA(Constant, c) {
+                            m_builder.push_stmt_assign(node.span(), index_lv.clone(), std::move(c));
+                            }
+                        TU_ARMA(Borrow, v)
+                            TODO(node.span(), "Borrow index?");
+                        }
+                        const auto& ptr_ty = gpath.m_params.m_types.at(0);
+                        ASSERT_BUG(node.span(), ptr_ty.data().is_Borrow() || ptr_ty.data().is_Pointer(), "" << ptr_ty);
+                        bool is_raw = ptr_ty.data().is_Pointer();
+                        auto borrow_ty = is_raw ? ptr_ty.data().as_Pointer().type : ptr_ty.data().as_Borrow().type;
+                        m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue::make_Borrow({
+                            borrow_ty,
+                            is_raw,
+                            ::MIR::LValue::new_Index(std::move(slot), std::move(index_lv.as_Local()))
+                            }));
+                        m_builder.set_result(node.span(), std::move(res));
                         return ;
                     }
                     m_builder.end_block(::MIR::Terminator::make_Call({
@@ -2532,10 +2560,10 @@ namespace {
                     m_builder.set_result( node.span(), a->second.clone() );
                     break;
                 case ::HIR::PatternBinding::Type::Ref:
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, a->second.clone() }) );
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, a->second.clone() }) );
                     break;
                 case ::HIR::PatternBinding::Type::MutRef:
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, a->second.clone() }) );
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, a->second.clone() }) );
                     break;
                 }
                 return ;

@@ -989,6 +989,7 @@
                 ),
             (Borrow,
                 m_out.write_tag( static_cast<int>(e.type) );
+                m_out.write_bool(e.is_raw);
                 serialise(e.val);
                 ),
             (Cast,

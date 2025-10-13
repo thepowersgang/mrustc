@@ -71,7 +71,7 @@ namespace {
             ::MIR::BasicBlock   bb;
             bb.statements.push_back(::MIR::Statement::make_Assign({
                     borrow_lv.clone(),
-                    ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
+                    ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, mv$(fld_lvalue) })
                     }));
             ::HIR::PathParams   pp;
             pp.m_lifetimes.push_back(HIR::LifetimeRef(1*256+0)); // 'M:0
@@ -268,7 +268,7 @@ namespace {
         void push_CallDrop(const HIR::TypeRef& ty) {
             // Get a `&mut *self`
             auto borrow_lv = this->add_local( HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, ty.clone()) );
-            this->push_stmt_assign( borrow_lv.clone(), MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, ::MIR::LValue::new_Deref(this->self.clone()) }) );
+            this->push_stmt_assign( borrow_lv.clone(), MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, false, ::MIR::LValue::new_Deref(this->self.clone()) }) );
 
             this->terminate_Call(
                 MIR::LValue::new_Return(), ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, rcstring_drop), make_vec1<MIR::Param>(mv$(borrow_lv)),

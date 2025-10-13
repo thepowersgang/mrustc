@@ -4125,8 +4125,8 @@ namespace {
                 ))
             {
                 // Destination
-                MIR_ASSERT(mir_res, ve.type.data().is_Primitive(), "i128/u128 cast to non-primitive");
-                MIR_ASSERT(mir_res, ty.data().is_Primitive(), "i128/u128 cast from non-primitive");
+                MIR_ASSERT(mir_res, ve.type.data().is_Primitive(), "i128/u128 cast to non-primitive - " << ve.type);
+                MIR_ASSERT(mir_res, ty.data().is_Primitive(), "i128/u128 cast from non-primitive - " << ty);
                 switch (ve.type.data().as_Primitive())
                 {
                 case ::HIR::CoreType::I128:

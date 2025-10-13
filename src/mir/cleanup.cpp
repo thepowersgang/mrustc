@@ -454,7 +454,7 @@ namespace {
                         ::HIR::TypeRef::new_pointer(te.type, te.inner.clone()),
                         ::MIR::RValue::make_Cast({ mv$(src_ty_ptr), ::HIR::TypeRef::new_pointer(te.type, te.inner.clone()) })
                     );
-                    return ::MIR::RValue::make_Borrow({ te.type, MIR::LValue::new_Deref(mv$(inner_lval)) });
+                    return ::MIR::RValue::make_Borrow({ te.type, false, MIR::LValue::new_Deref(mv$(inner_lval)) });
                 }
                 return mv$(ptr_val);
             case MetadataType::Slice: {
@@ -513,7 +513,7 @@ namespace {
                 auto raw_ptr_ty = ::HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, te.inner.clone());
                 auto lval2 = mutator.in_temporary( raw_ptr_ty.clone(), ::MIR::RValue::make_Cast({ mv$(lval), raw_ptr_ty.clone() }) );
                 // Reborrow as `&T`
-                return ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, ::MIR::LValue::new_Deref(mv$(lval2)) });
+                return ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, ::MIR::LValue::new_Deref(mv$(lval2)) });
             }
         }
         }
@@ -555,7 +555,7 @@ namespace {
     {
         receiver_lvp = mutator.in_temporary(
             HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, pe.type.clone()),
-            MIR::RValue::make_Borrow({ HIR::BorrowType::Owned, mv$(receiver_lvp) })
+            MIR::RValue::make_Borrow({ HIR::BorrowType::Owned, false, mv$(receiver_lvp) })
             );
     }
 

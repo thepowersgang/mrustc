@@ -593,6 +593,7 @@ namespace {
                 })
             _(Borrow, {
                 static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
+                m_in.read_bool(),
                 deserialise_mir_lvalue()
                 })
             _(Cast, {

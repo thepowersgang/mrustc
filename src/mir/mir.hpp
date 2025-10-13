@@ -517,6 +517,7 @@ TAGGED_UNION_EX(RValue, (), Tuple, (
     (Use, LValue),
     (Borrow, struct {
         ::HIR::BorrowType   type;
+        bool is_raw;
         LValue  val;
         }),
     (Constant, Constant),

@@ -898,7 +898,12 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         }
                     TU_ARMA(Borrow, e) {
                         ::HIR::TypeRef  tmp;
-                        check_types( dst_ty, ::HIR::TypeRef::new_borrow(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
+                        if( e.is_raw ) {
+                            check_types( dst_ty, ::HIR::TypeRef::new_pointer(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
+                        }
+                        else {
+                            check_types( dst_ty, ::HIR::TypeRef::new_borrow(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
+                        }
                         }
                     TU_ARMA(Cast, e) {
                         // Check return type

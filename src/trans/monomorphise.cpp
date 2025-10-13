@@ -218,6 +218,7 @@ namespace {
                 (Borrow,
                     rval = ::MIR::RValue::make_Borrow({
                         se.type,
+                        se.is_raw,
                         monomorph_LValue(resolve, params, se.val)
                         });
                     ),
