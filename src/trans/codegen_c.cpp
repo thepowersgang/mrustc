@@ -4126,7 +4126,7 @@ namespace {
             {
                 // Destination
                 MIR_ASSERT(mir_res, ve.type.data().is_Primitive(), "i128/u128 cast to non-primitive - " << ve.type);
-                MIR_ASSERT(mir_res, ty.data().is_Primitive(), "i128/u128 cast from non-primitive - " << ty);
+                MIR_ASSERT(mir_res, ty.data().is_Primitive() || (ty.data().is_Path() && ty.data().as_Path().binding.is_Enum()), "i128/u128 cast from non-primitive - " << ty);
                 switch (ve.type.data().as_Primitive())
                 {
                 case ::HIR::CoreType::I128:
@@ -4141,6 +4141,16 @@ namespace {
                         m_of << ".hi = ";
                         emit_lvalue(ve.val);
                         m_of << ".hi";
+                    }
+                    else if( ty.data().is_Path() && ty.data().as_Path().binding.is_Enum() ) {
+                        emit_lvalue(dst);
+                        m_of << ".lo = ";
+                        emit_lvalue(ve.val);
+                        m_of << ".TAG; ";
+                        emit_lvalue(dst);
+                        m_of << ".hi = ";
+                        emit_lvalue(ve.val);
+                        m_of << ".TAG < 0 ? -1 : 0";
                     }
                     else {
                         // Cast from small to i128/u128
