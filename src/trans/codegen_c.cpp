@@ -828,8 +828,12 @@ namespace {
 
             // Float16 and Float128
             m_of
-                << "typedef struct f16 { uint16_t v; } f16;"
-                << "typedef struct f128 { uint128_t v; } f128;"
+                << "typedef struct f16 { uint16_t v; } f16;\n"
+                << "f16 f16_disabled(){ abort(); }\n"
+                << "int f16_cmp(f16 a, f16 b){ abort(); }\n"
+                << "typedef struct f128 { uint128_t v; } f128;\n"
+                << "f128 f128_disabled(){ abort(); }\n"
+                << "int f128_cmp(f128 a, f128 b){ abort(); }\n"
                 ;
         }
 
@@ -2578,7 +2582,13 @@ namespace {
             m_mir_res = nullptr;
         }
         void emit_float(double v, HIR::CoreType ty) {
-            if( ::std::isnan(v) ) {
+            if( ty == HIR::CoreType::F16 ) {
+                m_of << "f16_disabled()";
+            }
+            else if( ty == HIR::CoreType::F128 ) {
+                m_of << "f128_disabled()";
+            }
+            else if( ::std::isnan(v) ) {
                 m_of << "NAN";
             }
             else if( ::std::isinf(v) ) {
@@ -3819,12 +3829,32 @@ namespace {
                         }
                         break;
                     }
-                    else if( ve.op == ::MIR::eBinOp::MOD && (ty == ::HIR::CoreType::F16 || ty == ::HIR::CoreType::F32 || ty == ::HIR::CoreType::F64 || ty == ::HIR::CoreType::F128) ) {
-                        if( ty == ::HIR::CoreType::F16 || ty == ::HIR::CoreType::F32 )
+                    else if( ve.op == ::MIR::eBinOp::MOD && (ty == ::HIR::CoreType::F32 || ty == ::HIR::CoreType::F64) ) {
+                        if( ty == ::HIR::CoreType::F32 )
                             m_of << "remainderf";
                         else
                             m_of << "remainder";
                         m_of << "("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
+                        break;
+                    }
+                    else if( ty == ::HIR::CoreType::F16 || ty == ::HIR::CoreType::F128 )
+                    {
+                        auto ty_s = ty == ::HIR::CoreType::F16 ? "f16" : "f128";
+                        switch(ve.op)
+                        {
+                        case ::MIR::eBinOp::EQ:    m_of << "0 == "; if(0)
+                        case ::MIR::eBinOp::NE:    m_of << "0 != "; if(0)
+                        case ::MIR::eBinOp::GT:    m_of << "0 > ";  if(0)
+                        case ::MIR::eBinOp::GE:    m_of << "0 >= "; if(0)
+                        case ::MIR::eBinOp::LT:    m_of << "0 < ";  if(0)
+                        case ::MIR::eBinOp::LE:    m_of << "0 <= ";
+                            // NOTE: Reversed order due to reversed logic above
+                            m_of << ty_s << "_cmp("; emit_param(ve.val_r); m_of << ", "; emit_param(ve.val_l); m_of << ")";
+                            break;
+                        default:
+                            m_of << ty_s << "_disabled()";
+                            break;
+                        }
                         break;
                     }
                     else if( type_is_emulated_i128(ty) )
@@ -3930,6 +3960,30 @@ namespace {
                             m_of << ".lo = ~"; emit_lvalue(ve.val); m_of << ".lo; ";
                             emit_lvalue(e.dst);
                             m_of << ".hi = ~"; emit_lvalue(ve.val); m_of << ".hi";
+                            break;
+                        }
+                        break ;
+                    }
+                    else if( ty == ::HIR::CoreType::F16 ) {
+                        switch (ve.op)
+                        {
+                        case ::MIR::eUniOp::NEG:
+                            emit_lvalue(e.dst); m_of << " = f16_disabled(/*"; emit_lvalue(ve.val); m_of << "*/)";
+                            break;
+                        case ::MIR::eUniOp::INV:
+                            MIR_TODO(*m_mir_res, "f16 INV");
+                            break;
+                        }
+                        break ;
+                    }
+                    else if( ty == ::HIR::CoreType::F128 ) {
+                        switch (ve.op)
+                        {
+                        case ::MIR::eUniOp::NEG:
+                            emit_lvalue(e.dst); m_of << " = f128_disabled(/*"; emit_lvalue(ve.val); m_of << "*/)";
+                            break;
+                        case ::MIR::eUniOp::INV:
+                            MIR_TODO(*m_mir_res, "f128 INV");
                             break;
                         }
                         break ;
@@ -4225,6 +4279,13 @@ namespace {
                     MIR_BUG(mir_res, "Bad i128/u128 cast - " << ty << " to " << ve.type);
                 }
                 return;
+            }
+            if(
+                ve.type == ::HIR::CoreType::F16 || ve.type == ::HIR::CoreType::F128
+                || ty == ::HIR::CoreType::F16 || ty == ::HIR::CoreType::F128 )
+            {
+                m_of << "abort()";
+                return ;
             }
 
             // Standard cast
@@ -6123,11 +6184,15 @@ namespace {
                 }
             }
             else if( name == "float_to_int_unchecked" ) {
+                const auto& src_ty = params.m_types.at(0);
                 const auto& dst_ty = params.m_types.at(1);
                 // Unchecked (can return `undef`) cast from a float to an integer
                 if( this->type_is_emulated_i128(dst_ty) ) {
                     m_of << "abort()";
                     //emit_lvalue(e.ret_val); m_of << " = ("; emit_ctype(dst_ty); m_of << ")"; emit_param(e.args.at(0));
+                }
+                else if( src_ty == HIR::CoreType::F16 || src_ty == HIR::CoreType::F128 ) {
+                    m_of << "abort()";
                 }
                 else {
                     emit_lvalue(e.ret_val); m_of << " = ("; emit_ctype(dst_ty); m_of << ")"; emit_param(e.args.at(0));
@@ -6187,11 +6252,19 @@ namespace {
                 m_of << "))";
             }
             else if( name == "three_way_compare" ) {
-                emit_lvalue(e.ret_val); m_of << " = (";
-                    emit_param(e.args.at(0)); m_of << " == "; emit_param(e.args.at(1));
-                    m_of << " ? 0 : (";
-                    emit_param(e.args.at(0)); m_of << " < "; emit_param(e.args.at(1));
-                    m_of << " ? -1 : 1));";
+                const auto& t = params.m_types.at(0);
+                if( type_is_emulated_i128(t) ) {
+                    emit_lvalue(e.ret_val); m_of << ".TAG = ";
+                    m_of << (t == ::HIR::CoreType::U128 ? "cmp128" : "cmp128s");
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ");\n";
+                }
+                else {
+                    emit_lvalue(e.ret_val); m_of << ".TAG = (";
+                        emit_param(e.args.at(0)); m_of << " == "; emit_param(e.args.at(1));
+                        m_of << " ? 0 : (";
+                        emit_param(e.args.at(0)); m_of << " < "; emit_param(e.args.at(1));
+                        m_of << " ? -1 : 1));\n";
+                }
                 return;
             }
             else if( name == "forget" ) {
@@ -6834,7 +6907,7 @@ namespace {
                 case ::HIR::CoreType::U128:
                     m_of << "{";
                     m_of << " uint128_t v = "; emit_param(e.args.at(0)); m_of << ";";
-                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << (m_options.emulated_i128 ? ".lo" : "") << ";";
+                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << (m_options.emulated_i128 && TARGETVER_MOST_1_74 ? ".lo" : "") << ";";
                     if( m_options.emulated_i128 )
                     {
                         m_of << " if(shift < 64) {";
@@ -6900,7 +6973,7 @@ namespace {
                 case ::HIR::CoreType::U128:
                     m_of << "{";
                     m_of << " uint128_t v = "; emit_param(e.args.at(0)); m_of << ";";
-                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << (m_options.emulated_i128 ? ".lo" : "") << ";";
+                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << (m_options.emulated_i128 && TARGETVER_MOST_1_74 ? ".lo" : "") << ";";
                     if( m_options.emulated_i128 )
                     {
                         m_of << " if(shift < 64) {";
@@ -6958,7 +7031,13 @@ namespace {
                         m_of << ")";
                         m_of << ")";
                     }
-                    m_of << ");";
+                    else {
+                    }
+                    m_of << ")";
+                    if( m_options.emulated_i128 && TARGETVER_LEAST_1_90 ) {
+                        m_of << ".lo";
+                    }
+                    m_of << ";";
                     return ;
                 }
                 else if( ty == ::HIR::CoreType::U64 || (ty == ::HIR::CoreType::Usize && Target_GetPointerBits() > 32) )
@@ -6989,13 +7068,15 @@ namespace {
 
                 if( type_is_emulated_i128(params.m_types.at(0)) )
                 {
-                    m_of << "popcount128";
+                    m_of << "popcount128("; emit_param(e.args.at(0)); m_of << ")";
+                    if( TARGETVER_LEAST_1_90 ) {
+                        m_of << ".lo";
+                    }
                 }
                 else
                 {
-                    m_of << "__builtin_popcountll";
+                    m_of << "__builtin_popcountll("; emit_param(e.args.at(0)); m_of << ")";
                 }
-                m_of << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             // --- Floating Point
             else if(
@@ -7971,16 +8052,21 @@ namespace {
                 MIR_TODO(*m_mir_res, "Constant::Function");
                 }
             TU_ARMA(ItemAddr, c) {
-                bool  is_fcn = false;
-                MonomorphState  ms_tmp;
-                auto v = m_resolve.get_value(sp, *c, ms_tmp, /*signature_only=*/true);
-                is_fcn = v.is_Function() || v.is_EnumConstructor() || v.is_StructConstructor();
-                if(!is_fcn) {
-                    m_of << "&";
+                if( c->m_data.is_UfcsInherent() && c->m_data.as_UfcsInherent().item == "#type_id") {
+                    m_of << "(void*)&__typeid_" << Trans_Mangle(c->m_data.as_UfcsInherent().type);
                 }
-                m_of << Trans_Mangle(*c);
-                if(!is_fcn) {
-                    m_of << ".val";
+                else {
+                    bool  is_fcn = false;
+                    MonomorphState  ms_tmp;
+                    auto v = m_resolve.get_value(sp, *c, ms_tmp, /*signature_only=*/true);
+                    is_fcn = v.is_Function() || v.is_EnumConstructor() || v.is_StructConstructor();
+                    if(!is_fcn) {
+                        m_of << "&";
+                    }
+                    m_of << Trans_Mangle(*c);
+                    if(!is_fcn) {
+                        m_of << ".val";
+                    }
                 }
                 }
             }
