@@ -158,6 +158,8 @@ namespace AsmCommon {
         unsigned noreturn : 1;
         unsigned nostack : 1;
         unsigned att_syntax : 1;
+        // Indicates `naked_asm!`
+        unsigned naked : 1;
         Options()
             : pure(0)
             , nomem(0)
@@ -177,6 +179,7 @@ namespace AsmCommon {
             _(noreturn);
             _(nostack);
             _(att_syntax);
+            _(naked);
             #undef _
             return false;
         }
@@ -191,6 +194,7 @@ namespace AsmCommon {
             _(noreturn);
             _(nostack);
             _(att_syntax);
+            _(naked);
             #undef _
             os << ")";
         }
@@ -203,6 +207,7 @@ namespace AsmCommon {
             _(noreturn);
             _(nostack);
             _(att_syntax);
+            _(naked);
             #undef _
             return true;
         }

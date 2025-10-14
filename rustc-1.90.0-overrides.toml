@@ -11,8 +11,8 @@ proc_macro = { path = "../../library/proc_macro" }
 proc_macro = { path = "../../library/proc_macro" }
 
 
-#[add.'library/std'.dependencies.compiler_builtins]
-#features = ["no-asm"]
+[add.'library/rustc-std-workspace-core'.dependencies.compiler_builtins]
+features = ["no-asm"]
 #[add.'library/panic_unwind'.dependencies.compiler_builtins]
 #features = ["no-asm"]
 

@@ -243,8 +243,9 @@ class CAsmExpander:
 public:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        if(TARGETVER_MOST_1_39)
+        if(TARGETVER_MOST_1_39) {
             return CLlvmAsmExpander().expand(sp, crate, tt, mod);
+        }
 
         // Stabilisation-path `asm!`
 
@@ -582,7 +583,24 @@ public:
         return box$( TTStreamO(sp, ParseState(), TokenTree(Token( Token::TagTakeIP(), InterpolatedFragment(std::move(named_item)) )) ) );
     }
 };
+class CNakedAsmExpander:
+    public ExpandProcMacro
+{
+public:
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        auto o = CAsmExpander().expand(sp, crate, tt, mod);
+
+        auto node = o->getToken().take_frag_node();
+        auto* node_ap = dynamic_cast<AST::ExprNode_Asm2*>(node.get());
+        ASSERT_BUG(sp, node_ap, "");
+        node_ap->m_options.naked = true;
+
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, node.release()) ))));
+    }
+};
 
 STATIC_MACRO("llvm_asm", CLlvmAsmExpander);
 STATIC_MACRO("asm", CAsmExpander);
 STATIC_MACRO("global_asm", CGlobalAsmExpander);
+STATIC_MACRO("naked_asm", CNakedAsmExpander);
