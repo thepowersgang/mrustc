@@ -797,7 +797,7 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             return true;
         case ::HIR::CoreType::F16:
             out_size = 2;
-            out_align = g_target.m_arch.m_alignments.f32; //f16;
+            out_align = 2;//g_target.m_arch.m_alignments.f32; //f16;
             return true;
         case ::HIR::CoreType::F32:
             out_size = 4;
