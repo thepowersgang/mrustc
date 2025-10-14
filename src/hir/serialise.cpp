@@ -647,14 +647,15 @@
                 m_out.write_u8(e >> 24);
                 m_out.write_count(e & 0x00FFFFFF);
                 }
-            TU_ARMA(Concat, e) {
-                serialise_vec(e);
-                }
             TU_ARMA(Loop, e) {
                 m_out.write_tag(2);
                 serialise_vec(e.entries);
                 serialise(e.joiner);
                 serialise(e.controlling_input_loops);
+                }
+            TU_ARMA(Concat, e) {
+                m_out.write_tag(3);
+                serialise_vec(e);
                 }
             }
         }

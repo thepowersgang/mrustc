@@ -483,8 +483,26 @@ namespace {
                     mv$(entries), mv$(joiner), mv$(controllers)
                     });
                 }
+            case 3: {
+                auto entries = deserialise_vec_c< ::MacroExpansionConcatEnt>( [&](){ return deserialise_macroexpansionconcatent(); } );
+                return ::MacroExpansionEnt( std::move(entries) );
+                }
             default:
                 BUG(Span(), "Bad tag for MacroExpansionEnt - " << tag);
+            }
+        }
+        ::MacroExpansionConcatEnt deserialise_macroexpansionconcatent() {
+            switch(auto tag = m_in.read_tag())
+            {
+            case ::MacroExpansionConcatEnt::TAG_Ident: {
+                auto h = deserialise_hygine();
+                auto n = m_in.read_istring();
+                return ::MacroExpansionConcatEnt::make_Ident({ h, n });
+                }
+            case ::MacroExpansionConcatEnt::TAG_Named:
+                return ::MacroExpansionConcatEnt::make_Named( m_in.read_count() );
+            default:
+                BUG(Span(), "Bad tag for MacroExpansionConcatEnt - " << tag);
             }
         }
 
