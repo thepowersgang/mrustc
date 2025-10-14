@@ -1581,6 +1581,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
         // - <T>::#type_id
         else if( path_mono.m_data.is_UfcsInherent() && path_mono.m_data.as_UfcsInherent().item == "#type_id" )
         {
+            state.rv.m_typeids.insert(path_mono.m_data.as_UfcsInherent().type);
         }
         // - <T as U>::#vtable
         else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().item == "vtable#" )
