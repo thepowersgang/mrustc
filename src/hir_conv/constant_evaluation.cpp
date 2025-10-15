@@ -3753,6 +3753,13 @@ void ConvertHIR_ConstantEvaluate_Enum(const ::HIR::Crate& crate, const ::HIR::It
 
     Expander::visit_enum_inner(crate, ip, mod, mod_path, item_name.c_str(), item);
 }
+void ConvertHIR_ConstantEvaluate_Constant(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Constant& e)
+{
+    Expander    exp { crate };
+    exp.m_pass = Expander::Pass::Values;
+    exp.m_impl_params = impl_params;
+    exp.visit_constant(ip, e);
+}
 void ConvertHIR_ConstantEvaluate_ConstGeneric( const Span& sp, const ::HIR::Crate& crate, const HIR::TypeRef& ty, ::HIR::ConstGeneric& cg )
 {
     if( auto* cge_p = cg.opt_Unevaluated() )

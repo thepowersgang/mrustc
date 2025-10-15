@@ -11,6 +11,7 @@
 #include <numeric>
 #include <limits>   // std::numeric_limits
 #include <trans/target.hpp>
+#include <hir_conv/main_bindings.hpp>   // For consteval
 
 void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val );
 
@@ -1343,11 +1344,19 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
     // - Convert them into either a pattern, or just a variant of this function that operates on ::HIR::Literal
     //  > It does need a way of handling unknown-value constants (e.g. <GenericT as Foo>::CONST)
     //  > Those should lead to a simple match? Or just a custom rule type that indicates that they're checked early
-    TU_IFLET( ::HIR::Pattern::Data, pat.m_data, Value, pe,
-        TU_IFLET( ::HIR::Pattern::Value, pe.val, Named, pve,
-            if( pve.binding )
+    if(const auto* pe = pat.m_data.opt_Value() ) {
+        if(const auto* pve = pe->val.opt_Named() ){ 
+            if( pve->binding )
             {
-                this->append_from_lit(sp, pve.binding->m_value_res, ty);
+                // Request consteval
+                if( pve->binding->m_value_state == HIR::Constant::ValueState::Unknown ) {
+                    MonomorphState  unused_ms;
+                    const HIR::GenericParams* impl_def = nullptr;
+                    auto v = m_resolve.get_value(sp, pve->path, unused_ms, false, &impl_def);
+                    ConvertHIR_ConstantEvaluate_Constant(m_resolve.m_crate, impl_def, pve->path, const_cast<HIR::Constant&>(*pve->binding));
+                }
+                ASSERT_BUG(sp, pve->binding->m_value_state == HIR::Constant::ValueState::Known, "Match with an unresolved constant - " << pve->path);
+                this->append_from_lit(sp, pve->binding->m_value_res, ty);
                 for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
                 {
                     m_field_path.pop_back();
@@ -1356,10 +1365,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
             else
             {
-                TODO(sp, "Match with an unbound constant - " << pve.path);
+                TODO(sp, "Match with an unbound constant - " << pve->path);
             }
-        )
-    )
+        }
+    }
 
     if(pat.m_data.is_Or())
     {
