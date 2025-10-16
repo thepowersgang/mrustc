@@ -375,15 +375,21 @@ namespace resolve_ufcs {
             //const auto& name = pd.as_UfcsUnknown().item;
             for(const auto& b : params.m_bounds)
             {
-                TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                    DEBUG("- " << e.type << " : " << e.trait.m_path);
-                    if( e.type == tr ) {
+                if(const auto* e = b.opt_TraitBound() ) {
+                    DEBUG("- " << e->type << " : " << e->trait.m_path);
+                    if( e->type == tr ) {
                         DEBUG(" - Match");
-                        if( locate_in_trait_and_set(pc, e.trait.m_path, m_crate.get_trait_by_path(sp, e.trait.m_path.m_path),  pd) ) {
+                        if( locate_in_trait_and_set(pc, e->trait.m_path, m_crate.get_trait_by_path(sp, e->trait.m_path.m_path),  pd) ) {
+                            if( m_in_expr )
+                            {
+                                auto s = pd.as_UfcsKnown().trait.m_params.m_types.size();
+                                pd.as_UfcsKnown().trait.m_params.m_types.resize(0);
+                                pd.as_UfcsKnown().trait.m_params.m_types.resize(s);
+                            }
                             return true;
                         }
                     }
-                );
+                }
                 // -
             }
             return false;
@@ -444,6 +450,7 @@ namespace resolve_ufcs {
         }
         // Locate the item in `pd` and set `pd` to UfcsResolved if found
         // TODO: This code may end up generating paths without the type information they should contain
+        // OR, generate paths with too much type information
         bool locate_in_trait_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
             TRACE_FUNCTION_F(trait_path);
             // TODO: Get the span from caller
@@ -462,8 +469,7 @@ namespace resolve_ufcs {
                 if( def == HIR::TypeRef() ) {
                     ERROR(sp, E0000, "");
                 }
-                if( def == ::HIR::TypeRef::new_self() )
-                {
+                if( def == ::HIR::TypeRef::new_self() ) {
                     // TODO: This has to be the _exact_ same type, including future ivars.
                     pp.m_types.push_back( pd.as_UfcsUnknown().type.clone() );
                     continue ;
