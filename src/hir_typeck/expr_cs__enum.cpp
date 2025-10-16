@@ -178,6 +178,7 @@ namespace typecheck
                         ms_hrl.monomorph_type(sp, assoc.second.type, true),
                         assoc.second.source_trait.m_path, ms_hrl.monomorph_path_params(sp, assoc.second.source_trait.m_params, true),
                         real_type, assoc.first.c_str(),
+                        ms_hrl.monomorph_path_params(sp, assoc.second.aty_params, true),
                         false
                         );
                 }
@@ -1002,7 +1003,7 @@ namespace typecheck
 
                 auto ty = this->context.m_ivars.new_ivar_tr();
                 this->context.equate_types_coerce(node.span(), ty, node.m_value);
-                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(), trait_path, HIR::PathParams(mv$(ty)),  node.m_slot->m_res_type.clone(), "");
+                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(), trait_path, HIR::PathParams(mv$(ty)),  node.m_slot->m_res_type.clone(), "", {});
             }
 
             node.m_slot->visit( *this );
@@ -1051,7 +1052,7 @@ namespace typecheck
                 assert(item_name);
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
 
-                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(),  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "");
+                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(),  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "", {});
                 break; }
 
             case ::HIR::ExprNode_BinOp::Op::BoolAnd:
@@ -1090,7 +1091,7 @@ namespace typecheck
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
 
                 // NOTE: `true` marks the association as coming from a binary operation, which changes integer handling
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "Output", true);
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "Output", {}, true);
                 break; }
             }
             node.m_left ->visit( *this );
@@ -1115,7 +1116,7 @@ namespace typecheck
             }
             assert(item_name);
             const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
-            this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::HIR::PathParams {}, node.m_value->m_res_type.clone(), "Output", true);
+            this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::HIR::PathParams {}, node.m_value->m_res_type.clone(), "Output", {}, true);
             node.m_value->visit( *this );
         }
         void visit(::HIR::ExprNode_Borrow& node) override
@@ -1794,7 +1795,7 @@ namespace typecheck
                     } break;
                 case ::HIR::ExprNode_PathValue::STRUCT_CONSTR: {
                     const auto& s = this->context.m_crate.get_struct_by_path(sp, e.m_path);
-                    const auto& se = s.m_data.as_Tuple();
+                    //const auto& se = s.m_data.as_Tuple();
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, s.m_params, e.m_params);
 
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
@@ -1811,9 +1812,9 @@ namespace typecheck
                     size_t idx = enm.find_variant(var_name);
                     ASSERT_BUG(sp, idx != SIZE_MAX, "Missing variant - " << e.m_path);
                     ASSERT_BUG(sp, enm.m_data.is_Data(), "Enum " << enum_path << " isn't a data-holding enum");
-                    const auto& var_ty = enm.m_data.as_Data()[idx].type;
-                    const auto& str = *var_ty.data().as_Path().binding.as_Struct();
-                    const auto& var_data = str.m_data.as_Tuple();
+                    //const auto& var_ty = enm.m_data.as_Data()[idx].type;
+                    //const auto& str = *var_ty.data().as_Path().binding.as_Struct();
+                    //const auto& var_data = str.m_data.as_Tuple();
 
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
                     //apply_bounds_as_rules(this->context, sp, enm.m_params, monomorph_cb, /*is_impl_level=*/true);
@@ -2215,7 +2216,7 @@ void Typecheck_Code_CS__EnumerateRules(
                         this->hrls = &pp_hrl;
                         if( trait.m_type_bounds.size() == 0 )
                         {
-                            context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer), rv, "", false);
+                            context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer), rv, "", {}, false);
                         }
                         else
                         {
@@ -2223,7 +2224,7 @@ void Typecheck_Code_CS__EnumerateRules(
                             {
                                 auto aty_cloned = this->monomorph_type(sp, aty.second.type);
                                 auto params = this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer);
-                                context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), false);
+                                context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), aty.second.aty_params, false);
                             }
                         }
                         this->hrls = nullptr;

@@ -523,7 +523,7 @@ namespace {
                 }
                 else if( count == 1 ) {
                     assert( possible_index_type != ::HIR::TypeRef() );
-                    this->context.equate_types_assoc(node.span(), node.m_res_type,  lang_Index, mv$(trait_pp), ty, "Output", false);
+                    this->context.equate_types_assoc(node.span(), node.m_res_type,  lang_Index, mv$(trait_pp), ty, "Output", {}, false);
                     break;
                 }
                 else if( count > 1 ) {
@@ -563,7 +563,7 @@ namespace {
             TU_MATCH_HDRA( (ty.data()), {)
             default: {
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), "deref");
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, {}, node.m_value->m_res_type.clone(), "Target");
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, {}, node.m_value->m_res_type.clone(), "Target", {});
                 }
             TU_ARMA(Infer, e) {
                 // Keep trying
@@ -636,10 +636,10 @@ namespace {
                 const auto& lang_Placer = this->context.m_crate.get_lang_item_path(sp, "placer_trait");
                 const auto& lang_InPlace = this->context.m_crate.get_lang_item_path(sp, "in_place_trait");
                 // - Bound P: Placer<D>
-                this->context.equate_types_assoc(sp, {}, lang_Placer, HIR::PathParams(data_ty.clone()), placer_ty, "");
+                this->context.equate_types_assoc(sp, {}, lang_Placer, HIR::PathParams(data_ty.clone()), placer_ty, "", {});
                 // - 
                 auto place_ty = ::HIR::TypeRef::new_path( ::HIR::Path(placer_ty.clone(), ::HIR::GenericPath(lang_Placer, ::HIR::PathParams(data_ty.clone())), "Place"), {} );
-                this->context.equate_types_assoc(sp, node.m_res_type, lang_InPlace, HIR::PathParams(data_ty.clone()), place_ty, "Owner");
+                this->context.equate_types_assoc(sp, node.m_res_type, lang_InPlace, HIR::PathParams(data_ty.clone()), place_ty, "Owner", {});
                 break; }
             case ::HIR::ExprNode_Emplace::Type::Boxer: {
                 const ::HIR::TypeRef* inner_ty;
@@ -699,7 +699,7 @@ namespace {
                 }
 
                 // Insert a trait bound on the result type to impl `Placer/Boxer`
-                this->context.equate_types_assoc(sp, data_ty, this->context.m_crate.get_lang_item_path(sp, "boxed_trait"), {}, *inner_ty, "Data");
+                this->context.equate_types_assoc(sp, data_ty, this->context.m_crate.get_lang_item_path(sp, "boxed_trait"), {}, *inner_ty, "Data", {});
                 break; }
             }
 
@@ -834,7 +834,7 @@ namespace {
                     }
                     if( count == 1 )
                     {
-                        this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnOnce, HIR::PathParams(fcn_args_tup.clone()), ty, "Output");
+                        this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnOnce, HIR::PathParams(fcn_args_tup.clone()), ty, "Output", {});
 
                         // If the return type wasn't found in the impls, emit it as a UFCS
                         if(fcn_ret == ::HIR::TypeRef())
@@ -2018,7 +2018,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         if(const auto* rpe = r_e->path.m_data.opt_UfcsKnown())
         {
             if( r_e->binding.is_Unbound() ) {
-                this->equate_types_assoc(sp, l_t,  rpe->trait.m_path, rpe->trait.m_params.clone(), rpe->type,  rpe->item.c_str(), false);
+                this->equate_types_assoc(sp, l_t,  rpe->trait.m_path, rpe->trait.m_params.clone(), rpe->type,  rpe->item.c_str(), rpe->params, false);
                 return ;
             }
         }
@@ -2028,7 +2028,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         if(const auto* lpe = l_e->path.m_data.opt_UfcsKnown())
         {
             if( l_e->binding.is_Unbound() ) {
-                this->equate_types_assoc(sp, r_t,  lpe->trait.m_path, lpe->trait.m_params.clone(), lpe->type,  lpe->item.c_str(), false);
+                this->equate_types_assoc(sp, r_t,  lpe->trait.m_path, lpe->trait.m_params.clone(), lpe->type,  lpe->item.c_str(), lpe->params, false);
                 return ;
             }
         }
@@ -2089,7 +2089,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                     if( visit_ty_with(src, [&](const HIR::TypeRef& ity){ return ity == dst; }) ) {
                         const auto& pe = tpl.data().as_Path().path.m_data.as_UfcsKnown();
                         out_ty = this->m_ivars.new_ivar_tr();
-                        this->equate_types_assoc(sp, out_ty, pe.trait.m_path, pe.trait.m_params.clone(), pe.type, pe.item.c_str(), false);
+                        this->equate_types_assoc(sp, out_ty, pe.trait.m_path, pe.trait.m_params.clone(), pe.type, pe.item.c_str(), pe.params, false);
                         return true;
                     }
                     else {
@@ -3715,7 +3715,14 @@ void Context::possible_equate_type_unknown(const Span& sp, const ::HIR::TypeRef&
         }
     }
 }
-void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams pp, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op)
+void Context::equate_types_assoc(
+    const Span& sp,
+    const ::HIR::TypeRef& l,
+    const ::HIR::SimplePath& trait, ::HIR::PathParams pp,
+    const ::HIR::TypeRef& impl_ty,
+    const char *name, const ::HIR::PathParams& aty_pp,
+    bool is_op
+)
 {
     for(const auto& a : this->link_assoc)
     {
@@ -3726,6 +3733,8 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
         if( a.params != pp )
             continue ;
         if( a.impl_ty != impl_ty )
+            continue ;
+        if( a.aty_pp != aty_pp )
             continue ;
         if( a.name != name )
             continue ;
@@ -3744,6 +3753,7 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
         MonomorphEraseHrls().monomorph_path_params(sp, pp, true),
         MonomorphEraseHrls().monomorph_type(sp, impl_ty, true),
         name,
+        MonomorphEraseHrls().monomorph_path_params(sp, aty_pp, true),
         is_op
         });
     DEBUG("++ " << this->link_assoc.back());
@@ -4442,7 +4452,7 @@ namespace {
                         MonomorphHrlsOnly   ms(pp);
                         for(const auto& tyb : dep->m_trait.m_type_bounds)
                         {
-                            context_mut->equate_types_assoc(sp, tyb.second.type,  trait.m_path, ms.monomorph_path_params(sp, trait.m_params, true), src, tyb.first.c_str(), false);
+                            context_mut->equate_types_assoc(sp, tyb.second.type,  trait.m_path, ms.monomorph_path_params(sp, trait.m_params, true), src, tyb.first.c_str(), tyb.second.aty_params, false);
                         }
                         if( dep->m_trait.m_type_bounds.empty() )
                         {
@@ -5526,7 +5536,7 @@ namespace {
                     auto out_ty_o = impl.get_type(v.name.c_str(), {});
                     if( out_ty_o == ::HIR::TypeRef() )
                     {
-                        out_ty_o = ::HIR::TypeRef::new_path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() ), {});
+                        out_ty_o = ::HIR::TypeRef::new_path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, v.aty_pp.clone() ), {});
                     }
                     out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(out_ty_o));
 
@@ -5893,6 +5903,7 @@ namespace {
                                     b_tp_mono.m_path.m_path, ms_hrl.monomorph_path_params(sp, b_tp_mono.m_path.m_params, true),
                                     ms_hrl.monomorph_type(sp, b_ty_mono, true),
                                     aty_bound.first.c_str(),
+                                    aty_bound.second.aty_params,
                                     false
                                     );
                             }
