@@ -924,6 +924,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             TU_MATCH_HDRA((dst_ty.data()), {)
                             default:
                                 MIR_BUG(state, "Invalid cast: " << dst_ty << " from " << src_ty);
+                            TU_ARMA(Function, d_e) {
+                                // Valid in MMIR generated from C
+                                }
                             TU_ARMA(Pointer, d_e) {
                                 switch(s_e)
                                 {

@@ -613,6 +613,7 @@ namespace {
                             case TOK_DASH:  op = MIR::eBinOp::SUB;  break;
                             case TOK_STAR:  op = MIR::eBinOp::MUL;  break;
                             case TOK_SLASH: op = MIR::eBinOp::DIV;  break;
+                            case TOK_PERCENT: op = MIR::eBinOp::MOD;  break;
 
                             case TOK_AMP  : op = MIR::eBinOp::BIT_AND;  break;
                             case TOK_PIPE : op = MIR::eBinOp::BIT_OR ;  break;
@@ -990,6 +991,7 @@ namespace {
             TU_ARMA(SwitchValue, e) {
                 for(auto& tgt : e.targets)
                     tgt = translate_bb(tgt);
+                e.def_target = translate_bb(e.def_target);
                 }
             }
         }
@@ -1278,9 +1280,12 @@ namespace {
             GET_TOK(tok, lex);
             switch( tok.type() )
             {
-            case TOK_SQUARE_OPEN:
-                TODO(lex.point_span(), "parse_lvalue - indexing");
-                break;
+            case TOK_SQUARE_OPEN: {
+                auto r = parse_lvalue_root(lex, name_map);
+                ASSERT_BUG(lex.point_span(), r.is_Local(), "Indexing needs a local variable, got " << r);
+                rv.m_wrappers.push_back( ::MIR::LValue::Wrapper::new_Index(r.as_Local()) );
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                } break;
             case TOK_DOT:
                 if( lex.lookahead(0) == TOK_STAR ) {
                     lex.getToken();

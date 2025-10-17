@@ -9,11 +9,16 @@ make -f minicargo.mk LIBS $@
 make test $@
 make local_tests $@
 
-RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk output-1.74.0/rustc $@
-./output-1.74.0/rustc --version
+OUTDIR=output-1.74.0
+if [[ "x$MRUSTC_TARGET" != "x" ]]; then
+	OUTDIR=$OUTDIR-$MRUSTC_TARGET
+fi
 
-LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk -j ${PARLEVEL:-1} output-1.74.0/cargo $@
-./output-1.74.0/cargo --version
+RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk $OUTDIR/rustc $@
+./$OUTDIR/rustc --version
 
-./output-1.74.0/rustc samples/no_core.rs
+LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk -j ${PARLEVEL:-1} $OUTDIR/cargo $@
+./$OUTDIR/cargo --version
+
+./$OUTDIR/rustc samples/no_core.rs
 #./output-1.74.0/rustc samples/1.rs

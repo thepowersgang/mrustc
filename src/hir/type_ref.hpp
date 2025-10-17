@@ -7,6 +7,7 @@
 */
 #pragma once
 
+#include <cstdint>
 #include <rc_string.hpp>
 #include <span.hpp>
 
