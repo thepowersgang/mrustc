@@ -875,6 +875,7 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool pa
     if( ch == '\"') {
         // C String literal
         if( str == "c" ) {
+            str = "";
             while( (ch = this->getc()) != '"' ) {
                 if( ch == '\\' ) {
                     auto v = this->parseEscape('"');

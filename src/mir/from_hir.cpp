@@ -2453,15 +2453,26 @@ namespace {
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e) ));
                 }
             TU_ARMA(CString, e) {
-                // Emit as `DstPtr "foo\0"`
                 auto s = e.v;
                 s.push_back('\0');
-                auto tmp = m_builder.lvalue_or_temp(node.span(),
-                    ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str),
-                    ::MIR::RValue::make_Constant( ::MIR::Constant(std::move(s)) )
-                    );
-                // TODO: May need to cast the `*const u8` to `*const i8`
-                m_builder.set_result(node.span(), ::MIR::RValue::make_DstPtr({ std::move(tmp) }));
+
+                // Emit as `transmute<&Cstr,&str>`
+                auto res = m_builder.new_temporary(node.m_res_type);
+
+                auto cast__panic = m_builder.new_bb_unlinked();
+                auto cast__ok = m_builder.new_bb_unlinked();
+                ::HIR::PathParams   transmute_params;
+                transmute_params.m_types.push_back( node.m_res_type.clone() );
+                transmute_params.m_types.push_back( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str) );
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    cast__ok, cast__panic,
+                    res.clone(), ::MIR::CallTarget::make_Intrinsic({ "transmute", mv$(transmute_params) }),
+                    make_vec1( ::MIR::Param( ::MIR::Constant(std::move(s)) ) )
+                    }));
+                m_builder.set_cur_block(cast__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(cast__ok);
+
+                m_builder.set_result(node.span(), mv$(res));
                 }
             TU_ARMA(ByteString, e) {
                 auto v = mv$( *reinterpret_cast< ::std::vector<uint8_t>*>( &e) );

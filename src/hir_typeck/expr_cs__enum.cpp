@@ -1764,8 +1764,10 @@ namespace typecheck
                 ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()), ::HIR::LifetimeRef::new_static() );
                 }
             TU_ARMA(CString, e) {
-                DEBUG("_Literal (*const i8/c_char)");
-                ty = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Shared, ::HIR::CoreType::I8 );
+                DEBUG("_Literal (&CStr)");
+                auto p = context.m_crate.get_lang_item_path(node.span(), "CStr");
+                ty = ::HIR::TypeRef::new_path(p, &context.m_crate.get_struct_by_path(node.span(), p));
+                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, std::move(ty), ::HIR::LifetimeRef::new_static() );
                 }
             }
             this->context.add_ivars(ty);
