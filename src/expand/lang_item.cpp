@@ -261,6 +261,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
 
             H::add("async_drop", Handler(ITEM_TRAIT, handle_save)); // ::core::future::async_drop::AsyncDrop
             H::add("async_drop_in_place", Handler(ITEM_FN, handle_save)); // ::core::future::async_drop::async_drop_in_place
+
+            H::add("global_alloc_ty", Handler(ITEM_STRUCT, handle_save));   // ::alloc::alloc::Global
         }
     }
     const char* real_name = nullptr;    // For when lang items have their name changed
