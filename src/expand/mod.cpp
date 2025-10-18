@@ -235,7 +235,7 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
         // TODO: Create no-op handlers for a whole heap of attributes
         // - There's a LOT
         //WARNING(sp, W0000, "Unknown attribute #[" << a.name() << "]");
-        TODO(sp, "Unknown attribute #[" << a.name() << "]");
+        //TODO(sp, "Unknown attribute #[" << a.name() << "]");
     }
 }
 void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)

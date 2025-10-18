@@ -581,3 +581,27 @@ class CHandler_RustcIntrinsic:
     }
 };
 STATIC_DECORATOR("rustc_intrinsic", CHandler_RustcIntrinsic);
+
+class CHandler_TrackCaller:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Post; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        if(/*auto* e =*/ i.opt_Function()) {
+            // Handled by HIR lower
+        }
+        else {
+            ERROR(sp, E0000, "#[track_caller] on non-function");
+        }
+    }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        if(/*auto* e =*/ i.opt_Function()) {
+            // Handled by HIR lower
+        }
+        else {
+            ERROR(sp, E0000, "#[track_caller] on non-function");
+        }
+    }
+};
+STATIC_DECORATOR("track_caller", CHandler_TrackCaller);
