@@ -687,6 +687,7 @@ namespace {
         ExpTok(MacroPatEnt::Type ty, const Token* tok): ty(ty), tok(tok) {}
         bool operator==(const ExpTok& t) const { return this->ty == t.ty && *this->tok == *t.tok; }
         bool operator!=(const ExpTok& t) const { return !(*this == t); }
+        bool operator==(eTokenType tt) const { return this->ty == MacroPatEnt::PAT_TOKEN && *this->tok == tt; }
     };
     ::std::ostream& operator<<(::std::ostream& os, const ExpTok& t) {
         os << "ExpTok(" << t.ty << " " << *t.tok << ")";
@@ -714,6 +715,7 @@ namespace {
         const std::vector<ExpTok>& indirect_path, size_t indirect_ofs
         )
     {
+        TRACE_FUNCTION_F(&pattern << " #" << direct_pos << " [" << indirect_path << "]+" << indirect_ofs);
         for(size_t idx = direct_pos; idx < pattern.size(); idx ++)
         {
             const auto& ent = pattern[idx];
@@ -819,7 +821,8 @@ namespace {
         // If the pattern set isn't closed (hit something unconditional), then add `EOF` to it
         if( macro_pattern_get_head_set_inner(rv, pattern, direct_pos, indirect_path, 0) != PatternHeadRv::Closed )
         {
-            if(rv.empty())
+            //if(rv.empty())
+            if( !::std::any_of(rv.begin(), rv.end(), [](const ExpTok& e){ return e.ty == MacroPatEnt::PAT_TOKEN && *e.tok == TOK_EOF; }) )
             {
                 static Token    tok_eof = TOK_EOF;
                 rv.push_back(ExpTok(MacroPatEnt::PAT_TOKEN, &tok_eof));
@@ -851,6 +854,15 @@ namespace {
                 ASSERT_BUG(ent.sp, entry_pats1.size() > 0, "No entry conditions extracted from sub-pattern [" << ent.subpats << "]");
                 auto skip_pats1 = macro_pattern_get_head_set(pattern, idx+1, {});
                 DEBUG("Skip = [" << skip_pats1 << "]");
+
+                // TODO: If EOF is in both entry and skip, then remove from entry
+                bool body_skippable = false;
+                if( ::std::find(entry_pats1.begin(), entry_pats1.end(), TOK_EOF) != entry_pats1.end() ) {
+                    if( ::std::find(skip_pats1.begin(), skip_pats1.end(), TOK_EOF) != entry_pats1.end() ) {
+                        entry_pats1.erase( ::std::find(entry_pats1.begin(), entry_pats1.end(), TOK_EOF) );
+                        body_skippable = true;
+                    }
+                }
 
                 std::vector<std::vector<SimplePatIfCheck>>   entry_conds;
                 std::vector<std::vector<SimplePatIfCheck>>   skip_conds;
@@ -942,7 +954,22 @@ namespace {
                         v.insert(v.end(), p.begin(), p.end());
                         repeat_conds.push_back(mv$(v));
                     }
+                    // TODO: If entry indicates that it's optional (it had TOK_EOF in it) then push the skip too
+                    if(body_skippable)
+                    {
+                        for(const auto& p : skip_conds)
+                        {
+                            auto v = ::make_vec1<SimplePatIfCheck>( { MacroPatEnt::PAT_TOKEN, ent.tok} );
+                            v.insert(v.end(), p.begin(), p.end());
+                            repeat_conds.push_back(mv$(v));
+                        }
+                    }
                 }
+                DEBUG("Repeat = [");
+                for(const auto& e : repeat_conds) {
+                    DEBUG(" [" << e << "]");
+                }
+                DEBUG("]");
 
                 // TODO: Combine the two cases below into one?
 
@@ -957,7 +984,8 @@ namespace {
                     if( ent.tok != TOK_NULL )
                     {
                         if(repeat_conds.size() > 1) {
-                            size_t expect_and_jump_pos = rv.size() + entry_conds.size() + 1;
+                            DEBUG("Loop+ Multi-option repeat");
+                            size_t expect_and_jump_pos = rv.size() + repeat_conds.size() + 1;
                             for(const auto& ee : repeat_conds) {
                                 push_ifv(true, ee, expect_and_jump_pos);
                             }
@@ -965,6 +993,7 @@ namespace {
                             push( SimplePatEnt::make_Jump({ ~0u }) );
                         }
                         else {
+                            DEBUG("Loop+ Single-option repeat");
                             push_ifv( false, repeat_conds.front(), ~0u );
                         }
                         push( SimplePatEnt::make_ExpectTok(ent.tok) );
@@ -1035,6 +1064,7 @@ namespace {
                         {
                             if( repeat_conds.size() == 1 )
                             {
+                                DEBUG("Loop* - Single-option repeat");
                                 // If not a repeat, jump out
                                 for(const auto& ee : repeat_conds) {
                                     push_ifv(/*is_equal*/false, ee, ~0u);
@@ -1043,6 +1073,7 @@ namespace {
                             }
                             else
                             {
+                                DEBUG("Loop* - Multi-option repeat");
                                 // Multiple repeat conditions
                                 // - If any repeat condition matches, then jump to a consume
                                 auto check_pos = rv.size() + repeat_conds.size() + 1;

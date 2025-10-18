@@ -2012,8 +2012,10 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
             DEBUG("Arm " << i << " @" << pos << " " << pat);
             if(pat.is_End())
             {
-                if( lex.next() != TOK_EOF )
+                if( lex.next() != TOK_EOF ) {
+                    DEBUG("Expeced EOF, got " << lex.next_tok());
                     fail = true;
+                }
                 break;
             }
             else if( const auto* e = pat.opt_If() )
