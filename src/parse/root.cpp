@@ -1143,18 +1143,20 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
 
     AST::AttributeName  name;
     // NOTE: After 1.19 mode, values can be present with no name
-    if( TARGETVER_LEAST_1_29 && lex.lookahead(0) != TOK_IDENT )
+    if( TARGETVER_LEAST_1_29 && lex.lookahead(0) != TOK_IDENT && lex.lookahead(0) != TOK_DOUBLE_COLON )
     {
         // Put a fake equals token in the queue
         tok = Token(TOK_EQUAL);
     }
     else
     {
+        /*name.is_abs = */lex.getTokenIf(TOK_DOUBLE_COLON);
         do {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             name.elems.push_back(tok.ident().name);
         } while(GET_TOK(tok, lex) == TOK_DOUBLE_COLON);
     }
+    DEBUG("name = " << name);
     TokenTree   attr_data;
     switch(tok.type())
     {
