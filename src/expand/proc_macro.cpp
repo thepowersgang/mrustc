@@ -1279,6 +1279,9 @@ namespace {
         void visit(::AST::ExprNode_ByteString& node) {
             TODO(sp, "ExprNode_ByteString");
         }
+        void visit(::AST::ExprNode_CString& node) {
+            TODO(sp, "ExprNode_CString");
+        }
         void visit(::AST::ExprNode_Closure& node) {
             TODO(sp, "ExprNode_Closure");
         }

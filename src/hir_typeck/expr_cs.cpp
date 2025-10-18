@@ -1623,6 +1623,8 @@ namespace {
                 ),
             (ByteString,
                 ),
+            (CString,
+                ),
             (String,
                 )
             )

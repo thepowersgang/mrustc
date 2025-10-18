@@ -687,6 +687,7 @@ struct ExprNode_Literal:
         }),
     (Boolean, bool),
     (String, ::std::string),
+    (CString, struct { ::std::string v; }),
     (ByteString, ::std::vector<char>)
     );
 

@@ -1756,12 +1756,16 @@ namespace typecheck
             TU_ARMA(String, e) {
                 // TODO: &'static
                 DEBUG("_Literal (&str)");
-                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) );
+                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str), ::HIR::LifetimeRef::new_static() );
                 }
             TU_ARMA(ByteString, e) {
                 // TODO: &'static
                 DEBUG("_Literal (&[u8])");
-                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()) );
+                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()), ::HIR::LifetimeRef::new_static() );
+                }
+            TU_ARMA(CString, e) {
+                DEBUG("_Literal (*const i8/c_char)");
+                ty = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Shared, ::HIR::CoreType::I8 );
                 }
             }
             this->context.add_ivars(ty);

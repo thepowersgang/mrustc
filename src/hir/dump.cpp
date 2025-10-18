@@ -653,8 +653,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_Literal& node) override
         {
-            TU_MATCHA( (node.m_data), (e),
-            (Integer,
+            TU_MATCH_HDRA( (node.m_data), {)
+            TU_ARMA(Integer, e) {
                 switch(e.m_type)
                 {
                 case ::HIR::CoreType::U8:   m_os << e.m_value << "_u8" ;    break;
@@ -678,22 +678,25 @@ namespace {
                     } break;
                 default: m_os << e.m_value << "_unk";    break;
                 }
-                ),
-            (Float,
+                }
+            TU_ARMA(Float, e) {
                 switch(e.m_type)
                 {
                 case ::HIR::CoreType::F32:  m_os << e.m_value << "_f32";    break;
                 case ::HIR::CoreType::F64:  m_os << e.m_value << "_f64";    break;
                 default: m_os << e.m_value << "_unk";    break;
                 }
-                ),
-            (Boolean,
+                }
+            TU_ARMA(Boolean, e) {
                 m_os << (e ? "true" : "false");
-                ),
-            (String,
+                }
+            TU_ARMA(String, e) {
                 m_os << "\"" << FmtEscaped(e) << "\"";
-                ),
-            (ByteString,
+                }
+            TU_ARMA(CString, e) {
+                m_os << "c\"" << FmtEscaped(e.v) << "\"";
+                }
+            TU_ARMA(ByteString, e) {
                 m_os << "b\"";
                 for(auto b : e)
                 {
@@ -713,8 +716,8 @@ namespace {
                     }
                 }
                 m_os << "\"";
-                )
-            )
+                }
+            }
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {

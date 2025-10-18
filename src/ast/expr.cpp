@@ -444,6 +444,11 @@ NODE(ExprNode_ByteString, {
 },{
     return NEWNODE(ExprNode_ByteString, m_value);
 })
+NODE(ExprNode_CString, {
+    os << "c\"" << m_value << "\"";
+},{
+    return NEWNODE(ExprNode_CString, m_value);
+})
 
 NODE(ExprNode_Closure, {
     if( m_is_pinned )
@@ -784,6 +789,7 @@ NV(ExprNode_Float, {(void)node;})
 NV(ExprNode_Bool, {(void)node;})
 NV(ExprNode_String, {(void)node;})
 NV(ExprNode_ByteString, {(void)node;})
+NV(ExprNode_CString, {(void)node;})
 
 NV(ExprNode_Closure,
 {

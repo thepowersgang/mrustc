@@ -872,6 +872,23 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool pa
         str += ch;
         ch = this->getc();
     }
+    if( ch == '\"') {
+        // C String literal
+        if( str == "c" ) {
+            while( (ch = this->getc()) != '"' ) {
+                if( ch == '\\' ) {
+                    auto v = this->parseEscape('"');
+                    if( v != ~0u ) {
+                        str += Codepoint(v);
+                    }
+                }
+                else {
+                    str += ch;
+                }
+            }
+            return Token(TOK_CSTRING, mv$(str), realGetHygiene());
+        }
+    }
 
     this->ungetc();
     if(parse_reserved_word)

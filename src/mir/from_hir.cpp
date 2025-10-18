@@ -2452,6 +2452,17 @@ namespace {
             TU_ARMA(String, e) {
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e) ));
                 }
+            TU_ARMA(CString, e) {
+                // Emit as `DstPtr "foo\0"`
+                auto s = e.v;
+                s.push_back('\0');
+                auto tmp = m_builder.lvalue_or_temp(node.span(),
+                    ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str),
+                    ::MIR::RValue::make_Constant( ::MIR::Constant(std::move(s)) )
+                    );
+                // TODO: May need to cast the `*const u8` to `*const i8`
+                m_builder.set_result(node.span(), ::MIR::RValue::make_DstPtr({ std::move(tmp) }));
+                }
             TU_ARMA(ByteString, e) {
                 auto v = mv$( *reinterpret_cast< ::std::vector<uint8_t>*>( &e) );
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(v)) ));

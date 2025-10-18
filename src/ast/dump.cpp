@@ -551,6 +551,10 @@ public:
         m_expr_root = false;
         m_os << "b\"" << FmtEscaped(n.m_value) << "\"";
     }
+    virtual void visit(AST::ExprNode_CString& n) override {
+        m_expr_root = false;
+        m_os << "c\"" << FmtEscaped(n.m_value) << "\"";
+    }
 
     virtual void visit(AST::ExprNode_StructLiteral& n) override {
         m_expr_root = false;

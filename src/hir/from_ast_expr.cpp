@@ -765,6 +765,9 @@ TODO(v.span(), "while let (chained)");
         ::std::vector<char> dat { v.m_value.begin(), v.m_value.end() };
         m_rv.reset( new ::HIR::ExprNode_Literal( v.span(), ::HIR::ExprNode_Literal::Data::make_ByteString( mv$(dat) ) ) );
     }
+    virtual void visit(::AST::ExprNode_CString& v) override {
+        m_rv.reset( new ::HIR::ExprNode_Literal( v.span(), ::HIR::ExprNode_Literal::Data::make_CString({ v.m_value }) ) );
+    }
     virtual void visit(::AST::ExprNode_Closure& v) override {
         ::HIR::ExprNode_Closure::args_t args;
         for(const auto& arg : v.m_args) {

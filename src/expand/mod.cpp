@@ -1132,6 +1132,7 @@ struct CExpandExpr:
                 void visit(::AST::ExprNode_Bool& v) override { invalid(v); }
                 void visit(::AST::ExprNode_String& v) override { invalid(v); }
                 void visit(::AST::ExprNode_ByteString& v) override { invalid(v); }
+                void visit(::AST::ExprNode_CString& v) override { invalid(v); }
                 void visit(::AST::ExprNode_Closure& v) override { invalid(v); }
 
                 void visit(::AST::ExprNode_StructLiteral& v) override {
@@ -1443,6 +1444,7 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Bool& node) override { }
     void visit(::AST::ExprNode_String& node) override { }
     void visit(::AST::ExprNode_ByteString& node) override { }
+    void visit(::AST::ExprNode_CString& node) override { }
     void visit(::AST::ExprNode_Closure& node) override {
         auto try_stack = ::std::move(m_try_stack);
         for(auto& arg : node.m_args) {

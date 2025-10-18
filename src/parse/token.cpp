@@ -405,6 +405,7 @@ struct EscapedString {
             return FMT(m_data.as_Float().m_floatval << "_" << m_data.as_Float().m_datatype);
         }
     case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"" << m_hygiene);
+    case TOK_CSTRING:   return FMT("c\"" << EscapedString(m_data.as_String()) << "\"" << m_hygiene);
     case TOK_BYTESTRING:return FMT("b\"" << m_data.as_String() << "\"");
     case TOK_HASH:  return "#";
     case TOK_UNDERSCORE:return "_";

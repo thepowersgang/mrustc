@@ -835,6 +835,8 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_INTEGER:
     case TOK_FLOAT:
     case TOK_STRING:
+    case TOK_CSTRING:
+    case TOK_BYTESTRING:
     case TOK_UNDERSCORE:
     case TOK_RWORD_TRUE:
     case TOK_RWORD_FALSE:
@@ -1511,6 +1513,8 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
         return NEWNODE( AST::ExprNode_String, tok.str(), tok.str_hygiene() );
     case TOK_BYTESTRING:
         return NEWNODE( AST::ExprNode_ByteString, tok.str() );
+    case TOK_CSTRING:
+        return NEWNODE( AST::ExprNode_CString, tok.str() );
     case TOK_RWORD_TRUE:
         return NEWNODE( AST::ExprNode_Bool, true );
     case TOK_RWORD_FALSE:
