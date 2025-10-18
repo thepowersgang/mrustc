@@ -13,6 +13,7 @@ namespace AST {
     class Path;
 }
 class ExpandProcMacro;
+class ExpandDecorator;
 
 TAGGED_UNION_EX(MacroRef, (), None, (
     (None, struct {}),
@@ -37,3 +38,4 @@ extern MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crat
 extern MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LList<const AST::Module*> modstack, const AST::Path& path);
 
 extern ExpandProcMacro* Expand_FindProcMacro(const RcString& name);
+extern ExpandDecorator* Expand_FindDecorator(const RcString& name);

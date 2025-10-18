@@ -758,24 +758,36 @@ namespace {
                         if(out_path) {
                             *out_path = sp_to_ap(p->path);
                         }
+                        struct H2 {
+                            static ResolveItemRef_Macro get_builtin(const Span& sp, const RcString& name) {
+                                // TODO: What if it's a derive? Or it's an attribute
+                                if( auto* pm = Expand_FindProcMacro(name) ) {
+                                    return ResolveItemRef_Macro(pm);
+                                }
+                                if( /*auto* pm =*/ Expand_FindDecorator(name) ) {
+                                    TODO(sp, "Resolve HIR import to decorator");
+                                    //return ResolveItemRef_Macro(pm);
+                                }
+                                DEBUG("Import of builtins: Not found");
+                                return {};
+                            }
+                        };
                         if( p->path.crate_name() == CRATE_BUILTINS ) {
-                            auto* pm = Expand_FindProcMacro(p->path.components().back());
-                            // TODO: What if it's a derive?
-                            if( !pm )
+                            auto v = H2::get_builtin(sp, p->path.components().back());
+                            if( v.is_None() ) {
                                 break;
-                            ASSERT_BUG(sp, pm, "Unable to find builtin macro " << p->path);
-                            return ResolveItemRef_Macro(pm);
+                            }
+                            return v;
                         }
                         mi = &H::get_crate(sp, crate, p->path).get_macroitem_by_path(sp, p->path, true);
                         if(const auto* p = mi->opt_Import())
                         {
                             if( p->path.crate_name() == CRATE_BUILTINS ) {
-                                auto* pm = Expand_FindProcMacro(p->path.components().back());
-                                // TODO: What if it's a derive?
-                                if( !pm )
+                                auto v = H2::get_builtin(sp, p->path.components().back());
+                                if( v.is_None() ) {
                                     break;
-                                ASSERT_BUG(sp, pm, "Unable to find builtin macro " << p->path);
-                                return ResolveItemRef_Macro(pm);
+                                }
+                                return v;
                             }
                             // Fall throught to fail
                         }

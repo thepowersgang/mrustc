@@ -28,6 +28,18 @@ class CHandler_MustUse:
 };
 STATIC_DECORATOR("must_use", CHandler_MustUse);
 
+// #[non_exhaustive] - Tag an enum as being extensible
+class CHandler_NonExhaustive:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Pre; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        // TODO: only allowed on types
+    }
+};
+STATIC_DECORATOR("non_exhaustive", CHandler_NonExhaustive);
+
 // #[path] - Already used by this stage
 class CHandler_Path:
     public ExpandDecorator

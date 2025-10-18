@@ -41,6 +41,8 @@ STATIC_DECORATOR("rustc_deprecated", CHandler_RustcDeprecated);
 // #[rustc_const_unstable] - Unstable in const context
 class CHandler_RustcConstUnstable: public CMultiHandler_Stability {};
 STATIC_DECORATOR("rustc_const_unstable", CHandler_RustcConstUnstable);
+class CHandler_Deprecated: public CMultiHandler_Stability {};
+STATIC_DECORATOR("deprecated", CHandler_Deprecated);
 
 class CHandler_AllowInternalUnstable:
     public ExpandDecorator

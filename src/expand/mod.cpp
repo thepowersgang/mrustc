@@ -105,10 +105,12 @@ void ExpandDecorator::unexpected(const Span& sp, const AST::Attribute& mi, const
 ExpandProcMacro* Expand_FindProcMacro(const RcString& name)
 {
     auto it = g_macros.find(name);
-    if(it == g_macros.end())
-        return nullptr;
-    else
-        return it->second.get();
+    return it != g_macros.end() ? it->second.get() : nullptr;
+}
+ExpandDecorator* Expand_FindDecorator(const RcString& name)
+{
+    auto it = g_decorators.find(name);
+    return it != g_decorators.end() ? it->second.get() : nullptr;
 }
 
 void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
@@ -117,11 +119,16 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
     if( a.name().elems.empty() ) {
         return ;
     }
+    DEBUG(a);
     for( auto& d : g_decorators ) {
-        if( a.name() == d.first ) {
+        if( a.name() == d.first
+        // HACK: Handle `::core::prelude::v1::<FOO>`
+        || (a.name().elems.size() == 4 && a.name().elems[0] == "core" && a.name().elems[1] == "prelude" && a.name().elems[2] == "v1" && a.name().elems[3] == d.first)
+        )
+        {
             found = true;
             if( d.second->stage() != stage ) {
-                DEBUG("#[" << d.first << "] s=" << (int)d.second->stage() << " != " << (int)stage);
+                DEBUG("#[" << d.first << "] Ignore: Wrong stage " << (int)d.second->stage() << " != " << (int)stage);
             }
             else {
                 if( !d.second->run_during_iter() ) {
@@ -148,62 +155,67 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
             }
         }
     }
-    if( !found && stage == AttrStage::Pre ) {
+    if( !found ) {
         auto m = Expand_LookupMacro(sp, es.crate, es.modstack, a.name());
-        if( !m.is_None() ) {
-            if( const auto* proc_mac_p = m.opt_ExternalProcMacro() ) {
-                const auto* proc_mac = *proc_mac_p;
-                struct ProcMacroDecorator: public ExpandDecorator {
-                    ::std::vector<RcString> mac_path;
-                    AttrStage stage() const override { return AttrStage::Pre; }
-                    bool run_during_iter() const override { return false; }
+        DEBUG(a.name() << " : " << m.tag_str());
+        if( m.is_None() ) {
+            // Ignore and error/warn at the bottom of the function
+        }
+        else if( const auto* proc_mac_p = m.opt_ExternalProcMacro() ) {
+            const auto* proc_mac = *proc_mac_p;
+            struct ProcMacroDecorator: public ExpandDecorator {
+                ::std::vector<RcString> mac_path;
+                AttrStage stage() const override { return AttrStage::Pre; }
+                bool run_during_iter() const override { return false; }
 
-                    void handle(
-                        const Span& sp,
-                        const AST::Attribute& attr,
-                        ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i
-                        ) const override
+                void handle(
+                    const Span& sp,
+                    const AST::Attribute& attr,
+                    ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i
+                    ) const override
+                {
+                    if( !i.is_None() )
                     {
-                        if( !i.is_None() )
-                        {
-                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, path.nodes.back().c_str(), i);
-                            if( lex ) {
-                                i = AST::Item::make_None({});
-                                lex->parse_state().module = &mod;
-                                Parse_ModRoot_Items(*lex, mod);
-                            }
-                            else {
-                                ERROR(sp, E0000, "proc_macro derive failed");
-                            }
+                        auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, path.nodes.back().c_str(), i);
+                        if( lex ) {
+                            i = AST::Item::make_None({});
+                            lex->parse_state().module = &mod;
+                            Parse_ModRoot_Items(*lex, mod);
+                        }
+                        else {
+                            ERROR(sp, E0000, "proc_macro derive failed");
                         }
                     }
-                    // Disabled due to lack of module to pass to parse.
-                    // - Maybe modules shouldn't be linked in until after expand?
-                    // - Because otherwise anon mods won't be #[cfg]'d out properly?
-                    void handle(
-                        const Span& sp,
-                        const AST::Attribute& attr,
-                        AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i
-                        ) const override
+                }
+                // Disabled due to lack of module to pass to parse.
+                // - Maybe modules shouldn't be linked in until after expand?
+                // - Because otherwise anon mods won't be #[cfg]'d out properly?
+                void handle(
+                    const Span& sp,
+                    const AST::Attribute& attr,
+                    AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i
+                    ) const override
+                {
+                    if( !i.is_None() )
                     {
-                        if( !i.is_None() )
-                        {
-                            auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, name.c_str(), i);
-                            if( lex ) {
-                                i = AST::Item::make_None({});
-                                assert(g_current_mod);
-                                lex->parse_state().module = g_current_mod;
-                                while( lex->lookahead(0) != TOK_EOF )
-                                {
-                                    Parse_Impl_Item(*lex, impl);
-                                }
-                            }
-                            else {
-                                ERROR(sp, E0000, "proc_macro derive failed");
+                        auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, name.c_str(), i);
+                        if( lex ) {
+                            i = AST::Item::make_None({});
+                            assert(g_current_mod);
+                            lex->parse_state().module = g_current_mod;
+                            while( lex->lookahead(0) != TOK_EOF )
+                            {
+                                Parse_Impl_Item(*lex, impl);
                             }
                         }
+                        else {
+                            ERROR(sp, E0000, "proc_macro derive failed");
+                        }
                     }
-                } d;
+                }
+            } d;
+            // Only run proc macros on first pass (before inner)
+            if( stage == AttrStage::Pre ) {
                 d.mac_path.push_back(proc_mac->path.crate_name());
                 d.mac_path.insert(d.mac_path.end(), proc_mac->path.components().begin(), proc_mac->path.components().end());
                 // HACK: tracing's #[instrument] is very slow (with mrustc), so just ignore it (this is the rustc-1.74 version)
@@ -212,14 +224,18 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                 else {
                     f(sp, d, a);
                 }
-                found = true;
             }
+            found = true;
+        }
+        else {
+            TODO(sp, "Attr " << a.name() << " : " << m.tag_str());
         }
     }
     if( !found ) {
         // TODO: Create no-op handlers for a whole heap of attributes
         // - There's a LOT
         //WARNING(sp, W0000, "Unknown attribute #[" << a.name() << "]");
+        TODO(sp, "Unknown attribute #[" << a.name() << "]");
     }
 }
 void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
