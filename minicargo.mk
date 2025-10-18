@@ -154,6 +154,7 @@ else ifeq ($(OS),Windows_NT)
 else
   RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 endif
+RUSTC_ARCH := $(firstword $(subst -, ,$(RUSTC_TARGET)))
 # Directory for minicargo build script overrides
 OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 
@@ -238,7 +239,7 @@ $(RUSTCSRC)mrustc-stdlib/Cargo.toml: $(RUSTC_SRC_DL) minicargo.mk
 	@echo "rustc-std-workspace-alloc = { path = \"../$(RUST_LIB_PREFIX)rustc-std-workspace-alloc\" }" >> $@
 	@echo "rustc-std-workspace-std = { path = \"../$(RUST_LIB_PREFIX)rustc-std-workspace-std\" }" >> $@
 LIBS: $(RUSTCSRC)mrustc-stdlib/Cargo.toml $(MRUSTC) $(MINICARGO)
-	+$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)mrustc-stdlib/
+	+STD_ENV_ARCH=$(RUSTC_ARCH) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)mrustc-stdlib/
 	+$(MINICARGO) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) lib/libproc_macro
 else
 LIBS: $(MRUSTC) $(MINICARGO) $(RUSTC_SRC_DL)
