@@ -6031,7 +6031,7 @@ namespace {
                 }
                 // TODO: Align up
             }
-            else if( name == "min_align_of_val" ) {
+            else if( name == "min_align_of_val" || name == "align_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
                 const auto& ty = params.m_types.at(0);
                 #if 1
