@@ -2926,8 +2926,9 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
         return MetadataType::None;
         }
     TU_ARMA(Infer, e) {
-        // Shouldn't be hit
-        BUG(sp, "Found ivar? " << ty);
+        // Shouldn't be hit? but can early on
+        //BUG(sp, "metadata_type: Found ivar? " << ty);
+        return MetadataType::Unknown;
         }
     TU_ARMA(Diverge, e) {
         // The ! type is kinda Sized ...
