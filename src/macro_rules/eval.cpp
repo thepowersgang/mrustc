@@ -1269,6 +1269,7 @@ namespace
                 break;
 
             case TOK_INTERPOLATED_EXPR:
+            case TOK_INTERPOLATED_BLOCK:
                 lex.consume();
                 break;
             case TOK_INTEGER:
