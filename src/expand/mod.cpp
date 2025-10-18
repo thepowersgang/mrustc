@@ -1924,7 +1924,78 @@ void Expand_ImplDef(const ExpandState& es, ::AST::Path modpath, ::AST::Module& m
     Expand_Attrs(es, impl_def.attrs(), AttrStage::Post,  mod, impl_def);
 }
 
-//void Expand_Function(
+void Expand_ExternBlock(const ExpandState& es, ::AST::Module& mod, ::AST::ExternBlock& block)
+{
+    for( size_t idx = 0; idx < block.items().size(); idx ++ )
+    {
+        auto& i = block.items()[idx];
+        DEBUG(i.data.tag_str() << " " << mod.path() << "::" << i.name);
+
+        auto path = mod.path() + i.name;
+
+        auto attrs = mv$(i.attrs);
+        auto vis = i.vis;
+
+        auto dat = std::move(i.data);
+        TU_MATCH_HDRA( (dat), { )
+        default:
+            BUG(Span(), "Unexpected item type - " << dat.tag_str());
+        TU_ARMA(None, e) {
+            // Skip: nothing
+            }
+        
+        TU_ARMA(Type, e) {
+            Expand_Type(es, mod,  e.type());
+            }
+        TU_ARMA(Function, e) {
+            Expand_Function(es, mod, e);
+            }
+        TU_ARMA(Static, e) {
+            Expand_Expr(es, e.value());
+            Expand_Type(es, mod,  e.type());
+            }
+        
+        TU_ARMA(MacroInv, e) {
+            // Move out of the module to avoid invalidation if a new macro invocation is added
+            auto mi_owned = mv$(e);
+
+            if( !mi_owned.is_expanded() )
+            {
+                assert(mi_owned.span());
+                TRACE_FUNCTION_F("Macro invoke " << mi_owned.path());
+
+                auto ttl = Expand_Macro(es, mod, mi_owned);
+                if( ttl )
+                {
+                    Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, vis, dat);
+
+                    // Re-parse tt
+                    // TODO: All new items should be placed just after this?
+                    DEBUG("-- Parsing as extern block items");
+                    auto ipos = block.items().begin() + idx;
+                    while( ttl->getTokenIf(TOK_EOF) ) 
+                    {
+                        ipos = block.items().insert(ipos, Parse_ExternBlock_Item(*ttl, block.abi()));
+                    }
+
+                    mi_owned.set_expanded();
+                }
+                else {
+                    DEBUG("Deferred macro");
+                }
+            }
+            dat.as_MacroInv() = mv$(mi_owned);
+            }
+        }
+
+        {
+            auto& i = block.items()[idx];
+            i.data = std::move(dat);
+            i.vis = std::move(vis);
+            i.attrs = std::move(attrs);
+        }
+    }
+}
 
 void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Module& mod, unsigned int first_item)
 {
@@ -2162,6 +2233,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
             }
         TU_ARMA(ExternBlock, e) {
             // TODO: Run expand on inner items?
+            Expand_ExternBlock(es, mod, e);
             // HACK: Just convert inner items into outer items
             auto items = mv$( e.items() );
             for(auto& i2 : items)

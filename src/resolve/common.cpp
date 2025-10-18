@@ -764,10 +764,10 @@ namespace {
                                 if( auto* pm = Expand_FindProcMacro(name) ) {
                                     return ResolveItemRef_Macro(pm);
                                 }
-                                if( /*auto* pm =*/ Expand_FindDecorator(name) ) {
-                                    TODO(sp, "Resolve HIR import to decorator");
-                                    //return ResolveItemRef_Macro(pm);
-                                }
+                                //if( /*auto* pm =*/ Expand_FindDecorator(name) ) {
+                                //    TODO(sp, "Resolve HIR import to decorator");
+                                //    //return ResolveItemRef_Macro(pm);
+                                //}
                                 DEBUG("Import of builtins: Not found");
                                 return {};
                             }

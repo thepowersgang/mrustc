@@ -1396,6 +1396,75 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     }
 }
 
+AST::Named<AST::Item> Parse_ExternBlock_Item(TokenStream& lex, const std::string& abi)
+{
+    Token   tok;
+    auto meta_items = Parse_ItemAttrs(lex);
+    SET_ATTRS(lex, meta_items);
+
+    auto ps = lex.start_span();
+
+    {
+        ::AST::MacroInvocation  inv;
+        if( Parse_MacroInvocation_Opt(lex, inv) )
+        {
+            return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(meta_items), AST::Visibility::make_global(), "", ::AST::Item( mv$(inv) ) };
+        }
+    }
+
+    auto vis = Parse_Publicity(lex);
+    if( GET_TOK(tok, lex) == TOK_IDENT ) {
+        if( tok.ident() == "safe" ) {
+            // TODO: Check that the next token is TOK_RWORD_FN
+        }
+        else {
+            PUTBACK(tok, lex);
+        }
+    }
+    else {
+        PUTBACK(tok, lex);
+    }
+    switch( GET_TOK(tok, lex) )
+    {
+    case TOK_RWORD_FN: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        auto name = tok.ident().name;
+        // parse function as prototype
+        // - no self, is prototype, is unsafe and not const
+        auto i = ::AST::Item( Parse_FunctionDef(lex, /*allow_self*/false, /*can_be_prototype=*/true, abi, AST::Function::Flags::make_unsafe()) );
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+        return AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), vis, mv$(name), mv$(i) };
+        break; }
+    case TOK_RWORD_STATIC: {
+        bool is_mut = false;
+        if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
+            is_mut = true;
+        else
+            PUTBACK(tok, lex);
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        auto name = tok.ident().name;
+        GET_CHECK_TOK(tok, lex, TOK_COLON);
+        auto type = Parse_Type(lex);
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+        auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  mv$(type), ::AST::Expr() ));
+        return AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), vis,  mv$(name), mv$(i) };
+        break; }
+    case TOK_RWORD_TYPE: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        auto name = tok.ident().name;
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        auto sp = lex.end_span(ps);
+        //TODO(sp, "Extern type");
+        auto i = ::AST::Item(::AST::TypeAlias( ::AST::GenericParams(), ::TypeRef(sp) ));
+        return AST::Named<AST::Item> { mv$(sp), mv$(meta_items), vis, mv$(name), mv$(i) };
+        break; }
+    default:
+        throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC, TOK_RWORD_TYPE});
+    }
+}
+
 AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::AttributeList& block_attrs)
 {
     TRACE_FUNCTION;
@@ -1408,62 +1477,8 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
         PUTBACK(tok, lex);
-        auto meta_items = Parse_ItemAttrs(lex);
-        SET_ATTRS(lex, meta_items);
 
-        auto ps = lex.start_span();
-
-        auto vis = Parse_Publicity(lex);
-        if( GET_TOK(tok, lex) == TOK_IDENT ) {
-            if( tok.ident() == "safe" ) {
-                // TODO: Check that the next token is TOK_RWORD_FN
-            }
-            else {
-                PUTBACK(tok, lex);
-            }
-        }
-        else {
-            PUTBACK(tok, lex);
-        }
-        switch( GET_TOK(tok, lex) )
-        {
-        case TOK_RWORD_FN: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.ident().name;
-            // parse function as prototype
-            // - no self, is prototype, is unsafe and not const
-            auto i = ::AST::Item( Parse_FunctionDef(lex, /*allow_self*/false, /*can_be_prototype=*/true, abi, AST::Function::Flags::make_unsafe()) );
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-
-            rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), vis, mv$(name), mv$(i) } );
-            break; }
-        case TOK_RWORD_STATIC: {
-            bool is_mut = false;
-            if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
-                is_mut = true;
-            else
-                PUTBACK(tok, lex);
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.ident().name;
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            auto type = Parse_Type(lex);
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-
-            auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  mv$(type), ::AST::Expr() ));
-            rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), vis,  mv$(name), mv$(i) } );
-            break; }
-        case TOK_RWORD_TYPE: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.ident().name;
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-            auto sp = lex.end_span(ps);
-            //TODO(sp, "Extern type");
-            auto i = ::AST::Item(::AST::TypeAlias( ::AST::GenericParams(), ::TypeRef(sp) ));
-            rv.add_item( AST::Named<AST::Item> { mv$(sp), mv$(meta_items), vis, mv$(name), mv$(i) } );
-            break; }
-        default:
-            throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC, TOK_RWORD_TYPE});
-        }
+        rv.add_item(Parse_ExternBlock_Item(lex, abi));
     }
 
     return rv;

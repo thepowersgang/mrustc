@@ -419,7 +419,9 @@ UseItem UseItem::clone() const
 
 void ExternBlock::add_item(Named<Item> named_item)
 {
-    ASSERT_BUG(named_item.span, named_item.data.is_Function() || named_item.data.is_Static() || named_item.data.is_Type(), "Incorrect item type for ExternBlock - " << named_item.data.tag_str());
+    ASSERT_BUG(named_item.span,
+        named_item.data.is_Function() || named_item.data.is_Static() || named_item.data.is_Type() || named_item.data.is_MacroInv(),
+        "Incorrect item type for ExternBlock - " << named_item.data.tag_str());
     m_items.push_back( mv$(named_item) );
 }
 ExternBlock ExternBlock::clone() const
