@@ -234,6 +234,9 @@ $(RUSTCSRC)mrustc-stdlib/Cargo.toml: $(RUSTC_SRC_DL) minicargo.mk
 	@echo "std = { path = \"../$(RUST_LIB_PREFIX)std\" }" >> $@
 	@echo "panic_unwind = { path = \"../$(RUST_LIB_PREFIX)panic_unwind\" }" >> $@
 	@echo "test = { path = \"../$(RUST_LIB_PREFIX)test\" }" >> $@
+	@echo "rustc-std-workspace-core = { path = \"../$(RUST_LIB_PREFIX)rustc-std-workspace-core\" }" >> $@
+	@echo "rustc-std-workspace-alloc = { path = \"../$(RUST_LIB_PREFIX)rustc-std-workspace-alloc\" }" >> $@
+	@echo "rustc-std-workspace-std = { path = \"../$(RUST_LIB_PREFIX)rustc-std-workspace-std\" }" >> $@
 LIBS: $(RUSTCSRC)mrustc-stdlib/Cargo.toml $(MRUSTC) $(MINICARGO)
 	+$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)mrustc-stdlib/
 	+$(MINICARGO) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) lib/libproc_macro
