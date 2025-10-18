@@ -1423,6 +1423,7 @@ namespace {
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
+            auto _ = this->m_resolve.set_item_generics(item.m_params);
             if( item.m_value )
             {
                 t_args  tmp;
