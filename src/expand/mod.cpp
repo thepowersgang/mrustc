@@ -1926,6 +1926,7 @@ void Expand_ImplDef(const ExpandState& es, ::AST::Path modpath, ::AST::Module& m
 
 void Expand_ExternBlock(const ExpandState& es, ::AST::Module& mod, ::AST::ExternBlock& block)
 {
+    TRACE_FUNCTION_F("ABI=" << block.abi());
     for( size_t idx = 0; idx < block.items().size(); idx ++ )
     {
         auto& i = block.items()[idx];
@@ -1973,9 +1974,9 @@ void Expand_ExternBlock(const ExpandState& es, ::AST::Module& mod, ::AST::Extern
                     // TODO: All new items should be placed just after this?
                     DEBUG("-- Parsing as extern block items");
                     auto ipos = block.items().begin() + idx;
-                    while( ttl->getTokenIf(TOK_EOF) ) 
+                    while( !ttl->getTokenIf(TOK_EOF) ) 
                     {
-                        ipos = block.items().insert(ipos, Parse_ExternBlock_Item(*ttl, block.abi()));
+                        ipos = block.items().insert(ipos + 1, Parse_ExternBlock_Item(*ttl, block.abi()));
                     }
 
                     mi_owned.set_expanded();
@@ -2232,7 +2233,6 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
             }
             }
         TU_ARMA(ExternBlock, e) {
-            // TODO: Run expand on inner items?
             Expand_ExternBlock(es, mod, e);
             // HACK: Just convert inner items into outer items
             auto items = mv$( e.items() );
