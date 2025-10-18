@@ -2514,6 +2514,11 @@ namespace HIR {
                     else
                         throw Defer();
                 }
+                else if( te->name == "offset_of" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    size_t  val = state.intrinsic_offset_of(ty, e.args);
+                    dst.write_uint(state, Target_GetPointerBits(), U128(val));
+                }
                 else if( te->name == "type_name" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     auto name = FMT(ty);
