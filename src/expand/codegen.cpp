@@ -595,7 +595,15 @@ class CHandler_TrackCaller:
             ERROR(sp, E0000, "#[track_caller] on non-function");
         }
     }
-    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        if(/*auto* e =*/ i.opt_Function()) {
+            // Handled by HIR lower
+        }
+        else {
+            ERROR(sp, E0000, "#[track_caller] on non-function");
+        }
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Trait& trait, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if(/*auto* e =*/ i.opt_Function()) {
             // Handled by HIR lower
         }

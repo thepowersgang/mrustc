@@ -517,6 +517,8 @@ namespace {
             case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
             case TOK_STRING:        m_pmi.send_string(tok.str());       break;
             case TOK_BYTESTRING:    m_pmi.send_bytestring(tok.str());   break;
+            case TOK_CSTRING:
+                TODO(sp, "TOK_CSTRING");
 
             case TOK_HASH:      m_pmi.send_symbol("#"); break;
             case TOK_UNDERSCORE:m_pmi.send_symbol("_"); break;
