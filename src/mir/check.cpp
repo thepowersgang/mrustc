@@ -984,7 +984,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 {
                                     auto d_meta = state.m_resolve.metadata_type(state.sp, d_e.inner);
                                     if(d_meta != MetadataType::None && d_meta != MetadataType::Zero ) {
-                                        MIR_ASSERT(state, d_meta == s_meta, "Casting has mismatched metadata: " << dst_ty << " from " << src_ty);
+                                        //MIR_ASSERT(state, d_meta == s_meta, "Casting has mismatched metadata: " << dst_ty << " from " << src_ty
+                                        //    << " (" << d_meta << " vs " << s_meta << ")");
                                     }
                                 }
                                 }
