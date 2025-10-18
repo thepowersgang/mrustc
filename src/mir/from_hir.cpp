@@ -1827,8 +1827,18 @@ namespace {
         void visit(::HIR::ExprNode_Emplace& node) override
         {
             if(TARGETVER_MOST_1_19)
+            {
                 return visit_emplace_119(node);
-            return visit_emplace_129(node);
+            }
+            else {
+                assert( node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer );
+                const auto& data_ty = node.m_value->m_res_type;
+
+                node.m_value->visit(*this);
+                auto val = m_builder.get_result(node.span());
+
+                return box_new(node, data_ty, std::move(val));
+            }
         }
         void visit_emplace_119(::HIR::ExprNode_Emplace& node)
         {
@@ -1964,14 +1974,8 @@ namespace {
             m_builder.mark_value_assigned(node.span(), res);
             m_builder.set_result( node.span(), mv$(res) );
         }
-        void visit_emplace_129(::HIR::ExprNode_Emplace& node)
+        void box_new(::HIR::ExprNode& node, const ::HIR::TypeRef& data_ty, ::MIR::RValue val)
         {
-            assert( node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer );
-            const auto& data_ty = node.m_value->m_res_type;
-
-            node.m_value->visit(*this);
-            auto val = m_builder.get_result(node.span());
-
             const auto& lang_exchange_malloc = m_builder.crate().get_lang_item_path(node.span(), "exchange_malloc");
             //const auto& lang_owned_box = m_builder.crate().get_lang_item_path(node.span(), "owned_box");
 
@@ -2250,6 +2254,23 @@ namespace {
                     }
                     if( name == "frem_algebraic" ) {
                         m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::MOD, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "box_new" ) {
+                        // Call "exchange_malloc" and move the argument into that returned pointer (same as 1.29 emplace)
+                        const auto& data_ty = gpath.m_params.m_types.at(0);
+                        ::MIR::RValue   val;
+                        TU_MATCH_HDRA((values[0]), {)
+                        TU_ARMA(LValue, lv) {
+                            val = std::move(lv);
+                            }
+                        TU_ARMA(Constant, c) {
+                            val = std::move(c);
+                            }
+                        TU_ARMA(Borrow, v)
+                            TODO(node.span(), "box_new with a borrow input?");
+                        }
+                        box_new(node, data_ty, std::move(val));
                         return ;
                     }
                     m_builder.end_block(::MIR::Terminator::make_Call({
