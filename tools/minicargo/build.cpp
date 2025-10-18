@@ -951,7 +951,7 @@ RunnableJob Job_BuildTarget::start()
             }
             auto path = parent.get_crate_path(m, m.get_library(), m_is_for_host || (m.has_library() && m.get_library().m_is_proc_macro), nullptr, nullptr);
             args.push_back("--extern");
-            if( dep.key() != m.name() ) {
+            if( dep.key() != m.get_library().m_name ) {
                 args.push_back(::format(escape_dashes(dep.key()), "=", path));
             }
             else {

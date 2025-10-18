@@ -432,6 +432,8 @@ PackageManifest PackageManifest::magic_manifest(const char* name)
 {
     PackageManifest rv;
     rv.m_name = std::string("rustc-std-workspace-") + name;
+    rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Lib });
+    rv.m_targets.back().m_name = name;
     return rv;
 }
 
