@@ -624,7 +624,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
     // Validation rules:
 
-    if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
+    if( debug_enabled() ) {
+        MIR_Dump_Fcn(::std::cout, fcn, 0);
+    }
 
     {
         HIR::TypeRef ty_Self = ::HIR::TypeRef::new_self();
@@ -984,8 +986,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 {
                                     auto d_meta = state.m_resolve.metadata_type(state.sp, d_e.inner);
                                     if(d_meta != MetadataType::None && d_meta != MetadataType::Zero ) {
-                                        //MIR_ASSERT(state, d_meta == s_meta, "Casting has mismatched metadata: " << dst_ty << " from " << src_ty
-                                        //    << " (" << d_meta << " vs " << s_meta << ")");
+                                        if( d_meta != MetadataType::Unknown && s_meta != MetadataType::Unknown ) {
+                                            MIR_ASSERT(state, d_meta == s_meta, "Casting has mismatched metadata: " << dst_ty << " from " << src_ty
+                                                << " (" << d_meta << " from " << s_meta << ")");
+                                        }
                                     }
                                 }
                                 }

@@ -1500,9 +1500,18 @@ namespace {
                     }
                     // Valid
                 }
-                else if( ty_in.data().is_Pointer() )
+                else if( const auto* se = ty_in.data().opt_Pointer() )
                 {
                     // Valid
+                    if( se->inner == de.inner ) {
+                    }
+                    // - If making a fat pointer from thin, convert to _Unsize
+                    else if( m_builder.resolve().can_unsize(node.span(), de.inner, se->inner) )
+                    {
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(val), ::MIR::Constant::make_ItemAddr({}) }) );
+                        auto tmp_ty = ::HIR::TypeRef::new_pointer(se->type, de.inner.clone());
+                        val = m_builder.get_result_in_lvalue(node.m_value->span(), tmp_ty);
+                    }
                 }
                 else {
                     BUG(node.span(), "Cannot cast to pointer from " << ty_in);
