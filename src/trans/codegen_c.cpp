@@ -6305,7 +6305,7 @@ namespace {
             else if( name == "abort" ) {
                 m_of << "abort()";
             }
-            else if( name == "try" ) {
+            else if( name == "try" || name == "catch_unwind" ) {
                 // Register thread-local setjmp
                 switch(m_compiler)
                 {
@@ -7102,6 +7102,11 @@ namespace {
                 };
                 // > Round to nearest integer, half-way rounds away from zero
                 if( name == "rintf32" || name == "rintf64" ) {
+                    emit1("round");
+                }
+                // > Round to nearest integer, half-way rounds to zero
+                if( name == "round_ties_even_f32" || name == "round_ties_even_f64" ) {
+                    // TODO: What's the libc version?
                     emit1("round");
                 }
                 else if( name == "fabsf32" || name == "fabsf64" ) {
