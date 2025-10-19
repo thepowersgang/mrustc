@@ -829,11 +829,11 @@ namespace {
             // Float16 and Float128
             m_of
                 << "typedef struct f16 { uint16_t v; } f16;\n"
-                << "f16 f16_disabled(){ abort(); }\n"
-                << "int f16_cmp(f16 a, f16 b){ abort(); }\n"
+                << "static f16 f16_disabled(){ abort(); }\n"
+                << "static int f16_cmp(f16 a, f16 b){ abort(); }\n"
                 << "typedef struct f128 { uint128_t v; } f128;\n"
-                << "f128 f128_disabled(){ abort(); }\n"
-                << "int f128_cmp(f128 a, f128 b){ abort(); }\n"
+                << "static f128 f128_disabled(){ abort(); }\n"
+                << "static int f128_cmp(f128 a, f128 b){ abort(); }\n"
                 ;
         }
 
@@ -961,6 +961,11 @@ namespace {
                         m_of << "}\n";
                     }
 
+                    if( TARGETVER_LEAST_1_90 )
+                    {
+                        m_of << "void __rust_no_alloc_shim_is_unstable_v2() {}\n";
+                    }
+
                     if( TARGETVER_LEAST_1_54 )
                     {
                         auto oom_method = m_crate.get_lang_item_path_opt("mrustc-alloc_error_handler");
@@ -980,6 +985,10 @@ namespace {
                                 ;
                         }
 
+                        if( TARGETVER_LEAST_1_90 ) {
+                            // Force abort on alloc error, rustc uses `-Zoom={panic,abort}` to select this
+                            m_of << "uint8_t __rust_alloc_error_handler_should_panic_v2() { return 0; }";
+                        }
                         m_of << "void __rust_alloc_error_handler(uintptr_t s, uintptr_t a) {\n";
                         if(oom_method == HIR::SimplePath()) {
                             m_of << "\tvoid __rdl_oom(uintptr_t, uintptr_t);\n";
