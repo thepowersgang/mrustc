@@ -1234,7 +1234,10 @@ namespace {
     if(attrs.get("rustc_nonnull_optimization_guaranteed"))
     {
         //ent.m_markings.scalar_valid_start_set = true;
-        rv.m_struct_markings.is_nonzero = true;
+        // In 1.90, this stops being applied to types that wrap u32/pointer/... and start wrappping types with scalar limits
+        if( TARGETVER_MOST_1_74 ) {
+            rv.m_struct_markings.is_nonzero = true;
+        }
     }
     if(ent.m_markings.scalar_valid_start_set)
     {

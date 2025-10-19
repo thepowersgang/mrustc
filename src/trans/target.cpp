@@ -1209,9 +1209,10 @@ namespace {
                         return true;
                     }
                 }
-                // TODO: 1.39 marks these with #[rustc_nonnull_optimization_guaranteed] instead
+                // 1.39 marks these with #[rustc_nonnull_optimization_guaranteed] instead
                 if(str->m_struct_markings.is_nonzero)
                 {
+                    DEBUG(ty << " tagged NonZero");
                     out_path.sub_fields.push_back(0);
                     out_path.size = r->size;
                     return true;
@@ -1222,6 +1223,7 @@ namespace {
                     // Handle the NonZero lang item (Note: Checks just the simplepath part)
                     if( te.path.m_data.as_Generic().m_path == resolve.m_crate.get_lang_item_path(sp, "non_zero") )
                     {
+                        DEBUG(ty << " is NonZero lang item");
                         out_path.sub_fields.push_back(0);
                         out_path.size = r->size;
                         return true;

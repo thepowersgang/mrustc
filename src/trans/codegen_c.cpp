@@ -4365,6 +4365,9 @@ namespace {
                 // If this is an emulated i128, check both fields
                 m_of << indent << "if( "; emit_lvalue(val);
                 const auto& slot_ty = emit_enum_path(repr, e.field);
+                MIR_ASSERT(mir_res,
+                    slot_ty.data().is_Pointer() || slot_ty.data().is_Function() || slot_ty.data().is_Borrow() || slot_ty.data().is_Primitive(),
+                    "Invalid niche type: " << slot_ty << " in " << ty);
                 if(type_is_emulated_i128(slot_ty)) {
                     m_of << ".lo == 0 && ";
                     emit_lvalue(val); emit_enum_path(repr, e.field);
