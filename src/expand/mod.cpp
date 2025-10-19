@@ -808,7 +808,7 @@ struct CExpandExpr:
         }
     }
 
-    ::AST::ExprNodeP visit_macro(::AST::ExprNode_Macro& node, ::std::vector< ::AST::ExprNodeP>* nodes_out)
+    ::AST::ExprNodeP visit_macro(::AST::ExprNode_Macro& node, ::std::vector< ::AST::ExprNode_Block::Line>* nodes_out)
     {
         TRACE_FUNCTION_F(node.m_path << "!");
         if( !node.m_path.is_valid() ) {
@@ -842,7 +842,7 @@ struct CExpandExpr:
                 if( newexpr )
                 {
                     if( nodes_out ) {
-                        nodes_out->push_back( mv$(newexpr) );
+                        nodes_out->push_back({ add_silence_if_end, mv$(newexpr) });
                     }
                     else {
                         assert( !rv );
@@ -914,22 +914,22 @@ struct CExpandExpr:
 
         for( auto it = node.m_nodes.begin(); it != node.m_nodes.end(); )
         {
-            assert( it->get() );
+            assert( it->node.get() );
 
-            if( auto* node_mac = dynamic_cast<::AST::ExprNode_Macro*>(it->get()) )
+            if( auto* node_mac = dynamic_cast<::AST::ExprNode_Macro*>(it->node.get()) )
             {
-                auto attrs = std::move( (*it)->attrs() );
+                auto attrs = std::move( it->node->attrs() );
                 Expand_Attrs_CfgAttr( attrs );
-                Expand_Attrs(expand_state, attrs, AttrStage::Pre,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, *it); });
-                if( !it->get() ) {
+                Expand_Attrs(expand_state, attrs, AttrStage::Pre,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, it->node); });
+                if( !it->node.get() ) {
                     it = node.m_nodes.erase( it );
                     continue ;
                 }
-                (*it)->attrs() = std::move(attrs);
+                it->node->attrs() = std::move(attrs);
 
-                assert(it->get() == node_mac);
+                assert(it->node.get() == node_mac);
 
-                ::std::vector< ::AST::ExprNodeP>    new_nodes;
+                ::std::vector< ::AST::ExprNode_Block::Line>    new_nodes;
                 this->visit_macro(*node_mac, &new_nodes);
 
                 if(node_mac->m_path.is_valid()) {
@@ -937,6 +937,10 @@ struct CExpandExpr:
                     ++ it;
                 }
                 else {
+                    // If this has a semicolon, then force the new final node to have a semicolon
+                    if( it->has_semicolon && !new_nodes.empty() ) {
+                        new_nodes.back().has_semicolon = true;
+                    }
                     it = node.m_nodes.erase(it);
                     it = node.m_nodes.insert(it, ::std::make_move_iterator(new_nodes.begin()), ::std::make_move_iterator(new_nodes.end()));
                     // NOTE: Doesn't advance the iterator above, we want to re-visit the new node
@@ -944,8 +948,8 @@ struct CExpandExpr:
             }
             else
             {
-                this->visit(*it);
-                if( it->get() == nullptr ) {
+                this->visit(it->node);
+                if( it->node.get() == nullptr ) {
                     it = node.m_nodes.erase( it );
                 }
                 else {
@@ -1208,13 +1212,12 @@ struct CExpandExpr:
             else {
                 // Create a block with a `let` and individual assignments
                 auto rv = new AST::ExprNode_Block();
-                rv->m_yields_final_value = false;
-                rv->m_nodes.push_back(AST::ExprNodeP(new AST::ExprNode_LetBinding(std::move(pat), TypeRef(node.span()), std::move(node.m_value))));
+                rv->m_nodes.push_back({ true, AST::ExprNodeP(new AST::ExprNode_LetBinding(std::move(pat), TypeRef(node.span()), std::move(node.m_value))) });
                 for(auto& slots : v.m_slots) {
-                    rv->m_nodes.push_back(AST::ExprNodeP(new AST::ExprNode_Assign(AST::ExprNode_Assign::NONE,
+                    rv->m_nodes.push_back({ true, AST::ExprNodeP(new AST::ExprNode_Assign(AST::ExprNode_Assign::NONE,
                         std::move(slots.second),
                         AST::ExprNodeP(new AST::ExprNode_NamedValue(AST::Path::new_local(std::move(slots.first))))
-                        )));
+                        )) });
                 }
                 this->replacement = AST::ExprNodeP(rv);
             }
@@ -1425,15 +1428,14 @@ struct CExpandExpr:
         // - Create the block
         auto* replacement = new ::AST::ExprNode_Block();
         replacement->m_label = label;
-        replacement->m_nodes.push_back(std::move(node_body));
+        replacement->m_nodes.push_back({ true, std::move(node_body) });
         if(node.m_false) {
-            replacement->m_nodes.push_back(std::move(node.m_false));
+            replacement->m_nodes.push_back({ false, std::move(node.m_false) });
         }
         else {
-            replacement->m_nodes.push_back(new AST::ExprNode_Tuple({}));
+            replacement->m_nodes.push_back({ false, new AST::ExprNode_Tuple({}) });
+            replacement->m_nodes.back().node->set_span(node.span());
         }
-        replacement->m_nodes.back()->set_span(node.span());
-        replacement->m_yields_final_value = true;
         replacement->set_span(node.span());
         this->replacement.reset(replacement);
 #endif

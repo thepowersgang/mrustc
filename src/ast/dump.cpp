@@ -59,27 +59,22 @@ public:
             m_os << indent() << "// ANON: " << n.m_local_mod->path() << "\n";
             handle_module(*n.m_local_mod);
         }
-        bool is_first = true;
         for( auto& child : n.m_nodes )
         {
-            if(is_first) {
-                is_first = false;
-            } else {
-                m_os << ";";
-            }
             m_os << "\n";
-            if( child ) {
-                this->print_attrs(child->attrs());
+            if( child.node ) {
+                this->print_attrs(child.node->attrs());
             }
             m_os << indent();
             m_expr_root = true;
-            if( !child.get() )
+            if( !child.node.get() )
                 m_os << "/* nil */";
             else
-                AST::NodeVisitor::visit(child);
+                AST::NodeVisitor::visit(child.node);
+            if( child.has_semicolon ) {
+                m_os << ";";
+            }
         }
-        if( !n.m_yields_final_value )
-            m_os << ";";
         m_os << "\n";
         dec_indent();
         m_os << indent() << "}";

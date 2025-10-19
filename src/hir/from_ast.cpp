@@ -618,8 +618,8 @@ namespace {
         TU_ARMA(Value, iv) {
             const AST::ExprNode*    node = &*iv;
             if( const auto* e = dynamic_cast<const AST::ExprNode_Block*>(node) ) {
-                if( e->m_yields_final_value && e->m_nodes.size() == 1 ) {
-                    node = e->m_nodes.back().get();
+                if( e->m_nodes.size() == 1 && !e->m_nodes.back().has_semicolon ) {
+                    node = e->m_nodes.back().node.get();
                 }
             }
             // TODO: Explicitly handle each expected variant... or add a proper consteval expression

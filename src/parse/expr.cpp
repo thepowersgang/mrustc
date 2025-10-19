@@ -60,7 +60,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, AST::ExprNode_Block::Type ty/*=B
     CLEAR_PARSE_FLAGS_EXPR(lex);
     Token   tok;
 
-    ::std::vector<ExprNodeP> nodes;
+    ::std::vector<AST::ExprNode_Block::Line> lines;
     AST::AttributeList  attrs;
 
 
@@ -75,11 +75,8 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, AST::ExprNode_Block::Type ty/*=B
 
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
-    bool last_value_yielded = false;
     while( LOOK_AHEAD(lex) != TOK_BRACE_CLOSE )
     {
-        last_value_yielded = false;
-
         Parse_ParentAttrs(lex, attrs);
         if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE )
             break;
@@ -90,12 +87,10 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, AST::ExprNode_Block::Type ty/*=B
         if( rv )
         {
             // Set to TRUE if there was no semicolon after a statement
-            last_value_yielded = !add_silence_if_end;
-            nodes.push_back( mv$(rv) );
+            lines.push_back({ add_silence_if_end, mv$(rv) });
         }
         else {
             assert( !add_silence_if_end );
-            last_value_yielded = false;
         }
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
@@ -104,7 +99,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, AST::ExprNode_Block::Type ty/*=B
         DEBUG("Restore module from " << lex.parse_state().module->path() << " to " << orig_module->path() );
         lex.parse_state().module = orig_module;
     }
-    auto* rv_blk = new ::AST::ExprNode_Block(ty, last_value_yielded, mv$(nodes), mv$(local_mod) );
+    auto* rv_blk = new ::AST::ExprNode_Block(ty, mv$(lines), mv$(local_mod) );
     rv_blk->m_label = label;
     auto rv = ExprNodeP(rv_blk);
     rv->set_attrs( mv$(attrs) );

@@ -1207,11 +1207,10 @@ namespace {
             m_pmi.send_symbol("{");
             for(const auto& n : node.m_nodes)
             {
-                this->visit_node(*n);
-                if( node.m_yields_final_value && &n == &node.m_nodes.back() ) {
-                    break;
+                this->visit_node(*n.node);
+                if( n.has_semicolon ) {
+                    m_pmi.send_symbol(";");
                 }
-                m_pmi.send_symbol(";");
             }
             m_pmi.send_symbol("}");
         }

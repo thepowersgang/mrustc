@@ -99,13 +99,13 @@ namespace {
 NODE(ExprNode_Block, {
     os << "{";
     for(const auto& n : m_nodes)
-        os << *n << ";";
+        os << *n.node << (n.has_semicolon ? ";" : "");
     os << "}";
 },{
-    ::std::vector<ExprNodeP>    nodes;
+    ::std::vector<Line>    nodes;
     for(const auto& n : m_nodes)
-        nodes.push_back( n->clone() );
-    return NEWNODE(ExprNode_Block, m_block_type, m_yields_final_value, mv$(nodes), m_local_mod);
+        nodes.push_back({ n.has_semicolon, n.node->clone() });
+    return NEWNODE(ExprNode_Block, m_block_type, mv$(nodes), m_local_mod);
 })
 
 NODE(ExprNode_Try, {
@@ -657,7 +657,7 @@ NODE(ExprNode_UniOp, {
 NV(ExprNode_Block, {
     //INDENT();
     for( auto& child : node.m_nodes )
-        visit(child);
+        visit(child.node);
     //UNINDENT();
 })
 NV(ExprNode_Try, {

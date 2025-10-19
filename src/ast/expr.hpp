@@ -60,25 +60,40 @@ struct ExprNode_Block:
         Const,
     };
     Type m_block_type;
-    bool m_yields_final_value;
     Ident   m_label;
     ::std::shared_ptr<AST::Module> m_local_mod;
-    ::std::vector<ExprNodeP>    m_nodes;
+    struct Line {
+        bool has_semicolon;
+        ExprNodeP   node;
+    };
+    ::std::vector<Line>    m_nodes;
 
-    ExprNode_Block(::std::vector<ExprNodeP> nodes={}):
+    ExprNode_Block(::std::vector<Line> nodes={}):
         m_block_type(Type::Bare),
-        m_yields_final_value(true),
         m_label(""),
         m_local_mod(),
         m_nodes( ::std::move(nodes) )
     {}
-    ExprNode_Block(Type type, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::shared_ptr<AST::Module> local_mod):
+    /// Shortcut for a block that returns a contained node
+    ExprNode_Block(ExprNodeP value)
+        : ExprNode_Block()
+    {
+        set_span(value->span());
+        m_nodes.push_back({false, std::move(value)});
+    }
+    ExprNode_Block(Type type, ::std::vector<Line> nodes, ::std::shared_ptr<AST::Module> local_mod):
         m_block_type(type),
-        m_yields_final_value(yields_final_value),
         m_label(""),
         m_local_mod( ::std::move(local_mod) ),
         m_nodes( ::std::move(nodes) )
     {
+    }
+
+    void push_stmt(AST::ExprNodeP node) {
+        m_nodes.push_back({ true, std::move(node) });
+    }
+    void push_tail_expr(AST::ExprNodeP node) {
+        m_nodes.push_back({ false, std::move(node) });
     }
 
     NODE_METHODS();

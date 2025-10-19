@@ -40,10 +40,11 @@ struct LowerHIR_ExprNode_Visitor:
         auto rv = new ::HIR::ExprNode_Block(v.span());
         for(auto& n : v.m_nodes)
         {
-            ASSERT_BUG(v.span(), n, "NULL node encountered in block");
-            rv->m_nodes.push_back( lower( n ) );
+            ASSERT_BUG(v.span(), n.node, "NULL node encountered in block");
+            rv->m_nodes.push_back( lower( n.node ) );
         }
-        if( v.m_yields_final_value && ! rv->m_nodes.empty() )
+        // If the final node wasn't a statement (there wasn't a semicolon on it), then make that the value
+        if( ! rv->m_nodes.empty() && !v.m_nodes.back().has_semicolon )
         {
             rv->m_value_node = mv$(rv->m_nodes.back());
             rv->m_nodes.pop_back();
