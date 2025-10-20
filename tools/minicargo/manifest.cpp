@@ -200,7 +200,7 @@ WorkspaceManifest WorkspaceManifest::load_from_toml(const ::helpers::path& works
                 else if( key == "rust-version" ) {
                     // Ignore, that's future-me's problem
                 }
-                else if( key == "license" ) {
+                else if( key == "license" || key == "homepage" || key == "repository" ) {
                     // Documentation metdata
                 }
                 else {
@@ -224,6 +224,8 @@ WorkspaceManifest WorkspaceManifest::load_from_toml(const ::helpers::path& works
                 }
 
                 it->fill_from_kv(eh, was_added, key_val, 3, nullptr, dir);
+            }
+            else if( key == "lints" ) {
             }
             else {
                 eh.error("Unknown item in [workspace] `", key, "`");
@@ -856,6 +858,9 @@ namespace
                 }
                 else if(s == "dylib") {
                     target.m_crate_types.push_back(PackageTarget::CrateType::dylib);
+                }
+                else if(s == "cdylib") {
+                    target.m_crate_types.push_back(PackageTarget::CrateType::cdylib);
                 }
                 // TODO: Other crate types
                 else {
@@ -1643,6 +1648,18 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             if(s[pos] == '.')
             {
                 pos ++;
+                if( s[pos] == '*' ) {
+                    rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::GreaterEqual, v });
+                    auto v2 = v;
+                    v2.minor += 1;
+                    rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::Less, v2 });
+
+                    while( pos < s.size() && isblank(s[pos]) )
+                        pos ++;
+                    if(pos == s.size())
+                        break ;
+                    continue ;
+                }
                 v.patch = H::parse_i(s, pos);
                 v.patch_set = true;
 

@@ -22,6 +22,9 @@ public:
         else if( name == "dylib" || name == "rdylib" ) {
             crate.m_crate_type = AST::Crate::Type::RustDylib;
         }
+        else if( name == "cdylib" ) {
+            crate.m_crate_type = AST::Crate::Type::CDylib;
+        }
         else {
             ERROR(sp, E0000, "Unknown crate type '" << name << "'");
         }
