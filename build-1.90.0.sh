@@ -9,7 +9,7 @@ make -f minicargo.mk LIBS $@
 make test $@
 make local_tests $@
 
-OUTDIR=output-1.74.0
+OUTDIR=output-1.90.0
 if [[ "x$MRUSTC_TARGET" != "x" ]]; then
 	OUTDIR=$OUTDIR-$MRUSTC_TARGET
 fi
@@ -21,4 +21,4 @@ LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk -j ${PARLEVEL:-1} $OUTDIR/carg
 ./$OUTDIR/cargo --version
 
 ./$OUTDIR/rustc samples/no_core.rs
-#./output-1.74.0/rustc samples/1.rs
+#./output-1.90.0/rustc samples/1.rs
