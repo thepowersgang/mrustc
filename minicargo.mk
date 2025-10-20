@@ -138,6 +138,9 @@ SRCDIR_RUST_TESTS := $(RUSTCSRC)src/test/
 ifeq ($(RUSTC_VERSION),1.74.0)
 SRCDIR_RUST_TESTS := $(RUSTCSRC)tests/
 endif
+ifeq ($(RUSTC_VERSION),1.90.0)
+SRCDIR_RUST_TESTS := $(RUSTCSRC)tests/
+endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 ifeq ($(shell uname -s || echo not),Darwin)
@@ -326,15 +329,8 @@ $(OUTDIR)cargo-build/libfailure-0_1_2.rlib: $(MRUSTC) LIBS
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
 
-HELLO_TEST := ui/hello.rs
-ifeq ($(RUSTC_VERSION),1.19.0)
-  HELLO_TEST := run-pass/hello.rs
-else ifeq ($(RUSTC_VERSION),1.29.0)
-  HELLO_TEST := run-pass/hello.rs
-endif
-
 # "hello, world" test - Invoked by the `make test` target
-$(OUTDIR)rust/test_run-pass_hello: $(SRCDIR_RUST_TESTS)$(HELLO_TEST) LIBS
+$(OUTDIR)rust/test_run-pass_hello: samples/hello.rs LIBS
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
 	$(DBG) $(MRUSTC) $< -o $@ --cfg debug_assertions -g -O -L $(OUTDIR) > $@_dbg.txt
