@@ -2407,7 +2407,17 @@ namespace {
 
             if(item.m_linkage.type == HIR::Linkage::Type::ExternWeak) {
                 ASSERT_BUG(sp, linkage_name != "", "");
-                m_of << "extern char " << linkage_name << "[0];\n";
+                m_of << "extern char ";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "__attribute__((weak)) ";
+                    break;
+                case Compiler::Msvc:
+                    break;
+                }
+                m_of << linkage_name << "[0];\n";
+
                 emit_static_ty(type, p, /*is_proto=*/true);
                 m_of << " = { .raw = { (uintptr_t)" << linkage_name << " } };";
                 m_of << "\t// static " << p << " : " << type;
@@ -2472,6 +2482,15 @@ namespace {
                 }
                 break;
             case HIR::Linkage::Type::ExternWeak:
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "__attribute__((weak_import)) ";
+                    break;
+                case Compiler::Msvc:
+                    m_of << "__declspec(selectany) ";
+                    break;
+                }
                 break;
             }
             if(item.m_linkage.section != "")
