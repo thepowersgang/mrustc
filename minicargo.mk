@@ -133,6 +133,10 @@ ifeq ($(RUSTC_VERSION),1.74.0)
   SRCDIR_RUSTC := compiler/rustc
   SRCDIR_RUSTC_DRIVER := compiler/rustc_driver
 endif
+ifeq ($(RUSTC_VERSION),1.90.0)
+  SRCDIR_RUSTC := compiler/rustc
+  SRCDIR_RUSTC_DRIVER := compiler/rustc_driver
+endif
 
 SRCDIR_RUST_TESTS := $(RUSTCSRC)src/test/
 ifeq ($(RUSTC_VERSION),1.74.0)
