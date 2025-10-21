@@ -291,14 +291,18 @@ int main(int argc, const char* argv[])
                                 // - Check if the existing one is a lower version, if it is then no issue
                                 // - Otherwise, we need to blacklist `r.first->second` and restart
                                 if( prev_dep->version() < dep->version() ) {
+                                    DEBUG("Blacklist " << dep->name() << " v" << dep->version() << ": from " << cur_manifest->name() << " v" << cur_manifest->version());
                                     repo.blacklist_dependency(dep);
                                     // No need to restart
                                 }
                                 else {
-                                    repo.blacklist_dependency(prev_dep);
-                                    // Reset the enumeration state, but keep the blacklist
-                                    s.reset();
-                                    break;
+                                    DEBUG("Blacklist " << prev_dep->name() << " v" << prev_dep->version()
+                                        << ": Use " << dep->name() << " v" << dep->version() << " from " << cur_manifest->name() << " v" << cur_manifest->version());
+                                    if( repo.blacklist_dependency(prev_dep) ) {
+                                        // Reset the enumeration state, but keep the blacklist
+                                        s.reset();
+                                        break;
+                                    }
                                 }
                             }
                         }

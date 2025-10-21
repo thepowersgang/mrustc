@@ -141,6 +141,8 @@ struct PackageVersionSpec
     /// Check if this spec accepts the passed version
     bool accepts(const PackageVersion& v) const;
 
+    bool operator==(const PackageVersion& v) const;
+
     friend ::std::ostream& operator<<(::std::ostream& os, const PackageVersionSpec& v) {
         bool first = true;
         for(const auto& b : v.m_bounds) {

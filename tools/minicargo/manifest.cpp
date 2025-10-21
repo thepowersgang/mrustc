@@ -1745,6 +1745,10 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
     }
     return true;
 }
+bool PackageVersionSpec::operator==(const PackageVersion& v) const
+{
+    return m_bounds.size() == 1 && (m_bounds[0].ty == Bound::Type::Compatible || m_bounds[0].ty == Bound::Type::Equal) && m_bounds[0].ver == v;
+}
 
 
 void ManifestOverrides::load_from_toml(const ::std::string& path)
