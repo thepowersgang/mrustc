@@ -496,8 +496,12 @@ namespace {
                     // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
                     else if( m_fcn_ptr )
                     {
+                        // Visit inner first, to handle nested
+                        ::HIR::Visitor::visit_type(ty);
+
                         size_t idx = m_fcn_ptr->m_params.m_types.size();
                         auto name = RcString::new_interned(FMT("erased$" << idx));
+                        DEBUG("-> " << name);
                         auto new_ty = ::HIR::TypeRef( name, 256 + idx );
                         m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), te->m_is_sized });
                         for( auto& trait : te->m_traits )
