@@ -2316,7 +2316,8 @@ namespace {
         }
         else if( path_attr.size() > 0 )
         {
-            sub_path = dirname(mod_fileinfo.path) / path_attr.c_str();
+            //sub_path = dirname(mod_fileinfo.path) / path_attr.c_str();
+            sub_path = dirname(lex.point_span().get_top_file_span().filename.c_str()) / path_attr.c_str();
         }
         else if( mod_fileinfo.controls_dir )
         {
