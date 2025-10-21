@@ -1314,10 +1314,15 @@ namespace MIR { namespace eval {
                 auto nvs = NewvalState(item.m_value.m_state->m_module, mod_ip, FMT("const" << &c << "#"));
                 auto eval = ::HIR::Evaluator(item.m_value.span(), root_resolve.m_crate, nvs);
                 eval.resolve.set_both_generics_raw(impl_params_def, &c.m_params);
+                auto temp_pp_impl = impl_params_def ? impl_params_def->make_nop_params(0) : HIR::PathParams();
+                auto temp_pp_method = c.m_params.make_nop_params(1);
+                MonomorphState  temp_ms;
+                temp_ms.pp_impl = &temp_pp_impl;
+                temp_ms.pp_method = &temp_pp_method;
                 DEBUG("- Evaluate " << p);
                 try
                 {
-                    item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone(), const_ms.clone());
+                    item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone(), std::move(temp_ms));
                     item.m_value_state = HIR::Constant::ValueState::Known;
                 }
                 catch(const Defer& )
@@ -1346,6 +1351,9 @@ namespace MIR { namespace eval {
 
                     auto insert_res = item.m_monomorph_cache.insert(std::make_pair(p.clone(), std::move(val)));
                     it = insert_res.first;
+                }
+                else {
+                    DEBUG("Cached generic " << p);
                 }
 
                 return it->second;
@@ -1774,7 +1782,10 @@ namespace {
             break; }
         case TypeInfo::Signed: {
             auto l = local_state.read_param_sint(ti.bits, val_l);
+            DEBUG(l << " from " << val_l);
             auto r = local_state.read_param_sint(ti.bits, val_r);
+            DEBUG(r << " from " << val_r);
+            DEBUG(l << " " << int(op) << " " << r);
             switch(op)
             {
             case ::MIR::eBinOp::ADD: {
@@ -2538,7 +2549,12 @@ namespace HIR {
                     auto ty = HIR::TypeRef::new_path(ty_path, &resolve.m_crate.get_struct_by_path(state.sp, ty_path));
                     auto* repr = Target_GetTypeRepr(state.sp, resolve, ty);
                     MIR_ASSERT(state, repr, "No repr for panic::Location?");
-                    MIR_ASSERT(state, repr->fields.size() == 3, "Unexpected item count in panic::Location");
+                    if(TARGETVER_LEAST_1_90)  {
+                        MIR_ASSERT(state, repr->fields.size() == 4, "Unexpected item count in panic::Location");
+                    }
+                    else {
+                        MIR_ASSERT(state, repr->fields.size() == 3, "Unexpected item count in panic::Location");
+                    }
                     auto val = RelocPtr(AllocationPtr::allocate(resolve, state, ty));
                     dst.write_ptr(state, EncodedLiteral::PTR_BASE, val);
                     auto rv = ValueRef(val);
