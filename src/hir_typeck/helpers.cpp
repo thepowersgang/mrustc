@@ -4854,6 +4854,7 @@ bool TraitResolution::find_method(const Span& sp,
     // 3. Search generic bounds for a match
     // - If there is a bound on the receiver, then that bound is usable no-matter what
     DEBUG("> Bounds");
+    bool found_bound = false;
     for(const auto& tb : m_trait_bounds)
     {
         const auto& e_type = tb.first.first;
@@ -4919,6 +4920,7 @@ bool TraitResolution::find_method(const Span& sp,
                         }) ) ));
                 DEBUG("++ " << possibilities.back());
                 rv = true;
+                found_bound = true;
             }
             else if( cmp == ::HIR::Compare::Fuzzy )
             {
@@ -4934,6 +4936,7 @@ bool TraitResolution::find_method(const Span& sp,
                         }) ) ));
                 DEBUG("++ " << possibilities.back());
                 rv = true;
+                found_bound = true;
             }
             else
             {
@@ -4944,6 +4947,9 @@ bool TraitResolution::find_method(const Span& sp,
         {
             DEBUG("> Receiver mismatch");
         }
+    }
+    if( found_bound ) {
+        return rv;
     }
 
     auto get_inner_type = [this,sp](const ::HIR::TypeRef& ty, ::std::function<bool(const ::HIR::TypeRef&)> cb)->const ::HIR::TypeRef* {
