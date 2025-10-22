@@ -1824,10 +1824,6 @@ namespace {
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override {
             HIR::ExprVisitorDef::visit(node);
-            if( node.m_base_value ) {
-                this->equate_types( node.m_base_value->span(), node.m_res_type, node.m_base_value->m_res_type );
-            }
-            
             
             // Just assign the type through (for the path params)
             this->equate_pps(node.span(),
@@ -1855,6 +1851,8 @@ namespace {
                 const auto& str = *var.type.data().as_Path().binding.as_Struct();
                 ASSERT_BUG(sp, var.is_struct, "Struct literal for enum on non-struct variant");
                 fields_ptr = &str.m_data.as_Named();
+
+                ASSERT_BUG(sp, !node.m_base_value, "Struct literal for enum with a base value");
                 }
             TU_ARMA(Union, e) {
                 fields_ptr = &e->m_variants;
@@ -1884,6 +1882,24 @@ namespace {
             }
             auto ms = MonomorphStatePtr(&ty, &ty_path.m_params, nullptr);
 
+            if( node.m_base_value ) {
+                #if 0
+                this->equate_types( node.m_base_value->span(), node.m_res_type, node.m_base_value->m_res_type );
+                #else
+                const auto& ty_base = node.m_base_value->m_res_type;
+                const auto& ty_path_base = ty_base.data().as_Path().path.m_data.as_Generic();
+                auto ms_base = MonomorphStatePtr(&ty_base, &ty_path_base.m_params, nullptr);
+                for(const auto& fld : fields) {
+                    auto it = ::std::find_if(node.m_values.begin(), node.m_values.end(), [&](const auto& v)->bool{ return v.first == fld.first; });
+                    if( it == node.m_values.end() ) {
+                        auto dst_ty = m_resolve.monomorph_expand(it->second->span(), fld.second.ent, ms);
+                        auto src_ty = m_resolve.monomorph_expand(it->second->span(), fld.second.ent, ms_base);
+                        DEBUG("BASE ." << fld.first << ": " << dst_ty << " = " << src_ty);
+                        this->equate_types( node.m_base_value->span(), dst_ty, src_ty );
+                    }
+                }
+                #endif
+            }
 
             // Bind fields with type params (coercable)
             for(auto& val : node.m_values)
