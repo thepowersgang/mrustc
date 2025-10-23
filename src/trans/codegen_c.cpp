@@ -4571,6 +4571,31 @@ namespace {
                 m_of << indent << "default: "; cb(SIZE_MAX); m_of << "\n";
                 m_of << indent << "} }\n";
             }
+            else if( const auto* ve = values.opt_ByteString() ) {
+                m_of << indent << "{ static SLICE_PTR switch_strings[] = {";
+                for(const auto& v : *ve)
+                {
+                    m_of << " {"; this->print_escaped_string(v); m_of << "," << v.size() << "},";
+                }
+                m_of << " {0,0} };\n";
+                HIR::TypeRef    tmp;
+                const auto& ty = mir_res.get_lvalue_type(tmp, val);
+                m_of << indent << "switch( mrustc_string_search_linear(";
+                if( const auto* a = ty.data().as_Borrow().inner.data().opt_Array() ) {
+                    auto len = a->size.as_Known();
+                    m_of << "make_sliceptr("; emit_lvalue(val); m_of << "->DATA, " << len << ")";
+                }
+                else {
+                    emit_lvalue(val);
+                }
+                m_of << ", " << ve->size() << ", switch_strings) ) {\n";
+                for(size_t i = 0; i < ve->size(); i++)
+                {
+                    m_of << indent << "case " << i << ": "; cb(i); m_of << " break;\n";
+                }
+                m_of << indent << "default: "; cb(SIZE_MAX); m_of << "\n";
+                m_of << indent << "} }\n";
+            }
             else if( const auto* ve = values.opt_Unsigned() ) {
                 m_of << indent << "switch("; emit_lvalue(val);
                 // TODO: Ensure that .hi is zero
