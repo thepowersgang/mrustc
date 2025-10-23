@@ -1892,8 +1892,8 @@ namespace {
                 for(const auto& fld : fields) {
                     auto it = ::std::find_if(node.m_values.begin(), node.m_values.end(), [&](const auto& v)->bool{ return v.first == fld.first; });
                     if( it == node.m_values.end() ) {
-                        auto dst_ty = m_resolve.monomorph_expand(it->second->span(), fld.second.ent, ms);
-                        auto src_ty = m_resolve.monomorph_expand(it->second->span(), fld.second.ent, ms_base);
+                        auto dst_ty = m_resolve.monomorph_expand(node.span(), fld.second.ent, ms);
+                        auto src_ty = m_resolve.monomorph_expand(node.span(), fld.second.ent, ms_base);
                         DEBUG("BASE ." << fld.first << ": " << dst_ty << " = " << src_ty);
                         this->equate_types( node.m_base_value->span(), dst_ty, src_ty );
                     }
