@@ -508,8 +508,8 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
             CHECK_TOK(tok, TOK_RWORD_SELF);
             auto sp = lex.end_span(ps);
             args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, rcstring_self), TypeRef(TypeRef::TagReference(), sp, ::std::move(lifetime), is_mut, TypeRef(sp, rcstring_Self, 0xFFFF))) );
-            if( allow_self == false )
-                ERROR(lex.point_span(), E0000, "Self binding not expected here");
+            //if( allow_self == false )
+            //    ERROR(lex.point_span(), E0000, "Self binding not expected here");
 
             // Prime tok for next step
             GET_TOK(tok, lex);
@@ -524,8 +524,8 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
         if( LOOK_AHEAD(lex) == TOK_RWORD_SELF )
         {
             GET_TOK(tok, lex);
-            if( allow_self == false )
-                throw ParseError::Generic(lex, "Self binding not expected");
+            //if( allow_self == false )
+            //    throw ParseError::Generic(lex, "Self binding not expected");
             auto binding_sp = lex.end_span(ps);
             TypeRef ty = TypeRef( lex.point_span(), rcstring_Self, 0xFFFF );
             if( GET_TOK(tok, lex) == TOK_COLON ) {
@@ -542,8 +542,8 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
     else if( tok.type() == TOK_RWORD_SELF )
     {
         // By-value method
-        if( allow_self == false )
-            throw ParseError::Generic(lex, "Self binding not expected");
+        //if( allow_self == false )
+        //    throw ParseError::Generic(lex, "Self binding not expected");
         auto binding_sp = lex.end_span(ps);
         TypeRef ty = TypeRef( lex.point_span(), rcstring_Self, 0xFFFF );
         if( GET_TOK(tok, lex) == TOK_COLON ) {
@@ -1299,6 +1299,23 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         {
             impl.add_macro_invocation( mv$(inv) );
             impl.items().back().attrs = mv$(item_attrs);
+            return ;
+        }
+    }
+    {
+        if( lex.lookahead(0) == TOK_INTERPOLATED_ITEM ) {
+            tok = lex.getToken();
+            auto item = tok.take_frag_item();
+            TU_MATCH_HDRA((item.data), {)
+            default:
+                TODO(lex.point_span(), "Interpolated item into impl: " << item.data.tag_str());
+            TU_ARMA(Function, e) {
+                impl.add_function(item.span, std::move(item.attrs), item.vis, false, item.name, std::move(e) );
+                }
+            //TU_ARMA(Type, e) {
+            //    impl.add_type(item.span, std::move(item.attrs), item.vis, false, item.name, std::move(e.m_params), std::move(e.m_type));
+            //    }
+            }
             return ;
         }
     }
