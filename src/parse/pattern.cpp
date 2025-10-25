@@ -39,6 +39,9 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or);
 AST::Pattern Parse_Pattern(TokenStream& lex, AllowOrPattern allow_or)
 {
     auto ps = lex.start_span();
+    if( allow_or == AllowOrPattern::Yes ) {
+        lex.getTokenIf(TOK_PIPE);
+    }
     auto rv = Parse_Pattern1(lex, allow_or);
     if( allow_or == AllowOrPattern::Yes && lex.lookahead(0) == TOK_PIPE )
     {
