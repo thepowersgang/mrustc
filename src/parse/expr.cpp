@@ -838,6 +838,9 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_PAREN_OPEN:
     case TOK_SQUARE_OPEN:
 
+    case TOK_RWORD_MATCH:
+    case TOK_RWORD_IF:
+
     case TOK_INTERPOLATED_PATH:
     case TOK_INTERPOLATED_EXPR:
 
