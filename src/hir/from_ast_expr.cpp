@@ -420,8 +420,16 @@ struct LowerHIR_ExprNode_Visitor:
                     mv$( args )
                     ) );
             TU_ARMA(Static, e) {
+                bool is_const = e.static_
+                    ? e.static_->s_class() == ::AST::Static::Class::CONST
+                    : (e.hir ? false : true)    // If HIR Pointer is null, this is a HIR::Const
+                    ;
                 m_rv.reset( new ::HIR::ExprNode_CallValue( v.span(),
-                    ::HIR::ExprNodeP(new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path, FromAST_PathClass::Value), ::HIR::ExprNode_PathValue::STATIC )),
+                    ::HIR::ExprNodeP(new ::HIR::ExprNode_PathValue(
+                        v.span(),
+                        LowerHIR_Path(v.span(), v.m_path, FromAST_PathClass::Value),
+                        is_const ? ::HIR::ExprNode_PathValue::CONSTANT : ::HIR::ExprNode_PathValue::STATIC
+                        )),
                     mv$(args)
                     ) );
                 }
