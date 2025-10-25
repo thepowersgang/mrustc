@@ -78,10 +78,10 @@ def main():
 
         cur_bb_lines.append(outstr)
 
-    goto_regex = re.compile('goto bb(\d+);$')
-    call_regex = re.compile('.*goto bb(\d+) else bb(\d+)$')
-    if_regex = re.compile('.*goto bb(\d+); } else { goto bb(\d+); }$')
-    switch_regex = re.compile('(\d+) => bb(\d+),')
+    goto_regex = re.compile('goto bb(\\d+);$')
+    call_regex = re.compile('.*goto bb(\\d+) else bb(\\d+)$')
+    if_regex = re.compile('.*goto bb(\\d+); } else { goto bb(\\d+); }$')
+    switch_regex = re.compile('(\\d+) => bb(\\d+),')
 
     links = []
     for idx,bb in enumerate(bbs):
@@ -142,6 +142,8 @@ def main():
 
     print("")
     for idx,bb in enumerate(bbs):
+        if bb == ["diverge;"]:
+            continue
         print('"bb{0}" [label="BB{0}:'.format(idx), end="")
         for stmt in bb:
             print('\\l',stmt.replace('"', '\\"'), end="")
