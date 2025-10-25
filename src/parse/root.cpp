@@ -1538,18 +1538,21 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
             }
             // Keep looping until a comma
             do {
-                if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE ) {
+                if( lex.getTokenIf(TOK_BRACE_CLOSE, tok) ) {
                     // Trailing comma
-                    GET_TOK(tok, lex);
                     break;
                 }
                 // - Handle `self` in braces differently
-                else if( LOOK_AHEAD(lex) == TOK_RWORD_SELF ) {
-                    GET_TOK(tok, lex);
-                    auto name = path.nodes().back().name();
-                    if( LOOK_AHEAD(lex) == TOK_RWORD_AS ) {
-                        GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+                else if( lex.getTokenIf(TOK_RWORD_SELF) ) {
+                    RcString name;
+                    if( lex.getTokenIf(TOK_RWORD_AS) ) {
                         name = get_optional_ident(lex);
+                    }
+                    else {
+                        if( path.nodes().size() == 0 ) {
+                            ERROR(lex.point_span(), E0000, "`self` with no path, use `as` to give it a name");
+                        }
+                        name = path.nodes().back().name();
                     }
                     entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
                 }
