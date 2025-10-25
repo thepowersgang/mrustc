@@ -962,27 +962,42 @@ namespace {
             {
                 switch( cond_bin->m_op )
                 {
-                case ::HIR::ExprNode_BinOp::Op::BoolAnd: {
-                    DEBUG("- Short-circuit BoolAnd");
-                    // TODO: Generate a SplitScope
-
-                    // IF left false: go to false immediately
-                    auto inner_true_branch = m_builder.new_bb_unlinked();
-                    emit_if(cond_bin->m_left, inner_true_branch, false_branch);
-                    // ELSE use right
-                    m_builder.set_cur_block(inner_true_branch);
-                    emit_if(cond_bin->m_right, true_branch, false_branch);
-                    } return;
+                case ::HIR::ExprNode_BinOp::Op::BoolAnd:
                 case ::HIR::ExprNode_BinOp::Op::BoolOr: {
-                    DEBUG("- Short-circuit BoolOr");
                     // TODO: Generate a SplitScope
+                    if(cond_bin->m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd)
+                    {
+                        DEBUG("- Short-circuit BoolAnd");
 
-                    // IF left true: got to true
-                    auto inner_false_branch = m_builder.new_bb_unlinked();
-                    emit_if(cond_bin->m_left, true_branch, inner_false_branch);
-                    // ELSE use right
-                    m_builder.set_cur_block(inner_false_branch);
+                        // IF left false: go to false immediately
+                        auto inner_true_branch = m_builder.new_bb_unlinked();
+                        emit_if(cond_bin->m_left, inner_true_branch, false_branch);
+                        // ELSE use right
+                        m_builder.set_cur_block(inner_true_branch);
+                    }
+                    else
+                    {
+                        DEBUG("- Short-circuit BoolOr");
+
+                        // IF left true: got to true
+                        auto inner_false_branch = m_builder.new_bb_unlinked();
+                        emit_if(cond_bin->m_left, true_branch, inner_false_branch);
+                        // ELSE use right
+                        m_builder.set_cur_block(inner_false_branch);
+                    }
+
+                    auto split_scope = m_builder.new_scope_split(cond_bin->span());
+                    m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true);
+                    auto final_true_branch = m_builder.new_bb_unlinked();
+                    //auto final_false_branch = m_builder.new_bb_unlinked();
                     emit_if(cond_bin->m_right, true_branch, false_branch);
+                    
+                    // TODO: Need to end in both of these branches too (end in `final_true_branch` then copy it over to `final_false_branch`?)
+                    // - Only need to end once, no codegen - but does need to end in a reachable block?
+                    m_builder.set_cur_block(final_true_branch);
+                    m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true);
+                    m_builder.terminate_scope(cond_bin->span(), std::move(split_scope));
+                    m_builder.end_block(MIR::Terminator::make_Goto(true_branch));
                     } return;
                 default:
                     break;

@@ -840,6 +840,7 @@ void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle
     for( ; it != m_scope_stack.rend() && *it != target.idx; ++it)
     {
         auto& scope_def = m_scopes.at(*it);
+        DEBUG("Through S" << *it << ": " << scope_def.data.tag_str());
 
         if(auto* sd_loop = scope_def.data.opt_Loop())
         {
@@ -896,6 +897,7 @@ void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle
         BUG(sp, "Moving values to a scope not on the stack - scope " << target.idx);
     }
     auto& tgt_scope_def = m_scopes.at(target.idx);
+    DEBUG("To S" << target.idx << ": " << tgt_scope_def.data.tag_str());
     ASSERT_BUG(sp, tgt_scope_def.data.is_Owning(), "Rasising scopes can only be done on temporaries (target)");
     ASSERT_BUG(sp, tgt_scope_def.data.as_Owning().is_temporary, "Rasising scopes can only be done on temporaries (target)");
 
