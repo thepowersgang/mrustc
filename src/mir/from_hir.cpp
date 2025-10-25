@@ -996,8 +996,6 @@ namespace {
                     m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true, true);
                     m_builder.end_block(MIR::Terminator::make_Goto(false_branch));
                     
-                    // TODO: Need to end in both of these branches too (end in `final_true_branch` then copy it over to `final_false_branch`?)
-                    // - Only need to end once, no codegen - but does need to end in a reachable block?
                     m_builder.set_cur_block(final_true_branch);
                     m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true);
                     m_builder.terminate_scope(cond_bin->span(), std::move(split_scope));
