@@ -108,6 +108,11 @@ NODE(ExprNode_Block, {
     return NEWNODE(ExprNode_Block, m_block_type, mv$(nodes), m_local_mod);
 })
 
+NODE(ExprNode_AsyncBlock, {
+    os << "async " << (m_is_move ? "move " : "") << *m_inner;
+},{
+    return NEWNODE(ExprNode_AsyncBlock, m_inner->clone(), m_is_move);
+})
 NODE(ExprNode_Try, {
     os << "try " << *m_inner;
 },{
@@ -659,6 +664,9 @@ NV(ExprNode_Block, {
     for( auto& child : node.m_nodes )
         visit(child.node);
     //UNINDENT();
+})
+NV(ExprNode_AsyncBlock, {
+    visit(node.m_inner);
 })
 NV(ExprNode_Try, {
     visit(node.m_inner);

@@ -99,6 +99,21 @@ struct ExprNode_Block:
     NODE_METHODS();
 };
 
+struct ExprNode_AsyncBlock:
+    public ExprNode
+{
+    ExprNodeP   m_inner;
+    bool m_is_move;
+
+    ExprNode_AsyncBlock(ExprNodeP inner, bool is_move)
+        : m_inner(std::move(inner))
+        , m_is_move(is_move)
+    {
+    }
+
+    NODE_METHODS();
+};
+
 struct ExprNode_Try:
     public ExprNode
 {
@@ -785,6 +800,7 @@ public:
         virtual void visit(nt& node) = 0/*; \
         virtual void visit(const nt& node) = 0*/
     NT(ExprNode_Block);
+    NT(ExprNode_AsyncBlock);
     NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
@@ -838,6 +854,7 @@ public:
         virtual void visit(nt& node) override;/* \
         virtual void visit(const nt& node) override*/
     NT(ExprNode_Block);
+    NT(ExprNode_AsyncBlock);
     NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);

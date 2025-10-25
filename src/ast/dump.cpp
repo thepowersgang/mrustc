@@ -79,6 +79,13 @@ public:
         dec_indent();
         m_os << indent() << "}";
     }
+    virtual void visit(AST::ExprNode_AsyncBlock& n) override {
+        m_os << "async ";
+        if( n.m_is_move ) {
+            m_os << "move ";
+        }
+        AST::NodeVisitor::visit(n.m_inner);
+    }
     virtual void visit(AST::ExprNode_Try& n) override {
         m_os << "try ";
         AST::NodeVisitor::visit(n.m_inner);

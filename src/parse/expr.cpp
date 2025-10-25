@@ -1373,6 +1373,10 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
         return Parse_Expr_Match(lex);
     case TOK_RWORD_IF:
         return Parse_IfStmt(lex);
+    case TOK_RWORD_ASYNC: {
+        bool is_move = lex.getTokenIf(TOK_RWORD_MOVE);
+        return NEWNODE(AST::ExprNode_AsyncBlock, Parse_ExprBlockNode(lex, AST::ExprNode_Block::Type::Bare), is_move);
+    }
     case TOK_RWORD_UNSAFE:
         return Parse_ExprBlockNode(lex, AST::ExprNode_Block::Type::Unsafe);
     case TOK_RWORD_CONST:
