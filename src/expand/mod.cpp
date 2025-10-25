@@ -895,6 +895,7 @@ struct CExpandExpr:
     }
 
     void visit(::AST::ExprNode_Block& node) override {
+        this->in_assign_lhs = false;
         unsigned int mod_item_count = 0;
 
         auto prev_modstack = this->expand_state.modstack;
@@ -1515,6 +1516,7 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_obj);
     }
     void visit(::AST::ExprNode_Index& node) override {
+        this->in_assign_lhs = false;
         this->visit_nodelete(node, node.m_obj);
         this->visit_nodelete(node, node.m_idx);
     }
