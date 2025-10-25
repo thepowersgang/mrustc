@@ -220,6 +220,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
 /// - use/extern/const/let
 ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
 {
+    TRACE_FUNCTION;
     Token tok;
     ExprNodeP   ret;
     bool add_silence_ignored = false;
@@ -370,9 +371,11 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
         // TODO: if this expression captures a block, then treat it as a statement.
         // Otherwise, interpret as normal expression
         // HACK: Just treat a leading `:expr` as a statement (rust-lang/rust #78829) (ref: rustc-1.39.0-src\vendor\indexmap\src\map.rs:1139)
-        case TOK_INTERPOLATED_EXPR:
-            PUTBACK(tok, lex);
-            return Parse_Stmt(lex);
+        //case TOK_INTERPOLATED_EXPR:
+        //    DEBUG(":expr");
+        //    if( dynamic_cast<AST::ExprNode_Block .frag_node()
+        //    PUTBACK(tok, lex);
+        //    return Parse_Stmt(lex);
 
         default:
             PUTBACK(tok, lex);
@@ -733,7 +736,7 @@ ExprNodeP Parse_Stmt_Let(TokenStream& lex)
     if( !lex.getTokenIf(TOK_PAREN_CLOSE) )
     {
         do {
-            if( lex.getTokenIf(TOK_PAREN_CLOSE) ) {
+            if( lex.getTokenIf(TOK_PAREN_CLOSE, tok) ) {
                 break;
             }
             rv.push_back( Parse_Expr0(lex) );
