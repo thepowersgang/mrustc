@@ -53,13 +53,13 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
 ::AST::Visibility Parse_Publicity(TokenStream& lex, bool allow_restricted/*=true*/)
 {
     Token   tok;
-    if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_VIS )
+    if( lex.getTokenIf(TOK_INTERPOLATED_VIS, tok) )
     {
-        GET_TOK(tok, lex);
         return tok.take_frag_vis();
     }
-    if( lex.getTokenIf(TOK_RWORD_CRATE) )
+    if( lex.lookahead(0) == TOK_RWORD_CRATE && lex.lookahead(1) != TOK_DOUBLE_COLON )
     {
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_CRATE);
         return AST::Visibility::make_restricted(AST::Visibility::Ty::Crate, AST::AbsolutePath("", {}));
     }
     if( lex.getTokenIf(TOK_RWORD_PUB) )
