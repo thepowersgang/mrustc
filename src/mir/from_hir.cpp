@@ -989,8 +989,12 @@ namespace {
                     auto split_scope = m_builder.new_scope_split(cond_bin->span());
                     m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true);
                     auto final_true_branch = m_builder.new_bb_unlinked();
-                    //auto final_false_branch = m_builder.new_bb_unlinked();
-                    emit_if(cond_bin->m_right, true_branch, false_branch);
+                    auto final_false_branch = m_builder.new_bb_unlinked();
+                    emit_if(cond_bin->m_right, final_true_branch, final_false_branch);
+
+                    m_builder.set_cur_block(final_false_branch);
+                    m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true, true);
+                    m_builder.end_block(MIR::Terminator::make_Goto(false_branch));
                     
                     // TODO: Need to end in both of these branches too (end in `final_true_branch` then copy it over to `final_false_branch`?)
                     // - Only need to end once, no codegen - but does need to end in a reachable block?
