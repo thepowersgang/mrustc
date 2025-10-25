@@ -931,6 +931,9 @@ struct CExpandExpr:
 
                 ::std::vector< ::AST::ExprNode_Block::Line>    new_nodes;
                 this->visit_macro(*node_mac, &new_nodes);
+                for(const auto& n : new_nodes) {
+                    DEBUG("++ " << *n.node << (n.has_semicolon ? " ;" : ""));
+                }
 
                 if(node_mac->m_path.is_valid()) {
                     DEBUG("Deferred macro");
