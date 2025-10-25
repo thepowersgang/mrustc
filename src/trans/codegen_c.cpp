@@ -4034,6 +4034,11 @@ namespace {
                     }
                 TU_ARMA(DstMeta, ve) {
                     emit_lvalue(e.dst);
+                    if( ty.data().is_Primitive() || ty.data().is_Pointer() ) {
+                    }
+                    else {
+                        m_of << "._0._0";
+                    }
                     m_of << " = ";
                     emit_lvalue(ve.val);
                     m_of << ".META";

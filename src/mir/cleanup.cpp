@@ -1182,9 +1182,6 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     else {
                         BUG(Span(), "Unexpected input type for DstMeta - " << ty);
                     }
-                    if( const auto* te = ity_p->data().opt_Array() ) {
-                        se.src = ::MIR::Constant::make_Uint({ U128(te->size.as_Known()), ::HIR::CoreType::Usize });
-                    }
                     }
                 TU_ARMA(DstPtr, re) {
                     // HACK: Ensure that the box Deref conversion fires here.
