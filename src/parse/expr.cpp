@@ -570,6 +570,7 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token tok;
+    AST::AttributeList  node_attrs;
 
     CLEAR_PARSE_FLAGS_EXPR(lex);
     // 1. Get expression
@@ -588,6 +589,7 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
         }
         AST::ExprNode_Match_Arm    arm;
 
+        Parse_ParentAttrs(lex, node_attrs);
         arm.m_attrs = Parse_ItemAttrs(lex);
 
         // HACK: Questionably valid, but 1.29 librustc/hir/lowering.rs needs this
@@ -614,7 +616,9 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
     } while( 1 );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
 
-    return NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );
+    auto rv = NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );
+    rv->set_attrs( std::move(node_attrs) );
+    return rv;
 }
 
 /// "do catch" block
