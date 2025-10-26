@@ -133,9 +133,9 @@ namespace {
             if( params.m_values.size() == 0 && fill_infer ) {
                 params.m_values.reserve(param_defs.m_values.size());
                 for(const auto& val : param_defs.m_values) {
-                    if( val.m_default ) {
+                    if( !val.m_default.is_Infer() ) {
                         // NOTE: Can't just copy, as Unevaluated may not have had its params set yet
-                        TODO(sp, "Value generic defaults");
+                        TODO(sp, "Value generic defaults - " << val.m_default);
                     }
                     else {
                         params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );

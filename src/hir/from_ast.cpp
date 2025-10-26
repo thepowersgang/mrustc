@@ -24,6 +24,7 @@
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
 ::HIR::ValueItem LowerHIR_Static(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Static& e, const Span& sp, const RcString& name);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
+::HIR::ConstGeneric LowerHIR_ConstGeneric(const ::AST::ExprNode& node_ref);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path, const AST::HigherRankedBounds& hrbs, bool allow_bounds=false);
 ::HIR::GenericParams LowerHIR_HigherRankedBounds(const AST::HigherRankedBounds& hrbs);
 
@@ -74,7 +75,11 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             rv.m_types.push_back({ tp.name(), LowerHIR_Type(tp.get_default()), true });
             }
         TU_ARMA(Value, tp) {
-            rv.m_values.push_back(HIR::ValueParamDef { tp.name().name, LowerHIR_Type(tp.type()), tp.default_value() ? LowerHIR_Expr(tp.default_value()) : HIR::ExprPtr() });
+            rv.m_values.push_back(HIR::ValueParamDef {
+                tp.name().name,
+                LowerHIR_Type(tp.type()),
+                tp.default_value() ? LowerHIR_ConstGeneric(tp.default_value().node()) : ::HIR::ConstGeneric::make_Infer({})
+            });
             }
         }
     }
@@ -616,23 +621,8 @@ namespace {
             params.m_types.push_back( LowerHIR_Type(ty) );
             }
         TU_ARMA(Value, iv) {
-            const AST::ExprNode*    node = &*iv;
-            if( const auto* e = dynamic_cast<const AST::ExprNode_Block*>(node) ) {
-                if( e->m_nodes.size() == 1 && !e->m_nodes.back().has_semicolon ) {
-                    node = e->m_nodes.back().node.get();
-                }
-            }
-            // TODO: Explicitly handle each expected variant... or add a proper consteval expression
-            if( const auto* e = dynamic_cast<const AST::ExprNode_NamedValue*>(node) ) {
-                if( e->m_path.is_trivial() ) {
-                    const auto& b = e->m_path.m_bindings.value.binding;
-                    ASSERT_BUG(sp, b.is_Generic(), "Trivial path not type parameter - " << e->m_path << " - " << b.tag_str());
-                    const auto& param = b.as_Generic();
-                    params.m_values.push_back( HIR::GenericRef(e->m_path.as_trivial(), param.index) );
-                    break ;
-                }
-            }
-            params.m_values.push_back( std::make_unique<HIR::ConstGeneric_Unevaluated>(LowerHIR_ExprNode(*iv)) );
+            ASSERT_BUG(sp, iv, "Value parameter with null node");
+            params.m_values.push_back(LowerHIR_ConstGeneric(*iv));
             }
         TU_ARMA(AssociatedTyEqual, ty) {
             if( !allow_assoc )
@@ -646,6 +636,26 @@ namespace {
     }
 
     return params;
+}
+::HIR::ConstGeneric LowerHIR_ConstGeneric(const ::AST::ExprNode& node_ref)
+{
+    const Span& sp = node_ref.span();
+    const ::AST::ExprNode* node_p = &node_ref;
+    if( const auto* e = dynamic_cast<const AST::ExprNode_Block*>(node_p) ) {
+        if( e->m_nodes.size() == 1 && !e->m_nodes.back().has_semicolon ) {
+            node_p = e->m_nodes.back().node.get();
+        }
+    }
+    // TODO: Explicitly handle each expected variant... or add a proper consteval expression
+    if( const auto* e = dynamic_cast<const AST::ExprNode_NamedValue*>(node_p) ) {
+        if( e->m_path.is_trivial() ) {
+            const auto& b = e->m_path.m_bindings.value.binding;
+            ASSERT_BUG(sp, b.is_Generic(), "Trivial path not type parameter - " << e->m_path << " - " << b.tag_str());
+            const auto& param = b.as_Generic();
+            return HIR::GenericRef(e->m_path.as_trivial(), param.index);
+        }
+    }
+    return std::make_unique<HIR::ConstGeneric_Unevaluated>(LowerHIR_ExprNode(node_ref));
 }
 ::HIR::GenericPath LowerHIR_GenericPath(const Span& sp, const ::AST::Path& path, FromAST_PathClass pc, bool allow_assoc)
 {

@@ -43,7 +43,7 @@ namespace {
         }
 
         pp.m_values.reserve( params_def.m_values.size() );
-        while( pp.m_values.size() < params_def.m_values.size() && params_def.m_values[pp.m_values.size()].m_default ) {
+        while( pp.m_values.size() < params_def.m_values.size() && !params_def.m_values[pp.m_values.size()].m_default.is_Infer() ) {
             //pp.m_values.push_back( ms_o.monomorph_va(sp, params_def.m_values[pp.m_values.size()].m_default) );
             TODO(sp, "Populate default value params");
         }

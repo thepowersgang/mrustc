@@ -39,7 +39,7 @@ struct ValueParamDef
 {
     RcString    m_name;
     ::HIR::TypeRef  m_type;
-    ::HIR::ExprPtr  m_default;
+    ConstGeneric    m_default;
     Ordering ord(const ValueParamDef& x) const {
         ORD(m_name, x.m_name);
         ORD(m_type, x.m_type);
