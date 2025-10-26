@@ -227,6 +227,9 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
             }
             found = true;
         }
+        else if( m.is_MacroRules() ) {
+            // Ignore
+        }
         else {
             TODO(sp, "Attr " << a.name() << " : " << m.tag_str());
         }
