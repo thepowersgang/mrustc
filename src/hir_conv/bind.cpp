@@ -97,6 +97,7 @@ namespace {
         bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr
         )
     {
+        TRACE_FUNCTION_FR(param_defs.fmt_args() << " -> " << params << " (fill_infer=" << fill_infer << ")", params);
         if( params.m_lifetimes.size() != param_defs.m_lifetimes.size() )
         {
             if( params.m_lifetimes.size() == 0 && fill_infer ) {
@@ -131,14 +132,20 @@ namespace {
         if( params.m_values.size() != param_defs.m_values.size() )
         {
             if( params.m_values.size() == 0 && fill_infer ) {
-                params.m_values.reserve(param_defs.m_values.size());
-                for(const auto& val : param_defs.m_values) {
-                    if( !val.m_default.is_Infer() ) {
-                        // NOTE: Can't just copy, as Unevaluated may not have had its params set yet
-                        TODO(sp, "Value generic defaults - " << val.m_default);
+                params.m_values.resize(param_defs.m_values.size());
+            }
+            else if( params.m_values.size() > param_defs.m_values.size() ) {
+                ERROR(sp, E0000, "Too many value parameters passed to " << path);
+            }
+            else {
+                while( params.m_values.size() < param_defs.m_values.size() ) {
+                    const auto& val = param_defs.m_values[params.m_values.size()];
+                    if( val.m_default.is_Infer() ) {
+                        ERROR(sp, E0000, "Omitted value parameter with no default in " << path);
                     }
                     else {
-                        params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
+                        // TODO: Anything to be worried about with Unevaluated?, it may not have had its params set yet
+                        params.m_values.push_back(val.m_default.clone());
                     }
                 }
             }

@@ -830,9 +830,7 @@ namespace resolve_ufcs {
                     else
                     {
                         trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
-                        for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
-                            trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
-                        }
+                        trait_path.m_params = m_current_trait->m_params.make_nop_params(0);
                     }
 
                     if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
