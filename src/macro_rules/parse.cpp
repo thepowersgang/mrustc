@@ -896,6 +896,11 @@ namespace {
                             }
                             auto entry_pats2 = macro_pattern_get_head_set(ent.subpats, 0, path);
                             assert(entry_pats2.size() > 0);
+                            // Replace `TOK_EOF` in entry patterns with the first skip pattern
+                            if( ::std::find(entry_pats2.begin(), entry_pats2.end(), TOK_EOF) != entry_pats2.end() ) {
+                                entry_pats2.erase( ::std::find(entry_pats2.begin(), entry_pats2.end(), TOK_EOF) );
+                                entry_pats2.insert(entry_pats2.end(), skip_pats1.begin(), skip_pats1.end());
+                            }
                             auto skip_pats2 = macro_pattern_get_head_set(pattern, idx+1, path);
                             assert(skip_pats2.size() > 0);
                             DEBUG("entry_pats2 = [" << entry_pats2 << "]");
