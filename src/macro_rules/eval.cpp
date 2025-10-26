@@ -954,6 +954,17 @@ namespace
         }
         return true;
     }
+    bool consume_type_TraitList(TokenStreamRO& lex)
+    {
+        do {
+            if( lex.consume_if(TOK_LIFETIME) ) {
+                continue ;
+            }
+            if( !consume_path(lex, true) )
+                return false;
+        } while( lex.consume_if(TOK_PLUS) );
+        return true;
+    }
     bool consume_type(TokenStreamRO& lex)
     {
         TRACE_FUNCTION;
@@ -968,13 +979,15 @@ namespace
         case TOK_PAREN_OPEN:
         case TOK_SQUARE_OPEN:
             return consume_tt(lex);
-        case TOK_IDENT:
-            if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" )
-                lex.consume();
-            if(0)
         case TOK_RWORD_IMPL:
         case TOK_RWORD_DYN:
             lex.consume();
+            return consume_type_TraitList(lex);
+        case TOK_IDENT:
+            if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" ) {
+                lex.consume();
+                return consume_type_TraitList(lex);
+            }
         case TOK_RWORD_CRATE:
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:
@@ -982,6 +995,7 @@ namespace
         case TOK_INTERPOLATED_PATH:
             if( !consume_path(lex, true) )
                 return false;
+            // Macro invocation?
             if( lex.consume_if(TOK_EXCLAM) )
             {
                 if( lex.next() != TOK_PAREN_OPEN && lex.next() != TOK_SQUARE_OPEN && lex.next() != TOK_BRACE_OPEN )
