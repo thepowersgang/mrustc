@@ -521,7 +521,7 @@ namespace {
                 TODO(sp, "TOK_CSTRING");
 
             case TOK_HASH:      m_pmi.send_symbol("#"); break;
-            case TOK_UNDERSCORE:m_pmi.send_symbol("_"); break;
+            case TOK_UNDERSCORE:m_pmi.send_ident("_"); break;
 
             // Symbols
             case TOK_PAREN_OPEN:    m_pmi.send_symbol("("); break;

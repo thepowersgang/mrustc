@@ -325,7 +325,7 @@ impl ::std::str::FromStr for TokenStream {
                 if c.is_alphabetic() || c == '_'
                 {
                     let ident = get_ident(&mut it, String::new());
-                    if ident == "_" {
+                    if false && ident == "_" {
                         rv.push(Punct::new('_', Spacing::Alone).into());
                     }
                     else {
