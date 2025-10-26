@@ -344,16 +344,14 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
     if( path.is_trivial() )
     {
         const auto& name = path.as_trivial();
-        // 1. Search compiler-provided proc macros
-        if(auto* pm = Expand_FindProcMacro(name))
-        {
-            DEBUG("Found builtin");
-            return MacroRef(pm);
-        }
 
         // Iterate up the module tree, using the first located macro
         for(const auto* ll = &modstack; ll; ll = ll->m_prev)
         {
+            if( !ll->m_item ) {
+                DEBUG("null module in stack");
+                break ;
+            }
             const auto& mac_mod = *ll->m_item;
             DEBUG("Searching in " << mac_mod.path());
             for( const auto& mr : reverse(mac_mod.macros()) )
@@ -380,6 +378,12 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
             {
                 return rv;
             }
+        }
+        // Search compiler-provided proc macros (after locals)
+        if(auto* pm = Expand_FindProcMacro(name))
+        {
+            DEBUG("Found builtin");
+            return MacroRef(pm);
         }
         if( path.m_class.is_Local() )
         {
