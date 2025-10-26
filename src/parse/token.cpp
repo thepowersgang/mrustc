@@ -556,8 +556,9 @@ struct EscapedString {
         break;
     case TOK_IDENT:
     case TOK_LIFETIME:
-        if( tok.m_data.is_Ident() )
-            os << "\"" << tok.m_data.as_Ident() << "\"";
+        if( const auto* td = tok.m_data.opt_Ident() ) {
+            os << "\"" << td->name << "\"" << td->hygiene;
+        }
         else if( tok.m_data.is_None() )
             ;
         else

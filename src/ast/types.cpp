@@ -59,7 +59,7 @@ const char* coretype_name(const eCoreType ct ) {
     switch(ct)
     {
     case CORETYPE_INVAL:return "INVAL";
-    case CORETYPE_ANY:  return "_";
+    case CORETYPE_ANY:  return "_/*CORETYPE_ANY*/";
     case CORETYPE_CHAR: return "char";
     case CORETYPE_STR:  return "str";
     case CORETYPE_BOOL: return "bool";

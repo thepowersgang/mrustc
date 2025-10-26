@@ -2002,7 +2002,7 @@ Position ProcMacroInv::getPosition() const {
 }
 Token ProcMacroInv::realGetToken() {
     auto rv = this->realGetToken_();
-    DEBUG(rv);
+    DEBUG("ProcMacroInv: " << rv);
     return rv;
 }
 Token ProcMacroInv::realGetToken_() {
@@ -2031,6 +2031,9 @@ Token ProcMacroInv::realGetToken_() {
         }
     case TokenClass::Ident: {
         auto val = this->recv_bytes();
+        if( val == "_" || val == "r#_" ) {
+            return TOK_UNDERSCORE;
+        }
         auto t = Lex_FindReservedWord(val, m_edition);
         if( t != TOK_NULL )
             return t;
