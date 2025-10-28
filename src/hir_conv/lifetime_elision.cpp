@@ -19,8 +19,9 @@ namespace
     struct MiniResolve
     {
         const HIR::Crate& m_crate;
-        const HIR::GenericParams* m_impl_generics;
-        const HIR::GenericParams* m_item_generics;
+        const HIR::TypeRef* m_self_type = nullptr;
+        const HIR::GenericParams* m_impl_generics = nullptr;
+        const HIR::GenericParams* m_item_generics = nullptr;
 
         MiniResolve(const HIR::Crate& crate)
             : m_crate(crate)
@@ -48,6 +49,8 @@ namespace
         ::HIR::GenericParams* m_cur_params = nullptr;
         unsigned m_cur_params_level = 0;
         ::std::vector< ::HIR::LifetimeRef* >    m_current_lifetime;
+        /// The type of `Self` if we're in a by-value method
+        const ::HIR::TypeRef*   m_value_self_type = nullptr;
 
         unsigned m_current_depth = 0;
         std::vector<std::pair<unsigned, ::HIR::LifetimeRef*>> m_trait_object_rule;
@@ -603,6 +606,15 @@ namespace
                             }
                         } v;
                         v.visit_type(ty);
+                        if( v.lfts.empty() && !(!m_current_lifetime.empty() && m_current_lifetime.back() && !pushed) ) {
+                            // If this is on a by-value method, then assume it captures `self` (and thus all contained liftimes)
+                            // REF: rustc-1.90.0-src/compiler/rustc_data_structures/src/graph/linked_graph/mod.rs:278
+                            if( m_value_self_type ) {
+                                DEBUG("Check Self: " << *m_value_self_type);
+                                v.visit_type(const_cast<HIR::TypeRef&>(*m_value_self_type));
+                            }
+                        }
+
                         // If there is a lifetime on the stack (that wasn't from a `'static` pushed above), then use it
                         if( v.lfts.empty() && !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
                             DEBUG("ErasedType: Use wrapping lifetime");
@@ -895,6 +907,7 @@ namespace
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
+            m_resolve.m_self_type = &impl.m_type;
             auto _ = m_resolve.set_impl_generics(/*impl.m_type,*/ impl.m_params);
 
             // Pre-visit so lifetime elision can work
@@ -908,6 +921,7 @@ namespace
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << impl.m_trait_args << " for " << impl.m_type);
+            m_resolve.m_self_type = &impl.m_type;
             auto _ = m_resolve.set_impl_generics(/*impl.m_type,*/ impl.m_params);
 
             // Pre-visit so lifetime elision can work
@@ -922,6 +936,7 @@ namespace
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << impl.m_trait_args << " for " << impl.m_type << " { }");
+            m_resolve.m_self_type = &impl.m_type;
             auto _ = m_resolve.set_impl_generics(/*impl.m_type,*/ impl.m_params);
 
             // Pre-visit so lifetime elision can work
@@ -1014,6 +1029,9 @@ namespace
                         elided_output_lifetime = b->lifetime;
                     }
                 }
+                if( item.m_receiver == HIR::Function::Receiver::Value ) {
+                    m_value_self_type = m_resolve.m_self_type;
+                }
             }
             // - OR, look for only one elided lifetime
             if( elided_output_lifetime == HIR::LifetimeRef() ) {
@@ -1103,6 +1121,7 @@ namespace
             assert(m_current_lifetime.empty());
 
             DEBUG("Output: " << item.m_params.fmt_args() << item.m_params.fmt_bounds());
+            m_value_self_type = nullptr;
 
             ::HIR::Visitor::visit_function(p, item);
         }
