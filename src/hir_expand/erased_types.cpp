@@ -22,14 +22,27 @@ namespace {
         TU_ARMA(Fcn, ee) {
             MonomorphState    monomorph_cb;
             auto val = m_resolve.get_value(sp, ee.m_origin, monomorph_cb);
-            ASSERT_BUG(sp, val.is_Function(), "ErasedType with Fcn type doesn't point at a function: " << ee.m_origin << ": " << val.tag_str());
-            const auto& fcn = *val.as_Function();
-            const auto& erased_types = fcn.m_code.m_erased_types;
+            if( val.is_NotYetKnown() && ee.m_origin.m_data.is_UfcsKnown() )
+            {
+                const auto& v = ee.m_origin.m_data.as_UfcsKnown();
+                auto name = RcString::new_interned(FMT("erased#" << v.item << "_" << ee.m_index));
+                new_ty = ::HIR::TypeRef::new_path(::HIR::Path(
+                    v.type.clone(),
+                    v.trait.clone(),
+                    name
+                ),{});
+            }
+            else
+            {
+                ASSERT_BUG(sp, val.is_Function(), "ErasedType with Fcn type doesn't point at a function: " << ee.m_origin << ": " << val.tag_str());
+                const auto& fcn = *val.as_Function();
+                const auto& erased_types = fcn.m_code.m_erased_types;
 
-            ASSERT_BUG(sp, ee.m_index < erased_types.size(), "Erased type index out of range for " << ee.m_origin << " - " << ee.m_index << " >= " << erased_types.size());
-            const auto& tpl = erased_types[ee.m_index];
+                ASSERT_BUG(sp, ee.m_index < erased_types.size(), "Erased type index out of range for " << ee.m_origin << " - " << ee.m_index << " >= " << erased_types.size());
+                const auto& tpl = erased_types[ee.m_index];
 
-            new_ty = monomorph_cb.monomorph_type(sp, tpl);
+                new_ty = monomorph_cb.monomorph_type(sp, tpl);
+            }
             m_resolve.expand_associated_types(sp, new_ty);
             }
         TU_ARMA(Alias, ee) {
