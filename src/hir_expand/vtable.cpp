@@ -25,6 +25,7 @@ namespace {
         const char* m_method_name = nullptr;
         const HIR::GenericParams* m_method_params = nullptr;
         unsigned m_var_index = 0;
+        ::std::vector<HIR::TypeRef> m_tys;
 
     public:
         Visitor_ImplTrait()
@@ -57,6 +58,7 @@ namespace {
                             std::move(traits),
                             {}  //std::move(ty)
                         }));
+                        m_tys.push_back(std::move(ty));
                     }
                     else {
                         BUG(Span(), "Neither target impl nor target trait set");
@@ -83,11 +85,17 @@ namespace {
             m_method_params = &fcn.m_params;
             m_var_index = 0;
             visit_type(fcn.m_return);
-            m_method_name = nullptr;
 
             if( m_target_trait && m_var_index > 0 && fcn.m_code ) {
-                TODO(Span(), "Handle erased types with provided impls - " << trait_path << " fn " << name);
+                for(size_t i = 0; i < m_var_index; i ++) {
+                    auto ty_name = RcString::new_interned(FMT("erased#" << m_method_name << "_" << i));
+                    auto& ty = m_target_trait->m_types.at(ty_name);
+                    ty.m_default = std::move(m_tys.at(i));
+                }
             }
+
+            m_tys.clear();
+            m_method_name = nullptr;
         }
     public:
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& tr) override
