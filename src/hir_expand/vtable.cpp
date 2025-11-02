@@ -66,7 +66,7 @@ namespace {
 
                     ty = HIR::TypeRef::new_path(
                         HIR::Path(
-                            HIR::TypeRef::new_self(),
+                            m_self_ty ? m_self_ty->clone() : HIR::TypeRef::new_self(),
                             HIR::GenericPath(m_trait_path->clone(), m_trait_args->clone()),
                             ty_name,
                             m_method_params->make_nop_params(1)

@@ -112,6 +112,7 @@ namespace {
                 this->clear_opaque |= saved_clear_opaque;
             }
         } v(sp, resolve);
+        resolve.expand_associated_types(sp, ty);
         v.visit_type(ty);
         resolve.expand_associated_types(sp, ty);
     }
