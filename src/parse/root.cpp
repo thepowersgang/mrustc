@@ -599,24 +599,18 @@ AST::Function Parse_FunctionDef(TokenStream& lex, bool allow_self, bool can_be_p
         // Eat 'tok', negative comparison
     }
 
-    TypeRef ret_type = TypeRef(TypeRef::TagUnit(), lex.point_span());
-    if( GET_TOK(tok, lex) == TOK_THINARROW )
-    {
-        // Return type
-        ret_type = Parse_Type(lex);
-    }
-    else
-    {
-        PUTBACK(tok, lex);
-    }
+    // Return type
+    TypeRef ret_type = lex.getTokenIf(TOK_THINARROW)
+        ? Parse_Type(lex)
+        : TypeRef(TypeRef::TagUnit(), lex.point_span())
+        ;
 
-    if( GET_TOK(tok, lex) == TOK_RWORD_WHERE )
+    // Bounds
+    if( lex.getTokenIf(TOK_RWORD_WHERE) )
     {
         Parse_WhereClause(lex, params);
     }
-    else {
-        PUTBACK(tok, lex);
-    }
+    
 
     return AST::Function(lex.end_span(ps), mv$(abi), mv$(flags), mv$(params), mv$(ret_type), mv$(args), is_variadic);
 }
@@ -875,15 +869,14 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         name = tok.ident().name;
         // Self allowed, prototype-form allowed (optional names and no code)
         auto fcn = Parse_FunctionDef(lex, /*allow_self*/true, /*can_be_proto*/true, std::move(abi), fn_flags);
-        if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
+        if( lex.lookahead(0) == TOK_BRACE_OPEN )
         {
-            PUTBACK(tok, lex);
             // Enter a new hygine scope for the function body. (TODO: Should this be in Parse_ExprBlock?)
             lex.push_hygine();
             fcn.set_code( Parse_ExprBlock(lex) );
             lex.pop_hygine();
         }
-        else if( tok.type() == TOK_SEMICOLON )
+        else if( lex.getTokenIf(TOK_SEMICOLON) )
         {
             // Accept it
         }
