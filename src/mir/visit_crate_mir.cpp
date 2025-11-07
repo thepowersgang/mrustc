@@ -37,7 +37,10 @@ void MIR::OuterVisitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
     if( item.m_code || item.m_code.m_mir )
     {
         DEBUG("Function code " << p);
-        m_cb(m_resolve, p, item.m_code, item.m_args, item.m_return);
+
+        ::HIR::TypeRef tmp;
+        const auto& ret_ty = m_resolve.fix_trait_default_return(item.m_code->span(), p, item.m_return, tmp);
+        m_cb(m_resolve, p, item.m_code, item.m_args, ret_ty);
     }
 }
 void MIR::OuterVisitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)

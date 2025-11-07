@@ -25,6 +25,8 @@ extern bool visit_path_tys_with_mut(::HIR::Path& ty, t_cb_visit_ty_mut callback)
 
 typedef ::std::function<bool(const ::HIR::TypeRef&, ::HIR::TypeRef&)>   t_cb_clone_ty;
 /// Clones a type, calling the provided callback on every type (optionally providing a replacement)
+///
+/// Closure should return `true` if the passed output slot was populated.
 extern ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback);
 extern ::HIR::PathParams clone_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_clone_ty callback);
 

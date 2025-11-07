@@ -179,6 +179,7 @@ private:
         ) const;
 
 public:
+    const ::HIR::TypeRef& fix_trait_default_return(const Span& sp, const HIR::ItemPath& p, const ::HIR::TypeRef& tpl, ::HIR::TypeRef& tmp) const;
 
     void expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const;
     void expand_associated_types_path(const Span& sp, ::HIR::Path& input) const;

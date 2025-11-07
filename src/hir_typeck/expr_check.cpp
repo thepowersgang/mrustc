@@ -1405,7 +1405,9 @@ namespace {
             if( item.m_code )
             {
                 DEBUG("Function code " << p);
-                ExprVisitor_Validate    ev(m_resolve, item.m_args, item.m_return);
+                ::HIR::TypeRef tmp;
+                const auto& ret_ty = m_resolve.fix_trait_default_return(item.m_code->span(), p, item.m_return, tmp);
+                ExprVisitor_Validate    ev(m_resolve, item.m_args, ret_ty);
                 ev.visit_root( item.m_code );
             }
             else

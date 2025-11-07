@@ -1492,6 +1492,39 @@ bool StaticTraitResolve::find_impl__check_crate(
     }
 }
 
+
+const ::HIR::TypeRef& StaticTraitResolve::fix_trait_default_return(const Span& sp, const HIR::ItemPath& p, const ::HIR::TypeRef& tpl, ::HIR::TypeRef& tmp) const
+{
+    // If in a trait, then force expand erased associated types:
+    // These are `<Self/**/ as ::"bin#"::TestTrait>::erased#with_default_0<'M0,>/*O*/`
+    // Detect this by first ensuring that we're in a trait body, then if there's an ATY from that trait
+    const auto& top_ip = p.get_top_ip();
+    if( top_ip.ty && top_ip.trait && *top_ip.ty == ::HIR::TypeRef::new_self() )
+    {
+        const auto& trait = m_crate.get_trait_by_path(sp, *top_ip.trait);
+        tmp = clone_ty_with(sp, tpl, [&](const ::HIR::TypeRef& tpl, ::HIR::TypeRef& out)->bool {
+            if( const auto* p = tpl.data().opt_Path() ) {
+                if( const auto* pe = p->path.m_data.opt_UfcsKnown() ) {
+                    DEBUG("ATY " << tpl);
+                    if( pe->type == *top_ip.ty && pe->trait.m_path == *top_ip.trait ) {
+                        // Does this type have a default?
+                        const auto& ty = trait.m_types.at(pe->item);
+                        DEBUG("-> " << ty.m_default);
+                        if( ty.m_default != HIR::TypeRef() ) {
+                            out = ty.m_default.clone();
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        });
+        DEBUG("fix_trait_default_return: fixed to " << tmp);
+        return tmp;
+    }
+    return tpl;
+}
+
 void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const
 {
     TRACE_FUNCTION_FR(input, input);

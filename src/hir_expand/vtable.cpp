@@ -40,6 +40,9 @@ namespace {
 
                 if( const auto* e = ty.data().opt_ErasedType() )
                 {
+                    if( !e->m_inner.is_Fcn() ) {
+                        return ;
+                    }
                     auto ty_name = RcString::new_interned(FMT("erased#" << m_method_name << "_" << m_var_index));
                     m_var_index += 1;
                     
@@ -58,7 +61,16 @@ namespace {
                             std::move(traits),
                             {}  //std::move(ty)
                         }));
-                        m_tys.push_back(std::move(ty));
+                        const auto& f = e->m_inner.as_Fcn();
+                        assert(m_method_name == f.m_origin.m_data.as_UfcsKnown().item);
+                        const auto& fcn = m_target_trait->m_values.at(f.m_origin.m_data.as_UfcsKnown().item);
+                        if( fcn.as_Function().m_code ) {
+                            const auto& t = fcn.as_Function().m_code.m_erased_types.at(f.m_index);
+                            m_tys.push_back(t.clone());
+                        }
+                        else {
+                            m_tys.push_back(std::move(ty));
+                        }
                     }
                     else {
                         BUG(Span(), "Neither target impl nor target trait set");
