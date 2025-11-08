@@ -1397,7 +1397,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
     m_build_script_output = rv;
 }
 
-std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo, const ::helpers::path& base_path)
+std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo, const ::helpers::path& base_path, std::function<bool(const PackageVersion&)> filter_cb)
 {
     if( m_manifest ) {
         return m_manifest;
@@ -1414,7 +1414,7 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
     if( !this->get_version().m_bounds.empty() )
     {
         DEBUG("Load dependency " << this->name() << " from repo");
-        auto rv = repo.find(this->name(), this->get_version());
+        auto rv = repo.find(this->name(), this->get_version(), filter_cb);
         if( rv ) {
             return rv;
         }
@@ -1477,7 +1477,7 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
 {
     TRACE_FUNCTION_F(this->m_name);
     if( !m_manifest ) {
-        m_manifest = load_manifest_raw(repo, base_path);
+        m_manifest = load_manifest_raw(repo, base_path, [](const PackageVersion&){return true;});
     }
     if( !m_manifest ) {
         throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));

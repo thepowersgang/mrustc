@@ -213,7 +213,18 @@ public:
         return *m_manifest;
     }
 
-    std::shared_ptr<PackageManifest> load_manifest_raw(Repository& repo, const ::helpers::path& base_path);
+    void set_package(std::shared_ptr<PackageManifest> manifest) {
+        if(!m_manifest) {
+            m_manifest = std::move(manifest);
+        }
+        else if( m_manifest.get() == manifest.get() ) {
+            // Same package re-loaded
+        }
+        else {
+            throw ::std::runtime_error("Manifest already loaded for package " + m_name);
+        }
+    }
+    std::shared_ptr<PackageManifest> load_manifest_raw(Repository& repo, const ::helpers::path& base_path, std::function<bool(const PackageVersion&)> filter_cb);
     void load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps);
 
     friend std::ostream& operator<<(std::ostream& os, const PackageRef& pr);

@@ -136,24 +136,7 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
     m_cache.insert(::std::make_pair( package_name, ::std::move(cache_ent) ));
     // TODO: If there's other packages with the same name, check for compatability (or otherwise ensure that this is the chosen version)
 }
-bool Repository::blacklist_dependency(const PackageManifest* dep_ptr)
-{
-    DEBUG("Blacklist " << dep_ptr->name() << " v" << dep_ptr->version());
-    auto itp = m_cache.equal_range(dep_ptr->name());
-    for(auto i = itp.first; i != itp.second; ++i)
-    {
-        if( i->second.loaded_manifest.get() == dep_ptr ) {
-            if( i->second.blacklisted ) {
-                return false;
-            }
-            i->second.blacklisted = true;
-            return true;
-        }
-    }
-    // Warning?
-    return false;
-}
-::std::shared_ptr<PackageManifest> Repository::find(const ::std::string& name, const PackageVersionSpec& version)
+::std::shared_ptr<PackageManifest> Repository::find(const ::std::string& name, const PackageVersionSpec& version, std::function<bool(const PackageVersion&)> filter_cb)
 {
     TRACE_FUNCTION_F("FIND " << name << " matching " << version);
     auto itp = m_cache.equal_range(name);
@@ -163,13 +146,9 @@ bool Repository::blacklist_dependency(const PackageManifest* dep_ptr)
     {
         if( version.accepts(i->second.version) )
         {
-            if( i->second.blacklisted )
+            if( !filter_cb(i->second.version) )
             {
-                if( version == i->second.version ) {
-                    best = &i->second;
-                    break;
-                }
-                DEBUG("Blacklisted " << i->second.version);
+                DEBUG("Filtered out " << i->second.version);
             }
             else if( !best || i->second.version > best->version )
             {
