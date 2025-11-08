@@ -76,13 +76,9 @@ public:
     }
     void to_be_bytes(uint8_t* dst, size_t max_len) {
         max_len = max_len > 16 ? 16 : max_len;
-        #if __BIG_ENDIAN__
-        memcpy(dst, this, max_len);
-        #else
         for(size_t i = 0; i < max_len; i++) {
             dst[max_len-1-i] = static_cast<uint8_t>( (*this >> static_cast<unsigned>(i*8)).truncate_u64() );
         }
-        #endif
     }
     void from_le_bytes(const uint8_t* src, size_t max_len) {
         max_len = max_len > 16 ? 16 : max_len;
@@ -98,13 +94,9 @@ public:
     void from_be_bytes(const uint8_t* src, size_t max_len) {
         max_len = max_len > 16 ? 16 : max_len;
         *this = U128();
-        #if __BIG_ENDIAN__
-        memcpy(this, src, max_len);
-        #else
         for(size_t i = 0; i < max_len; i++) {
             *this |= U128(src[max_len-1-i]) << static_cast<unsigned>(i*8);
         }
-        #endif
     }
 
     U128 operator~() const { return U128(~lo, ~hi); }
