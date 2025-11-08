@@ -518,9 +518,20 @@ namespace {
             for(const auto& i : mod.m_items)
             {
                 //DEBUG(i.name << " " << i.data.tag_str());
-                // What about `cfg()`?
-                if( !check_cfg_attrs(i->attrs) ) {
-                    continue ;
+                
+                // Note: Cache the result of `cfg()` resolution, as it doesn't change
+                // - Do the caching here (on the item level) instead of in `cfg.cpp` as that avoids needing to check
+                //   the attribute list multiple times.
+                switch(i->cached_cfg)
+                {
+                case AST::CachedCfg::Unknown:
+                    i->cached_cfg = check_cfg_attrs(i->attrs) ? AST::CachedCfg::Yes : AST::CachedCfg::No;
+                case AST::CachedCfg::Yes:
+                case AST::CachedCfg::No:
+                    if( i->cached_cfg == AST::CachedCfg::No ) {
+                        continue ;
+                    }
+                    break;
                 }
                 if( matching_namespace(i->data, ns) && i->name == name )
                 {

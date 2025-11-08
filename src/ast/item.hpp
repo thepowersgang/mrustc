@@ -64,6 +64,13 @@ public:
     void inplace_union(const Visibility& x);
 };
 
+enum class CachedCfg
+{
+    Unknown,
+    Yes,
+    No,
+};
+
 template <typename T>
 struct Named
 {
@@ -71,6 +78,7 @@ struct Named
     AttributeList   attrs;
     Visibility vis;
     RcString   name;
+    CachedCfg   cached_cfg;
     T   data;
 
     Named()
@@ -84,6 +92,7 @@ struct Named
         attrs( ::std::move(attrs) ),
         vis( ::std::move(vis) ),
         name( ::std::move(name) ),
+        cached_cfg(CachedCfg::Unknown),
         data( ::std::move(data) )
     {
     }
