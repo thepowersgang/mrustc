@@ -433,6 +433,8 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
 PackageManifest PackageManifest::magic_manifest(const char* name)
 {
     PackageManifest rv;
+    rv.m_version.major = 1;
+    rv.m_version.minor = 99;
     rv.m_name = std::string("rustc-std-workspace-") + name;
     rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Lib });
     rv.m_targets.back().m_name = name;
@@ -1708,7 +1710,7 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
         switch(b.ty)
         {
         case Bound::Type::Compatible: {
-            // ^ rules are >= specified, and < next major/breaking
+            // ^ rules are >= previous compatible (same patch), and < next major/breaking
             if( !(v >= b.ver.prev_compat()) )
                 return false;
             if( !(v < b.ver.next_breaking()) )

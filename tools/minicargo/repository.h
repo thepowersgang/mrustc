@@ -38,4 +38,7 @@ public:
 
     ::std::shared_ptr<PackageManifest> from_path(::helpers::path path);
     ::std::shared_ptr<PackageManifest> find(const ::std::string& name, const PackageVersionSpec& version, std::function<bool(const PackageVersion&)> filter_cb);
+    
+    ::std::shared_ptr<PackageManifest> get_package(const ::std::string& name, const PackageVersion& version);
+    ::std::vector<PackageVersion> enum_matching_versions(const ::std::string& name, const PackageVersionSpec& version) const;
 };

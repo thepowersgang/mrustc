@@ -186,15 +186,31 @@ int main(int argc, const char* argv[])
         LockfileContents    lockfile;
         {
             Debug_SetPhase("Resolve Dependencies");
-            if( ::std::ifstream(dir / "Cargo.lock").is_open() ) {
+            auto lockfile_path = workspace_manifest_path.is_valid()
+                ? workspace_manifest_path.parent() / "Cargo.lock"
+                : dir / "Cargo.lock"
+                ;
+            if( ::std::ifstream(lockfile_path).is_open() ) {
                 // TODO: Parse the lockfile and use it
-                //ResolveDepdencies_CargoLockFile(repo, m, dir / "Cargo.lock");
+                //ResolveDepdencies_CargoLockFile(repo, m, lockfile_path);
             }
             // TODO: Implement the cargo resolver variants (need to find good docs)
 
-            lockfile = ResolveDependencies_MinicargoOriginal(repo, m);
+            if( false ) {
+                lockfile = ResolveDependencies_MinicargoOriginal(repo, m);
+            }
+            else {
+                lockfile = ResolveDependencies_Cargo(repo, m, 1/*workspace_manifest.resolver_version*/);
+            }
 
             // TODO: Save the selected versions into a lockfile?
+            for(const auto& e : lockfile.package_deps) {
+                DEBUG(e.first.name << " v" << e.first.version << " => {");
+                for(const auto& d : e.second) {
+                    DEBUG("  " << d.name << " v" << d.version);
+                }
+                DEBUG("}");
+            }
         }
 
         // 2. Load all dependencies

@@ -35,3 +35,4 @@ struct LockfileContents {
 };
 
 extern LockfileContents ResolveDependencies_MinicargoOriginal(Repository& repo, const PackageManifest& root_manifest);
+extern LockfileContents ResolveDependencies_Cargo(Repository& repo, const PackageManifest& root_manifest, unsigned version);

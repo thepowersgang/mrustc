@@ -65,6 +65,7 @@ struct PackageVersion
             return PackageVersion { major + 1, 0 };
         }
     }
+    /// Get the baseline patch version of this version (i.e. turns 1.2.124 into 1.2.0)
     PackageVersion prev_compat() const {
         if(major == 0) {
             // Before 1.0, there's no patch levels

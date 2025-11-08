@@ -191,3 +191,60 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
         return {};
     }
 }
+::std::shared_ptr<PackageManifest> Repository::get_package(const ::std::string& name, const PackageVersion& version)
+{
+    TRACE_FUNCTION_F("GET " << name << " v" << version);
+    auto itp = m_cache.equal_range(name);
+    for(auto i = itp.first; i != itp.second; ++i)
+    {
+        if( i->second.version == version )
+        {
+            if( !i->second.loaded_manifest )
+            {
+                if( i->second.manifest_path == "" )
+                {
+                    throw ::std::runtime_error("TODO: Download package");
+                }
+                try
+                {
+                    i->second.loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(i->second.manifest_path, m_workspace_manifest)) );
+                }
+                catch(const ::std::exception& e)
+                {
+                    throw ::std::runtime_error( format("Error loading manifest '", i->second.manifest_path, "' - ", e.what()) );
+                }
+            }
+            return i->second.loaded_manifest;
+        }
+    }
+    return {};
+}
+::std::vector<PackageVersion> Repository::enum_matching_versions(const ::std::string& name, const PackageVersionSpec& version) const
+{
+    TRACE_FUNCTION_F("ENUM " << name << " matching " << version);
+    auto itp = m_cache.equal_range(name);
+
+    ::std::vector<PackageVersion>   rv;
+    // HACK: Detect a failed request for a `rustc-std-workspace-` crate, and inject it
+    // - This function should only be called if a matching crate hasn't already been loaded via a path dependency (which will happen when building std)
+    if( itp.first == itp.second && name.compare(0, 6+4+10, "rustc-std-workspace-", 6+4+10) == 0 ) {
+        Entry   ent;
+        ent.loaded_manifest = std::make_shared<PackageManifest>(PackageManifest::magic_manifest(name.c_str() + 6+4+10));
+        ent.version = ent.loaded_manifest->version();
+        const_cast<Repository&>(*this).m_cache.insert(std::make_pair(name, std::move(ent)));
+        itp = m_cache.equal_range(name);
+    }
+    for(auto i = itp.first; i != itp.second; ++i)
+    {
+        if( version.accepts(i->second.version) )
+        {
+            rv.push_back(i->second.version);
+            DEBUG("Matched " << i->second.version);
+        }
+        else
+        {
+            DEBUG("Ignore " << i->second.version);
+        }
+    }
+    return rv;
+}
