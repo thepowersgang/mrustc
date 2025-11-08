@@ -633,7 +633,7 @@ namespace
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
-                "unix", "macos", "gnu", {CodegenMode::Gnu11, false, "powerpc-apple-darwin", {}, {}},
+                "unix", "macos", "gnu", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {}},
                 ARCH_POWERPC32
                 };
         }
