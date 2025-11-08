@@ -39,10 +39,11 @@ public:
         }
     }
     /// Check if the provided dependency specification is met by an existing package version in the output
-    bool try_unify_version(const LockfileContents& resolved, const DepSpec& dep_spec) const {
+    bool try_unify_version(LockfileContents& resolved, const DepSpec& dep_spec) const {
         for(const auto& v : resolved.package_deps) {
             if(v.first.name == dep_spec.package_name) {
                 if(dep_spec.version_spec.accepts(v.first.version)) {
+                    resolved.package_deps[dep_spec.source].insert(v.first);
                     return true;
                 }
             }
@@ -118,6 +119,17 @@ static void push_dependencies(const PackageManifest& package, LockfileContents& 
         }
     }
 }
+
+// TODO: Flatten this call tree, with a generation counter for every time it has to roll back
+// - Have a stack of rollback states, pushed when `dep_versions` has multiple items
+// - When resolution would fail, pop from the saved state and restore to that
+struct SavedState {
+    DepSpec dep_spec;
+    ::std::vector<PackageVersion> avail_versions;
+    LockfileContents  saved_out;
+    DepSpecQueue    saved_queue;
+};
+
 static bool resolve_next(LockfileContents& out, Repository& repo, DepSpecQueue& queue, const Policy& policy)
 {
     DepSpec dep_spec;
@@ -130,11 +142,17 @@ static bool resolve_next(LockfileContents& out, Repository& repo, DepSpecQueue& 
     // Could this dependency be unified with an existing dependency? If yes, return now
     if( policy.try_unify_version(out, dep_spec) ) {
         DEBUG("Unifies");
-        return true;
+        return resolve_next(out, repo, queue, policy);
     }
 
     // Get possible versions matching this spec
-    auto dep_versions = policy.filter_versions(dep_spec, repo.enum_matching_versions(dep_spec.package_name, dep_spec.version_spec));
+    auto avail_versions = repo.enum_matching_versions(dep_spec.package_name, dep_spec.version_spec);
+    if( avail_versions.empty() ) {
+        // libstd 1.90 depends on miniz_oxide, which has an optional dep on simd-adler32, which isn't vendor
+        DEBUG("No versions: soft-fail");
+        return resolve_next(out, repo, queue, policy);
+    }
+    auto dep_versions = policy.filter_versions(dep_spec, std::move(avail_versions));
 
     while( const auto* dep_package = policy.pick_next_version(repo, dep_spec, dep_versions) )
     {
@@ -145,20 +163,20 @@ static bool resolve_next(LockfileContents& out, Repository& repo, DepSpecQueue& 
             continue ;
         }
 
+        LockfileContents::PackageKey    dep_key { dep_spec.package_name, dep_package->version() };
         // Fork state
         auto saved_out = out;
-        auto queue_clone = queue;
-        LockfileContents::PackageKey    dep_key { dep_spec.package_name, dep_package->version() };
-        if( !out.package_deps[dep_spec.source].insert(dep_key).second ) {
-            return true;
+        auto saved_queue = queue;
+        if( out.package_deps[dep_spec.source].insert(dep_key).second ) {
+            push_dependencies(*dep_package, out, repo, queue);
         }
-        push_dependencies(*dep_package, out, repo, queue_clone);
-        //out.register(dep_version);
+        // Ensure that this package is in the output too
         out.package_deps[dep_key];
-        if( resolve_next(out, repo, queue_clone, policy) ) {
+        if( resolve_next(out, repo, queue, policy) ) {
             return true;
         }
-        out = saved_out;
+        out = std::move(saved_out);
+        queue = std::move(saved_queue);
     }
     // If the above loop exits, no compatible versions were found
     DEBUG("FAIL");
@@ -184,5 +202,6 @@ LockfileContents ResolveDependencies_Cargo(Repository& repo, const PackageManife
         // Error!
         throw std::runtime_error("Failed to resolve dependencies");
     }
+    assert( queue.stack.empty() );
     return rv;
 }
