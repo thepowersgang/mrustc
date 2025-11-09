@@ -1785,6 +1785,7 @@ namespace {
             bool has_unsized = false;
             size_t sized_fields = 0;
             size_t  cur_ofs = 0;
+            bool is_first_field = true;
             for(unsigned fld : fields)
             {
                 const auto& ty = repr->fields[fld].ty;
@@ -1803,7 +1804,20 @@ namespace {
                 else
                 {
                     MIR_ASSERT(*m_mir_res, cur_ofs <= offset, "Current offset is already past expected (#" << fld << "): " << cur_ofs << " > " << offset);
-                    a = packing_max_align > 0 ? std::min<size_t>(packing_max_align, a) : a;
+                    auto field_align = a;
+                    // PowerPC 32-bit ABI alignment
+                    if(Target_GetCurSpec().m_arch.m_name == "powerpc")
+                    {
+                        if( s > 0 )
+                        {
+                            if( !is_first_field && field_align >= 4 && field_align <= 8 )
+                            {
+                                field_align = 4;
+                            }
+                            is_first_field = false;
+                        }
+                    }
+                    a = packing_max_align > 0 ? std::min<size_t>(packing_max_align, field_align) : field_align;
                     DEBUG("a = " << a);
                     while(cur_ofs % a != 0)
                         cur_ofs ++;

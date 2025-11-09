@@ -63,7 +63,7 @@ const TargetArch ARCH_POWERPC32 = {
     "powerpc",
     32, true,
     { /*atomic(u8)=*/true, false, true, false,  true },
-    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 4)
+    TargetArch::Alignments(2, 4, 8, 8, 4, 8, 4)
 };
 const TargetArch ARCH_POWERPC64LE = {
     "powerpc64",
@@ -633,7 +633,7 @@ namespace
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
-                "unix", "macos", "gnu", {CodegenMode::Gnu11, false, "powerpc-apple-darwin", {}, {}},
+                "unix", "macos", "gnu", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {}},
                 ARCH_POWERPC32
                 };
         }
@@ -1077,10 +1077,28 @@ namespace {
         TypeRepr  rv;
         size_t  cur_ofs = 0;
         size_t  max_align = 1;
+        bool is_first_field = true;
         for(auto& e : ents)
         {
+            auto align = e.align;
+
+            // PowerPC 32-bit ABI
+            // First element uses natural alignment, subsequent elements with natural alignment
+            // >= 4 and up to 8 use embedding = 4. Skip ZST.
+            if(Target_GetCurSpec().m_arch.m_name == "powerpc")
+            {
+                if ( e.size > 0 )
+                {
+                    if( !is_first_field && align >= 4 && align <= 8 )
+                    {
+                        align = 4;
+                    }
+                    is_first_field = false;
+                }
+            }
+
             // Increase offset to fit alignment
-            auto align = max_alignment > 0 ? std::min<size_t>(e.align, max_alignment) : e.align;
+            align = max_alignment > 0 ? std::min<size_t>(align, max_alignment) : align;
             if( align > 0 )
             {
                 while( cur_ofs % align != 0 )
