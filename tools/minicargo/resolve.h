@@ -34,5 +34,12 @@ struct LockfileContents {
     }
 };
 
+namespace std {
+    static inline ostream& operator<<(ostream& os, const LockfileContents::PackageKey& v) {
+        os << v.name << " v" << v.version;
+        return os;
+    }
+}
+
 extern LockfileContents ResolveDependencies_MinicargoOriginal(Repository& repo, const PackageManifest& root_manifest);
 extern LockfileContents ResolveDependencies_Cargo(Repository& repo, const PackageManifest& root_manifest, unsigned version);
