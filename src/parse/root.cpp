@@ -1143,7 +1143,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     }
     else
     {
-        /*name.is_abs = */lex.getTokenIf(TOK_DOUBLE_COLON);
+        name.has_leading = lex.getTokenIf(TOK_DOUBLE_COLON);
         do {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             name.elems.push_back(tok.ident().name);

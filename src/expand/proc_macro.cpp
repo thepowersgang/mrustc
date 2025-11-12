@@ -1361,6 +1361,9 @@ namespace {
         }
         void visit_meta_item(const ::AST::Attribute& i)
         {
+            if( i.name().has_leading ) {
+                m_pmi.send_symbol("::");
+            }
             for(const auto& e : i.name().elems)
             {
                 if( &e != &i.name().elems.front() )

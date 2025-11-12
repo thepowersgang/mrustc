@@ -64,6 +64,7 @@ TAGGED_UNION(AttributeData, None,
 
 struct AttributeName
 {
+    bool has_leading = false;
     ::std::vector<RcString>   elems;
 
     bool is_trivial() const { return elems.size() == 1; }
