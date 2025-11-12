@@ -408,8 +408,10 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon)
         {
         case TOK_EOF:
         case TOK_BRACE_CLOSE:
+        case TOK_HASH:  // Hack, some crates have `#[cfg()] foo #[cfg()] bar`
             break;
         default:
+            // Force an error
             GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
             break;
         }
