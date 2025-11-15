@@ -16,6 +16,9 @@
 /crates.io
 /test_deps_run-pass.mk
 
+/procmacro_dump*.bin
+/1.txt
+
 /tools/bin
 /tools/mir_opt_test/tests.log
 
