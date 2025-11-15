@@ -1347,8 +1347,12 @@ namespace {
                     this->visit_attr(na);
                 }
             }
-            if( this->emit_all_attrs || (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial())) )
+            auto is_local = (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial()));
+            if( this->emit_all_attrs || is_local )
             {
+                if( is_local ) {
+                    a.mark_inert();
+                }
                 DEBUG("Send " << a);
                 m_pmi.send_symbol("#");
                 m_pmi.send_symbol("[");

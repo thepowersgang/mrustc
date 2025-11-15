@@ -79,7 +79,7 @@ Attribute::Attribute(const Attribute& x):
     m_span(x.m_span),
     m_name(x.m_name)
     , m_data(x.m_data.clone())
-    , m_is_used(x.m_is_used)
+    , m_is_inert(x.m_is_inert)
 {
 }
 Attribute Attribute::clone() const

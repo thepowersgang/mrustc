@@ -133,6 +133,9 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
     if( a.name().elems.empty() ) {
         return ;
     }
+    if( a.is_inert() ) {
+        return ;
+    }
     DEBUG(a);
     for( auto& d : g_decorators ) {
         if( a.name() == d.first
@@ -194,9 +197,16 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                     {
                         auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, path.nodes.back().c_str(), i);
                         if( lex ) {
-                            // TODO: `derive_more` returns its own macro in the output, but with `#[derive(...)]` added before, so how can that be filtered out?
+                            // TODO: `derive_where` returns its own attribute invocation in the output, between two other additions
+                            //   > This seems to so the derive (first attribute) can see the trait list? (does mrustc handle that properly? I think so)
                             // - Could parse, and the locate the first matching item (same name?) and merge/filter its attributes
-                            // - TODO: Check rustc docs - They're not very clear on this...
+                            // - Should the rest of the attributes be applied
+                            // - Tag the item (or item-range?) to stop it being able to invoke this macro again?
+                            //  > OR, Should the derive macro be consuming the attribute?
+                            // QUERY: Is it valid for there to be multiple items generated from an attribute proc macro?
+
+                            // NOTE: The rust book isn't very clear on the details of how attribute macros work (especially with other/previous attributes)
+
                             i = AST::Item::make_None({});
                             lex->parse_state().module = &mod;
                             Parse_ModRoot_ItemsInto(mod, mod_idx, *lex);
