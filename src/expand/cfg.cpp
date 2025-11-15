@@ -257,7 +257,7 @@ class CCfgHandler:
             crate.m_root_module.m_items.clear();
         }
     }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
         if( check_cfg(sp, mi) ) {
             // Leave

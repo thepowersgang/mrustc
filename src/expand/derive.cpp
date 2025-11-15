@@ -2176,7 +2176,7 @@ class Decorator_Derive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (

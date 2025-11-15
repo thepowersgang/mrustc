@@ -38,7 +38,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -81,7 +81,7 @@ class Decorator_ProcMacroAttribute:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -98,7 +98,7 @@ class Decorator_ProcMacro:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -1999,7 +1999,7 @@ U128 ProcMacroInv::recv_v128u_u128()
 }
 
 Position ProcMacroInv::getPosition() const {
-    DEBUG("" << m_this_span);
+    //DEBUG("" << m_this_span);
     //return Position(m_this_span);
     return Position(m_parent_span);
 }

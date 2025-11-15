@@ -390,7 +390,7 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         auto v = attr.parse_equals_string(crate, mod);
         TU_MATCH_HDRA( (i), {)
@@ -487,7 +487,7 @@ class Decorator_Main:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() ) {
             // Ignore.
@@ -511,7 +511,7 @@ class Decorator_Start:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_None())
         {
@@ -536,7 +536,7 @@ class Decorator_PanicImplementation:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {
@@ -558,7 +558,7 @@ class Decorator_PanicHandler:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {
@@ -580,7 +580,7 @@ class Decorator_RustcStdInternalSymbol:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         // Attribute that acts as like `#[no_mangle]` `#[linkage="external"]`
     }
@@ -591,7 +591,7 @@ class Decorator_AllocErrorHandler:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {

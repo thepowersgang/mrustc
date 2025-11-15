@@ -16,7 +16,7 @@ class CHandler_MustUse:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: only allowed on types
     }
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
@@ -34,7 +34,7 @@ class CHandler_NonExhaustive:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: only allowed on types
     }
 };
@@ -46,7 +46,7 @@ class CHandler_Path:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: only allowed on modules
     }
 };
@@ -58,7 +58,7 @@ class CHandler_RustcPromotable:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
     }
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: only allowed on functions?
@@ -76,7 +76,7 @@ class CHandler_RustcInheritOverflowChecks:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
     }
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
     }
@@ -94,7 +94,7 @@ class CHandler_RustcOnUnimiplemented:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // Trait only.
     }
 };

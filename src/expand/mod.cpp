@@ -113,6 +113,20 @@ ExpandDecorator* Expand_FindDecorator(const RcString& name)
     return it != g_decorators.end() ? it->second.get() : nullptr;
 }
 
+
+void Parse_ModRoot_ItemsInto(AST::Module& mod, size_t idx, TokenStream& lex)
+{
+    // Move the item list out
+    auto old_items = std::move(mod.m_items);
+    // Parse module items
+    Parse_ModRoot_Items(lex, mod);
+    auto new_item_count = mod.m_items.size();
+    // Then insert the newly created items
+    old_items.insert(old_items.begin() + idx + 1, std::make_move_iterator(mod.m_items.begin()), std::make_move_iterator(mod.m_items.end()));
+    // and move the (updated) item list back in
+    mod.m_items = std::move(old_items);
+}
+
 void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
     bool found = false;
@@ -168,28 +182,31 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                 AttrStage stage() const override { return AttrStage::Pre; }
                 bool run_during_iter() const override { return false; }
 
+                // Module item
                 void handle(
                     const Span& sp,
                     const AST::Attribute& attr,
-                    ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i
+                    ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t mod_idx,
+                    slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i
                     ) const override
                 {
                     if( !i.is_None() )
                     {
                         auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, path.nodes.back().c_str(), i);
                         if( lex ) {
+                            // TODO: `derive_more` returns its own macro in the output, but with `#[derive(...)]` added before, so how can that be filtered out?
+                            // - Could parse, and the locate the first matching item (same name?) and merge/filter its attributes
+                            // - TODO: Check rustc docs - They're not very clear on this...
                             i = AST::Item::make_None({});
                             lex->parse_state().module = &mod;
-                            Parse_ModRoot_Items(*lex, mod);
+                            Parse_ModRoot_ItemsInto(mod, mod_idx, *lex);
                         }
                         else {
                             ERROR(sp, E0000, "proc_macro derive failed");
                         }
                     }
                 }
-                // Disabled due to lack of module to pass to parse.
-                // - Maybe modules shouldn't be linked in until after expand?
-                // - Because otherwise anon mods won't be #[cfg]'d out properly?
+                // Impl item
                 void handle(
                     const Span& sp,
                     const AST::Attribute& attr,
@@ -243,7 +260,7 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
 }
 void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
-    // TODO: Reduce load on derive etc by visiting `cfg` first?
+    // Reduce load on derive etc by visiting `cfg` first.
     for( auto& a : attrs.m_items )
     {
         if( a.name() == "cfg" ) {
@@ -277,12 +294,15 @@ namespace {
         return slice<const AST::Attribute>(start, end - start);
     }
 }
-void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Module& mod, const AST::Visibility& vis, ::AST::Item& item)
+void Expand_Attrs(
+    const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage, 
+    const ::AST::AbsolutePath& path, ::AST::Module& mod, size_t mod_idx,
+    const AST::Visibility& vis, ::AST::Item& item)
 {
     Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
             // Pass attributes _after_ this attribute
-            d.handle(sp, a, es.crate, path, mod, get_attrs_after(attrs, a), vis, item);
+            d.handle(sp, a, es.crate, path, mod, mod_idx, get_attrs_after(attrs, a), vis, item);
         }
         });
 }
@@ -1986,7 +2006,9 @@ void Expand_ExternBlock(const ExpandState& es, ::AST::Module& mod, ::AST::Extern
                 auto ttl = Expand_Macro(es, mod, mi_owned);
                 if( ttl )
                 {
-                    Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, vis, dat);
+                    // TODO: What if this attribute adds new items? Or if it changes the type?
+                    // - AttrStage::Post doesn't 
+                    Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, idx, vis, dat);
 
                     // Re-parse tt
                     // TODO: All new items should be placed just after this?
@@ -2141,10 +2163,11 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
 
         auto attrs = mv$(i.attrs);
         auto vis = i.vis;
+        TRACE_FUNCTION_F("#" << idx << " - " << path);
         if( es.mode == ExpandMode::FirstPass )
         {
             Expand_Attrs_CfgAttr(attrs);
-            Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, vis, i.data);
+            Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, idx, vis, i.data);
         }
 
         // Do modules without moving the definition (so the module path is always valid)
@@ -2154,7 +2177,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
             LList<const AST::Module*>   sub_modstack(&es.modstack, &e);
             ExpandState es_inner(es.crate, sub_modstack, es.mode);
             Expand_Mod(es_inner, path, e, 0);
-            Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, vis, i.data);
+            Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, idx, vis, i.data);
             es.change |= es_inner.change;
             es.has_missing |= es_inner.has_missing;
             i.attrs = std::move(attrs);
@@ -2186,22 +2209,15 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 auto ttl = Expand_Macro(es, mod, mi_owned);
                 if( ttl )
                 {
-                    Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, vis, dat);
+                    Expand_Attrs(es, attrs, AttrStage::Post, path, mod, idx, vis, dat);
 
                     // Re-parse tt
                     // TODO: All new items should be placed just after this?
                     DEBUG("-- Parsing as mod items");
-                    // Move the item list out
-                    auto old_items = std::move(mod.m_items);
-                    // Parse module items
-                    Parse_ModRoot_Items(*ttl, mod);
-                    auto new_item_count = mod.m_items.size();
-                    // Then insert the newly created items
-                    old_items.insert(old_items.begin() + idx + 1, std::make_move_iterator(mod.m_items.begin()), std::make_move_iterator(mod.m_items.end()));
-                    // and move the (updated) item list back in
-                    mod.m_items = std::move(old_items);
+                    size_t old_len = mod.m_items.size();
+                    Parse_ModRoot_ItemsInto(mod, idx, *ttl);
 
-                    auto next_non_macro_item = idx + 1 + new_item_count;
+                    auto next_non_macro_item = idx + 1 + (mod.m_items.size() - old_len);
                     macro_recursion_stack.push_back(next_non_macro_item == mod.m_items.size() ? nullptr : &*mod.m_items[next_non_macro_item]);
 
                     mi_owned.set_expanded();
@@ -2481,7 +2497,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 Expand_Path(es, mod, *p.ent.path);
             }
         }
-        Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, vis, dat);
+        Expand_Attrs(es, attrs, AttrStage::Post,  path, mod, idx, vis, dat);
 
         {
 
@@ -2621,15 +2637,7 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::
                     // Re-parse tt
                     assert(ttl.get());
                     DEBUG("-- Parsing as mod items");
-                    // Move the item list out
-                    auto old_items = std::move(mod.m_items);
-                    // Parse module items
-                    Parse_ModRoot_Items(*ttl, mod);
-                    //auto new_item_count = mod.m_items.size();
-                    // Then insert the newly created items
-                    old_items.insert(old_items.begin() + idx + 1, std::make_move_iterator(mod.m_items.begin()), std::make_move_iterator(mod.m_items.end()));
-                    // and move the (updated) item list back in
-                    mod.m_items = std::move(old_items);
+                    Parse_ModRoot_ItemsInto(mod, idx, *ttl);
 
                     //auto next_non_macro_item = idx + 1 + new_item_count;
                     //macro_recursion_stack.push_back(next_non_macro_item == mod.m_items.size() ? nullptr : &*mod.m_items[next_non_macro_item]);
@@ -2715,7 +2723,7 @@ void Expand(::AST::Crate& crate)
             box$( AST::Named<AST::Item>(Span(), mv$(attrs), AST::Visibility::make_restricted(AST::Visibility::Ty::Private, AST::AbsolutePath()), std_crate_shortname, AST::Item::make_Crate({std_crate_name}) ) )
             );
         auto& i = *crate.m_root_module.m_items.back();
-        Expand_Attrs(es, i.attrs, AttrStage::Post, ::AST::AbsolutePath(), crate.m_root_module, i.vis, i.data);
+        Expand_Attrs(es, i.attrs, AttrStage::Post, ::AST::AbsolutePath(), crate.m_root_module, 0, i.vis, i.data);
     }
 
     // 2. Module attributes
