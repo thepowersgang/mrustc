@@ -2191,7 +2191,7 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
     TU_ARMA(NodeType, e) {
         TU_MATCH_HDRA((e), {)
         TU_ARMA(Closure, node_p) {
-            return TARGETVER_MOST_1_29 ? node_p->m_is_copy : false;
+            return TARGETVER_LEAST_1_29 ? node_p->m_is_copy : false;
             }
         TU_ARMA(Generator, node_p) {
             // NOTE: Generators aren't Copy
