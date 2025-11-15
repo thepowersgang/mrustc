@@ -7740,8 +7740,14 @@ namespace {
                 case MetadataType::Zero:
                     if( this->type_is_bad_zst(ty) && (slot.is_Field() || slot.is_Downcast()) )
                     {
+                        // May need to back the slot out too, as we might be dropping a ZST tuple
+                        auto v = ::MIR::LValue::CRef(slot).inner_ref();
+                        ::HIR::TypeRef  tmp;
+                        if( this->type_is_bad_zst(m_mir_res->get_lvalue_type(tmp, v)) && (v.is_Field() || v.is_Downcast()) ) {
+                            v = v.inner_ref();
+                        }
                         m_of << indent << Trans_Mangle(p) << "((void*)&";
-                        emit_lvalue(::MIR::LValue::CRef(slot).inner_ref());
+                        emit_lvalue(v);
                         m_of << ");\n";
                     }
                     else
