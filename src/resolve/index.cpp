@@ -807,8 +807,13 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
         Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, loc,  crate.m_extern_crates.at(info.crate), 0);
         return false;
     }
+    if( info.nodes.empty() ) 
+    {
+        return false;
+    }
 
     const ::AST::Module* mod = &crate.m_root_module;
+    ASSERT_BUG(sp, info.nodes.size() > 0, "Empty node list in " << path);
     for( unsigned int i = 0; i < info.nodes.size() - 1; i ++ )
     {
         const auto& node = info.nodes[i];

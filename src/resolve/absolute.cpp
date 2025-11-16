@@ -1541,6 +1541,12 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
         return ;
     }
 
+    if( path_abs.nodes.empty() ) {
+        path.m_bindings.type.set(AST::AbsolutePath(path_abs.crate,  {}), AST::PathBinding_Type::make_Module({
+            &context.m_crate.m_root_module
+        }));
+        return ;
+    }
 
     const ::AST::Module*    mod = &context.m_crate.m_root_module;
     for(unsigned int i = 0; i < path_abs.nodes.size() - 1; i ++ )
