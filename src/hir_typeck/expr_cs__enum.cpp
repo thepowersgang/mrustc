@@ -138,6 +138,36 @@ namespace typecheck
         fix_param_count_(sp, context, self_ty, use_defaults, path, param_defs, params);
     }
 
+    void apply_bounds_as_rules_trait(Context& context, const Span& sp, const ::HIR::TypeRef& real_type, const ::HIR::TraitPath& trait_path, const MonomorphHrlsOnly& ms_hrl)
+    {
+        // If there's no type bounds, emit a trait bound
+        // - Otherwise, the assocated type bounds will serve the same purpose
+        if( trait_path.m_type_bounds.size() == 0 )
+        {
+            context.add_trait_bound(sp, real_type, trait_path.m_path.m_path, ms_hrl.monomorph_path_params(sp, trait_path.m_path.m_params, true));
+        }
+
+        // Associated type equalities
+        for(const auto& assoc : trait_path.m_type_bounds) {
+            context.equate_types_assoc(sp,
+                ms_hrl.monomorph_type(sp, assoc.second.type, true),
+                assoc.second.source_trait.m_path, ms_hrl.monomorph_path_params(sp, assoc.second.source_trait.m_params, true),
+                real_type, assoc.first.c_str(),
+                ms_hrl.monomorph_path_params(sp, assoc.second.aty_params, true),
+                false
+                );
+        }
+        // Associated type trait bounds:
+        for(const auto& assoc : trait_path.m_trait_bounds) {
+            auto aty_ty = ::HIR::TypeRef::new_path(
+                ::HIR::Path(real_type.clone(), assoc.second.source_trait.clone(), assoc.first, assoc.second.aty_params.clone()),
+                {}
+            );
+            for(const auto& tr : assoc.second.traits) {
+                apply_bounds_as_rules_trait(context, sp, aty_ty, tr, ms_hrl);
+            }
+        }
+    }
     void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, const Monomorphiser& ms, bool is_impl_level)
     {
         TRACE_FUNCTION;
@@ -163,25 +193,7 @@ namespace typecheck
                 auto pp_hrl = (real_trait.m_hrtbs && !real_trait.m_hrtbs->is_empty()) ? real_trait.m_hrtbs->make_empty_params(true) : outer_hrtb.make_empty_params(true);
                 DEBUG("outer_hrb = " << outer_hrtb.fmt_args() << ", pp_hrl = " << pp_hrl);
                 auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
-                const auto& trait_path = real_trait.m_path.m_path;
-                const auto& trait_params = real_trait.m_path.m_params;
-
-                // If there's no type bounds, emit a trait bound
-                // - Otherwise, the assocated type bounds will serve the same purpose
-                if( be.trait.m_type_bounds.size() == 0 )
-                {
-                    context.add_trait_bound(sp, real_type, trait_path, ms_hrl.monomorph_path_params(sp, trait_params, true));
-                }
-
-                for(auto& assoc : real_trait.m_type_bounds) {
-                    context.equate_types_assoc(sp,
-                        ms_hrl.monomorph_type(sp, assoc.second.type, true),
-                        assoc.second.source_trait.m_path, ms_hrl.monomorph_path_params(sp, assoc.second.source_trait.m_params, true),
-                        real_type, assoc.first.c_str(),
-                        ms_hrl.monomorph_path_params(sp, assoc.second.aty_params, true),
-                        false
-                        );
-                }
+                apply_bounds_as_rules_trait(context, sp, real_type, real_trait, ms_hrl);
                 }
             TU_ARMA(TypeEquality, be) {
                 auto real_type_left = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, be.type));
