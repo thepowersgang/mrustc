@@ -112,7 +112,11 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::H
         if( a_ty.second.m_trait_bounds.empty() )
             continue ;
 
-        ASSERT_BUG(sp, !a_ty.second.m_generics.is_generic(), "Handle type generic ATYs - " << a_ty.first << a_ty.second.m_generics.fmt_args());
+        if( a_ty.second.m_generics.is_generic() ) {
+            continue ;
+        }
+        ASSERT_BUG(sp, !a_ty.second.m_generics.is_generic(),
+            "prep_indexes__add_trait_bound: Handle type generic ATYs - " << a_ty.first << a_ty.second.m_generics.fmt_args() << " in " << trait_path);
         auto ty_a = ::HIR::TypeRef::new_path(
             // TODO: Empty params works for now, as there's no type generics (yet)
             ::HIR::Path( type.clone(), trait_path.m_path.clone(), a_ty.first, a_ty.second.m_generics.make_empty_params(true) ),
