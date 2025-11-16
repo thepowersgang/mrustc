@@ -592,7 +592,14 @@ bool StaticTraitResolve::find_impl(
                             }
                         }
                         assert(tp != nullptr);
-                        traits = &tp->m_trait_bounds.at(pe->item).traits;
+                        if( tp->m_trait_bounds.count(pe->item) ) {
+                            traits = &tp->m_trait_bounds.at(pe->item).traits;
+                        }
+                        else {
+                            DEBUG("No bounds on this item");
+                            traits = nullptr;
+                            break;
+                        }
 
                         stack.pop_back();
                         if( stack.empty() ) {
@@ -602,9 +609,11 @@ bool StaticTraitResolve::find_impl(
 
                     // Found the final trait list
                     // - This is for the top-level trait
-                    for(const auto& t : *traits) {
-                        if( check_bound(t) )
-                            return true;
+                    if(traits) {
+                        for(const auto& t : *traits) {
+                            if( check_bound(t) )
+                                return true;
+                        }
                     }
                 }
             }
@@ -1090,7 +1099,8 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                         return ::HIR::Compare::Equal;
                     }
                     else {
-                        TODO(sp, "[find_impl__check_crate_raw] Compare placeholder " << i << " " << ph << " == " << ty);
+                        return ph.compare_with_placeholders(sp, ty, resolve_cb);
+                        //TODO(sp, "[find_impl__check_crate_raw] Compare placeholder " << i << " " << ph << " == " << ty);
                     }
                 }
                 else {
