@@ -326,6 +326,7 @@ namespace typecheck
             }
         };
 
+        cache.m_top_params = nullptr;
         TU_MATCH_HDRA( (path.m_data), {)
         TU_ARMA(Generic, e) {
             const auto& fcn = context.m_crate.get_function_by_path(sp, e.m_path);
@@ -387,6 +388,9 @@ namespace typecheck
         }
 
         // --- Apply bounds by adding them to the associated type ruleset
+        if( cache.m_top_params ) {
+            apply_bounds_as_rules(context, sp, *cache.m_top_params, monomorph, /*is_impl_level=*/true);
+        }
         apply_bounds_as_rules(context, sp, *cache.m_fcn_params, monomorph, /*is_impl_level=*/false);
 
         return true;

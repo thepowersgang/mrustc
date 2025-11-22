@@ -938,7 +938,7 @@ namespace {
             // Using autoderef, locate this method on the type
             // TODO: Obtain a list of avaliable methods at that level?
             // - If running in a mode after stablise (before defaults), fall
-            // back to trait if the inherent is still ambigious.
+            //   back to trait if the inherent is still ambigious.
             ::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
             unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  possible_methods);
         try_again:
