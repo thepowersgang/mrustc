@@ -314,7 +314,7 @@ namespace {
                 for( const auto& arm : node.m_arms )
                 {
                     for( const auto& pat : arm.m_patterns ) {
-                        DEBUG(pat);
+                        DEBUG("_Match: " << pat);
                         vu = ::std::max( vu, this->get_usage_for_pattern(node.span(), pat, val_ty) );
                     }
                 }
@@ -1069,12 +1069,12 @@ namespace {
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < pe.leading.size(); i ++)
                 {
-                    auto sty = monomorph_state.monomorph_type(sp, flds[i].ent);
+                    auto sty = m_resolve.monomorph_expand(sp, flds[i].ent, monomorph_state);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.leading[i], sty));
                 }
                 for(unsigned int i = 0; i < pe.trailing.size(); i ++)
                 {
-                    auto sty = monomorph_state.monomorph_type(sp, flds[flds.size() - pe.trailing.size() + i].ent);
+                    auto sty = m_resolve.monomorph_expand(sp, flds[flds.size() - pe.trailing.size() + i].ent, monomorph_state);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.trailing[i], sty));
                 }
                 return rv;
@@ -1096,7 +1096,7 @@ namespace {
                     auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
                     ASSERT_BUG(sp, fld_it != flds.end(), "Unable to find field " << fld_pat.first);
 
-                    auto sty = monomorph_state.monomorph_type(sp, fld_it->second.ent);
+                    auto sty = m_resolve.monomorph_expand(sp, fld_it->second.ent, monomorph_state);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
                 }
                 return rv;
@@ -1257,13 +1257,15 @@ namespace {
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Mut);
                 break;
             case ::HIR::ValueUsage::Move:
-                //if( m_resolve.type_is_copy( sp, m_variable_types.at(slot) ) ) {
-                //    closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
-                //}
-                //else {
+                // TODO: Why is this disabled? Maybe for efficiency? as copies are marked as ValueUsage::Borrow anyway
+                if( m_resolve.type_is_copy( sp, m_variable_types.at(slot) ) ) {
+                    cap_type_name = "Borrow (copy)";
+                    closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
+                }
+                else {
                     cap_type_name = "Move";
                     closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Once);
-                //}
+                }
                 break;
             }
             DEBUG("Captured " << slot << " - " << m_variable_types.at(slot) << " :: " << cap_type_name);

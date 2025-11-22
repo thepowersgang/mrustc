@@ -2187,8 +2187,10 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
 
         {
             auto it = m_copy_cache.find(ty);
-            if( it != m_copy_cache.end() )
+            if( it != m_copy_cache.end() ) {
+                DEBUG("CACHED " << ty << " = " << it->second);
                 return it->second;
+            }
         }
         auto pp = ::HIR::PathParams();
         bool rv = this->find_impl(sp, m_lang_Copy, &pp, ty, [&](auto , bool){ return true; }, true);
