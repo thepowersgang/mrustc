@@ -2664,30 +2664,34 @@ public:
                         //TODO: Can this share with `proc_macro`? Maybe a function on AST types to generate a token tree from the AST again.
                         struct NewToks {
                             std::vector<MacroExpansionEnt>  out;
+                            void emit_from_string(const std::string& s)
+                            {
+                                ::std::istringstream    iss { s };
+                                Lexer   l { iss, AST::Edition::Rust2021, {} };
+                                for(;;) {
+                                    auto t = l.getToken();
+                                    if( t == TOK_EOF ) {
+                                        break;
+                                    }
+                                    out.push_back(t);
+                                }
+                            }
                             void emit_ast(const AST::ExprNode& e)
                             {
                                 if( const auto* ep = dynamic_cast<const AST::ExprNode_Integer*>(&e) ) {
                                     out.push_back( Token(ep->m_value, ep->m_datatype) );
                                 }
+                                else if( const auto* ep = dynamic_cast<const AST::ExprNode_Bool*>(&e) ) {
+                                    out.push_back( ep->m_value ? TOK_RWORD_TRUE : TOK_RWORD_FALSE );
+                                }
                                 else {
-                                    throw std::runtime_error("Unknown node type");
+                                    throw std::runtime_error(FMT("Unknown node type: " << typeid(e).name()));
                                 }
                             }
                             void emit_path(const ::AST::Path& path) {
-                                TU_MATCH_HDRA( (path.m_class), {)
-                                default:
-                                    TODO(Span(), "Convert interpolated macro fragment: " << path);
-                                TU_ARMA(Relative, pc) {
-                                    for(const auto& n : pc.nodes) {
-                                        if( &n != &pc.nodes.front() )
-                                            out.push_back(Token(TOK_DOUBLE_COLON));
-                                        out.push_back(Token(TOK_IDENT, Ident(pc.hygiene, n.name())));
-                                        if( !n.args().is_empty() ) {
-                                            TODO(Span(), "Convert interpolated macro fragment (path node args): " << path);
-                                        }
-                                    }
-                                    }
-                                }
+                                ::std::stringstream ss;
+                                ss << path;
+                                emit_from_string(ss.str());
                             }
                             void emit_type(::TypeRef& ty) {
                                 TU_MATCH_HDRA( (ty.m_data), { )
@@ -2737,7 +2741,7 @@ public:
                                     break; }
                                 case TOK_INTERPOLATED_EXPR:
                                     try {
-                                        emit_ast(*tok.take_frag_node());
+                                        emit_ast(tok.frag_node());
                                     }
                                     catch(const std::exception& e) {
                                         TODO(Span(), "Convert interpolated macro fragment: " << tok << " - " << e.what());
