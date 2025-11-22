@@ -687,7 +687,7 @@ namespace {
             default:
                 TODO(sp, "visit_pattern " << pat.data().tag_str() << " - " << pat);
             TU_ARMA(Any, e) {
-                m_pmi.send_symbol("_");
+                m_pmi.send_ident("_");
                 }
             TU_ARMA(MaybeBind, e) {
                 if( e.name == "self" ) {
@@ -758,7 +758,7 @@ namespace {
                 BUG(sp, ty);
                 ),
             (Any,
-                m_pmi.send_symbol("_");
+                m_pmi.send_ident("_");
                 ),
             (Bang,
                 m_pmi.send_symbol("!");
@@ -816,7 +816,7 @@ namespace {
                     this->visit_node(*te.size);
                 }
                 else {
-                    m_pmi.send_symbol("_");
+                    m_pmi.send_ident("_");
                 }
                 m_pmi.send_symbol("]");
                 ),
@@ -1264,7 +1264,7 @@ namespace {
         }
 
         void visit(::AST::ExprNode_WildcardPattern& node) {
-            m_pmi.send_symbol("_");
+            m_pmi.send_ident("_");
         }
         void visit(::AST::ExprNode_Integer& node) {
             m_pmi.send_int(node.m_datatype, node.m_value);
