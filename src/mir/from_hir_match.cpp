@@ -1602,6 +1602,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     // - Recurse into type using an empty pattern
                     for(const auto& fld : sd)
                     {
+                        ASSERT_BUG(sp, m_field_path.back() < FIELD_INDEX_MAX, "Too-large struct field index");
                         this->append_from(sp, empty_pattern, maybe_monomorph(fld.ent));
                         m_field_path.back() ++;
                     }
@@ -1613,6 +1614,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     }
                     for(const auto& fld : sd)
                     {
+                        ASSERT_BUG(sp, m_field_path.back() < FIELD_INDEX_MAX, "Too-large struct field index");
                         this->append_from(sp, empty_pattern, maybe_monomorph(fld.ent));
                         m_field_path.back() ++;
                     }
@@ -1632,6 +1634,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     m_field_path.push_back(0);
                     for(const auto& fld : sd)
                     {
+                        ASSERT_BUG(sp, m_field_path.back() < FIELD_INDEX_MAX, "Too-large struct field index");
                         this->append_from(sp, empty_pattern, maybe_monomorph(fld.second.ent));
                         m_field_path.back() ++;
                     }
@@ -1689,6 +1692,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
 
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
+                ASSERT_BUG(sp, be.var_idx < FIELD_INDEX_MAX, "Too-large variant index in " << ty);
                 sub_builder.m_field_path.push_back(be.var_idx);
                 sub_builder.m_field_path.push_back(0);
 
@@ -1708,6 +1712,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
 
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
+                ASSERT_BUG(sp, be.var_idx < FIELD_INDEX_MAX, "Too-large variant index");
                 sub_builder.m_field_path.push_back(be.var_idx);
                 sub_builder.m_field_path.push_back(0);
 
@@ -2276,9 +2281,10 @@ namespace {
                 }
             TU_ARMA(Path, e) {
                 if( idx == FIELD_DEREF ) {
-                    // TODO: Check that the path is Box
+                    auto new_ty = resolve.is_type_owned_box(*cur_ty);
+                    ASSERT_BUG(sp, new_ty, "Deref on non-Box - " << *cur_ty);
                     lval = ::MIR::LValue::new_Deref( mv$(lval) );
-                    cur_ty = &e.path.m_data.as_Generic().m_params.m_types.at(0);
+                    cur_ty = new_ty;
                     break;
                 }
                 auto monomorph_to_ptr = [&](const auto& ty)->const auto* {

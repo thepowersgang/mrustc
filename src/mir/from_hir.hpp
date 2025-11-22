@@ -117,17 +117,17 @@ TAGGED_UNION(ScopeType, Owning,
         })
     );
 
-#define FIELD_DEREF 255
-#define FIELD_INDEX_MAX 128
+#define FIELD_DEREF 0xFFFF
+#define FIELD_INDEX_MAX 0x8000  // Above this is a negative field offset
 
 struct field_path_t
 {
-    ::std::vector<uint8_t>  data;
+    ::std::vector<uint16_t>  data;
 
     size_t size() const { return data.size(); }
-    void push_back(uint8_t v) { data.push_back(v); }
+    void push_back(uint16_t v) { data.push_back(v); }
     void pop_back() { data.pop_back(); }
-    uint8_t& back() { return data.back(); }
+    uint16_t& back() { return data.back(); }
 
     bool operator==(const field_path_t& x) const { return data == x.data; }
     Ordering ord(const field_path_t& x) const { return ::ord(data, x.data); }
