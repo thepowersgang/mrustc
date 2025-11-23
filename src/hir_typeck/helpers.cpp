@@ -4807,50 +4807,6 @@ bool TraitResolution::find_method(const Span& sp,
 
     // TODO: Handle custom recievers by finding the bottom of a deref chain (or take the top-level reciever as an argument here?)
 
-    // 2. Search the current trait (if in an impl block)
-    if(m_current_trait_path)
-    {
-        ::HIR::GenericPath final_trait_path;
-        const ::HIR::Function* fcn_ptr;
-        if( (fcn_ptr = this->trait_contains_method(sp, *m_current_trait_path, *m_current_trait_ptr, ty, method_name, final_trait_path)) )
-        {
-            DEBUG("- Found trait " << final_trait_path << " (current)");
-            if(const auto* self_ty = check_method_receiver(sp, *fcn_ptr, ty, access))
-            {
-                // If the type is an unbounded ivar, don't check.
-                if( TU_TEST1(self_ty->data(), Infer, .is_lit() == false) )
-                    return false;
-
-                // Use the set of ivars we were given to populate the trait parameters
-                const auto& trait = m_crate.get_trait_by_path(sp, final_trait_path.m_path);
-                auto trait_params = get_ivared_params(trait.m_params);
-                //auto trait_params = std::move(final_trait_path.m_params);
-
-                try {
-                    bool crate_impl_found = false;
-                    find_trait_impls_crate(sp, final_trait_path.m_path, &trait_params, *self_ty,  [&](auto impl, auto cmp) {
-                        DEBUG("[find_method] " << impl << ", cmp = " << cmp);
-                        //magic_found = true;
-                        crate_impl_found = true;
-                        return true;
-                        });
-                    if( crate_impl_found ) {
-                        DEBUG("Found trait impl " << m_current_trait_path->m_path << trait_params << " for " << *self_ty << " ("<<m_ivars.fmt_type(*self_ty)<<")");
-                        possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty->clone(), ::HIR::GenericPath( final_trait_path.m_path, mv$(trait_params) ), method_name, {}) ));
-                        DEBUG("++ " << possibilities.back());
-                        return true;
-                    }
-                    else
-                    {
-                    }
-                } catch(const TraitResolution::RecursionDetected& ) {
-                    DEBUG("Recursion detected, deferring");
-                    return false;
-                }
-            }
-        }
-    }
-
     // 3. Search generic bounds for a match
     // - If there is a bound on the receiver, then that bound is usable no-matter what
     DEBUG("> Bounds");
@@ -4950,6 +4906,50 @@ bool TraitResolution::find_method(const Span& sp,
     }
     if( found_bound ) {
         return rv;
+    }
+
+    // 2. Search the current trait (if in an impl block)
+    if(m_current_trait_path)
+    {
+        ::HIR::GenericPath final_trait_path;
+        const ::HIR::Function* fcn_ptr;
+        if( (fcn_ptr = this->trait_contains_method(sp, *m_current_trait_path, *m_current_trait_ptr, ty, method_name, final_trait_path)) )
+        {
+            DEBUG("- Found trait " << final_trait_path << " (current)");
+            if(const auto* self_ty = check_method_receiver(sp, *fcn_ptr, ty, access))
+            {
+                // If the type is an unbounded ivar, don't check.
+                if( TU_TEST1(self_ty->data(), Infer, .is_lit() == false) )
+                    return false;
+
+                // Use the set of ivars we were given to populate the trait parameters
+                const auto& trait = m_crate.get_trait_by_path(sp, final_trait_path.m_path);
+                auto trait_params = get_ivared_params(trait.m_params);
+                //auto trait_params = std::move(final_trait_path.m_params);
+
+                try {
+                    bool crate_impl_found = false;
+                    find_trait_impls_crate(sp, final_trait_path.m_path, &trait_params, *self_ty,  [&](auto impl, auto cmp) {
+                        DEBUG("[find_method] " << impl << ", cmp = " << cmp);
+                        //magic_found = true;
+                        crate_impl_found = true;
+                        return true;
+                        });
+                    if( crate_impl_found ) {
+                        DEBUG("Found trait impl " << m_current_trait_path->m_path << trait_params << " for " << *self_ty << " ("<<m_ivars.fmt_type(*self_ty)<<")");
+                        possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty->clone(), ::HIR::GenericPath( final_trait_path.m_path, mv$(trait_params) ), method_name, {}) ));
+                        DEBUG("++ " << possibilities.back());
+                        return true;
+                    }
+                    else
+                    {
+                    }
+                } catch(const TraitResolution::RecursionDetected& ) {
+                    DEBUG("Recursion detected, deferring");
+                    return false;
+                }
+            }
+        }
     }
 
     auto get_inner_type = [this,sp](const ::HIR::TypeRef& ty, ::std::function<bool(const ::HIR::TypeRef&)> cb)->const ::HIR::TypeRef* {
