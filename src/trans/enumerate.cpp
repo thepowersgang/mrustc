@@ -418,7 +418,15 @@ namespace {
                             auto b_tp_mono = cb_monomorph.monomorph_traitpath(sp, be.trait, false);
                             resolve.expand_associated_types_tp(sp, b_tp_mono);
 
-                            rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
+                            DEBUG("Check " << b_ty_mono << ": " << b_tp_mono);
+                            rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const ImplRef& impl, bool) {
+                                for(const auto& ty_b : b_tp_mono.m_type_bounds) {
+                                    const auto& ty = impl.get_type(ty_b.first.c_str(), ty_b.second.aty_params);
+                                    DEBUG("ATY " << ty_b.first << " " << ty << " ?= exp " << ty_b.second.type);
+                                    if( ty != ty_b.second.type ) {
+                                        return false;
+                                    }
+                                }
                                 return true;
                                 });
                             if( !rv )
