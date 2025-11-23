@@ -104,18 +104,16 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     if( is_abs )
     {
         // QUIRK: `::crate::foo` is valid (semi-surprisingly)
-        if( LOOK_AHEAD(lex) == TOK_RWORD_CRATE ) {
-            GET_CHECK_TOK(tok, lex, TOK_RWORD_CRATE);
+        if( lex.getTokenIf(TOK_RWORD_CRATE) ) {
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
             return AST::Path("", Parse_PathNodes(lex, generic_mode));
         }
-        else if( GET_TOK(tok, lex) == TOK_STRING ) {
+        else if( lex.getTokenIf(TOK_STRING, tok) ) {
             auto cratename = RcString::new_interned(tok.str());
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
             return AST::Path(cratename, Parse_PathNodes(lex, generic_mode));
         }
         else {
-            PUTBACK(tok, lex);
             return AST::Path("", Parse_PathNodes(lex, generic_mode));
         }
     }
@@ -283,6 +281,10 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                         if(lex.lookahead(0) != TOK_PLUS)
                             break;
                         GET_CHECK_TOK(tok, lex, TOK_PLUS);
+                        // Allow trailing `+`
+                        if( lex.lookahead(0) == TOK_COMMA || lex.lookahead(0) == TOK_PAREN_CLOSE || lex.lookahead(0) == TOK_GT ) {
+                            break;
+                        }
                     }
                     rv.m_entries.push_back( ::std::make_pair( mv$(n), std::move(traits) ) );
                 }

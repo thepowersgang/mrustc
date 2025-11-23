@@ -228,21 +228,22 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
         return ;
     }
 
+    bool is_first = true;
     do
     {
         auto ps = lex.start_span();
         // If an item terminator is seen (end of item, start of body, list separator), return early.
-        //if( LOOK_AHEAD(lex) == TOK_SEMICOLON || LOOK_AHEAD(lex) == TOK_COMMA )
-        //{
-        //    return;
-        //}
+        if( !is_first && (LOOK_AHEAD(lex) == TOK_SEMICOLON || LOOK_AHEAD(lex) == TOK_COMMA || LOOK_AHEAD(lex) == TOK_GT) ) {
+            return;
+        }
+        is_first = false;
 
-        if(GET_TOK(tok, lex) == TOK_LIFETIME) {
+        if( lex.getTokenIf(TOK_LIFETIME, tok) ) {
             ret.add_bound(AST::GenericBound::make_TypeLifetime( {
                 checked_type.clone(), get_LifetimeRef(lex, mv$(tok))
                 } ));
         }
-        else if( tok.type() == TOK_QMARK ) {
+        else if( lex.getTokenIf(TOK_QMARK) ) {
             auto hrbs = Parse_HRB_Opt(lex);
             (void)hrbs; // The only valid ?Trait is Sized, which doesn't have any generics
             ret.add_bound(AST::GenericBound::make_MaybeTrait( {
@@ -250,20 +251,15 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
                 } ));
         }
         else {
-            if( tok.type() == TOK_TILDE ) {
+            if( lex.getTokenIf(TOK_TILDE) ) {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_CONST);
-                GET_TOK(tok, lex);
             }
-            else if( tok.type() == TOK_RWORD_CONST ) {
-                GET_TOK(tok, lex);
+            else if( lex.getTokenIf(TOK_RWORD_CONST) ) {
             }
             ::AST::HigherRankedBounds inner_hrls;
-            if( tok.type() == TOK_RWORD_FOR )
+            if( lex.getTokenIf(TOK_RWORD_FOR) )
             {
                 inner_hrls = Parse_HRB(lex);
-            }
-            else {
-                PUTBACK(tok, lex);
             }
             auto trait_path = Parse_Path(lex, PATH_GENERIC_TYPE);
 
@@ -273,8 +269,7 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
                 mv$(this_outer_hrbs), checked_type.clone(), mv$(inner_hrls), mv$(trait_path)
                 }) );
         }
-    } while( GET_TOK(tok, lex) == TOK_PLUS );
-    PUTBACK(tok, lex);
+    } while( lex.getTokenIf(TOK_PLUS) );
 }
 
 /// Parse type parameters within '<' and '>' (definition)

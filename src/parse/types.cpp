@@ -303,10 +303,9 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool a
 
         if( allow_trait_list )
         {
-            while( GET_TOK(tok, lex) == TOK_PLUS )
+            while( lex.getTokenIf(TOK_PLUS) )
             {
-                if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
-                    GET_TOK(tok, lex);
+                if( lex.getTokenIf(TOK_LIFETIME, tok) ) {
                     lifetimes.push_back(AST::LifetimeRef( /*lex.point_span(),*/ tok.ident() ));
                 }
                 else
@@ -318,7 +317,6 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool a
                     traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
                 }
             }
-            PUTBACK(tok, lex);
         }
 
         if( !traits[0].hrbs.empty() || traits.size() > 1 || lifetimes.size() > 0 )
