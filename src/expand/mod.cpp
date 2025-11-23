@@ -120,7 +120,6 @@ void Parse_ModRoot_ItemsInto(AST::Module& mod, size_t idx, TokenStream& lex)
     auto old_items = std::move(mod.m_items);
     // Parse module items
     Parse_ModRoot_Items(lex, mod);
-    auto new_item_count = mod.m_items.size();
     // Then insert the newly created items
     old_items.insert(old_items.begin() + idx + 1, std::make_move_iterator(mod.m_items.begin()), std::make_move_iterator(mod.m_items.end()));
     // and move the (updated) item list back in
@@ -151,13 +150,13 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                 if( !d.second->run_during_iter() ) {
                     switch(es.mode) {
                     case ExpandMode::FirstPass:
+                    case ExpandMode::Iterate:
                         if( stage != AttrStage::Pre ) {
                             DEBUG("#[" << d.first << "] m=" << (int)es.mode);
                             continue ;
                         }
                         break;
-                    case ExpandMode::Iterate:
-                        continue ;
+                        //continue ;
                     case ExpandMode::Final:
                         if( stage != AttrStage::Post ) {
                             DEBUG("#[" << d.first << "] m=" << (int)es.mode);
@@ -168,7 +167,8 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                 }
                 DEBUG("#[" << d.first << "]");
                 f(sp, *d.second, a);
-                // TODO: Annotate the attribute as having been handled
+                // Annotate the attribute as having been handled
+                a.mark_inert();
             }
         }
     }
@@ -250,6 +250,7 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                 }
                 else {
                     f(sp, d, a);
+                    a.mark_inert();
                 }
             }
             found = true;
@@ -273,7 +274,8 @@ void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, Attr
     // Reduce load on derive etc by visiting `cfg` first.
     for( auto& a : attrs.m_items )
     {
-        if( a.name() == "cfg" ) {
+        static const RcString rcstring_cfg = RcString::new_interned("cfg");
+        if( !a.is_inert() && a.name() == rcstring_cfg ) {
             Expand_Attr(es, a.span(), a, stage, f);
         }
     }
@@ -287,7 +289,8 @@ void Expand_Attrs_CfgAttr(AST::AttributeList& attrs)
     for(auto it = attrs.m_items.begin(); it != attrs.m_items.end(); )
     {
         auto& a = *it;
-        if( a.name() == "cfg_attr" ) {
+        static const RcString rcstring_cfg_attr = RcString::new_interned("cfg_attr");
+        if( a.name() == rcstring_cfg_attr ) {
             auto new_attrs = check_cfg_attr(a);
             it = attrs.m_items.erase(it);
             it = attrs.m_items.insert(it, std::make_move_iterator(new_attrs.begin()), std::make_move_iterator(new_attrs.end()));
@@ -309,7 +312,7 @@ void Expand_Attrs(
     const ::AST::AbsolutePath& path, ::AST::Module& mod, size_t mod_idx,
     const AST::Visibility& vis, ::AST::Item& item)
 {
-    Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
+    Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const ExpandDecorator& d, const AST::Attribute& a){
         if(!item.is_None()) {
             // Pass attributes _after_ this attribute
             d.handle(sp, a, es.crate, path, mod, mod_idx, get_attrs_after(attrs, a), vis, item);
@@ -319,7 +322,7 @@ void Expand_Attrs(
 void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  const ::AST::AbsolutePath& path, ::AST::Module& mod, ::AST::Trait& trait, ::AST::Item& item)
 {
     g_current_mod = &mod;
-    Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){
+    Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const AST::Attribute& a){
         if(!item.is_None()) {
             d.handle(sp, a, es.crate, path, trait, get_attrs_after(attrs, a), item);
         }
@@ -2174,11 +2177,8 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
         auto attrs = mv$(i.attrs);
         auto vis = i.vis;
         TRACE_FUNCTION_F("#" << idx << " - " << path);
-        if( es.mode == ExpandMode::FirstPass )
-        {
-            Expand_Attrs_CfgAttr(attrs);
-            Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, idx, vis, i.data);
-        }
+        Expand_Attrs_CfgAttr(attrs);
+        Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, idx, vis, i.data);
 
         // Do modules without moving the definition (so the module path is always valid)
         if( i.data.is_Module() )
@@ -2221,8 +2221,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 {
                     Expand_Attrs(es, attrs, AttrStage::Post, path, mod, idx, vis, dat);
 
-                    // Re-parse tt
-                    // TODO: All new items should be placed just after this?
+                    // Parse
                     DEBUG("-- Parsing as mod items");
                     size_t old_len = mod.m_items.size();
                     Parse_ModRoot_ItemsInto(mod, idx, *ttl);
