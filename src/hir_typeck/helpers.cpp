@@ -1918,7 +1918,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 
             // TODO: Should Self here be `type` or `pe.type`
             // - Depends... if implicit it should be `type` (as it relates to the associated type), but if explicit it's referring to the trait
-            auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, nullptr);
+            auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, &pe.params);
             auto rv = this->iterate_aty_bounds(sp, pe, [&](const HIR::TraitPath& bound) {
                 DEBUG("Bound on ATY: " << bound);
                 static const HIR::GenericParams empty_params;

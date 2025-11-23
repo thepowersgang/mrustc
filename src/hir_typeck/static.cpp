@@ -458,7 +458,7 @@ bool StaticTraitResolve::find_impl(
             ASSERT_BUG(sp, trait_ref.m_types.count( pe.item ) != 0, "Trait " << pe.trait.m_path << " doesn't contain an associated type " << pe.item);
             const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
 
-            auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, nullptr);
+            auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, &pe.params);
 
             auto check_bound = [&](const ::HIR::TraitPath& bound) {
                 const auto& b_params = bound.m_path.m_params;
