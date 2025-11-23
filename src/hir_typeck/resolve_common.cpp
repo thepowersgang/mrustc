@@ -112,7 +112,7 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::H
         if( a_ty.second.m_trait_bounds.empty() )
             continue ;
 
-        if( a_ty.second.m_generics.is_generic() ) {
+        if( a_ty.second.m_generics.is_generic() || !a_ty.second.m_generics.is_empty() ) {
             continue ;
         }
         ASSERT_BUG(sp, !a_ty.second.m_generics.is_generic(),
@@ -132,7 +132,7 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::H
                 DEBUG("Equality (ATB) - <" << ty_a << " as " << tb.second.source_trait << ">::" << tb.first << " = " << tb.second);
 
                 auto ty_l = ::HIR::TypeRef::new_path(
-                    ::HIR::Path( ty_a.clone(), tb.second.source_trait.clone(), tb.first ),
+                    ::HIR::Path( ty_a.clone(), tb.second.source_trait.clone(), tb.first, tb.second.aty_params.clone() ),
                     ::HIR::TypePathBinding::make_Opaque({})
                 );
 

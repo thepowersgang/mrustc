@@ -828,7 +828,7 @@ bool StaticTraitResolve::find_impl__bounds(
                     if( bound.m_path.m_path == trait_path && (!trait_params || H::compare_pp(sp, bound.m_path.m_params, *trait_params)) ) {
                         DEBUG("- Found an associated type impl");
 
-                        auto tp_mono = MonomorphStatePtr(&assoc_info->type, &assoc_info->trait.m_params, nullptr).monomorph_traitpath(sp, bound, false);
+                        auto tp_mono = MonomorphStatePtr(&assoc_info->type, &assoc_info->trait.m_params, &assoc_info->params).monomorph_traitpath(sp, bound, false);
                         // - Expand associated types
                         for(auto& ty : tp_mono.m_type_bounds) {
                             this->expand_associated_types(sp, ty.second.type);
@@ -1899,7 +1899,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             DEBUG("Inner UfcsKnown");
 
             // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
-            auto cb_placeholders_trait = MonomorphStatePtr(&pe_inner.type, &pe_inner.trait.m_params, nullptr);
+            auto cb_placeholders_trait = MonomorphStatePtr(&pe_inner.type, &pe_inner.trait.m_params, &pe_inner.params);
             for(const auto& bound : assoc_ty.m_trait_bounds)
             {
                 // If the bound is for Self and the outer trait

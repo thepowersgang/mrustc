@@ -2633,7 +2633,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             const auto& assoc_ty = trait_ptr.m_types.at(pe_inner.item);
 
             // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
-            auto cb_placeholders_trait = MonomorphStatePtr(&pe_inner.type, &pe_inner.trait.m_params, nullptr);
+            auto cb_placeholders_trait = MonomorphStatePtr(&pe_inner.type, &pe_inner.trait.m_params, &pe_inner.params);
             for(const auto& bound : assoc_ty.m_trait_bounds)
             {
                 // If the bound is for Self and the outer trait
