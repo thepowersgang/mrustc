@@ -194,6 +194,7 @@ private:
     const ::HIR::GenericPath*   m_current_trait_path;
     const ::HIR::Trait* m_current_trait_ptr;
 
+    mutable ::std::map<std::string, HIR::TypeRef>  m_eat_cache;
     mutable ::std::vector<std::unique_ptr<::HIR::TypeRef>>  m_eat_active_stack;
 public:
     TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& vis_path,  const ::HIR::GenericPath* current_trait):

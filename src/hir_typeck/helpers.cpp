@@ -2241,7 +2241,20 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
             // - Only try resolving if the binding isn't known
             if( e.binding.is_Unbound() )
             {
-                this->expand_associated_types_inplace__UfcsKnown(sp, input, stack);
+                // Cache the result of this to avoid needing to do the full resolution too often.
+                // - This avoids VERY slow typechecking in 1.90's librustc_target
+                auto k = FMT(input);
+                auto it = m_eat_cache.find(k);
+                if( it != m_eat_cache.end() ) {
+                    if( input != it->second ) {
+                        this->expand_associated_types_inplace(sp, it->second, stack);
+                    }
+                    input = it->second.clone();   
+                }
+                else {
+                    this->expand_associated_types_inplace__UfcsKnown(sp, input, stack);
+                    m_eat_cache.insert(::std::make_pair(k, input.clone()));
+                }
             }
             }
         TU_ARMA(UfcsUnknown, pe) {
