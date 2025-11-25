@@ -3209,7 +3209,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 #endif
 
     return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
-        [&](const auto& impl) {
+        [&](const HIR::TraitImpl& impl) {
             DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
             // Compare with `params`
             HIR::PathParams impl_params;
@@ -4550,6 +4550,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp,
         /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
         ) const
 {
+    try {
     TRACE_FUNCTION_F("{" << top_ty << "}." << method_name);
     unsigned int deref_count = 0;
     ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
@@ -4632,6 +4633,10 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp,
     // No method found, return an empty list and return 0
     assert( possibilities.empty() );
     return 0;
+    } catch(const TraitResolution::RecursionDetected& ) {
+        DEBUG("Recursion detected, deferring");
+        return ~0u;
+    }
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const TraitResolution::AutoderefBorrow& x)
@@ -5156,12 +5161,18 @@ bool TraitResolution::find_method(const Span& sp,
                 });
 
             // NOTE: This just detects the presence of a trait impl, not the specifics
-            find_trait_impls_crate(sp, *trait_ref.first, &trait_params, self_ty,  [&](auto impl, auto cmp) {
-                DEBUG("[find_method] " << impl << ", cmp = " << cmp);
+            try {
+                find_trait_impls_crate(sp, *trait_ref.first, &trait_params, self_ty,  [&](auto impl, auto cmp) {
+                    DEBUG("[find_method] " << impl << ", cmp = " << cmp);
+                    magic_found = true;
+                    crate_impl_found = true;
+                    return true;
+                    });
+            } catch(const TraitResolution::RecursionDetected& ) {
+                DEBUG("Recursion detected, assuming good");
                 magic_found = true;
                 crate_impl_found = true;
-                return true;
-                });
+            }
             if( crate_impl_found ) {
                 DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << self_ty << " ("<<m_ivars.fmt_type(self_ty)<<")");
                 possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty.clone(), ::HIR::GenericPath( *trait_ref.first, mv$(trait_params) ), method_name, {}) ));
