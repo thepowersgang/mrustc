@@ -2253,7 +2253,11 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
                 }
                 else {
                     this->expand_associated_types_inplace__UfcsKnown(sp, input, stack);
-                    m_eat_cache.insert(::std::make_pair(k, input.clone()));
+                    if( input.data().is_Path() && input.data().as_Path().binding.is_Unbound() ) {
+                    }
+                    else {
+                        m_eat_cache.insert(::std::make_pair(k, input.clone()));
+                    }
                 }
             }
             }
