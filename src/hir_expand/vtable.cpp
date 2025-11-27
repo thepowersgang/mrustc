@@ -43,10 +43,23 @@ namespace {
                     if( !e->m_inner.is_Fcn() ) {
                         return ;
                     }
+                    const HIR::Path& origin = e->m_inner.as_Fcn().m_origin;
+                    // TODO: Do a stricter check, but this is probably good enough for now?
+                    // - Just checking the function name
+                    if( origin.m_data.is_Generic() && origin.m_data.as_Generic().m_path.components().back() != m_method_name ) {
+                        return ;
+                    }
+                    if( origin.m_data.is_UfcsKnown() && origin.m_data.as_UfcsKnown().item != m_method_name ) {
+                        return ;
+                    }
+                    if( origin.m_data.is_UfcsInherent() && origin.m_data.as_UfcsInherent().item != m_method_name ) {
+                        return ;
+                    }
                     auto ty_name = RcString::new_interned(FMT("erased#" << m_method_name << "_" << m_var_index));
                     m_var_index += 1;
                     
                     if( m_target_impl ) {
+                        DEBUG("Add to impl: " << ty_name << " = " << ty);
                         m_target_impl->m_types.insert(std::make_pair(ty_name, HIR::TraitImpl::ImplEnt<HIR::TypeRef> { false, std::move(ty) }));
                     }
                     else if( m_target_trait ) {
@@ -71,6 +84,7 @@ namespace {
                         else {
                             m_tys.push_back(std::move(ty));
                         }
+                        DEBUG("Add to trait: " << ty_name << " = " << m_tys.back());
                     }
                     else {
                         BUG(Span(), "Neither target impl nor target trait set");
@@ -90,13 +104,16 @@ namespace {
         }
         void handle_method(const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& trait_args, const HIR::TypeRef& self_ty, const RcString& name, ::HIR::Function& fcn)
         {
+            TRACE_FUNCTION_F(trait_path << trait_args << " for " << self_ty << " : " << name);
             m_trait_path = &trait_path;
             m_trait_args = &trait_args;
             m_self_ty = &self_ty;
             m_method_name = name.c_str();
             m_method_params = &fcn.m_params;
             m_var_index = 0;
+            DEBUG("-> " << fcn.m_return);
             visit_type(fcn.m_return);
+            DEBUG("-> " << fcn.m_return);
 
             if( m_target_trait && m_var_index > 0 && fcn.m_code ) {
                 for(size_t i = 0; i < m_var_index; i ++) {
