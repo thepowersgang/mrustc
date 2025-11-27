@@ -2580,6 +2580,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 TU_ARM(pattern.m_data, Slice, e) {
                     // Can be either a [T] or [T; n]. Can't provide a hint
                     // - Can provide the hint if not behind a borrow.
+                    possible_type = ::HIR::TypeRef::new_array(context.m_ivars.new_ivar_tr(), e.sub_patterns.size());
                     }
                 TU_ARM(pattern.m_data, SplitSlice, pe) {
                     // Can be either a [T] or [T; n]. Can't provide a hint
