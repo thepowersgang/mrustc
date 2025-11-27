@@ -6028,6 +6028,10 @@ namespace {
                 MIR_ASSERT(mir_res, Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size), "Can't get size of " << params.m_types.at(0));
                 emit_lvalue(e.ret_val); m_of << " = " << size;
             }
+            else if( name == "offset_of" ) {
+                size_t val = mir_res.intrinsic_offset_of(params.m_types.at(0), e.args);
+                emit_lvalue(e.ret_val); m_of << " = " << val;
+            }
             else if( name == "min_align_of" || name == "align_of" ) {
                 size_t align = 0;
                 MIR_ASSERT(mir_res, Target_GetAlignOf(sp, m_resolve, params.m_types.at(0), align), "Can't get alignment of " << params.m_types.at(0));

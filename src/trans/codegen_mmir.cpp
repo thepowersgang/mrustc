@@ -1080,6 +1080,14 @@ namespace
                     m_of << " }\n";
                     } break;
                 TU_ARM(term, Call, e) {
+                    if( const auto* f_p = e.fcn.opt_Intrinsic() ) {
+                        if( f_p->name == "offset_of" ) {
+                            size_t val = mir_res.intrinsic_offset_of(f_p->params.m_types.at(0), e.args);
+                            m_of << fmt(e.ret_val) << " = " << val << " usize;\n";
+                            m_of << "\t\tGOTO " << e.ret_block;
+                            break;
+                        }
+                    }
                     m_of << "CALL " << fmt(e.ret_val) << " = ";
                     switch(e.fcn.tag())
                     {
