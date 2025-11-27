@@ -315,7 +315,7 @@ public:
         for(size_t i = 0; i < conds.size(); i ++) {
             if(i != 0) m_os << " && ";
             if(conds[i].opt_pat) {
-                if( i > 0 ) m_os << "let ";
+                m_os << "let ";
                 print_pattern(*conds[i].opt_pat, true);
                 m_os << " = ";
             }
@@ -328,7 +328,7 @@ public:
         bool expr_root = m_expr_root;
         m_expr_root = false;
 
-        m_os << "while let ";
+        m_os << "while ";
         visit_iflet_conditions(n.m_conditions);
         if( expr_root )
         {
@@ -402,7 +402,7 @@ public:
     virtual void visit(AST::ExprNode_IfLet& n) override {
         bool expr_root = m_expr_root;
         m_expr_root = false;
-        m_os << "if let ";
+        m_os << "if ";
         visit_iflet_conditions(n.m_conditions);
 
         visit_if_common(expr_root, n.m_true, n.m_false);
