@@ -1090,6 +1090,7 @@ namespace {
                 fields[e.field].offset = cur_ofs;
                 fields[e.field].ty = e.ty.clone();
             }
+            DEBUG("#" << e.field << " @" << cur_ofs << "+" << e.size << " : " << e.ty);
             if( e.size == SIZE_MAX )
             {
                 // Ensure that this is the last item

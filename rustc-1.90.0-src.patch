@@ -1,0 +1,8 @@
+--- compiler/rustc_hir/src/hir.rs
++++ compiler/rustc_hir/src/hir.rs
+@@ -4938,4 +4938,5 @@
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
++#[cfg(not(rust_compiler="mrustc"))]
+ #[cfg(target_pointer_width = "64")]
+ mod size_asserts {
+     use rustc_data_structures::static_assert_size;
