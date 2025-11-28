@@ -465,7 +465,7 @@ bool StaticTraitResolve::find_impl(
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = monomorphise_pathparams_with_opt(sp, params_mono_o, b_params, monomorph_cb, false);
                 this->expand_associated_types_params(sp, params_mono_o);
-                DEBUG("[find_impl] : " << bound.m_path.m_path << b_params_mono);
+                DEBUG("[find_impl] ATY : " << bound.m_path.m_path << b_params_mono);
 
                 if( bound.m_path.m_path == trait_path )
                 {
@@ -485,13 +485,13 @@ bool StaticTraitResolve::find_impl(
                                     atys.insert(::std::make_pair( tb.first, ::HIR::TraitPath::AtyEqual { mv$(src), {}, mv$(aty) } ));
                                 }
                             }
-                            if( found_cb( ImplRef(type.clone(), mv$(params_mono_o), mv$(atys)), false ) )
+                            if( found_cb( ImplRef(bound.m_hrtbs ? bound.m_hrtbs->clone() : HIR::GenericParams(), type.clone(), mv$(params_mono_o), mv$(atys)), false ) )
                                 return true;
                             params_mono_o = monomorph_cb.monomorph_path_params(sp, b_params, false);
                         }
                         else
                         {
-                            if( found_cb( ImplRef(&null_hrls, &type, &bound.m_path.m_params, &bound.m_type_bounds), false ) )
+                            if( found_cb( ImplRef(bound.m_hrtbs.get(), &type, &bound.m_path.m_params, &bound.m_type_bounds), false ) )
                                 return true;
                         }
                     }
@@ -835,7 +835,7 @@ bool StaticTraitResolve::find_impl__bounds(
                         }
                         DEBUG("- tp_mono = " << tp_mono);
                         // TODO: Instead of using `type` here, build the real type
-                        if( found_cb( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)), false ) ) {
+                        if( found_cb( ImplRef(bound.m_hrtbs ? bound.m_hrtbs->clone() : HIR::GenericParams(), type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)), false ) ) {
                             return true;
                         }
                     }
