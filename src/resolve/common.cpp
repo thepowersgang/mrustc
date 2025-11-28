@@ -140,6 +140,12 @@ namespace {
                             }
                         }
                         }
+                    TU_ARMA(AstRoot, m) {
+                        if(out_path) {
+                            *out_path = AST::AbsolutePath("",{});
+                        }
+                        return get_module_ast(*m, path, 1, ignore_last, out_path);
+                        }
                     TU_ARMA(HirRoot, hir_crate) {
                         return get_module_hir(hir_crate->m_root_module, path, 1, ignore_last, out_path);
                         }
@@ -268,6 +274,7 @@ namespace {
         {
             TRACE_FUNCTION_F("start_offset=" << start_offset << ", ignore_last=" << ignore_last);
             const AST::Module* mod = &start_mod;
+            ASSERT_BUG(Span(), path.nodes().size() >= (ignore_last ? 1 : 0), "" << path);
 
             for(size_t idx = start_offset; idx < path.nodes().size() - (ignore_last ? 1 : 0); idx ++)
             {
@@ -307,6 +314,9 @@ namespace {
                         return ResolveModuleRef();
                     }
                     }
+                TU_ARMA(AstRoot, e) {
+                    mod = e;
+                    }
                 TU_ARMA(Hir, e) {
                     if( const auto* i = e->opt_Module() ) {
                         return get_module_hir(*i, path, idx+1, ignore_last, out_path);
@@ -335,6 +345,7 @@ namespace {
         {
             TRACE_FUNCTION_F("path=" << path << ", start_offset=" << start_offset << ", ignore_last=" << ignore_last);
             const HIR::Module* mod = &start_mod;
+            ASSERT_BUG(Span(), path.nodes().size() >= (ignore_last ? 1 : 0), "" << path);
             for(size_t i = start_offset; i < path.nodes().size() - (ignore_last ? 1 : 0); i ++)
             {
                 const auto& name = path.nodes()[i].name();
@@ -583,6 +594,26 @@ namespace {
                                     }
                                     return ResolveItemRef_Macro(Expand_FindProcMacro(pe.nodes.front().name()));
                                 }
+                            }
+                            if( e.path.m_class.is_Absolute() && e.path.m_class.as_Absolute().nodes.empty() ) {
+                                AST::AbsolutePath   tmp;
+                                auto tgt_mod = this->get_module(mod.path(), e.path, false, &tmp);
+                                TU_MATCH_HDRA( (tgt_mod), {)
+                                TU_ARMA(Ast, mod_ptr) {
+                                    if(out_path)    *out_path = tmp;
+                                    return ResolveItemRef_Type::make_AstRoot(mod_ptr);
+                                    }
+                                TU_ARMA(Hir, mod_ptr) {
+                                    if(out_path)    *out_path = tmp;
+                                    return ResolveItemRef_Type::make_HirRoot(&*crate.m_extern_crates.at(tmp.crate).m_hir);
+                                    }
+                                TU_ARMA(ImplicitPrelude, _e) {
+                                    TODO(sp, "ImplicitPrelude?");
+                                    }
+                                TU_ARMA(None, _e) {
+                                    }
+                                }
+                                continue;
                             }
 
                             const auto& item_name = e.path.nodes().back().name();

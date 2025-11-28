@@ -45,7 +45,8 @@ TAGGED_UNION(ResolveItemRef_Type, None,
     (None, struct {}),
     (Ast, const AST::Item*),
     (Hir, const HIR::TypeItem*),
-    (HirRoot, const HIR::Crate*)
+    (HirRoot, const HIR::Crate*),
+    (AstRoot, const AST::Module*)
     );
 TAGGED_UNION(ResolveItemRef_Value, None,
     (None, struct {}),
