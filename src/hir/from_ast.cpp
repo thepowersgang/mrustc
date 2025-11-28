@@ -2149,7 +2149,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
 
 void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crate)
 {
-    DEBUG(ast_mod.path());
+    TRACE_FUNCTION_F(ast_mod.path());
     ::HIR::SimplePath   mod_path(g_crate_name, ast_mod.path().nodes);
 
     // Sub-modules
@@ -2191,7 +2191,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 auto type = LowerHIR_Type(impl.def().type());
 
                 ::HIR::ItemPath    path(type, trait_name, trait_args);
-                DEBUG(path);
+                DEBUG("path = " << path);
 
                 ::std::map< RcString, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> > methods;
                 ::std::map< RcString, ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> > constants;
@@ -2343,7 +2343,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             false,
             mv$(type),
 
-                mod_path
+            mod_path
             }) );
     }
 }
@@ -2454,7 +2454,7 @@ public:
         {
             if( mac.is_pub || (mac.ref.is_MacroRules() && mac.ref.as_MacroRules()->m_exported) ) {
                 // Add to the re-export list
-                auto path = ::HIR::SimplePath(mac.path.crate, mac.path.nodes);
+                auto path = ::HIR::SimplePath(mac.path.crate == "" ? g_crate_name : mac.path.crate, mac.path.nodes);
                 auto res = macros.insert( std::make_pair(mac.name, HIR::MacroItem::make_Import({path})) );
                 if( !res.second ) {
                     DEBUG("Conflict in imported vs local macros: " << mac.name);
@@ -2789,11 +2789,12 @@ public:
                     }
                 }
             }
-            static void fix_macros_in_mod(HIR::Module& mod)
+            static void fix_macros_in_mod(HIR::ItemPath path, HIR::Module& mod)
             {
+                TRACE_FUNCTION_F(path);
                 for(auto& mi : mod.m_mod_items) {
                     if(auto* submod_p = mi.second->ent.opt_Module()) {
-                        fix_macros_in_mod(*submod_p);
+                        fix_macros_in_mod(path + mi.first, *submod_p);
                     }
                 }
                 for(auto& mi : mod.m_macro_items) {
@@ -2808,6 +2809,7 @@ public:
                         }
                     }
                     if( const auto* i = mi.second->ent.opt_Import() ) {
+                        DEBUG(path << ": Import " << mi.first << " = " << i->path);
                         if( i->path.crate_name() == CRATE_BUILTINS ) {
                         }
                         else if( const auto* i2 = g_crate_ptr->get_macroitem_by_path(Span(), i->path).opt_Import() ) {
@@ -2817,7 +2819,7 @@ public:
                 }
             }
         };
-        H::fix_macros_in_mod(rv.m_root_module);
+        H::fix_macros_in_mod(HIR::ItemPath(""), rv.m_root_module);
     }
 
     if(g_core_crate == "") {
