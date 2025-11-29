@@ -608,21 +608,24 @@ namespace {
                                 }
                             }
                             if( e.path.m_class.is_Absolute() && e.path.m_class.as_Absolute().nodes.empty() ) {
-                                AST::AbsolutePath   tmp;
-                                auto tgt_mod = this->get_module(mod.path(), e.path, false, &tmp);
-                                TU_MATCH_HDRA( (tgt_mod), {)
-                                TU_ARMA(Ast, mod_ptr) {
-                                    if(out_path)    *out_path = tmp;
-                                    return ResolveItemRef_Type::make_AstRoot(mod_ptr);
-                                    }
-                                TU_ARMA(Hir, mod_ptr) {
-                                    if(out_path)    *out_path = tmp;
-                                    return ResolveItemRef_Type::make_HirRoot(&*crate.m_extern_crates.at(tmp.crate).m_hir);
-                                    }
-                                TU_ARMA(ImplicitPrelude, _e) {
-                                    TODO(sp, "ImplicitPrelude?");
-                                    }
-                                TU_ARMA(None, _e) {
+                                if( ns == ResolveNamespace::Namespace )
+                                {
+                                    AST::AbsolutePath   tmp;
+                                    auto tgt_mod = this->get_module(mod.path(), e.path, false, &tmp);
+                                    TU_MATCH_HDRA( (tgt_mod), {)
+                                    TU_ARMA(Ast, mod_ptr) {
+                                        if(out_path)    *out_path = tmp;
+                                        return ResolveItemRef_Type::make_AstRoot(mod_ptr);
+                                        }
+                                    TU_ARMA(Hir, mod_ptr) {
+                                        if(out_path)    *out_path = tmp;
+                                        return ResolveItemRef_Type::make_HirRoot(&*crate.m_extern_crates.at(tmp.crate).m_hir);
+                                        }
+                                    TU_ARMA(ImplicitPrelude, _e) {
+                                        TODO(sp, "ImplicitPrelude?");
+                                        }
+                                    TU_ARMA(None, _e) {
+                                        }
                                     }
                                 }
                                 continue;
@@ -653,11 +656,18 @@ namespace {
                                 }
                                 }
                             TU_ARMA(ImplicitPrelude, _e) {
-                                auto ec_it = AST::g_implicit_crates.find(item_name);
-                                if(ec_it != AST::g_implicit_crates.end()) {
-                                    return ResolveItemRef_Type(&*crate.m_extern_crates.at(ec_it->second).m_hir);
+                                if( ns == ResolveNamespace::Namespace )
+                                {
+                                    auto ec_it = AST::g_implicit_crates.find(item_name);
+                                    if(ec_it != AST::g_implicit_crates.end()) {
+                                        if(out_path) {
+                                            out_path->crate = ec_it->second;
+                                            out_path->nodes.clear();
+                                        }
+                                        return ResolveItemRef_Type(&*crate.m_extern_crates.at(ec_it->second).m_hir);
+                                    }
+                                    TODO(sp, "ImplicitPrelude?");
                                 }
-                                TODO(sp, "ImplicitPrelude?");
                                 }
                             TU_ARMA(None, _e) {
                                 //BUG(sp, "Unable to find " << e.path << " (starting from " << mod.path() << ")");
@@ -893,6 +903,10 @@ ResolveItemRef_Macro Resolve_Lookup_Macro(const Span& span, const AST::Crate& cr
 
     const auto& item_name = path.nodes().back().name();
     auto mod = rs.get_module(base_path, path, true, out_path);
+    if( mod.is_ImplicitPrelude() ) {
+        const auto& base_nodes = base_path.nodes();
+        mod = ResolveModuleRef(&rs.get_mod_by_true_path(base_nodes, base_nodes.size()));
+    }
     TU_MATCH_HDRA( (mod), {)
     TU_ARMA(Ast, mod_ptr) {
         auto rv = rs.find_item(*mod_ptr, item_name, ResolveNamespace::Macro, out_path);

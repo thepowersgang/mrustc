@@ -2062,17 +2062,19 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
         // Import all macros from parent module.
         if( first_item == 0 )
         {
+            for( const auto& mi: mod.m_macro_imports ) {
+                DEBUG("- Imports '" << mi.path << "'");
+            }
             if( es.modstack.m_prev )
             {
                 for(const auto& mac : es.modstack.m_prev->m_item->m_macro_imports) {
                     mod.m_macro_imports.push_back(mac.clone());
+                    DEBUG(mod.path() << " + Import import " << mac.name << " = '" << mod.m_macro_imports.back().path << "'");
                 }
                 for(const auto& mac : es.modstack.m_prev->m_item->macros()) {
                     mod.m_macro_imports.push_back(AST::Module::MacroImport { false, mac.name, es.modstack.m_prev->m_item->path() + mac.name, &*mac.data });
+                    DEBUG(mod.path() << " + Import defined '" << mod.m_macro_imports.back().path << "'");
                 }
-            }
-            for( const auto& mi: mod.m_macro_imports ) {
-                DEBUG("- Imports '" << mi.path << "'");
             }
         }
 
@@ -2269,7 +2271,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                         }
                     }
                     if( ! ref.is_None() ) {
-                        DEBUG("+ Macro Import: " << ref_path);
+                        DEBUG(mod.path() << " + Macro Import: " << ref_path);
                         mod.m_macro_imports.push_back(AST::Module::MacroImport { false, ue.name, std::move(ref_path), std::move(ref) });
                     }
                 }

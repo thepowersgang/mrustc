@@ -167,7 +167,7 @@ class CMacroUseHandler:
                 {
                     auto path = submod.path();
                     path.nodes.push_back(mr.name);
-                    DEBUG("Import macro " << path);
+                    DEBUG(mod.path() << ": Import macro " << path);
                     mod.m_macro_imports.push_back(AST::Module::MacroImport{ false, mr.name, path, &*mr.data });
                 }
             }
@@ -176,7 +176,7 @@ class CMacroUseHandler:
                 if( !filter_valid(mri.name) ) {
                     continue;
                 }
-                DEBUG("Imported " << mri.name << " (propagate) = " << mri.path);
+                DEBUG(mod.path() << ": Imported " << mri.name << " (propagate) = " << mri.path);
                 if( !exists(mri.name, mri.ref) )
                 {
                     mod.m_macro_imports.push_back(mri.clone());
@@ -236,12 +236,7 @@ class CMacroExportHandler:
                 ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
             const auto& p = u->entries.back().path.m_class.as_Absolute();
             const auto& name = p.nodes.front().name();
-            AST::Module::MacroImport    mi;
-            mi.is_pub = true;
-            mi.name = u->entries.front().name;
-            mi.path.crate = p.crate;
-            mi.path.nodes.push_back(name);
-            crate.m_root_module.m_macro_imports.push_back(mv$(mi));
+            mod.m_macro_imports.push_back(AST::Module::MacroImport { true, u->entries.front().name, AST::AbsolutePath(p.crate, {name}), {} });
 
             crate.m_root_module.add_item(sp, AST::Visibility::make_global(), name, i.clone(), {});
         }
@@ -261,6 +256,7 @@ class CMacroExportHandler:
 
             // Leave an alias here, so existing references are valid
             mod.m_macro_imports.push_back(AST::Module::MacroImport { false, name, AST::AbsolutePath("", {name}), &*e.data });
+            DEBUG(mod.path() << ": macro_use Import " << mod.m_macro_imports.back().name << " = " << mod.m_macro_imports.back().path);
 
             if( local_inner_macros ) {
                 Ident::ModPath  mp;

@@ -107,7 +107,7 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcStr
     }
     else
     {
-        DEBUG("### " << (was_import ? "Import" : "Add") << location << " item " << mod.path() << " :: " << name << " = " << ir << vis);
+        DEBUG("### " << (was_import ? "Import" : "Add") << " " << location << " item " << mod.path() << " :: " << name << " = " << ir << vis);
         auto rec = list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { was_import, mv$(vis), mv$(ir) } ));
         assert(rec.second);
     }
@@ -875,12 +875,34 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
         } break;
     case IndexName::Macro: {
         auto it = mod->m_macro_items.find( node.name() );
-        if( it != mod->m_macro_items.end() )
+        if( it != mod->m_macro_items.end() ) {
             ie_p = &it->second;
+        }
+        else {
+            // Workaround for `use` on an exporter macro
+            const AST::Module::MacroImport* found = nullptr;
+            for(const auto& a : mod->m_macro_imports) {
+                //DEBUG("MI " << a.name << " = " << a.ref.tag_str() << " " << a.path);
+                if( a.name == node.name() ) {
+                    found = &a;
+                }
+            }
+            if( found && found->ref.is_MacroRules() ) {
+                DEBUG("in " << mod->path() << " " << node.name() << " imported using: " << path << " = " << found->path);
+                assert(path != found->path);
+                path = found->path;
+                path.m_bindings.macro.set(found->path, AST::PathBinding_Macro::make_MacroRules({nullptr, found->ref.as_MacroRules()}));
+                DEBUG("macro_export? -> " << path);
+                Resolve_Index_Module_Normalise_Path(crate, sp, path, loc);
+                return true;
+            }
+        }
         } break;
     }
-    if( !ie_p )
+    if( !ie_p ) {
+        DEBUG("Was in " << mod->path());
         ERROR(sp, E0000,  "Couldn't find final node of path " << path);
+    }
     const auto& ie = *ie_p;
 
     if( ie.is_import ) {
