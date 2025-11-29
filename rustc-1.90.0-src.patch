@@ -6,3 +6,12 @@
  #[cfg(target_pointer_width = "64")]
  mod size_asserts {
      use rustc_data_structures::static_assert_size;
+--- compiler/rustc_errors/src/lib.rs
++++ compiler/rustc_errors/src/lib.rs
+@@ -102,5 +102,6 @@
+ // `PResult` is used a lot. Make sure it doesn't unintentionally get bigger.
+ #[cfg(target_pointer_width = "64")]
+ rustc_data_structures::static_assert_size!(PResult<'_, ()>, 24);
++#[cfg(not(rust_compiler="mrustc"))]
+ #[cfg(target_pointer_width = "64")]
+ rustc_data_structures::static_assert_size!(PResult<'_, bool>, 24);
