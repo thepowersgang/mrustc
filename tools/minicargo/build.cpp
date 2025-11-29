@@ -982,6 +982,7 @@ RunnableJob Job_BuildTarget::start()
     for(const auto& e : m_manifest.build_script_output().rustc_env) {
         env.push_back(e.first.c_str(), e.second.c_str());
     }
+    env.push_back("CARGO_CRATE_NAME", m_target.m_name);
     push_env_common(env, m_manifest);
 
     return RunnableJob(parent.m_compiler_path.str().c_str(), std::move(args), std::move(env), outfile + "_dbg.txt");
