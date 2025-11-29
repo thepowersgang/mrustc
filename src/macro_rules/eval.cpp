@@ -550,6 +550,10 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     case MacroPatEnt::PAT_STMT:
         return InterpolatedFragment( InterpolatedFragment::STMT, Parse_Stmt(lex).release() );
     case MacroPatEnt::PAT_PATH:
+        // HACK for `rustc-1.90.0-src/vendor/icu_locid_transform_data-1.5.0/data/macros.rs::23`
+        if( lex.lookahead(0) == TOK_INTERPOLATED_TYPE ) {
+            return InterpolatedFragment( std::move(lex.getToken().frag_type()) );
+        }
         return InterpolatedFragment( Parse_Path(lex, PATH_GENERIC_TYPE) );    // non-expr mode
     case MacroPatEnt::PAT_BLOCK:
         return InterpolatedFragment( InterpolatedFragment::BLOCK, Parse_ExprBlockNode(lex).release() );
@@ -870,6 +874,7 @@ namespace
         switch(lex.next())
         {
         case TOK_INTERPOLATED_PATH:
+        case TOK_INTERPOLATED_TYPE: // HACK!
             lex.consume();
             return true;
         case TOK_RWORD_SELF:
