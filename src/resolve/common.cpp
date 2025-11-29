@@ -105,6 +105,18 @@ namespace {
                 }
                 if(e.nodes.size() == 1 && ignore_last )
                 {
+                    // HACK: If the target path is a crate name, then return `ImplicitPrelude` instead of the current module
+                    if( crate.m_edition >= AST::Edition::Rust2018 )
+                    {
+                        const auto& name = e.nodes.back().name();
+                        DEBUG("Trying implicit externs for " << name);
+                        DEBUG(FmtLambda([&](std::ostream& os) { for(const auto& v : AST::g_implicit_crates) os << " " << v.first;}));
+                        auto ec_it = AST::g_implicit_crates.find(name);
+                        if(ec_it != AST::g_implicit_crates.end()) {
+                            return ResolveModuleRef::make_ImplicitPrelude({});
+                        }
+                    }
+
                     DEBUG("Ignore last");
                     return ResolveModuleRef(&this->get_mod_by_true_path(base_nodes, base_nodes.size()));
                 }
@@ -583,7 +595,7 @@ namespace {
                     {
                         if( e.name == name )
                         {
-                            DEBUG("Use " << e.path);
+                            DEBUG("Use " << e.name << " := " << e.path);
 
                             if( e.path.m_class.is_Absolute() && e.path.m_class.as_Absolute().crate == CRATE_BUILTINS ) {
                                 const auto& pe = e.path.m_class.as_Absolute();
@@ -641,6 +653,10 @@ namespace {
                                 }
                                 }
                             TU_ARMA(ImplicitPrelude, _e) {
+                                auto ec_it = AST::g_implicit_crates.find(item_name);
+                                if(ec_it != AST::g_implicit_crates.end()) {
+                                    return ResolveItemRef_Type(&*crate.m_extern_crates.at(ec_it->second).m_hir);
+                                }
                                 TODO(sp, "ImplicitPrelude?");
                                 }
                             TU_ARMA(None, _e) {
@@ -892,8 +908,10 @@ ResolveItemRef_Macro Resolve_Lookup_Macro(const Span& span, const AST::Crate& cr
         ASSERT_BUG(span, rv.is_Macro(), rv.tag_str());
         return std::move( rv.as_Macro() );
         }
-    TU_ARMA(ImplicitPrelude, _e)
-        BUG(span, "Parent module of a macro is the implicit prelude?");
+    TU_ARMA(ImplicitPrelude, _e) {
+        // This isn't a macro, so return `None`
+        return ResolveItemRef_Macro::make_None({});
+        }
     TU_ARMA(None, e) {
         return ResolveItemRef_Macro::make_None({});
         }
