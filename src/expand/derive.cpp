@@ -1344,10 +1344,14 @@ public:
             ::AST::ExprNode_StructLiteral::t_values vals;
             for( const auto& fld : e.m_fields )
             {
-                add_field_bound_from_ty(enm.params(), bound_tys, fld.m_type);
-                vals.push_back({ {}, fld.m_name, this->default_call(opts.core_name) });
+                if( fld.m_default ) {
+                }
+                else {
+                    add_field_bound_from_ty(enm.params(), bound_tys, fld.m_type);
+                    vals.push_back({ {}, fld.m_name, this->default_call(opts.core_name) });
+                }
             }
-            node = NEWNODE(StructLiteral, std::move(var_path), nullptr, mv$(vals));
+            node = NEWNODE(StructLiteralPattern, std::move(var_path), mv$(vals));
             }
         }
         return this->make_ret(sp, opts.core_name, p, type, std::move(bound_tys), std::move(node));

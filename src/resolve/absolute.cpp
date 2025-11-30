@@ -2812,6 +2812,7 @@ void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
         (Struct,
             for(auto& field : s.m_fields) {
                 Resolve_Absolute_Type(item_context,  field.m_type);
+                Resolve_Absolute_Expr(item_context,  field.m_default);
             }
             )
         )
