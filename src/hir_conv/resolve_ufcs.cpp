@@ -281,6 +281,24 @@ namespace resolve_ufcs {
                             }
                         }
                     }
+
+                    // If this is pointing at a constant/static/associated constant, change to CallValue
+                    MonomorphState  discard;
+                    auto v = upper_visitor.m_resolve.get_value(node.span(), node.m_path, discard, true);
+                    if( v.is_Constant() || v.is_Static() ) {
+                        m_replacement.reset(new ::HIR::ExprNode_CallValue(sp,
+                            ::std::make_unique<HIR::ExprNode_PathValue>(
+                                sp,
+                                std::move(node.m_path),
+                                v.is_Constant() ? ::HIR::ExprNode_PathValue::Target::CONSTANT
+                                : v.is_Static() ? ::HIR::ExprNode_PathValue::Target::STATIC
+                                : ::HIR::ExprNode_PathValue::Target::UNKNOWN
+                                ),
+                                mv$(node.m_args)
+                            ));
+                        DEBUG(&node << ": Replacing with CallValue " << m_replacement.get());
+                        return ;
+                    }
                 }
                 // Custom visitor for enum/struct constructors
                 void visit(::HIR::ExprNode_PathValue& node) override
