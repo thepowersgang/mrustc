@@ -68,7 +68,8 @@ namespace {
         (Function, const ::HIR::Function*),
         (Static, const ::HIR::Static*),
         (Constant, const ::HIR::Constant*),
-        (Struct, const ::HIR::Struct*)
+        (Struct, const ::HIR::Struct*),
+        (Enum, struct { const ::HIR::Enum* p; size_t idx; })
         );
     enum class EntNS {
         //Type,
@@ -858,11 +859,16 @@ namespace {
     {
         if(const auto* gp = path.m_data.opt_Generic()) {
             const auto& name = gp->m_path.components().back();
-            const auto& mod = resolve.m_crate.get_mod_by_path(sp, gp->m_path, /*ignore_last*/true);
-            // TODO: This pointer will be invalidated...
-            for(const auto& is : mod.m_inline_statics) {
-                if(is.first == name)
-                    return &*is.second;
+            const auto* mod = ( gp->m_path.components().size() > 1 )
+                ? resolve.m_crate.get_typeitem_by_path(sp, gp->m_path, false, /*ignore_last*/true) . opt_Module()
+                : &resolve.m_crate.get_mod_by_path(sp, gp->m_path, true)
+                ;
+            if( mod ) {
+                // TODO: This pointer will be invalidated...
+                for(const auto& is : mod->m_inline_statics) {
+                    if(is.first == name)
+                        return &*is.second;
+                }
             }
         }
         auto v = resolve.get_value(sp, path, out_ms, false, out_impl_params_def);
@@ -878,8 +884,9 @@ namespace {
             return e;
         TU_ARMA(Function, e)
             return e;
-        TU_ARMA(EnumConstructor, e)
-            TODO(sp, "Handle EnumConstructor - " << path);
+        TU_ARMA(EnumConstructor, e) {
+            return EntPtr::Data_Enum { e.e, e.v };
+            }
         TU_ARMA(EnumValue, e)
             TODO(sp, "Handle EnumValue - " << path);
         TU_ARMA(StructConstructor, e) {
