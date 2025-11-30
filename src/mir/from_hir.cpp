@@ -2714,10 +2714,20 @@ namespace {
             for(unsigned int i = 0; i < values.size(); i ++)
             {
                 if( !values_set[i] ) {
-                    if( !node.m_base_value) {
+                    if( node.m_base_value ) {
+                        values[i] = ::MIR::LValue::new_Field( base_val.clone(), i );
+                    }
+                    else if( str.m_defaults.count(fields[i].first) ) {
+                        const auto& v = str.m_defaults.at(fields[i].first);
+                        auto ms = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+                        values[i] = m_builder.lvalue_or_temp(sp,
+                            ms.monomorph_type(sp, str.m_data.as_Named().at(i).second.ent),
+                            MIR::Constant::make_Const({::std::make_unique<HIR::Path>(ms.monomorph_genericpath(sp, v))})
+                            );
+                    }
+                    else {
                         ERROR(node.span(), E0000, "Field '" << fields[i].first << "' not specified");
                     }
-                    values[i] = ::MIR::LValue::new_Field( base_val.clone(), i );
                 }
                 else {
                     // Partial move support will handle dropping the rest?

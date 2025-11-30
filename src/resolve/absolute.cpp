@@ -2382,6 +2382,11 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             Resolve_Absolute_Path(this->context, node.span(), Context::LookupMode::Type, node.m_path);
             AST::NodeVisitorDef::visit(node);
         }
+        void visit(AST::ExprNode_StructLiteralPattern& node) override {
+            DEBUG("ExprNode_StructLiteralPattern");
+            Resolve_Absolute_Path(this->context, node.span(), Context::LookupMode::Type, node.m_path);
+            AST::NodeVisitorDef::visit(node);
+        }
         void visit(AST::ExprNode_CallPath& node) override {
             DEBUG("ExprNode_CallPath");
             Resolve_Absolute_Path(this->context, node.span(), Context::LookupMode::Variable,  node.m_path);
@@ -2745,6 +2750,7 @@ void Resolve_Absolute_Struct(Context& item_context, ::AST::Struct& e)
     (Struct,
         for(auto& field : s.ents) {
             Resolve_Absolute_Type(item_context,  field.m_type);
+            Resolve_Absolute_Expr(item_context,  field.m_default);
         }
         )
     )

@@ -224,7 +224,7 @@ void Visibility::inplace_union(const Visibility& x)
 
 StructItem StructItem::clone() const
 {
-    return StructItem(m_attrs.clone(), m_vis, m_name, m_type.clone());
+    return StructItem(m_attrs.clone(), m_vis, m_name, m_type.clone(), m_default.clone());
 }
 TupleItem TupleItem::clone() const
 {

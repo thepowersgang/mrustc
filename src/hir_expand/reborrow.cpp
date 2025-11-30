@@ -182,20 +182,14 @@ namespace {
         {
         }
 
-        // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
         void visit_expr(::HIR::ExprPtr& exp) override {
-            BUG(Span(), "visit_expr hit in OuterVisitor");
-        }
-
-        void visit_constgeneric(::HIR::ConstGeneric& c) override
-        {
-            HIR::Visitor::visit_constgeneric(c);
-            if( auto* e = c.opt_Unevaluated() )
+            if(exp)
             {
                 ExprVisitor_Mutate  ev(m_crate);
-                ev.visit_node_ptr( *(*e)->expr );
+                ev.visit_node_ptr(exp);
             }
         }
+
         // ------
         // Code-containing items
         // ------
@@ -210,35 +204,6 @@ namespace {
             else
             {
                 DEBUG("Function code " << p << " (none)");
-            }
-        }
-        void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
-            if( item.m_value )
-            {
-                ExprVisitor_Mutate  ev(m_crate);
-                ev.visit_node_ptr(item.m_value);
-            }
-        }
-        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
-            if( item.m_value )
-            {
-                ExprVisitor_Mutate  ev(m_crate);
-                ev.visit_node_ptr(item.m_value);
-            }
-        }
-        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            if(auto* e = item.m_data.opt_Value())
-            {
-                for(auto& var : e->variants)
-                {
-                    DEBUG("Enum value " << p << " - " << var.name);
-
-                    if( var.expr )
-                    {
-                        ExprVisitor_Mutate  ev(m_crate);
-                        ev.visit_node_ptr(var.expr);
-                    }
-                }
             }
         }
     };

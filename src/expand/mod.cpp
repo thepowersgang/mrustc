@@ -2334,6 +2334,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                     Expand_Attrs_CfgAttr(si.m_attrs);
                     Expand_Attrs(es, si.m_attrs, AttrStage::Pre, [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, si); });
                     Expand_Type(es, mod,  si.m_type);
+                    Expand_Expr(es, si.m_default);
                     Expand_Attrs(es, si.m_attrs, AttrStage::Post, [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, si); });
 
                     if( si.m_name == "" )
@@ -2386,6 +2387,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                         Expand_Attrs_CfgAttr(si.m_attrs);
                         Expand_Attrs(es, si.m_attrs, AttrStage::Pre, [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, si); });
                         Expand_Type(es, mod,  si.m_type);
+                        Expand_Expr(es, si.m_default);
                         Expand_Attrs(es, si.m_attrs, AttrStage::Post, [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, si); });
 
                         if( si.m_name == "" )
@@ -2415,6 +2417,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 Expand_Attrs_CfgAttr(si.m_attrs);
                 Expand_Attrs(es, si.m_attrs, AttrStage::Pre, [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, si); });
                 Expand_Type(es, mod,  si.m_type);
+                Expand_Expr(es, si.m_default);
                 Expand_Attrs(es, si.m_attrs, AttrStage::Post, [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, si); });
 
                 if( si.m_name == "" )

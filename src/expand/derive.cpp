@@ -1278,11 +1278,22 @@ public:
             }
         TU_ARMA(Struct, e) {
             ::AST::ExprNode_StructLiteral::t_values vals;
+            bool has_default = false;
             for( const auto& fld : e.ents )
             {
-                vals.push_back({ {}, fld.m_name, this->default_call(opts.core_name) });
+                if( fld.m_default ) {
+                    has_default = true;
+                }
+                else {
+                    vals.push_back({ {}, fld.m_name, this->default_call(opts.core_name) });
+                }
             }
-            node = NEWNODE(StructLiteral, ty_path, nullptr, mv$(vals));
+            if( has_default ) {
+                node = NEWNODE(StructLiteralPattern, ty_path, mv$(vals));
+            }
+            else {
+                node = NEWNODE(StructLiteral, ty_path, nullptr, mv$(vals));
+            }
             }
         TU_ARMA(Tuple, e) {
             ::std::vector<AST::ExprNodeP>   vals;

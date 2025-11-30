@@ -774,6 +774,9 @@ struct ExprNode_StructLiteral:
 
     ::HIR::TypeRef  m_type;
     bool    m_is_struct;
+    /// Alternative to `m_base_value`, indicates that the struct's field defaults are to be used
+    bool    m_use_defaults;
+    /// Base value (`..foo`)
     ::HIR::ExprNodeP    m_base_value;
     t_values    m_values;
 
@@ -787,6 +790,14 @@ struct ExprNode_StructLiteral:
         m_type( mv$(ty) ),
         m_is_struct( is_struct ),
         m_base_value( mv$(base_value) ),
+        m_values( mv$(values) )
+    {
+    }
+    ExprNode_StructLiteral(Span sp, ::HIR::TypeRef ty, bool is_struct, bool , t_values values):
+        ExprNode( mv$(sp) ),
+        m_type( mv$(ty) ),
+        m_is_struct( is_struct ),
+        m_use_defaults(true),
         m_values( mv$(values) )
     {
     }

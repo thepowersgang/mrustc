@@ -383,6 +383,18 @@ public:
         (Tuple, t_tuple_fields),
         (Named, t_struct_fields)
         );
+    struct FieldDefault
+    {
+        size_t index;
+        HIR::ExprPtr    expr;
+        EncodedLiteral  value_res;
+        Constant::ValueState state = Constant::ValueState::Unknown;
+
+        FieldDefault(size_t index, HIR::ExprPtr v)
+            : index(index)
+            , expr(std::move(v))
+        {}
+    };
 
     Struct(GenericParams params, Repr repr, Data data)
         :m_params(mv$(params))
@@ -406,6 +418,8 @@ public:
     unsigned    m_forced_alignment = 0;
     unsigned    m_max_field_alignment = 0;    // for packed
 
+    /// @brief Default values for each field (only valid for `Named`)
+    std::map<RcString, GenericPath>   m_defaults;
     TraitMarkings   m_markings;
     StructMarkings  m_struct_markings;
 

@@ -676,7 +676,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
     {
         // Tuple structs
         ::std::vector<AST::TupleItem>  refs;
-        while(lex.lookahead(0) != TOK_PAREN_CLOSE)
+        while( !lex.getTokenIf(TOK_PAREN_CLOSE) )
         {
             auto item_attrs = Parse_ItemAttrs(lex);
             SET_ATTRS(lex, item_attrs);
@@ -685,15 +685,13 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
 
             refs.push_back( AST::TupleItem( mv$(item_attrs), vis, Parse_Type(lex) ) );
             if( GET_TOK(tok, lex) != TOK_COMMA ) {
-                PUTBACK(tok, lex);
+                CHECK_TOK(tok, TOK_PAREN_CLOSE);
                 break;
             }
         }
-        GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
 
-        if(LOOK_AHEAD(lex) == TOK_RWORD_WHERE)
+        if( lex.getTokenIf(TOK_RWORD_WHERE) )
         {
-            GET_TOK(tok, lex);
             Parse_WhereClause(lex, params);
         }
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
@@ -718,10 +716,8 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
         else if(tok.type() == TOK_BRACE_OPEN)
         {
             ::std::vector<AST::StructItem>  items;
-            while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+            while( !lex.getTokenIf(TOK_BRACE_CLOSE) )
             {
-                PUTBACK(tok, lex);
-
                 auto item_attrs = Parse_ItemAttrs(lex);
                 SET_ATTRS(lex, item_attrs);
 
@@ -731,8 +727,12 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
                 auto name = tok.ident().name;
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 TypeRef type = Parse_Type(lex);
+                AST::Expr default_value = lex.getTokenIf(TOK_EQUAL)
+                    ? Parse_Expr(lex)
+                    : AST::Expr()
+                    ;
 
-                items.push_back( AST::StructItem( mv$(item_attrs), vis, mv$(name), mv$(type) ) );
+                items.push_back( AST::StructItem( mv$(item_attrs), vis, mv$(name), mv$(type), std::move(default_value) ) );
                 if(GET_TOK(tok, lex) == TOK_BRACE_CLOSE)
                     break;
                 CHECK_TOK(tok, TOK_COMMA);
@@ -968,10 +968,9 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
     // Body
     CHECK_TOK(tok, TOK_BRACE_OPEN);
     ::std::vector<AST::EnumVariant>   variants;
-    while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+    while( lex.lookahead(0) != TOK_BRACE_CLOSE )
     {
         auto sp = lex.start_span();
-        PUTBACK(tok, lex);
 
         auto item_attrs = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, item_attrs);
@@ -985,9 +984,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
             // Get type list
             do
             {
-                if(LOOK_AHEAD(lex) == TOK_PAREN_CLOSE)
-                {
-                    GET_TOK(tok, lex);
+                if( lex.getTokenIf(TOK_PAREN_CLOSE, tok) ) {
                     break;
                 }
 
@@ -1005,9 +1002,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
             ::std::vector<::AST::StructItem>   fields;
             do
             {
-                if(LOOK_AHEAD(lex) == TOK_BRACE_CLOSE)
-                {
-                    GET_TOK(tok, lex);
+                if( lex.getTokenIf(TOK_BRACE_CLOSE, tok) ) {
                     break;
                 }
 
@@ -1017,7 +1012,11 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
                 auto name = tok.ident().name;
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 auto ty = Parse_Type(lex);
-                fields.push_back( ::AST::StructItem(mv$(field_attrs), AST::Visibility::make_global(), mv$(name), mv$(ty)) );
+                auto def = lex.getTokenIf(TOK_EQUAL)
+                    ? Parse_Expr(lex)
+                    : AST::Expr()
+                    ;
+                fields.push_back( ::AST::StructItem(mv$(field_attrs), AST::Visibility::make_global(), mv$(name), mv$(ty), mv$(def)) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_BRACE_CLOSE);
             GET_TOK(tok, lex);
@@ -1037,10 +1036,13 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
             variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), ::AST::Expr()) );
         }
 
-        if( tok.type() != TOK_COMMA )
+        if( tok.type() != TOK_COMMA ) {
+            PUTBACK(tok, lex);
             break;
+        }
+        // Consumed the comma
     }
-    CHECK_TOK(tok, TOK_BRACE_CLOSE);
+    GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
 
     return AST::Enum( mv$(params), mv$(variants) );
@@ -1083,7 +1085,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
 
         auto ty = Parse_Type(lex);
 
-        variants.push_back( ::AST::StructItem( mv$(item_attrs), mv$(vis), mv$(name), mv$(ty) ) );
+        variants.push_back( ::AST::StructItem( mv$(item_attrs), mv$(vis), mv$(name), mv$(ty), {} ) );
 
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
@@ -1183,12 +1185,9 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
 
     AST::GenericParams params;
     // 1. (optional) type parameters
-    if( GET_TOK(tok, lex) == TOK_LT )
+    if( lex.getTokenIf(TOK_LT) )
     {
         params = Parse_GenericParams(lex);
-    }
-    else {
-        PUTBACK(tok, lex);
     }
     // 2. Either a trait name (with type params), or the type to impl
 

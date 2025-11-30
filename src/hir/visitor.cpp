@@ -281,6 +281,9 @@ void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
         }
         }
     }
+    for(auto& e : item.m_defaults) {
+        this->visit_generic_path(e.second, PathContext::VALUE);
+    }
     if( m_resolve ) {
         m_resolve->clear_impl_generics();
     }

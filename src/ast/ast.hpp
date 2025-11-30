@@ -50,14 +50,17 @@ struct StructItem
     ::AST::Visibility   m_vis;
     RcString   m_name;
     TypeRef m_type;
+    // RFC3681
+    AST::Expr   m_default;
 
     //StructItem() {}
 
-    StructItem(::AST::AttributeList attrs, AST::Visibility vis, RcString name, TypeRef ty):
+    StructItem(::AST::AttributeList attrs, AST::Visibility vis, RcString name, TypeRef ty, Expr default_value):
         m_attrs( mv$(attrs) ),
         m_vis( mv$(vis) ),
-        m_name( mv$(name) ),
-        m_type( mv$(ty) )
+        m_name( mv$(name) )
+        , m_type( mv$(ty) )
+        , m_default( mv$(default_value) )
     {
     }
 

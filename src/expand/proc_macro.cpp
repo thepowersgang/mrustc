@@ -1423,12 +1423,12 @@ namespace {
             m_pmi.send_rword("struct");
             m_pmi.send_ident(name.c_str());
             this->visit_params(str.params());
-            TU_MATCH(AST::StructData, (str.m_data), (se),
-            (Unit,
+            TU_MATCH_HDRA((str.m_data), {)
+            TU_ARMA(Unit, se) {
                 this->visit_bounds(str.params());
                 m_pmi.send_symbol(";");
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, se) {
                 m_pmi.send_symbol("(");
                 for( const auto& si : se.ents )
                 {
@@ -1440,8 +1440,8 @@ namespace {
                 m_pmi.send_symbol(")");
                 this->visit_bounds(str.params());
                 m_pmi.send_symbol(";");
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, se) {
                 this->visit_bounds(str.params());
                 m_pmi.send_symbol("{");
 
@@ -1452,11 +1452,15 @@ namespace {
                     m_pmi.send_ident(si.m_name.c_str());
                     m_pmi.send_symbol(":");
                     this->visit_type(si.m_type);
+                    if( si.m_default ) {
+                        m_pmi.send_symbol("=");
+                        this->visit_nodes(si.m_default);
+                    }
                     m_pmi.send_symbol(",");
                 }
                 m_pmi.send_symbol("}");
-                )
-            )
+                }
+            }
         }
         void visit_enum(const ::std::string& name, const AST::Visibility& vis, const ::AST::Enum& enm)
         {
