@@ -20,7 +20,8 @@
 #include "proc_macro.hpp"
 #include "../parse/ttstream.hpp"
 
-#define MAX_MACRO_RECURSION 200
+// TODO: Respect the crate attribute #![recursion_limit]
+#define MAX_MACRO_RECURSION 256
 
 DecoratorDef*   g_decorators_list = nullptr;
 MacroDef*   g_macros_list = nullptr;
