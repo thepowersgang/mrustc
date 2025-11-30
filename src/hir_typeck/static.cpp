@@ -1429,8 +1429,8 @@ bool StaticTraitResolve::find_impl__check_crate(
                 (Named,
                     for(const auto& fld : se)
                     {
-                        const auto& fld_ty_mono = monomorph_get(fld.second.ent);
-                        DEBUG("Struct::Named '" << fld.first << "' " << fld_ty_mono);
+                        const auto& fld_ty_mono = monomorph_get(fld.ty);
+                        DEBUG("Struct::Named '" << fld.name << "' " << fld_ty_mono);
 
                         res &= type_impls_trait(fld_ty_mono);
                         if( res == ::HIR::Compare::Unequal )
@@ -1455,8 +1455,8 @@ bool StaticTraitResolve::find_impl__check_crate(
             TU_ARMA(Union, tpb) {
                 for(const auto& fld : tpb->m_variants)
                 {
-                    const auto& fld_ty_mono = monomorph_get(fld.second.ent);
-                    DEBUG("Union '" << fld.first << "' " << fld_ty_mono);
+                    const auto& fld_ty_mono = monomorph_get(fld.ty);
+                    DEBUG("Union '" << fld.name << "' " << fld_ty_mono);
                     res &= type_impls_trait(fld_ty_mono);
                     if( res == ::HIR::Compare::Unequal )
                         return ::HIR::Compare::Unequal;
@@ -2420,9 +2420,8 @@ bool StaticTraitResolve::type_is_impossible(const Span& sp, const ::HIR::TypeRef
             TU_ARMA(Tuple, e) {
                 for(const auto& fld : e)
                 {
-                    const auto& tpl = fld.ent;
                     ::HIR::TypeRef  tmp;
-                    const auto& ty = this->monomorph_expand_opt(sp, tmp, tpl, MonomorphStatePtr(nullptr, &params, nullptr));
+                    const auto& ty = this->monomorph_expand_opt(sp, tmp, fld.ent, MonomorphStatePtr(nullptr, &params, nullptr));
                     if( type_is_impossible(sp, ty) )
                         return true;
                 }
@@ -2431,9 +2430,8 @@ bool StaticTraitResolve::type_is_impossible(const Span& sp, const ::HIR::TypeRef
             TU_ARMA(Named, e) {
                 for(const auto& fld : e)
                 {
-                    const auto& tpl = fld.second.ent;
                     ::HIR::TypeRef  tmp;
-                    const auto& ty = this->monomorph_expand_opt(sp, tmp, tpl, MonomorphStatePtr(nullptr, &params, nullptr));
+                    const auto& ty = this->monomorph_expand_opt(sp, tmp, fld.ty, MonomorphStatePtr(nullptr, &params, nullptr));
                     if( type_is_impossible(sp, ty) )
                         return true;
                 }
@@ -2753,7 +2751,7 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
                 }
             TU_ARMA(Named, e) {
                 for(const auto& v : e) {
-                    switch( this->type_is_interior_mutable(sp, monomorph(v.second.ent)) )
+                    switch( this->type_is_interior_mutable(sp, monomorph(v.ty)) )
                     {
                     case HIR::Compare::Equal:
                         return HIR::Compare::Equal;
@@ -2788,7 +2786,7 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
             }
         TU_ARMA(Union, pbe) {
             for(const auto& var : pbe->m_variants) {
-                switch( this->type_is_interior_mutable(sp, monomorph(var.second.ent)) )
+                switch( this->type_is_interior_mutable(sp, monomorph(var.ty)) )
                 {
                 case HIR::Compare::Equal:
                     return HIR::Compare::Equal;
@@ -3075,7 +3073,7 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
             (Named,
                 for(const auto& e : se)
                 {
-                    if( type_needs_drop_glue(sp, monomorph(e.second.ent)) )
+                    if( type_needs_drop_glue(sp, monomorph(e.ty)) )
                     {
                         needs_drop_glue = true;
                         break;
@@ -3227,8 +3225,8 @@ HIR::TypeRef StaticTraitResolve::get_field_type(const Span& sp, const ::HIR::Typ
             TU_MATCH_HDRA( (pbe->m_data), { )
             TU_ARMA(Named, se) {
                 for(const auto& f : se) {
-                    if( f.first == name ) {
-                        return ms.monomorph_type(sp, f.second.ent);
+                    if( f.name == name ) {
+                        return ms.monomorph_type(sp, f.ty);
                     }
                 }
                 BUG(sp, "Unknown field `" << name << "` on " << ty);

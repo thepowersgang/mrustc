@@ -351,10 +351,12 @@ namespace {
                                 ::std::make_pair(static_cast<unsigned int>(fields.size()), trait_path.clone())
                                 ) );
                             DEBUG("- '" << vi.first << "' is @" << fields.size());
-                            fields.push_back( ::std::make_pair(
+                            fields.push_back(HIR::StructField {
                                 vi.first,
-                                ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_global(), mv$(fcn_type) }
-                                ) );
+                                ::HIR::Publicity::new_global(), 
+                                mv$(fcn_type),
+                                {}
+                                });
                             }
                         TU_ARMA(Static, ve) {
                             if( vi.first != "vtable#" )
@@ -388,11 +390,11 @@ namespace {
             ft.m_abi = RcString::new_interned(ABI_RUST);
             ft.m_rettype = ::HIR::TypeRef::new_unit();
             ft.m_arg_types.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ::HIR::TypeRef::new_unit()) );
-            vtc.fields.push_back(::std::make_pair( RcString::new_interned("#drop_glue"), ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::TypeRef(mv$(ft)) } ));
+            vtc.fields.push_back({ RcString::new_interned("#drop_glue"), ::HIR::Publicity::new_none(), ::HIR::TypeRef(mv$(ft)), {} });
             // - Size of data
-            vtc.fields.push_back(::std::make_pair( RcString::new_interned("#size"), ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize } ));
+            vtc.fields.push_back({ RcString::new_interned("#size" ), ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize, {} });
             // - Alignment of data
-            vtc.fields.push_back(::std::make_pair( RcString::new_interned("#align"), ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize } ));
+            vtc.fields.push_back({ RcString::new_interned("#align"), ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize, {} });
             // - Add methods
             ::std::vector<bool> supertrait_flags;
             if( ! vtc.add_ents_from_trait(tr, trait_path, &supertrait_flags) || has_conflicting_aty_name )
@@ -413,10 +415,12 @@ namespace {
                     ? ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_path(mv$(parent_vtable_path), {}) )
                     : ::HIR::TypeRef::new_unit()
                     ;
-                vtc.fields.push_back(::std::make_pair(
+                vtc.fields.push_back({
                     RcString::new_interned(FMT("#parent_" << i)),
-                    ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty) }
-                    ));
+                    ::HIR::Publicity::new_none(),
+                    mv$(ty),
+                    {}
+                    });
             }
             auto fields = mv$(vtc.fields);
 
@@ -520,7 +524,7 @@ namespace {
                 {
                     const auto& pt = trait.m_all_parent_traits[i];
                     const auto& parent_trait = *pt.m_trait_ptr;
-                    auto& fld_ty = fields[trait.m_vtable_parent_traits_start + i].second.ent;
+                    auto& fld_ty = fields[trait.m_vtable_parent_traits_start + i].ty;
                     DEBUG(pt << " " << fld_ty);
 
                     if( parent_trait.m_vtable_path == HIR::SimplePath() ) {

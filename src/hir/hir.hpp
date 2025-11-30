@@ -248,7 +248,14 @@ struct TraitAlias
 };
 
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
-typedef ::std::vector< ::std::pair< RcString, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
+struct StructField {
+    RcString    name;
+    Publicity   vis;
+    HIR::TypeRef    ty;
+    /// @brief Default value for this field
+    ::std::unique_ptr<HIR::GenericPath> default_value;
+};
+typedef ::std::vector<StructField>   t_struct_fields;
 
 extern HIR::TypeRef fn_ptr_tuple_constructor(const Span& sp, const Monomorphiser& ms, HIR::TypeRef ret_ty, const t_tuple_fields& types);
 
@@ -418,8 +425,6 @@ public:
     unsigned    m_forced_alignment = 0;
     unsigned    m_max_field_alignment = 0;    // for packed
 
-    /// @brief Default values for each field (only valid for `Named`)
-    std::map<RcString, GenericPath>   m_defaults;
     TraitMarkings   m_markings;
     StructMarkings  m_struct_markings;
 

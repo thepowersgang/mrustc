@@ -3304,8 +3304,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 (Named,
                     for(const auto& fld : se)
                     {
-                        const auto& fld_ty_mono = monomorph_get(fld.second.ent);
-                        DEBUG("Struct::Named '" << fld.first << "' " << fld_ty_mono);
+                        const auto& fld_ty_mono = monomorph_get(fld.ty);
+                        DEBUG("Struct::Named '" << fld.name << "' " << fld_ty_mono);
 
                         res &= type_impls_trait(fld_ty_mono);
                         if( res == ::HIR::Compare::Unequal )
@@ -3330,8 +3330,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             TU_ARMA(Union, tpb) {
                 for(const auto& fld : tpb->m_variants)
                 {
-                    const auto& fld_ty_mono = monomorph_get(fld.second.ent);
-                    DEBUG("Union '" << fld.first << "' " << fld_ty_mono);
+                    const auto& fld_ty_mono = monomorph_get(fld.ty);
+                    DEBUG("Union '" << fld.name << "' " << fld_ty_mono);
                     res &= type_impls_trait(fld_ty_mono);
                     if( res == ::HIR::Compare::Unequal )
                         return ::HIR::Compare::Unequal;
@@ -5280,9 +5280,9 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             TU_ARMA(Named, se) {
                 for( const auto& fld : se )
                 {
-                    DEBUG(fld.first << ": " << fld.second.publicity << ", " << this->m_vis_path << " : " << fld.second.ent);
-                    if( fld.second.publicity.is_visible(this->m_vis_path) && fld.first == name ) {
-                        field_ty = monomorph.monomorph_type(sp, fld.second.ent);
+                    DEBUG(fld.name << ": " << fld.vis << ", " << this->m_vis_path << " : " << fld.ty);
+                    if( fld.vis.is_visible(this->m_vis_path) && fld.name == name ) {
+                        field_ty = monomorph.monomorph_type(sp, fld.ty);
                         return true;
                     }
                 }
@@ -5302,9 +5302,8 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
 
             for( const auto& fld : unm.m_variants )
             {
-                // TODO: Privacy
-                if( fld.second.publicity.is_visible(this->m_vis_path) && fld.first == name ) {
-                    field_ty = monomorph.monomorph_type(sp, fld.second.ent);
+                if( fld.vis.is_visible(this->m_vis_path) && fld.name == name ) {
+                    field_ty = monomorph.monomorph_type(sp, fld.ty);
                     return true;
                 }
             }

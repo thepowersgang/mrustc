@@ -58,7 +58,7 @@ namespace {
                     TU_MATCHA( (str.m_data), (se),
                     (Unit,  MIR_BUG(state, "Unit-like struct with DstType::Possible - " << unsized_ty ); ),
                     (Tuple, return get_metadata_type( state, monomorph(se.back().ent) ); ),
-                    (Named, return get_metadata_type( state, monomorph(se.back().second.ent) ); )
+                    (Named, return get_metadata_type( state, monomorph(se.back().ty) ); )
                     )
                     throw ""; }
                 case ::HIR::StructMarkings::DstType::Slice:

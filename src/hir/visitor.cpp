@@ -277,12 +277,12 @@ void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
         }
     TU_ARMA(Named, e) {
         for(auto& field : e) {
-            this->visit_type(field.second.ent);
+            this->visit_type(field.ty);
+            if( field.default_value ) {
+                this->visit_generic_path(*field.default_value, PathContext::VALUE);
+            }
         }
         }
-    }
-    for(auto& e : item.m_defaults) {
-        this->visit_generic_path(e.second, PathContext::VALUE);
     }
     if( m_resolve ) {
         m_resolve->clear_impl_generics();
@@ -319,8 +319,10 @@ void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
         m_resolve->set_impl_generics_raw(MetadataType::Unknown, item.m_params);
     }
     this->visit_params(item.m_params);
-    for(auto& var : item.m_variants)
-        this->visit_type(var.second.ent);
+    for(auto& var : item.m_variants) {
+        this->visit_type(var.ty);
+        assert(!var.default_value);
+    }
     if( m_resolve ) {
         m_resolve->clear_impl_generics();
     }

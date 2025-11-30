@@ -325,7 +325,7 @@ namespace {
                 for(unsigned int i = 0; i < se.size(); i ++ ) {
                     auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
                     if( i == str.m_struct_markings.coerce_unsized_index ) {
-                        vals.push_back( get_unit_ptr(sp, mutator, monomorph(se[i].second.ent), mv$(val), out_inner_ptr ) );
+                        vals.push_back( get_unit_ptr(sp, mutator, monomorph(se[i].ty), mv$(val), out_inner_ptr ) );
                     }
                     else {
                         vals.push_back( mv$(val) );

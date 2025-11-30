@@ -656,7 +656,7 @@ namespace {
             ASSERT_BUG(node.span(), fields_ptr, "Didn't get field for path in _StructLiteral - " << ty);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
             for(const auto& fld : fields) {
-                DEBUG(fld.first << ": " << fld.second.ent);
+                DEBUG(fld.name << ": " << fld.ty);
             }
 
             auto ms = MonomorphStatePtr(&ty, &ty_path.m_params, nullptr);
@@ -665,9 +665,9 @@ namespace {
             for( auto& val : node.m_values)
             {
                 const auto& name = val.first;
-                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
+                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const HIR::StructField& v)->bool{ return v.name == name; });
                 assert(it != fields.end());
-                const auto& des_ty_r = it->second.ent;
+                const auto& des_ty_r = it->ty;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
 

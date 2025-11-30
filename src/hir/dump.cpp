@@ -193,7 +193,11 @@ namespace {
                 inc_indent();
                 for(const auto& fld : flds)
                 {
-                    m_os << indent() << fld.second.publicity << " " << fld.first << ": " << fld.second.ent << ",\n";
+                    m_os << indent() << fld.vis << " " << fld.name << ": " << fld.ty;
+                    if( fld.default_value ) {
+                        m_os << " = " << *fld.default_value;
+                    }
+                    m_os << ",\n";
                 }
                 dec_indent();
                 m_os << indent() << "}\n";

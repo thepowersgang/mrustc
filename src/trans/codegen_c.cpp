@@ -8305,7 +8305,7 @@ namespace {
                         TU_MATCH_HDRA( (str.m_data), { )
                         TU_ARMA(Unit, se) MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible");
                         TU_ARMA(Tuple,se) return get_inner_unsized_type( monomorph(se.back().ent) );
-                        TU_ARMA(Named,se) return get_inner_unsized_type( monomorph(se.back().second.ent) );
+                        TU_ARMA(Named,se) return get_inner_unsized_type( monomorph(se.back().ty ) );
                         }
                         throw "";
                         }

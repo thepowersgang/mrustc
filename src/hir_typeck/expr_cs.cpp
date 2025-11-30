@@ -1592,7 +1592,7 @@ namespace {
             ASSERT_BUG(node.span(), fields_ptr, "Didn't get field for path in _StructLiteral - " << ty);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
             for(const auto& fld : fields) {
-                DEBUG(fld.first << ": " << fld.second.ent);
+                DEBUG(fld.name << ": " << fld.ty);
             }
 #endif
 
@@ -3036,11 +3036,11 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         rv = true;
                         for( auto& field_pat : e.sub_patterns )
                         {
-                            unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - sd.begin();
+                            unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const HIR::StructField& x){ return x.name == field_pat.first; } ) - sd.begin();
                             if( f_idx == sd.size() ) {
                                 ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
                             }
-                            const ::HIR::TypeRef& field_type = maybe_monomorph(sd[f_idx].second.ent);
+                            const ::HIR::TypeRef& field_type = maybe_monomorph(sd[f_idx].ty);
                             rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
                         }
                     }
@@ -3645,11 +3645,11 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
 
         for( auto& field_pat : e.sub_patterns )
         {
-            unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - sd.begin();
+            unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const auto& x){ return x.name == field_pat.first; } ) - sd.begin();
             if( f_idx == sd.size() ) {
                 ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
             }
-            const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
+            const ::HIR::TypeRef& field_type = sd[f_idx].ty;
             if( monomorphise_type_needed(field_type) ) {
                 auto field_type_mono = ms.monomorph_type(sp, field_type);
                 this->handle_pattern_direct_inner(sp, field_pat.second, field_type_mono);

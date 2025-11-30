@@ -931,6 +931,7 @@ namespace {
         ::HIR::Enum::ValueVariant deserialise_enumvaluevariant();
 
         ::HIR::Struct deserialise_struct();
+        ::HIR::StructField deserialise_struct_field();
         ::HIR::Union deserialise_union();
         ::HIR::Trait deserialise_trait();
 
@@ -1007,6 +1008,7 @@ namespace {
 
     template<> DEF_D( ::HIR::Enum::ValueVariant, return d.deserialise_enumvaluevariant(); )
     template<> DEF_D( ::HIR::Enum::DataVariant, return d.deserialise_enumdatavariant(); )
+    template<> DEF_D( ::HIR::StructField, return d.deserialise_struct_field(); )
     //template<> DEF_D( ::HIR::Literal, return d.deserialise_literal(); )
     template<> DEF_D( ::HIR::ConstGeneric, return d.deserialise_constgeneric(); )
 
@@ -1348,7 +1350,7 @@ namespace {
         TRACE_FUNCTION;
         auto params = deserialise_genericparams();
         auto repr = static_cast< ::HIR::Union::Repr>( m_in.read_tag() );
-        auto variants = deserialise_vec< ::std::pair< RcString, ::HIR::VisEnt< ::HIR::TypeRef> > >();
+        auto variants = deserialise_vec<HIR::StructField>();
         auto markings = deserialise_markings();
 
         return ::HIR::Union {
@@ -1376,7 +1378,7 @@ namespace {
             break;
         case ::HIR::Struct::Data::TAG_Named:
             DEBUG("Named");
-            data = ::HIR::Struct::Data( deserialise_vec< ::std::pair< RcString, ::HIR::VisEnt< ::HIR::TypeRef> > >() );
+            data = ::HIR::Struct::Data( deserialise_vec<HIR::StructField>() );
             break;
         default:
             BUG(Span(), "Bad tag for HIR::Struct::Data - " << tag);
@@ -1392,6 +1394,15 @@ namespace {
             };
         rv.m_max_field_alignment = max_field_alignment;
         return rv;
+    }
+    ::HIR::StructField HirDeserialiser::deserialise_struct_field()
+    {
+        return HIR::StructField {
+            m_in.read_istring(),
+            deserialise_pub(),
+            deserialise_type(),
+            m_in.read_bool() ? ::std::make_unique<HIR::GenericPath>(deserialise_genericpath()) : nullptr
+        };
     }
     ::HIR::Trait HirDeserialiser::deserialise_trait()
     {

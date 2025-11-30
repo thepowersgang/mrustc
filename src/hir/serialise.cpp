@@ -1354,6 +1354,16 @@
             serialise(item.m_markings);
             serialise(item.m_struct_markings);
         }
+        void serialise(const ::HIR::StructField& fld)
+        {
+            serialise(fld.name);
+            serialise(fld.vis);
+            serialise(fld.ty);
+            m_out.write_bool(fld.default_value != nullptr);
+            if(fld.default_value) {
+                serialise(*fld.default_value);
+            }
+        }
         void serialise(const ::HIR::Union& item)
         {
             TRACE_FUNCTION_F("Union");

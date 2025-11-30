@@ -2421,13 +2421,13 @@ namespace {
             else if( const auto* bep = val_ty.data().as_Path().binding.opt_Struct() ) {
                 const auto& str = **bep;
                 const auto& fields = str.m_data.as_Named();
-                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == node.m_field; } ) - fields.begin();
                 m_builder.set_result( node.span(), ::MIR::LValue::new_Field( mv$(val), idx ) );
             }
             else if( const auto* bep = val_ty.data().as_Path().binding.opt_Union() ) {
                 const auto& unm = **bep;
                 const auto& fields = unm.m_variants;
-                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == node.m_field; } ) - fields.begin();
 
                 m_builder.set_result( node.span(), ::MIR::LValue::new_Downcast( mv$(val), idx ) );
             }
@@ -2684,7 +2684,7 @@ namespace {
             for(auto& ent : node.m_values)
             {
                 auto& valnode = ent.second;
-                auto idx = ::std::find_if(fields.begin(), fields.end(), [&](const auto&x){ return x.first == ent.first; }) - fields.begin();
+                auto idx = ::std::find_if(fields.begin(), fields.end(), [&](const auto&x){ return x.name == ent.first; }) - fields.begin();
                 assert( !values_set[idx] );
                 values_set[idx] = true;
                 DEBUG("_StructLiteral - fld '" << ent.first << "' (idx " << idx << ")");
@@ -2717,16 +2717,16 @@ namespace {
                     if( node.m_base_value ) {
                         values[i] = ::MIR::LValue::new_Field( base_val.clone(), i );
                     }
-                    else if( str.m_defaults.count(fields[i].first) ) {
-                        const auto& v = str.m_defaults.at(fields[i].first);
+                    else if( fields[i].default_value ) {
+                        const auto& v = *fields[i].default_value;
                         auto ms = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
                         values[i] = m_builder.lvalue_or_temp(sp,
-                            ms.monomorph_type(sp, str.m_data.as_Named().at(i).second.ent),
+                            ms.monomorph_type(sp, fields[i].ty),
                             MIR::Constant::make_Const({::std::make_unique<HIR::Path>(ms.monomorph_genericpath(sp, v))})
                             );
                     }
                     else {
-                        ERROR(node.span(), E0000, "Field '" << fields[i].first << "' not specified");
+                        ERROR(node.span(), E0000, "Field '" << fields[i].name << "' not specified");
                     }
                 }
                 else {
@@ -2783,7 +2783,7 @@ namespace {
                 auto val = m_builder.get_result_in_lvalue(value_node->span(), value_node->m_res_type);
 
                 const auto& unm = *e;
-                auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const auto&v)->auto{ return v.first == variant_name; });
+                auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const HIR::StructField&v)->auto{ return v.name == variant_name; });
                 assert(it != unm.m_variants.end());
                 unsigned int idx = it - unm.m_variants.begin();
 
@@ -3000,7 +3000,7 @@ namespace {
             auto& state_ty = const_cast<HIR::Struct&>(*gen_node->m_state_data_type.data().as_Path().binding.as_Struct());
             unsigned value_var_idx; {
                 const auto& unm_MaybeUninit = resolve.m_crate.get_union_by_path(sp, resolve.m_crate.get_lang_item_path(gen_node->span(), "maybe_uninit"));
-                value_var_idx = std::find_if(unm_MaybeUninit.m_variants.begin(), unm_MaybeUninit.m_variants.end(), [&](const auto& e){ return e.first == "value";}) - unm_MaybeUninit.m_variants.begin();
+                value_var_idx = std::find_if(unm_MaybeUninit.m_variants.begin(), unm_MaybeUninit.m_variants.end(), [&](const auto& e){ return e.name == "value";}) - unm_MaybeUninit.m_variants.begin();
             }
             ASSERT_BUG(sp, value_var_idx == 1, "Assumption on MaybeUninit.value's variant index failed");
             // - Any variables that are saved twice need to have a static address, others can share?

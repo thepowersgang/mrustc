@@ -618,7 +618,7 @@ void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
                                 }
                             TU_ARMA(Named, se) {
                                 MIR_ASSERT(state, field_index < se.size(), "Field index out of range in struct " << rse.path);
-                                return maybe_monomorph(se[field_index].second.ent);
+                                return maybe_monomorph(se[field_index].ty);
                                 }
                             }
                             throw "";
@@ -661,7 +661,7 @@ void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
                                 MIR_ASSERT(state, se.size() == rse.vals.size(), "Field index out of range in named enum variant " << rse.path);
                                 for(size_t i = 0; i < rse.vals.size(); i ++)
                                 {
-                                    borrow_state.handle_param(maybe_monomorph(se[i].second.ent), rse.vals[i], i);
+                                    borrow_state.handle_param(maybe_monomorph(se[i].ty), rse.vals[i], i);
                                 }
                                 }
                             }

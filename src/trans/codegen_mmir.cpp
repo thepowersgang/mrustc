@@ -383,7 +383,7 @@ namespace
                         TU_MATCHA( (str.m_data), (se),
                         (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
                         (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
-                        (Named, return metadata_type( monomorph(se.back().second.ent) ); )
+                        (Named, return metadata_type( monomorph(se.back().ty ) ); )
                         )
                         //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
                         return MetadataType::None;

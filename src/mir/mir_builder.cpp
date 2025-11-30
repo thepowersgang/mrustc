@@ -1756,8 +1756,8 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     (Named,
                         ASSERT_BUG(sp, field_index < se.size(),
                             "Field index out of range in struct " << ty << " - " << field_index << " > " << se.size());
-                        const auto& fld = se[field_index].second;
-                        ty_p = &maybe_monomorph(str.m_params, te.path, fld.ent);
+                        const auto& fld = se[field_index];
+                        ty_p = &maybe_monomorph(str.m_params, te.path, fld.ty);
                         )
                     )
                 }
@@ -1830,9 +1830,8 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     const auto& unm = **pbe;
                     ASSERT_BUG(sp, variant_index < unm.m_variants.size(), "Variant index out of range");
                     const auto& variant = unm.m_variants.at(variant_index);
-                    const auto& fld = variant.second;
 
-                    ty_p = &maybe_monomorph(unm.m_params, te.path, fld.ent);
+                    ty_p = &maybe_monomorph(unm.m_params, te.path, variant.ty);
                 }
                 else
                 {

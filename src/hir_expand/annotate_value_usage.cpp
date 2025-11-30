@@ -682,19 +682,19 @@ namespace {
 
                 ::std::vector<bool> provided_mask( fields.size() );
                 for( const auto& fld : node.m_values ) {
-                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == fld.first; }) - fields.begin();
+                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const HIR::StructField& x){ return x.name == fld.first; }) - fields.begin();
                     provided_mask[idx] = true;
                 }
 
                 const auto monomorph_cb = MonomorphStatePtr(nullptr, &ty_path.m_params, nullptr);
                 for( unsigned int i = 0; i < fields.size(); i ++ ) {
                     if( ! provided_mask[i] ) {
-                        const auto& ty_o = fields[i].second.ent;
+                        const auto& ty_o = fields[i].ty;
                         ::HIR::TypeRef  tmp;
                         const auto& ty_m = monomorphise_type_with_opt(node.span(), tmp, ty_o, monomorph_cb);
                         bool is_copy = m_resolve.type_is_copy(node.span(), ty_m);
                         if( !is_copy ) {
-                            DEBUG("- Field " << i << " " << fields[i].first << ": " << ty_m << " moved");
+                            DEBUG("- Field " << i << " " << fields[i].name << ": " << ty_m << " moved");
                             is_moved = true;
                         }
                     }
@@ -1093,10 +1093,10 @@ namespace {
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& fld_pat : pe.sub_patterns)
                 {
-                    auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
+                    auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const HIR::StructField& x){return x.name == fld_pat.first;});
                     ASSERT_BUG(sp, fld_it != flds.end(), "Unable to find field " << fld_pat.first);
 
-                    auto sty = m_resolve.monomorph_expand(sp, fld_it->second.ent, monomorph_state);
+                    auto sty = m_resolve.monomorph_expand(sp, fld_it->ty, monomorph_state);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
                 }
                 return rv;

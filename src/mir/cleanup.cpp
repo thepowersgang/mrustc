@@ -601,7 +601,7 @@ namespace {
                     for(unsigned int i = 0; i < se.size(); i ++ ) {
                         auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
                         if( i == str.m_struct_markings.coerce_unsized_index ) {
-                            vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].second.ent), mv$(val), out_inner_ptr ) );
+                            vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].ty), mv$(val), out_inner_ptr ) );
                         }
                         else {
                             vals.push_back( mv$(val) );
@@ -706,7 +706,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             return MIR_Cleanup_Unsize_GetMetadata(state, mutator,  ty_d, ty_s, ptr_value,  out_meta_val,out_meta_ty,out_src_is_dst);
             }
         TU_ARMA(Named, se) {
-            const auto& ty_tpl = se.at( str.m_struct_markings.unsized_field ).second.ent;
+            const auto& ty_tpl = se.at( str.m_struct_markings.unsized_field ).ty;
             auto ty_d = monomorph_cb_d.monomorph_type(state.sp, ty_tpl, false);
             auto ty_s = monomorph_cb_s.monomorph_type(state.sp, ty_tpl, false);
 
@@ -879,8 +879,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             {
                 if( i == str.m_struct_markings.coerce_unsized_index )
                 {
-                    auto ty_d = monomorph_cb_d.monomorph_type(state.sp, se[i].second.ent, false);
-                    auto ty_s = monomorph_cb_s.monomorph_type(state.sp, se[i].second.ent, false);
+                    auto ty_d = monomorph_cb_d.monomorph_type(state.sp, se[i].ty, false);
+                    auto ty_s = monomorph_cb_s.monomorph_type(state.sp, se[i].ty, false);
 
                     auto new_rval = MIR_Cleanup_CoerceUnsized(state, mutator, ty_d, ty_s,  ::MIR::LValue::new_Field(value.clone(), i));
                     auto new_lval = mutator.new_temporary( mv$(ty_d) );
@@ -888,9 +888,9 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
 
                     ents.push_back( mv$(new_lval) );
                 }
-                else if( state.m_resolve.is_type_phantom_data( se[i].second.ent ) )
+                else if( state.m_resolve.is_type_phantom_data( se[i].ty ) )
                 {
-                    auto ty_d = monomorph_cb_d.monomorph_type(state.sp, se[i].second.ent, false);
+                    auto ty_d = monomorph_cb_d.monomorph_type(state.sp, se[i].ty, false);
 
                     auto new_rval = ::MIR::RValue::make_Struct({ ty_d.data().as_Path().path.m_data.as_Generic().clone(), {} });
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
@@ -986,7 +986,7 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
                     }
                 TU_ARMA(Named, se) {
                     MIR_ASSERT(state, se.size() > 0, "Box contained an empty named struct");
-                    ty_tpl = &se[0].second.ent;
+                    ty_tpl = &se[0].ty;
                     }
                 }
                 tmp = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr).monomorph_type(state.sp, *ty_tpl);

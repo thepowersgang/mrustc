@@ -142,7 +142,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                     ),
                 (Named,
                     MIR_ASSERT(*this, field_index < se.size(), "Field index out of range in struct " << te.path);
-                    return maybe_monomorph(se[field_index].second.ent);
+                    return maybe_monomorph(se[field_index].ty);
                     )
                 )
             }
@@ -153,7 +153,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                     return m_resolve.monomorph_expand_opt(sp, tmp, t, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
                     };
                 MIR_ASSERT(*this, field_index < unm.m_variants.size(), "Field index out of range for union");
-                return maybe_monomorph(unm.m_variants.at(field_index).second.ent);
+                return maybe_monomorph(unm.m_variants.at(field_index).ty);
             }
             else
             {
@@ -217,7 +217,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                 const auto& unm = *te.binding.as_Union();
                 MIR_ASSERT(*this, variant_index < unm.m_variants.size(), "Variant index out of range");
                 const auto& variant = unm.m_variants[variant_index];
-                const auto& var_ty = variant.second.ent;
+                const auto& var_ty = variant.ty;
 
                 return m_resolve.monomorph_expand_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
             }
@@ -404,12 +404,12 @@ size_t ::MIR::TypeResolve::intrinsic_offset_of(const ::HIR::TypeRef& ty, const :
             else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Struct() ) {
                 const auto& str = **bep;
                 const auto& fields = str.m_data.as_Named();
-                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == field_name; } ) - fields.begin();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
             }
             else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Union() ) {
                 const auto& unm = **bep;
                 const auto& fields = unm.m_variants;
-                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == field_name; } ) - fields.begin();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
             }
             else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Enum() ) {
                 const auto& enm = **bep;

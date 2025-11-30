@@ -1454,9 +1454,9 @@ namespace typecheck
             for( auto& val : node.m_values)
             {
                 const auto& name = val.first;
-                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
+                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const HIR::StructField& v)->bool{ return v.name == name; });
                 ASSERT_BUG(node.span(), it != fields.end(), "Field '" << name << "' not found in struct " << ty_path);
-                const auto& des_ty_r = it->second.ent;
+                const auto& des_ty_r = it->ty;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
 

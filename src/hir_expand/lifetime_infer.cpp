@@ -1472,18 +1472,18 @@ namespace {
                     }
                     else {
                         const auto& flds = str.m_data.as_Named();
-                        auto it = std::find_if(flds.begin(), flds.end(), [&](const auto& f) { return f.first == node.m_field; });
+                        auto it = std::find_if(flds.begin(), flds.end(), [&](const HIR::StructField& f) { return f.name == node.m_field; });
                         ASSERT_BUG(sp, it != flds.end(), "");
-                        fld_ty_ptr = &it->second.ent;
+                        fld_ty_ptr = &it->ty;
                     }
                 }
                 else if( const auto* unnpp = ty_e.binding.opt_Union() )
                 {
                     const HIR::Union& unn = **unnpp;
                     const auto& flds = unn.m_variants;
-                    auto it = std::find_if(flds.begin(), flds.end(), [&](const auto& f) { return f.first == node.m_field; });
+                    auto it = std::find_if(flds.begin(), flds.end(), [&](const HIR::StructField& f) { return f.name == node.m_field; });
                     ASSERT_BUG(sp, it != flds.end(), "");
-                    fld_ty_ptr = &it->second.ent;
+                    fld_ty_ptr = &it->ty;
                 }
                 else
                 {
@@ -1878,7 +1878,7 @@ namespace {
             ASSERT_BUG(node.span(), fields_ptr, "Didn't get field for path in _StructLiteral - " << ty);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
             for(const auto& fld : fields) {
-                DEBUG(fld.first << ": " << fld.second.ent);
+                DEBUG(fld.name << ": " << fld.ty);
             }
             auto ms = MonomorphStatePtr(&ty, &ty_path.m_params, nullptr);
 
@@ -1890,11 +1890,11 @@ namespace {
                 const auto& ty_path_base = ty_base.data().as_Path().path.m_data.as_Generic();
                 auto ms_base = MonomorphStatePtr(&ty_base, &ty_path_base.m_params, nullptr);
                 for(const auto& fld : fields) {
-                    auto it = ::std::find_if(node.m_values.begin(), node.m_values.end(), [&](const auto& v)->bool{ return v.first == fld.first; });
+                    auto it = ::std::find_if(node.m_values.begin(), node.m_values.end(), [&](const auto& v)->bool{ return v.first == fld.name; });
                     if( it == node.m_values.end() ) {
-                        auto dst_ty = m_resolve.monomorph_expand(node.span(), fld.second.ent, ms);
-                        auto src_ty = m_resolve.monomorph_expand(node.span(), fld.second.ent, ms_base);
-                        DEBUG("BASE ." << fld.first << ": " << dst_ty << " = " << src_ty);
+                        auto dst_ty = m_resolve.monomorph_expand(node.span(), fld.ty, ms);
+                        auto src_ty = m_resolve.monomorph_expand(node.span(), fld.ty, ms_base);
+                        DEBUG("BASE ." << fld.name << ": " << dst_ty << " = " << src_ty);
                         this->equate_types( node.m_base_value->span(), dst_ty, src_ty );
                     }
                 }
@@ -1905,9 +1905,9 @@ namespace {
             for(auto& val : node.m_values)
             {
                 const auto& name = val.first;
-                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
+                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const HIR::StructField& v)->bool{ return v.name == name; });
                 assert(it != fields.end());
-                const auto& des_ty_r = it->second.ent;
+                const auto& des_ty_r = it->ty;
 
                 DEBUG(name << " : " << des_ty_r);
                 auto des_ty = m_resolve.monomorph_expand(val.second->span(), des_ty_r, ms);

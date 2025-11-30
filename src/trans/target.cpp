@@ -1011,14 +1011,14 @@ namespace {
             unsigned int idx = 0;
             for(const auto& e : se)
             {
-                auto ty = monomorph(e.second.ent);
+                auto ty = monomorph(e.ty);
                 size_t  size, align;
                 if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
                 {
                     DEBUG("Can't get size/align of " << ty);
                     return false;
                 }
-                DEBUG("#" << idx << " " << e.first << ": s=" << size << ",a=" << align << " " << ty);
+                DEBUG("#" << idx << " " << e.name << ": s=" << size << ",a=" << align << " " << ty);
                 ents.push_back(Ent { idx++, size, align, mv$(ty) });
             }
             }
@@ -2094,7 +2094,7 @@ namespace {
         TypeRepr  rv;
         for(const auto& var : unn.m_variants)
         {
-            rv.fields.push_back({ 0, monomorph(var.second.ent) });
+            rv.fields.push_back({ 0, monomorph(var.ty) });
             size_t size, align;
             if( !Target_GetSizeAndAlignOf(sp, resolve, rv.fields.back().ty, size, align) )
             {

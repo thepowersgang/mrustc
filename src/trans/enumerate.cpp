@@ -859,7 +859,7 @@ namespace
                 ),
             (Named,
                 for(const auto& fld : e)
-                    visit_type( monomorph(fld.second.ent) );
+                    visit_type( monomorph(fld.ty) );
                 )
             )
         }
@@ -870,7 +870,7 @@ namespace
             auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
             for(const auto& variant : item.m_variants)
             {
-                visit_type( monomorph(variant.second.ent) );
+                visit_type( monomorph(variant.ty) );
             }
         }
         void visit_enum(const ::HIR::GenericPath& path, const ::HIR::Enum& item) {

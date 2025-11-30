@@ -1182,6 +1182,32 @@ namespace {
     }
 }
 
+::HIR::t_struct_fields LowerHIR_StructFields(::HIR::ItemPath path, const ::HIR::GenericParams& params, const ::std::vector<AST::StructItem>& in_fields, ::HIR::Module& out_mod)
+{
+    ::HIR::Struct::Data::Data_Named fields;
+    for(const auto& field : in_fields) {
+        auto type = LowerHIR_Type(field.m_type);
+        ::std::unique_ptr<HIR::GenericPath> field_default;
+        if( field.m_default ) {
+            // NOTE: I'd love to have this be a `Constant`, but that would require duplicating the type and the params
+            // meh. Lazy option is to just duplicate
+            auto name = RcString::new_interned(FMT(path.get_name() << "#default_" << field.m_name));
+            out_mod.m_value_items.insert(std::make_pair(name, ::std::make_unique<HIR::VisEnt<HIR::ValueItem>>(HIR::VisEnt<HIR::ValueItem>{
+                HIR::Publicity::new_global(),
+                HIR::ValueItem(HIR::Constant(params.clone(), type.clone(), LowerHIR_Expr(field.m_default)))
+            })));
+            field_default = std::make_unique<HIR::GenericPath>((*path.parent + name).get_simple_path(), params.make_nop_params(0) );
+        }
+        fields.push_back(HIR::StructField {
+            field.m_name,
+            LowerHIR_Vis(get_parent_module(path), field.m_vis),
+            std::move(type),
+            std::move(field_default)
+        });
+    }
+    return fields;
+}
+
 ::HIR::Struct LowerHIR_Struct(const Span& sp, ::HIR::ItemPath path, const ::AST::Struct& ent, const ::AST::AttributeList& attrs, ::HIR::Module& out_mod)
 {
     TRACE_FUNCTION_F(path);
@@ -1209,25 +1235,7 @@ namespace {
         rv.m_data = ::HIR::Struct::Data::make_Tuple( mv$(fields) );
     }
     TU_ARMA(Struct, e) {
-        ::HIR::Struct::Data::Data_Named fields;
-        for(const auto& field : e.ents) {
-            auto type = LowerHIR_Type(field.m_type);
-            if( field.m_default ) {
-                // NOTE: I'd love to have this be a `Constant`, but that would require duplicating the type and the params
-                // meh. Lazy option is to just duplicate
-                #if 1
-                auto name = RcString::new_interned(FMT(path.get_name() << "#default_" << field.m_name));
-                out_mod.m_value_items.insert(std::make_pair(name, ::std::make_unique<HIR::VisEnt<HIR::ValueItem>>(HIR::VisEnt<HIR::ValueItem>{
-                    HIR::Publicity::new_global(),
-                    HIR::ValueItem(HIR::Constant(rv.m_params.clone(), type.clone(), LowerHIR_Expr(field.m_default)))
-                })));
-                rv.m_defaults.insert(std::make_pair(field.m_name, ::HIR::GenericPath( (*path.parent + name).get_simple_path(), rv.m_params.make_nop_params(0) )));
-                #else
-                rv.m_defaults.insert(std::make_pair(field.m_name, ::HIR::Struct::FieldDefault(fields.size(), LowerHIR_Expr(field.m_default))));
-                #endif
-            }
-            fields.push_back( ::std::make_pair( field.m_name, new_visent( get_vis(field.m_vis), std::move(type)) ) );
-        }
+        auto fields = LowerHIR_StructFields(path, rv.m_params, e.ents, out_mod);
         rv.m_data = ::HIR::Struct::Data::make_Named( mv$(fields) );
         }
     }
@@ -1283,9 +1291,9 @@ namespace {
             switch(d->size())
             {
             case 2:
-                ty2 = &(*d)[1].second.ent;
+                ty2 = &(*d)[1].ty;
             case 1:
-                ty = &(*d)[0].second.ent;
+                ty = &(*d)[0].ty;
                 break;
             }
         }
@@ -1364,7 +1372,7 @@ namespace {
     return rv;
 }
 
-::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(RcString, ::HIR::Struct)> push_struct)
+::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(RcString, ::HIR::Struct)> push_struct, HIR::Module& out_mod)
 {
     // 1. Figure out what sort of enum this is (value or data)
     bool has_value = false;
@@ -1457,13 +1465,7 @@ namespace {
                 }
                 else if( const auto* ve = var.m_data.opt_Struct() )
                 {
-                    ::HIR::Struct::Data::Data_Named fields;
-                    for(const auto& field : ve->m_fields) {
-                        if( field.m_default ) {
-                            TODO(Span(), "");
-                        }
-                        fields.push_back( ::std::make_pair( field.m_name, new_visent(::HIR::Publicity::new_global(), LowerHIR_Type(field.m_type)) ) );
-                    }
+                    auto fields = LowerHIR_StructFields(path, params, ve->m_fields, out_mod);
                     data = ::HIR::Struct::Data::make_Named( mv$(fields) );
                 }
                 else
@@ -1530,8 +1532,9 @@ namespace {
     }
 
     ::HIR::Struct::Data::Data_Named variants;
-    for(const auto& field : f.m_variants)
-        variants.push_back( ::std::make_pair( field.m_name, new_visent(get_vis(field.m_vis), LowerHIR_Type(field.m_type)) ) );
+    for(const auto& field : f.m_variants) {
+        variants.push_back(HIR::StructField { field.m_name, get_vis(field.m_vis), LowerHIR_Type(field.m_type), {} });
+    }
 
     return ::HIR::Union {
         LowerHIR_GenericParams(f.m_params, nullptr),
@@ -2063,7 +2066,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             _add_mod_ns_item( mod,  item.name, get_vis(item.vis), LowerHIR_Struct(ip->span, item_path, e, item.attrs, mod) );
             }
         TU_ARMA(Enum, e) {
-            auto enm = LowerHIR_Enum(item_path, e, item.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, get_vis(item.vis), mv$(str)); });
+            auto enm = LowerHIR_Enum(item_path, e, item.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, get_vis(item.vis), mv$(str)); }, mod);
             _add_mod_ns_item( mod,  item.name, get_vis(item.vis), mv$(enm) );
             }
         TU_ARMA(Union, e) {

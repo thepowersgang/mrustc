@@ -1513,9 +1513,9 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 // NOTE: Iterates in field order (not pattern order) to ensure that patterns are in order between arms
                 for(const auto& fld : sd)
                 {
-                    const auto& sty_mono = maybe_monomorph(fld.second.ent);
+                    const auto& sty_mono = maybe_monomorph(fld.ty);
 
-                    auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.first; } );
+                    auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.name; } );
                     if( it == pe.sub_patterns.end() )
                     {
                         builder.append_from(sp, empty_pattern, sty_mono);
@@ -1635,7 +1635,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     for(const auto& fld : sd)
                     {
                         ASSERT_BUG(sp, m_field_path.back() < FIELD_INDEX_MAX, "Too-large struct field index");
-                        this->append_from(sp, empty_pattern, maybe_monomorph(fld.second.ent));
+                        this->append_from(sp, empty_pattern, maybe_monomorph(fld.ty));
                         m_field_path.back() ++;
                     }
                     m_field_path.pop_back();
@@ -2321,8 +2321,8 @@ namespace {
                         }
                     TU_ARMA(Named, fields) {
                         ASSERT_BUG(sp, idx < fields.size(), "Tuple struct index (" << idx << ") out of range (" << fields.size() << ") in " << *cur_ty);
-                        const auto& fld = fields[idx].second;
-                        cur_ty = monomorph_to_ptr(fld.ent);
+                        const auto& fld = fields[idx];
+                        cur_ty = monomorph_to_ptr(fld.ty);
                         lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                         }
                     }
@@ -2330,7 +2330,7 @@ namespace {
                 TU_ARMA(Union, pbe) {
                     ASSERT_BUG(sp, idx < pbe->m_variants.size(), "Union variant index (" << idx << ") out of range (" << pbe->m_variants.size() << ") in " << *cur_ty);
                     const auto& fld = pbe->m_variants[idx];
-                    cur_ty = monomorph_to_ptr(fld.second.ent);
+                    cur_ty = monomorph_to_ptr(fld.ty);
                     lval = ::MIR::LValue::new_Downcast(mv$(lval), idx);
                     }
                 TU_ARMA(Enum, pbe) {
