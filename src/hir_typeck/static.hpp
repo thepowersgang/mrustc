@@ -42,6 +42,9 @@ class StaticTraitResolve:
     mutable ::std::map< ::HIR::TypeRef, bool >  m_drop_cache;
     mutable ::std::map< std::string, HIR::TypeRef>  m_aty_cache;
 
+    /// Cache of the result of find_impl__check_crate_raw
+    mutable ::std::map< std::string, std::pair<HIR::PathParams,HIR::Compare> >   m_cached_impl_checks;
+
 public:
     explicit StaticTraitResolve(const ::HIR::Crate& crate):
         TraitResolveCommon(crate)

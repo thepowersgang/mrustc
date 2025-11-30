@@ -941,6 +941,29 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     auto cb_ident = HIR::ResolvePlaceholdersNop();
     TRACE_FUNCTION_F("impl" << impl_params_def.fmt_args() << " " << des_trait_path << impl_trait_params << " for " << impl_type << impl_params_def.fmt_bounds());
 
+    // Cache the result of this function
+    // 100% required for 1.90's librustc_session - "Trans Monomorph" took 20mins without that
+    std::string cache_key; {
+        ::std::stringstream ss;
+        ss << "impl" << impl_params_def.fmt_args() << " " << des_trait_path << impl_trait_params << " for " << impl_type << impl_params_def.fmt_bounds();
+        ss << " vs ";
+        if(des_trait_params) {
+            ss << *des_trait_params;
+        }
+        else {
+            ss << "<?>";
+        }
+        ss << " for " << des_type;
+        cache_key = ss.str();
+    }
+    {
+        auto it = m_cached_impl_checks.find(cache_key);
+        if( it != m_cached_impl_checks.end() ) {
+            const auto& r = it->second;
+            DEBUG("CACHED: " << r.second << " impl_params=" << r.first);
+            return found_cb(r.first.clone(), r.second);
+        }
+    }
     // TODO: What if `des_trait_params` already has impl placeholders?
 
     HIR::PathParams impl_params;
@@ -1354,6 +1377,11 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         }
     }
 
+    // TODO: Can this be cached?
+    // - Needs to cache the result
+    {
+        m_cached_impl_checks.insert(::std::make_pair( cache_key, std::make_pair(impl_params.clone(), match) ));
+    }
     return found_cb( mv$(impl_params), match );
 }
 
