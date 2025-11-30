@@ -71,6 +71,7 @@ namespace static_borrow_constants {
         void visit_node_ptr(::HIR::ExprPtr& root) {
             const auto& node_ref = *root;
             const char* node_ty = typeid(node_ref).name();
+            assert(&root == &m_expr_ptr);
             TRACE_FUNCTION_FR(&*root << " " << node_ty << " : " << root->m_res_type, node_ty);
 
             m_all_constant = true;
@@ -426,15 +427,25 @@ namespace static_borrow_constants {
             ::HIR::ExprVisitorDef::visit(node);
             m_all_constant = saved_all_constant;
 
+            // If this is a non-capcuring closure
             if( node.m_avu_cache.captured_vars.empty() ) {
                 m_is_constant = true;
 
-                // Don't allow if any local is generic.
-                for(auto idx : node.m_avu_cache.local_vars ) {
-                    if( monomorphise_type_needed(m_expr_ptr.m_bindings[idx]) ) {
-                        m_is_constant = false;
-                        break;
+                if( node.m_code ) {
+                    // Don't allow if any local is generic.
+                    for(auto idx : node.m_avu_cache.local_vars ) {
+                        ASSERT_BUG(node.span(), idx < m_expr_ptr.m_bindings.size(),
+                            "Local variable #" << idx << " out of range: " << m_expr_ptr.m_bindings.size());
+                        if( monomorphise_type_needed(m_expr_ptr.m_bindings.at(idx)) ) {
+                            m_is_constant = false;
+                            break;
+                        }
                     }
+                }
+                else {
+                    // Allowed? It's already been converted.
+                    // - Should this check the path for generics?
+                    //node.m_obj_path;
                 }
             }
         }
