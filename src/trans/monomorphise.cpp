@@ -410,6 +410,53 @@ namespace {
 void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
 {
     ::StaticTraitResolve    resolve { crate };
+    
+    struct Nvs: public ::HIR::Evaluator::Newval
+    {
+        TransList& out;
+        const HIR::Crate& crate;
+        unsigned count;
+        ::std::vector<std::pair<HIR::SimplePath,HIR::Static*>>  added;
+
+        Nvs(TransList& out, const HIR::Crate& crate)
+            : out(out)
+            , crate(crate)
+            , count(0)
+        {}
+
+        ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
+            // Ensure that the type is in enumeration (it should have been, but maybe not?)
+            {
+                bool found = false;
+                for(const auto& v : out.m_types) {
+                    if( v.first == type && !v.second ) {
+                        found = true;
+                        break;
+                    }
+                }
+                if( !found ) {
+                    out.m_types.push_back(::std::make_pair(type.clone(), false));
+                }
+            }
+            auto name = RcString::new_interned(FMT("ConstEvalMonomorph#" << count));
+            count ++;
+            auto p = ::HIR::SimplePath(crate.m_crate_name, {name});
+            auto ent = std::make_unique<HIR::VisEnt<HIR::ValueItem>>(HIR::VisEnt<HIR::ValueItem> {
+                HIR::Publicity::new_global(),
+                HIR::ValueItem(::HIR::Static(HIR::Linkage(), false, std::move(type), HIR::ExprPtr()))
+                });
+            
+            {
+                auto& s = ent->ent.as_Static();
+                s.m_value_generated = true;
+                s.m_value_res = std::move(value);
+                s.m_save_literal = false;
+                added.push_back(std::make_pair(p, &s));
+            }
+            const_cast<HIR::Module&>(crate.m_root_module).m_value_items.insert(std::make_pair(name, std::move(ent)));
+            return p;
+        }
+    } nvs { list, crate };
 
     // Also do constants and statics (stored in where?)
     // - NOTE: Done in reverse order, because consteval needs used constants to be evaluated
@@ -421,12 +468,6 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         TRACE_FUNCTION_FR("CONSTANT " << path, "CONSTANT " << path);
         auto ty = pp.monomorph(resolve, c.m_type);
         // 1. Evaluate the constant
-        struct Nvs: public ::HIR::Evaluator::Newval
-        {
-            ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
-                TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
-            }
-        } nvs;
         auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
         eval.resolve.set_both_generics_raw(pp.gdef_impl, &c.m_params);
         MonomorphState   ms;
@@ -461,12 +502,6 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         TRACE_FUNCTION_FR("STATIC " << path, "STATIC " << path);
         auto ty = pp.monomorph(resolve, s.m_type);
         // 1. Evaluate the constant
-        struct Nvs: public ::HIR::Evaluator::Newval
-        {
-            ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
-                TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
-            }
-        } nvs;
         auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
         eval.resolve.set_both_generics_raw(pp.gdef_impl, &s.m_params);
         MonomorphState   ms;
@@ -531,6 +566,12 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         {
             DEBUG("Non-generic: FUNCTION " << fcn_ent.first);
         }
+    }
+
+    for(auto& v : nvs.added) {
+        auto* o = list.add_static(HIR::Path(v.first));
+        ASSERT_BUG(Span(), o, "Generated static " << v.first << " already in TransList?");
+        o->ptr = v.second;
     }
 }
 
