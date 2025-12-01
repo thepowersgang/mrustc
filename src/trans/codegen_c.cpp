@@ -4070,6 +4070,7 @@ namespace {
                             MIR_BUG(mir_res, "MakeDst on type without metadata");
                         }
                         else {
+                            m_of << "(void*)";
                             emit_param(ve.ptr_val);
                         }
                         break;
