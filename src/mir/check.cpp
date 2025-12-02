@@ -679,7 +679,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 } while(0)
             TU_MATCH(::MIR::Terminator, (fcn.blocks[block].terminator), (e),
             (Incomplete,
-                MIR_BUG(state,  "Encounterd `Incomplete` block in control flow");
+                MIR_BUG(state,  "Encounterd `Incomplete` block in control flow - BB" << block);
                 ),
             (Return,
                 returns = true;

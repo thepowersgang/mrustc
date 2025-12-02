@@ -384,6 +384,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
                     bool is_cond_bb_set = false;
 
+                    // These are ANDs
                     for( auto& c : arm.m_guards )
                     {
                         // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
@@ -396,34 +397,42 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                         auto pat_builder = PatternRulesetBuilder { builder.resolve() };
                         pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);
 
+                        // These are ORs
+                        auto local_false = builder.new_bb_unlinked();
+                        bool had_possible = false;
                         for(auto& sr : pat_builder.m_rulesets)
                         {
+                            DEBUG("sr.m_rules = " << sr.m_rules);
                             if( sr.m_is_impossible ) {
+                                // The rule is impossible, so don't visit
                             }
                             else {
-                                if( &c == &arm.m_guards.front() ) {
-                                    // If `cond_false` is set, then activate it and create a new one
-                                    if(is_cond_bb_set) {
-                                        builder.set_cur_block(cond_false);
-                                    }
-                                    is_cond_bb_set = true;
-                                    cond_false = builder.new_bb_unlinked();
-                                }
-                                else {
-                                    // already in the previous loop's `destructure`
+
+                                if( had_possible ) {
+                                    local_false = builder.new_bb_unlinked();
                                 }
 
+                                ASSERT_BUG(c.val->span(), builder.block_active(), "Block not active");
                                 MIR_LowerHIR_Match_Simple__GeneratePattern(builder, c.val->span(), sr.m_rules.data(), sr.m_rules.size(),
-                                    c.val->m_res_type, match_cond_val, 0, cond_false);
+                                    c.val->m_res_type, match_cond_val, 0, local_false);
                                 conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), sr.m_bindings);
                                 builder.end_block(::MIR::Terminator::make_Goto(destructure));
+                                builder.set_cur_block(local_false);
+                                had_possible = true;
                             }
                         }
                         if(!is_cond_bb_set) {
                             cond_false = builder.new_bb_unlinked();
+                            is_cond_bb_set = true;
                             // No patterns as output, so `false` is unreachable?
                         }
+                        if( had_possible ) {
+                            // Currently in `false` from the last attempt, need to jump the global false (ensuring that it exists)
+                            builder.end_block(::MIR::Terminator::make_Goto(cond_false));
+                        }
+                        DEBUG("cond_false = " << cond_false);
 
+                        ASSERT_BUG(node.span(), !builder.block_active(), "Block still active?");
                         builder.set_cur_block(cond_false);
                         cond_false = builder.new_bb_unlinked();
                         builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
