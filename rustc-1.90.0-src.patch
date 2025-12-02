@@ -1,3 +1,4 @@
+# Disable various struct size checks, as mrustc isn't as good at niche optimisations
 --- compiler/rustc_hir/src/hir.rs
 +++ compiler/rustc_hir/src/hir.rs
 @@ -4938,4 +4938,5 @@
@@ -15,3 +16,10 @@
 +#[cfg(not(rust_compiler="mrustc"))]
  #[cfg(target_pointer_width = "64")]
  rustc_data_structures::static_assert_size!(PResult<'_, bool>, 24);
+--- compiler/rustc_parse/src/parser/mod.rs
++++ compiler/rustc_parse/src/parser/mod.rs
+@@ -229,3 +229,3 @@
+ // though, because `TokenTypeSet(u128)` alignment varies on others, changing the total size.
++#[cfg(not(rust_compiler="mrustc"))]
+ #[cfg(all(target_pointer_width = "64", any(target_arch = "aarch64", target_arch = "x86_64")))]
+ rustc_data_structures::static_assert_size!(Parser<'_>, 288);
