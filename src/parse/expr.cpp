@@ -1284,9 +1284,8 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex)
     else if( tok == TOK_PIPE )
     {
         // `|...|` - Arguments present
-        while( GET_TOK(tok, lex) != TOK_PIPE )
+        while( !lex.getTokenIf(TOK_PIPE, tok) )
         {
-            PUTBACK(tok, lex);
             // Irrefutable pattern
             AST::Pattern    pat = Parse_Pattern(lex, AllowOrPattern::No);
 
@@ -1297,8 +1296,10 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex)
 
             args.push_back( ::std::make_pair( ::std::move(pat), ::std::move(type) ) );
 
-            if( GET_TOK(tok, lex) != TOK_COMMA )
+            if( !lex.getTokenIf(TOK_COMMA) ) {
+                GET_TOK(tok, lex);
                 break;
+            }
         }
         CHECK_TOK(tok, TOK_PIPE);
     }
@@ -1644,11 +1645,10 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
     ::std::vector<TokenTree>   items;
     if( !unwrapped )
         items.push_back( TokenTree(edition, lex.get_hygiene(), mv$(tok)) );
-    while(GET_TOK(tok, lex) != closer && tok.type() != TOK_EOF)
+    while( !lex.getTokenIf(closer, tok) && !lex.getTokenIf(TOK_EOF, tok))
     {
-        if( tok.type() == TOK_NULL )
-            throw ParseError::Unexpected(lex, tok);
-        PUTBACK(tok, lex);
+        if( lex.lookahead(0) == TOK_NULL )
+            throw ParseError::Unexpected(lex, lex.getToken());
         items.push_back(Parse_TT(lex, false));
     }
     if( !unwrapped )

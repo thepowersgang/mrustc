@@ -564,8 +564,8 @@ public:
         inc_indent();
         for( auto& i : n.m_values )
         {
-            // TODO: Attributes
-            m_os << indent() << i.name << ": ";
+            print_attrs(i.attrs);
+            m_os << indent() << "r#" << i.name << ": ";
             AST::NodeVisitor::visit(i.value);
             m_os << ",\n";
         }
@@ -584,8 +584,8 @@ public:
         inc_indent();
         for( auto& i : n.m_values )
         {
-            // TODO: Attributes
-            m_os << indent() << i.name << ": ";
+            print_attrs(i.attrs);
+            m_os << indent() << "r#" << i.name << ": ";
             AST::NodeVisitor::visit(i.value);
             m_os << ",\n";
         }
