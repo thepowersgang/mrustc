@@ -1015,6 +1015,9 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_AsyncBlock& node) override {
         this->visit_nodelete(node, node.m_inner);
     }
+    void visit(::AST::ExprNode_GeneratorBlock& node) override {
+        this->visit_nodelete(node, node.m_inner);
+    }
     void visit(::AST::ExprNode_Try& node) override {
         // Desugar into
         // ```
@@ -1160,6 +1163,7 @@ struct CExpandExpr:
 
                 void visit(::AST::ExprNode_Block& v) override { invalid(v); }
                 void visit(::AST::ExprNode_AsyncBlock& v) override { invalid(v); }
+                void visit(::AST::ExprNode_GeneratorBlock& v) override { invalid(v); }
                 void visit(::AST::ExprNode_Try  & v) override { invalid(v); }
                 void visit(::AST::ExprNode_Macro& v) override { BUG(v.span(), "Encountered macro"); }
                 void visit(::AST::ExprNode_Asm & v) override { invalid(v); }

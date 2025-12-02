@@ -1331,6 +1331,22 @@ ExprNodeP Parse_ExprVal_Inner(TokenStream& lex)
 
     Token   tok;
     AST::Path   path;
+    
+    if( TARGETVER_LEAST_1_90
+    && lex.lookahead(0) == TOK_INTERPOLATED_PATH
+    && (
+        (lex.lookahead(1) == TOK_RWORD_MOVE && lex.lookahead(2) == TOK_BRACE_OPEN)
+      || lex.lookahead(1) == TOK_BRACE_OPEN )
+    ) {
+        GET_TOK(tok, lex);
+        if( tok.frag_path().is_trivial() && tok.frag_path().as_trivial() == "gen" ) {
+            // Generators!
+            bool is_move = lex.getTokenIf(TOK_RWORD_MOVE);
+            return NEWNODE(AST::ExprNode_GeneratorBlock, Parse_ExprBlockNode(lex, AST::ExprNode_Block::Type::Bare), is_move);
+        }
+        PUTBACK(tok, lex);
+    }
+
     switch( GET_TOK(tok, lex) )
     {
     case TOK_BRACE_OPEN:

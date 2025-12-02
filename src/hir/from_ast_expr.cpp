@@ -99,6 +99,10 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_AsyncBlock& v) override {
         m_rv.reset( new ::HIR::ExprNode_AsyncBlock(v.span(), lower(v.m_inner), v.m_is_move) );
     }
+    virtual void visit(::AST::ExprNode_GeneratorBlock& v) override {
+        //m_rv.reset( new ::HIR::ExprNode_AsyncBlock(v.span(), lower(v.m_inner), v.m_is_move) );
+        TODO(v.span(), "Handle Generators");
+    }
     virtual void visit(::AST::ExprNode_Try& v) override {
         TODO(v.span(), "Handle _Try");
     }

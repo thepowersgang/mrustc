@@ -113,6 +113,11 @@ NODE(ExprNode_AsyncBlock, {
 },{
     return NEWNODE(ExprNode_AsyncBlock, m_inner->clone(), m_is_move);
 })
+NODE(ExprNode_GeneratorBlock, {
+    os << "gen " << (m_is_move ? "move " : "") << *m_inner;
+},{
+    return NEWNODE(ExprNode_GeneratorBlock, m_inner->clone(), m_is_move);
+})
 NODE(ExprNode_Try, {
     os << "try " << *m_inner;
 },{
@@ -666,6 +671,9 @@ NV(ExprNode_Block, {
     //UNINDENT();
 })
 NV(ExprNode_AsyncBlock, {
+    visit(node.m_inner);
+})
+NV(ExprNode_GeneratorBlock, {
     visit(node.m_inner);
 })
 NV(ExprNode_Try, {

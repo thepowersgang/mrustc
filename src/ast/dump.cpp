@@ -86,6 +86,13 @@ public:
         }
         AST::NodeVisitor::visit(n.m_inner);
     }
+    virtual void visit(AST::ExprNode_GeneratorBlock& n) override {
+        m_os << "gen ";
+        if( n.m_is_move ) {
+            m_os << "move ";
+        }
+        AST::NodeVisitor::visit(n.m_inner);
+    }
     virtual void visit(AST::ExprNode_Try& n) override {
         m_os << "try ";
         AST::NodeVisitor::visit(n.m_inner);

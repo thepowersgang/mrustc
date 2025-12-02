@@ -1215,7 +1215,10 @@ namespace {
             m_pmi.send_symbol("}");
         }
         void visit(::AST::ExprNode_AsyncBlock& node) {
-            TODO(sp, "ExprNode_Try");
+            TODO(sp, "ExprNode_AsyncBlock");
+        }
+        void visit(::AST::ExprNode_GeneratorBlock& node) {
+            TODO(sp, "ExprNode_GeneratorBlock");
         }
         void visit(::AST::ExprNode_Try& node) {
             TODO(sp, "ExprNode_Try");
