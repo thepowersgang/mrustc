@@ -100,7 +100,10 @@ struct LowerHIR_ExprNode_Visitor:
         m_rv.reset( new ::HIR::ExprNode_AsyncBlock(v.span(), lower(v.m_inner), v.m_is_move) );
     }
     virtual void visit(::AST::ExprNode_GeneratorBlock& v) override {
+        // TODO: Wrap with something that provides an impl of Iterator
+        // - `::core::iter::from_coroutine`
         m_rv.reset( new ::HIR::ExprNode_Generator(v.span(), HIR::TypeRef(), lower(v.m_inner), v.m_is_move, false) );
+        m_rv.reset( new ::HIR::ExprNode_CallPath(v.span(), HIR::SimplePath(g_core_crate, {"iter", "sources", "from_coroutine", "from_coroutine"}), make_vec1(mv$(m_rv))));
     }
     virtual void visit(::AST::ExprNode_Try& v) override {
         TODO(v.span(), "Handle _Try");

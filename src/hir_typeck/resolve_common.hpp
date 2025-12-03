@@ -104,8 +104,8 @@ struct TraitResolveCommon
         m_lang_FnOnce = m_crate.get_lang_item_path_opt("fn_once");
         m_lang_Box = m_crate.get_lang_item_path_opt("owned_box");
         m_lang_PhantomData = m_crate.get_lang_item_path_opt("phantom_data");
-        // TODO: in 1.90 this has changed name
-        m_lang_Generator = m_crate.get_lang_item_path_opt("generator");
+        // In 1.90 this has changed name. Same interface, just called "Coroutine" now
+        m_lang_Generator = m_crate.get_lang_item_path_opt(TARGETVER_LEAST_1_90 ? "coroutine" : "generator");
         m_lang_DiscriminantKind = m_crate.get_lang_item_path_opt("discriminant_kind");
         m_lang_Pointee = m_crate.get_lang_item_path_opt("pointee_trait");
         m_lang_DynMetadata = m_crate.get_lang_item_path_opt("dyn_metadata");
