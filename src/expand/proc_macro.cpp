@@ -1420,7 +1420,7 @@ namespace {
             }
         }
 
-        void visit_struct(const ::std::string& name, const AST::Visibility& vis, const ::AST::Struct& str)
+        void visit_struct(const RcString& name, const AST::Visibility& vis, const ::AST::Struct& str)
         {
             this->visit_vis(vis);
             m_pmi.send_rword("struct");
@@ -1465,7 +1465,7 @@ namespace {
                 }
             }
         }
-        void visit_enum(const ::std::string& name, const AST::Visibility& vis, const ::AST::Enum& enm)
+        void visit_enum(const RcString& name, const AST::Visibility& vis, const ::AST::Enum& enm)
         {
             this->visit_vis(vis);
 
@@ -1513,12 +1513,12 @@ namespace {
             }
             m_pmi.send_symbol("}");
         }
-        void visit_union(const ::std::string& name, const AST::Visibility& vis, const ::AST::Union& unn)
+        void visit_union(const RcString& name, const AST::Visibility& vis, const ::AST::Union& unn)
         {
             TODO(sp, "visit_union");
         }
 
-        void visit_function(const ::std::string& name, const AST::Visibility& vis, const ::AST::Function& fcn)
+        void visit_function(const RcString& name, const AST::Visibility& vis, const ::AST::Function& fcn)
         {
             this->visit_vis(vis);
 
@@ -1557,8 +1557,36 @@ namespace {
             this->visit_bounds(fcn.params());
             this->visit_nodes(fcn.code());
         }
+        void visit_static(const RcString& name, const AST::Visibility& vis, const ::AST::Static& i)
+        {
+            this->visit_vis(vis);
+            switch(i.s_class())
+            {
+            case ::AST::Static::CONST:
+                m_pmi.send_rword("const");
+                break;
+            case ::AST::Static::MUT:
+                m_pmi.send_rword("static");
+                m_pmi.send_rword("mut");
+                break;
+            case ::AST::Static::STATIC:
+                m_pmi.send_rword("static");
+                break;
+            }
+            m_pmi.send_ident(name.c_str());
+            //this->visit_params(i.params());
+            m_pmi.send_symbol(":");
+            this->visit_type(i.type());
 
-        void visit_use(const ::std::string& name, const AST::Visibility& vis, const ::AST::UseItem& item)
+            if( i.value() ) {
+                m_pmi.send_symbol("=");
+                this->visit_node(i.value().node());
+            }
+            //this->visit_bounds(i.params());
+            m_pmi.send_symbol(";");
+        }
+
+        void visit_use(const RcString& /*name*/, const AST::Visibility& vis, const ::AST::UseItem& item)
         {
             this->visit_vis(vis);
             m_pmi.send_rword("use");
@@ -1597,6 +1625,7 @@ namespace {
         void visit_impl(const ::AST::Impl& impl)
         {
             visit_impl_hdr(impl.def());
+            m_pmi.send_symbol("{");
             for(const auto& i : impl.items())
             {
                 const auto& sp = i.sp;
@@ -1608,11 +1637,15 @@ namespace {
                 TU_ARMA(Function, e) {
                     visit_function(i.name.c_str(), i.vis, e);
                     }
+                TU_ARMA(Static, e) {
+                    visit_static(i.name.c_str(), i.vis, e);
+                    }
                 }
             }
+            m_pmi.send_symbol("}");
         }
 
-        void visit_item(const ::std::string& name, const AST::Visibility& vis, const ::AST::Item& item)
+        void visit_item(const RcString& name, const AST::Visibility& vis, const ::AST::Item& item)
         {
             TU_MATCH_HDRA((item), {)
             default:
@@ -1673,7 +1706,7 @@ namespace {
     return box$(pmi);
 }
 // --- Derive inputs
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Struct& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const RcString& item_name, const ::AST::Struct& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on struct");
@@ -1681,7 +1714,7 @@ namespace {
         v.visit_struct(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Enum& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const RcString& item_name, const ::AST::Enum& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on enum");
@@ -1689,7 +1722,7 @@ namespace {
         v.visit_enum(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Union& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const RcString& item_name, const ::AST::Union& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on union");
@@ -1700,7 +1733,7 @@ namespace {
 // --- attribute
 ::std::unique_ptr<TokenStream> ProcMacro_Invoke(
     const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt,
-    slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Item& i
+    slice<const AST::Attribute> attrs, const AST::Visibility& vis, const RcString& item_name, const ::AST::Item& i
     )
 {
     return ProcMacro_Invoke(sp, crate, mac_path, &tt, [&](Visitor& v) {

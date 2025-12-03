@@ -196,7 +196,7 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                 {
                     if( !i.is_None() )
                     {
-                        auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, path.nodes.back().c_str(), i);
+                        auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, path.nodes.back(), i);
                         if( lex ) {
                             // TODO: `derive_where` returns its own attribute invocation in the output, between two other additions
                             //   > This seems to so the derive (first attribute) can see the trait list? (does mrustc handle that properly? I think so)
@@ -226,7 +226,7 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                 {
                     if( !i.is_None() )
                     {
-                        auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, name.c_str(), i);
+                        auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, vis, name, i);
                         if( lex ) {
                             i = AST::Item::make_None({});
                             assert(g_current_mod);
@@ -241,24 +241,6 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                         }
                     }
                 }
-                #if 0
-                // Impl block
-                void handle(
-                    const Span& sp, const AST::Attribute& attr,
-                    AST::Crate& crate, AST::Module& mod, size_t mod_idx,
-                    slice<const AST::Attribute> attrs, AST::ImplDef& impl
-                ) const override {
-                    auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, impl);
-                    if( lex ) {
-                        assert(g_current_mod);
-                        lex->parse_state().module = g_current_mod;
-                        Parse_ModRoot_ItemsInto(mod, mod_idx, *lex);
-                    }
-                    else {
-                        ERROR(sp, E0000, "proc_macro expansion failed");
-                    }
-                }
-                #endif
             } d;
             // Only run proc macros on first pass (before inner)
             if( stage == AttrStage::Pre ) {
@@ -2292,15 +2274,9 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
             }
         TU_ARMA(Impl, e) {
             Expand_Impl(es, modpath, mod,  e);
-            if( e.def().type().is_wildcard() ) {
-                dat = AST::Item();
-            }
             }
         TU_ARMA(NegImpl, e) {
             Expand_ImplDef(es, modpath, mod,  e);
-            if( e.type().is_wildcard() ) {
-                dat = AST::Item();
-            }
             }
         TU_ARMA(Module, e) {
             throw "";

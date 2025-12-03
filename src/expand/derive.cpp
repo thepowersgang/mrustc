@@ -2149,7 +2149,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         std::vector<RcString>   mac_path = find_macro(sp, crate, mod, trait_path);
         if( !mac_path.empty() )
         {
-            auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, vis, path.nodes.back().c_str(), item);
+            auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, vis, path.nodes.back(), item);
             if( lex )
             {
                 lex->parse_state().module = &mod;
