@@ -392,7 +392,7 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
-        auto v = attr.parse_equals_string(crate, mod);
+        auto name = attr.parse_equals_string(crate, mod);
         TU_MATCH_HDRA( (i), {)
         default:
             TODO(sp, "Unknown item type " << i.tag_str() << " with #["<<attr<<"] attached at " << path);
@@ -400,31 +400,72 @@ public:
         TU_ARMA(None, e) {
             // NOTE: Can happen when #[cfg] removed this
             }
+        TU_ARMA(Impl, e) {
+                 if( name == "i8" ) {}
+            else if( name == "u8" ) {}
+            else if( name == "i16" ) {}
+            else if( name == "u16" ) {}
+            else if( name == "i32" ) {}
+            else if( name == "u32" ) {}
+            else if( name == "i64" ) {}
+            else if( name == "u64" ) {}
+            else if( name == "i128" ) {}
+            else if( name == "u128" ) {}
+            else if( name == "isize" ) {}
+            else if( name == "usize" ) {}
+            else if( name == "const_ptr" ) {}
+            else if( name == "mut_ptr" ) {}
+            else if( TARGETVER_LEAST_1_54 && name == "const_slice_ptr" ) {}
+            else if( TARGETVER_LEAST_1_54 && name == "mut_slice_ptr" ) {}
+            else if( TARGETVER_LEAST_1_54 && name == "array" ) {}
+            else if( /*TARGETVER_1_39 &&*/ name == "bool" ) {}
+            // rustc_unicode
+            else if( name == "char" ) {}
+            // collections
+            else if( name == "str" ) {}
+            else if( name == "slice" ) {}
+            else if( TARGETVER_LEAST_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
+            else if( TARGETVER_LEAST_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
+            else if( TARGETVER_LEAST_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
+            else if( TARGETVER_LEAST_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
+            // std - interestingly
+            else if( name == "f32" ) {}
+            else if( name == "f64" ) {}
+            else if( TARGETVER_LEAST_1_29 && name == "f32_runtime" ) {}
+            else if( TARGETVER_LEAST_1_29 && name == "f64_runtime" ) {}
+            else {
+                ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
+            }
+
+            // TODO: Somehow annotate these impls to allow them to provide inherents?
+            // - mrustc is lazy and inefficient, so these don't matter :)
+
+            }
         TU_ARMA(Function, e) {
             if( e.code().is_valid() ) {
-                handle_lang_item(sp, crate, path, v, ITEM_FN, i);
+                handle_lang_item(sp, crate, path, name, ITEM_FN, i);
             }
             else {
-                handle_lang_item(sp, crate, path, v, ITEM_EXTERN_FN, i);
+                handle_lang_item(sp, crate, path, name, ITEM_EXTERN_FN, i);
             }
             }
         TU_ARMA(Type, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_TYPE_ALIAS, i);
+            handle_lang_item(sp, crate, path, name, ITEM_TYPE_ALIAS, i);
             }
         TU_ARMA(Static, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_STATIC, i);
+            handle_lang_item(sp, crate, path, name, ITEM_STATIC, i);
             }
         TU_ARMA(Struct, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_STRUCT, i);
+            handle_lang_item(sp, crate, path, name, ITEM_STRUCT, i);
             }
         TU_ARMA(Enum, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_ENUM, i);
+            handle_lang_item(sp, crate, path, name, ITEM_ENUM, i);
             }
         TU_ARMA(Union, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_UNION, i);
+            handle_lang_item(sp, crate, path, name, ITEM_UNION, i);
             }
         TU_ARMA(Trait, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_TRAIT, i);
+            handle_lang_item(sp, crate, path, name, ITEM_TRAIT, i);
             }
         }
     }
@@ -436,49 +477,6 @@ public:
     }
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: lang items on associated items (e.g. functions - `RangeFull::new`)
-    }
-
-    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
-        ::std::string name = mi.parse_equals_string(crate, mod);
-
-             if( name == "i8" ) {}
-        else if( name == "u8" ) {}
-        else if( name == "i16" ) {}
-        else if( name == "u16" ) {}
-        else if( name == "i32" ) {}
-        else if( name == "u32" ) {}
-        else if( name == "i64" ) {}
-        else if( name == "u64" ) {}
-        else if( name == "i128" ) {}
-        else if( name == "u128" ) {}
-        else if( name == "isize" ) {}
-        else if( name == "usize" ) {}
-        else if( name == "const_ptr" ) {}
-        else if( name == "mut_ptr" ) {}
-        else if( TARGETVER_LEAST_1_54 && name == "const_slice_ptr" ) {}
-        else if( TARGETVER_LEAST_1_54 && name == "mut_slice_ptr" ) {}
-        else if( TARGETVER_LEAST_1_54 && name == "array" ) {}
-        else if( /*TARGETVER_1_39 &&*/ name == "bool" ) {}
-        // rustc_unicode
-        else if( name == "char" ) {}
-        // collections
-        else if( name == "str" ) {}
-        else if( name == "slice" ) {}
-        else if( TARGETVER_LEAST_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
-        else if( TARGETVER_LEAST_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
-        else if( TARGETVER_LEAST_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
-        else if( TARGETVER_LEAST_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
-        // std - interestingly
-        else if( name == "f32" ) {}
-        else if( name == "f64" ) {}
-        else if( TARGETVER_LEAST_1_29 && name == "f32_runtime" ) {}
-        else if( TARGETVER_LEAST_1_29 && name == "f64_runtime" ) {}
-        else {
-            ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
-        }
-
-        // TODO: Somehow annotate these impls to allow them to provide inherents?
-        // - mrustc is lazy and inefficient, so these don't matter :)
     }
 };
 

@@ -293,15 +293,6 @@ class CCfgHandler:
             expr.reset();
         }
     }
-    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
-        DEBUG("#[cfg] impl - " << mi);
-        if( check_cfg(sp, mi) ) {
-            // Leave
-        }
-        else {
-            impl.type() = ::TypeRef(sp);
-        }
-    }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::StructItem& si) const override {
         DEBUG("#[cfg] struct item - " << mi);

@@ -1582,12 +1582,45 @@ namespace {
             m_pmi.send_symbol(";");
         }
 
+        void visit_impl_hdr(const ::AST::ImplDef& impl)
+        {
+            m_pmi.send_rword("impl");
+            visit_params(impl.params());
+
+            if( impl.trait().ent.is_valid() ) {
+                visit_path(impl.trait().ent);
+                m_pmi.send_rword("for");
+            }
+            visit_type(impl.type());
+            visit_bounds(impl.params());
+        }
+        void visit_impl(const ::AST::Impl& impl)
+        {
+            visit_impl_hdr(impl.def());
+            for(const auto& i : impl.items())
+            {
+                const auto& sp = i.sp;
+                const auto& item = *i.data;
+                TU_MATCH_HDRA((item), {)
+                default:
+                    TODO(sp, "Item " << item.tag_str());
+                    break;
+                TU_ARMA(Function, e) {
+                    visit_function(i.name.c_str(), i.vis, e);
+                    }
+                }
+            }
+        }
+
         void visit_item(const ::std::string& name, const AST::Visibility& vis, const ::AST::Item& item)
         {
             TU_MATCH_HDRA((item), {)
             default:
                 TODO(sp, "visit_item - " << item.tag_str());
                 break;
+            TU_ARMA(Impl, e) {
+                visit_impl(e);
+                }
             TU_ARMA(Use, e) {
                 visit_use(name, vis, e);
                 }

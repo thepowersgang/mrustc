@@ -527,14 +527,12 @@ public:
 
 class ImplDef
 {
-    AttributeList   m_attrs;
     bool    m_is_unsafe;
     GenericParams  m_params;
     Spanned<Path>   m_trait;
     TypeRef m_type;
 public:
-    ImplDef(AttributeList attrs, GenericParams params, Spanned<Path> trait_type, TypeRef impl_type):
-        m_attrs( mv$(attrs) ),
+    ImplDef(GenericParams params, Spanned<Path> trait_type, TypeRef impl_type):
         m_is_unsafe( false ),
         m_params( mv$(params) ),
         m_trait( mv$(trait_type) ),
@@ -546,10 +544,6 @@ public:
 
     void set_is_unsafe() { m_is_unsafe = true; }
     bool is_unsafe() const { return m_is_unsafe; }
-
-    // Accessors
-    const AttributeList& attrs() const { return m_attrs; }
-          AttributeList& attrs()       { return m_attrs; }
 
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }

@@ -443,7 +443,7 @@ class Deriver_Debug:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, debug_trait, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, debug_trait), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, debug_trait), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, rcstring_fmt, mv$(fcn));
         return mv$(rv);
     }
@@ -732,7 +732,7 @@ class Deriver_PartialEq:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, RcString::new_interned("eq"), mv$(fcn));
         return mv$(rv);
     }
@@ -779,7 +779,7 @@ class Deriver_PartialOrd:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, RcString::new_interned("partial_cmp"), mv$(fcn));
         return mv$(rv);
     }
@@ -855,7 +855,7 @@ class Deriver_Eq:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, rcstring_assert_receiver_is_total_eq, mv$(fcn));
         return mv$(rv);
     }
@@ -979,7 +979,7 @@ class Deriver_Ord:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, RcString::new_interned("cmp"), mv$(fcn));
         return mv$(rv);
     }
@@ -1050,7 +1050,7 @@ class Deriver_Clone:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, rcstring_clone, mv$(fcn));
         return mv$(rv);
     }
@@ -1208,7 +1208,7 @@ class Deriver_Copy:
 
         AST::GenericParams params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         return mv$(rv);
     }
 
@@ -1253,7 +1253,7 @@ class Deriver_Default:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, RcString::new_interned("default"), mv$(fcn));
         return mv$(rv);
     }
@@ -1393,7 +1393,7 @@ class Deriver_Hash:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, RcString::new_interned("hash"), mv$(fcn));
         return mv$(rv);
     }
@@ -1536,7 +1536,7 @@ class Deriver_RustcEncodable:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, "encode", mv$(fcn));
         return mv$(rv);
     }
@@ -1768,7 +1768,7 @@ class Deriver_RustcDecodable:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(sp, {}, AST::Visibility::make_bare_private(), false, "decode", mv$(fcn));
         return mv$(rv);
     }
@@ -1973,7 +1973,7 @@ class Deriver_ConstParamTy:
     {
         const AST::Path    trait_path = get_path(opts.core_name, "marker", "StructuralPartialEq");
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
-        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         return mv$(rv);
     }
 public:

@@ -611,5 +611,15 @@ class CHandler_TrackCaller:
             ERROR(sp, E0000, "#[track_caller] on non-function");
         }
     }
+
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNodeP& expr) const override {
+        if( auto* n = dynamic_cast<AST::ExprNode_Closure*>(expr.get()) ) {
+            //n->m_track_caller = true;
+            (void)n;
+        }
+        else {
+            ERROR(sp, E0000, "#[track_caller] on non-function");
+        }
+    }
 };
 STATIC_DECORATOR("track_caller", CHandler_TrackCaller);

@@ -1177,7 +1177,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     return AST::Attribute(lex.end_span(ps), name, mv$(attr_data));
 }
 
-::AST::Item Parse_Impl(TokenStream& lex, AST::AttributeList attrs, bool is_unsafe=false)
+::AST::Item Parse_Impl(TokenStream& lex, AST::AttributeList& attrs, bool is_unsafe=false)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -1215,7 +1215,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
         // negative impls can't have any content
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
-        return ::AST::Item::make_NegImpl(AST::ImplDef( mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ));
+        return ::AST::Item::make_NegImpl(AST::ImplDef( mv$(params), mv$(trait_path), mv$(impl_type) ));
     }
 
     // - Don't care which at this stage
@@ -1260,7 +1260,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
 
     Parse_ParentAttrs(lex,  attrs);
 
-    auto impl = AST::Impl(AST::ImplDef( mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ));
+    auto impl = AST::Impl(AST::ImplDef( mv$(params), mv$(trait_path), mv$(impl_type) ));
 
     // A sequence of method implementations
     while( lex.lookahead(0) != TOK_BRACE_CLOSE )
@@ -2111,7 +2111,7 @@ namespace {
             break; }
         // `unsafe impl`
         case TOK_RWORD_IMPL: {
-            auto impl = Parse_Impl(lex, mv$(meta_items), true);
+            auto impl = Parse_Impl(lex, meta_items, true);
             if( impl.is_Impl() ) {
                 impl.as_Impl().def().set_is_unsafe();
             }
@@ -2121,7 +2121,7 @@ namespace {
             else {
                 BUG(lex.point_span(), "Parse_Impl returned a variant other than Impl or NegImpl");
             }
-            return ::AST::Named< ::AST::Item> { Span(), {}, AST::Visibility::make_global(), "", mv$(impl) };
+            return ::AST::Named< ::AST::Item> { Span(), mv$(meta_items), AST::Visibility::make_global(), "", mv$(impl) };
             }
         // `unsafe auto trait`
         case TOK_IDENT:
@@ -2201,8 +2201,10 @@ namespace {
         break;
 
     // `impl`
-    case TOK_RWORD_IMPL:
-        return ::AST::Named< ::AST::Item> { Span(), {}, AST::Visibility::make_global(), "", Parse_Impl(lex, mv$(meta_items)) };
+    case TOK_RWORD_IMPL: {
+        auto impl = Parse_Impl(lex, meta_items);
+        return ::AST::Named< ::AST::Item> { Span(), std::move(meta_items), AST::Visibility::make_global(), "", std::move(impl) };
+        }
     // `trait`
     case TOK_RWORD_TRAIT: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);

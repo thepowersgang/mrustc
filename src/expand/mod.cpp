@@ -213,7 +213,7 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                             Parse_ModRoot_ItemsInto(mod, mod_idx, *lex);
                         }
                         else {
-                            ERROR(sp, E0000, "proc_macro derive failed");
+                            ERROR(sp, E0000, "proc_macro expansion failed");
                         }
                     }
                 }
@@ -237,10 +237,28 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                             }
                         }
                         else {
-                            ERROR(sp, E0000, "proc_macro derive failed");
+                            ERROR(sp, E0000, "proc_macro expansion failed");
                         }
                     }
                 }
+                #if 0
+                // Impl block
+                void handle(
+                    const Span& sp, const AST::Attribute& attr,
+                    AST::Crate& crate, AST::Module& mod, size_t mod_idx,
+                    slice<const AST::Attribute> attrs, AST::ImplDef& impl
+                ) const override {
+                    auto lex = ProcMacro_Invoke(sp, crate, this->mac_path, attr.data(), attrs, impl);
+                    if( lex ) {
+                        assert(g_current_mod);
+                        lex->parse_state().module = g_current_mod;
+                        Parse_ModRoot_ItemsInto(mod, mod_idx, *lex);
+                    }
+                    else {
+                        ERROR(sp, E0000, "proc_macro expansion failed");
+                    }
+                }
+                #endif
             } d;
             // Only run proc macros on first pass (before inner)
             if( stage == AttrStage::Pre ) {
@@ -339,10 +357,6 @@ void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, Attr
         }
         });
     g_current_mod = nullptr;
-}
-void Expand_Attrs(const ExpandState& es, const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Module& mod, ::AST::ImplDef& impl)
-{
-    Expand_Attrs(es, attrs, stage,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, mod, impl); });
 }
 
 bool Expand_Attrs_CfgOnly(const ExpandState& es, AST::AttributeList& attrs)
@@ -1877,12 +1891,6 @@ void Expand_Function(const ExpandState& es, AST::Module& mod, AST::Function& e)
 void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod, ::AST::Impl& impl)
 {
     TRACE_FUNCTION_F(impl.def());
-    Expand_Attrs_CfgAttr(impl.def().attrs());
-    Expand_Attrs(es, impl.def().attrs(), AttrStage::Pre,  mod, impl.def());
-    if( impl.def().type().is_wildcard() ) {
-        DEBUG("Deleted");
-        return ;
-    }
     Expand_GenericParams(es, mod,  impl.def().params());
 
     Expand_Type(es, mod,  impl.def().type());
@@ -1961,23 +1969,13 @@ void Expand_Impl(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod,
                 i.attrs = mv$(attrs);
         }
     }
-
-    Expand_Attrs(es, impl.def().attrs(), AttrStage::Post, mod, impl.def());
 }
 void Expand_ImplDef(const ExpandState& es, ::AST::Path modpath, ::AST::Module& mod, ::AST::ImplDef& impl_def)
 {
-    Expand_Attrs_CfgAttr(impl_def.attrs());
-    Expand_Attrs(es, impl_def.attrs(), AttrStage::Pre,  mod, impl_def);
-    if( impl_def.type().is_wildcard() ) {
-        DEBUG("Deleted");
-        return ;
-    }
     Expand_GenericParams(es, mod,  impl_def.params());
 
     Expand_Type(es, mod,  impl_def.type());
     //Expand_Type(es, mod,  impl_def.trait());
-
-    Expand_Attrs(es, impl_def.attrs(), AttrStage::Post,  mod, impl_def);
 }
 
 void Expand_ExternBlock(const ExpandState& es, ::AST::Module& mod, ::AST::ExternBlock& block)
@@ -2184,6 +2182,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
         auto attrs = mv$(i.attrs);
         auto vis = i.vis;
         TRACE_FUNCTION_F("#" << idx << " - " << path);
+        DEBUG("attrs = " << attrs);
         Expand_Attrs_CfgAttr(attrs);
         Expand_Attrs(es, attrs, AttrStage::Pre,  path, mod, idx, vis, i.data);
 
