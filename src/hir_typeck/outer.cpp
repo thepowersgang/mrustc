@@ -908,9 +908,15 @@ namespace {
                         }
                     }
                     const auto& exp_ret_ty = maybe_monomorph(trait_fcn.m_return);
+                    #if 0
+                    // TODO: Handle `implTrait` in returns
                     if( impl_fcn.m_return != exp_ret_ty ) {
-                        failures.push_back(FMT("Mismatched return type (expected " << exp_ret_ty << ", got " << impl_fcn.m_return << ")"));
+                        failures.push_back(FMT(
+                            "Mismatched return type:\n"
+                            << "  Expected " << exp_ret_ty << "\n"
+                            << "  Found    " << impl_fcn.m_return));
                     }
+                    #endif
 
                     //if( impl_fcn.m_params.m_lifetimes.size() != trait_fcn.m_params.m_lifetimes.size() ) {
                     //    failures.push_back(FMT("Mismatched lifetime param count (expected " << trait_fcn.m_params.m_lifetimes.size() << ", got " << impl_fcn.m_params.m_lifetimes.size() << ")"));
@@ -929,7 +935,7 @@ namespace {
                                 os << "    -> " << maybe_monomorph(trait_fcn.m_return) << "\n";
                                 os << "    " << trait_fcn.m_params.fmt_bounds();
                                 }) << "\n"
-                            << "Impl : " << FMT_CB(os, {
+                            << "Impl :\n" << FMT_CB(os, {
                                 os << "    fn " << e.first << impl_fcn.m_params.fmt_args() << "(";
                                 for(const auto& a : impl_fcn.m_args)
                                 {
