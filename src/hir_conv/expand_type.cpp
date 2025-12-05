@@ -60,11 +60,7 @@ namespace {
     if(const auto* ep = ti.opt_TypeAlias() )
     {
         const auto& ta = *ep;
-        DEBUG(path << " " << ta.m_type);
-        if( ta.m_type.data().is_ErasedType() ) {
-            ASSERT_BUG(sp, !ta.m_params.is_generic(), "Generic type alias ErasedType?");
-            return ta.m_type.clone();
-        }
+        DEBUG(path << " -> " << ta.m_params.fmt_args() << " " << ta.m_type);
         auto pp = get_path_params(sp, ta.m_params, path, is_expr);
         // Monomorphise the exapnded type using the created params
         auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
