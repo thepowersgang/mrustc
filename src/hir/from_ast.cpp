@@ -144,8 +144,15 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 const auto& params = bound.second.aty_params;
                 for(auto& trait : bound.second.traits)
                 {
+                    std::unique_ptr<HIR::GenericParams> hrls;
+                    if( !e.outer_hrbs.empty() ) {
+                        hrls = box$(LowerHIR_HigherRankedBounds(e.outer_hrbs));
+                    }
+                    if( !e.inner_hrbs.empty() ) {
+                        hrls = box$(LowerHIR_HigherRankedBounds(e.inner_hrbs));
+                    }
                     rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                        box$(LowerHIR_HigherRankedBounds(e.outer_hrbs)),
+                        std::move(hrls),
                         ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), src_trait.clone(), name, params.clone()), {} ),
                         std::move(trait)
                         }));
