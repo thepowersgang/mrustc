@@ -57,6 +57,7 @@ private:
         m_clone_cache.clear();
         m_drop_cache.clear();
         m_aty_cache.clear();
+        m_cached_impl_checks.clear();
         TraitResolveCommon::prep_indexes(Span());
     }
 public:
