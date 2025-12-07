@@ -907,16 +907,58 @@ namespace {
                             }
                         }
                     }
-                    const auto& exp_ret_ty = maybe_monomorph(trait_fcn.m_return);
-                    #if 0
-                    // TODO: Handle `implTrait` in returns
-                    if( impl_fcn.m_return != exp_ret_ty ) {
+                    // Handle `implTrait` in returns
+                    // - Would need to re-create `exp_ret_ty` to keep the `impl Trait`, OR keep a non-erased/expanded copy of the type
+                    // > The difference tends to be in lifetimes, so match the two types and update lifetimes?
+                    struct MCB: public ::HIR::MatchGenerics {
+                        ::std::map<RcString,const ::HIR::TypeRef*>  mapping;
+                        ::HIR::Compare cmp_type(const Span& sp, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, HIR::t_cb_resolve_type resolve_cb) override {
+                            // If the LHS is an ATY that starts with `erased#` then just accept it?
+                            // - Also record the mapping
+                            if( const auto* ty_p = ty_l.data().opt_Path() ) {
+                                if( const auto* path_p = ty_p->path.m_data.opt_UfcsKnown() ) {
+                                    if( path_p->item.compare(0, 7, "erased#") == 0  ) {
+                                        mapping.insert(std::make_pair(path_p->item, &ty_r));
+                                        return ::HIR::Compare::Equal;
+                                    }
+                                }
+                            }
+                            return ::HIR::MatchGenerics::cmp_type(sp, ty_l, ty_r, resolve_cb);
+                        }
+                        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, HIR::t_cb_resolve_type resolve_cb) override {
+                            return (!ty.data().is_Generic() || ty.data().as_Generic() != g)
+                                ? ::HIR::Compare::Unequal
+                                : ::HIR::Compare::Equal;
+                        }
+                        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
+                            return (!sz.is_Generic() || sz.as_Generic() != g)
+                                ? ::HIR::Compare::Unequal
+                                : ::HIR::Compare::Equal;
+                        }
+                    } match_cb;
+                    const auto& exp_ret_ty1 = maybe_monomorph(trait_fcn.m_return);
+                    if( !exp_ret_ty1.match_test_generics(sp, impl_fcn.m_return, HIR::ResolvePlaceholdersNop(), match_cb) ) {
                         failures.push_back(FMT(
                             "Mismatched return type:\n"
-                            << "  Expected " << exp_ret_ty << "\n"
+                            << "  Expected " << exp_ret_ty1 << "\n"
                             << "  Found    " << impl_fcn.m_return));
                     }
-                    #endif
+                    HIR::TypeRef    exp_ret_ty_real;
+                    const auto& exp_ret_ty = match_cb.mapping.empty()
+                        ? exp_ret_ty1
+                        : (exp_ret_ty_real = clone_ty_with(sp, exp_ret_ty1, [&](const ::HIR::TypeRef& ref, ::HIR::TypeRef& out)->bool {
+                            if( const auto* ty_p = ref.data().opt_Path() ) {
+                                if( const auto* path_p = ty_p->path.m_data.opt_UfcsKnown() ) {
+                                    auto it = match_cb.mapping.find(path_p->item);
+                                    if( it != match_cb.mapping.end() ) {
+                                        out = it->second->clone();
+                                        return true;
+                                    }
+                                }
+                            }
+                            return false;
+                        }))
+                        ;
 
                     //if( impl_fcn.m_params.m_lifetimes.size() != trait_fcn.m_params.m_lifetimes.size() ) {
                     //    failures.push_back(FMT("Mismatched lifetime param count (expected " << trait_fcn.m_params.m_lifetimes.size() << ", got " << impl_fcn.m_params.m_lifetimes.size() << ")"));
@@ -973,8 +1015,8 @@ namespace {
                         }
                     }
 
-                    impl_fcn.m_return = exp_ret_ty.clone();
                     // HACK: Clone the expected type, so the lifetimes match.
+                    impl_fcn.m_return = exp_ret_ty.clone();
                     for( size_t i = 0; i < std::min(impl_fcn.m_args.size(), trait_fcn.m_args.size()); i ++ )
                     {
                         impl_fcn.m_args[i].second = m_resolve.monomorph_expand(sp, trait_fcn.m_args[i].second, ms);
