@@ -2765,7 +2765,14 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                         return false;
                     }
                     else {
-                        ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
+                        if( pe.item.compare(0, 7, "erased#") == 0 ) {
+                            DEBUG("Erased (ITIT), setting opaque");
+                            e.binding = ::HIR::TypePathBinding::make_Opaque({});
+                            return true;
+                        }
+                        else {
+                            ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
+                        }
                     }
                 }
 
