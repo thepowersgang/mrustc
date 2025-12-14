@@ -597,7 +597,7 @@ namespace
                                     add_lifetime(tep->m_lifetime);
                                     // Push HRLs?
                                 }
-                                if(const auto* tep = ty.data().opt_ErasedType()) {
+                                if(auto* tep = ty.data_mut().opt_ErasedType()) {
                                     for(const auto& lft : tep->m_lifetimes) {
                                         add_lifetime(lft);
                                     }
@@ -616,8 +616,8 @@ namespace
                         }
 
                         // If there is a lifetime on the stack (that wasn't from a `'static` pushed above), then use it
-                        if( v.lfts.empty() && !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
-                            DEBUG("ErasedType: Use wrapping lifetime");
+                        if( /*v.lfts.empty() &&*/ !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
+                            DEBUG("ErasedType: Use wrapping lifetime - " << *m_current_lifetime.back());
                             e->m_lifetimes.push_back( *m_current_lifetime.back() );
                         }
                         else if( v.lfts.empty() ) {
@@ -1078,7 +1078,7 @@ namespace
                             add_lifetime(tep->m_lifetime);
                             // Push HRLs?
                         }
-                        if(const auto* tep = ty.data().opt_ErasedType()) {
+                        if(auto* tep = ty.data_mut().opt_ErasedType()) {
                             for(const auto& lft : tep->m_lifetimes) {
                                 add_lifetime(lft);
                             }
@@ -1089,16 +1089,16 @@ namespace
                 for(auto& a : item.m_args) {
                     v.visit_type(a.second);
                 }
-                if( v.n_found == 1 ) {
+                if( v.n_found == 1 && v.out != HIR::LifetimeRef::new_static() ) {
                     elided_output_lifetime = v.out;
-                    DEBUG("Explicit 'single (recurse)");
+                    DEBUG("Explicit 'single (recurse) - " << elided_output_lifetime);
                 }
             }
             if( elided_output_lifetime == HIR::LifetimeRef() ) {
                 // TODO: If the only argument is a `'static`, use that? (or if there's only one borrow in the arguments, use that)
                 if( item.m_args.size() == 1 && item.m_args.front().second.data().is_Borrow() ) {
                     elided_output_lifetime = item.m_args.front().second.data().as_Borrow().lifetime;
-                    DEBUG("Explicit 'single");
+                    DEBUG("Explicit 'single - " << elided_output_lifetime);
                 }
             }
             // If present, set it (push to the stack)
