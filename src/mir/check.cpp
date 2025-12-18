@@ -867,7 +867,13 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             TU_ARMA(Static, ve) {
                                 tmp = ms.monomorph_type(state.sp, ve->m_type);
                                 resolve.expand_associated_types(state.sp, tmp);
-                                check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(tmp)) );
+                                // TODO: Have a raw pointer flag
+                                if(const auto* te = dst_ty.data().opt_Pointer()) {
+                                    check_types( te->inner, tmp );
+                                }
+                                else {
+                                    check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(tmp)) );
+                                }
                                 }
                             TU_ARMA(Function, ve) {
                                 MIR_ASSERT(state, dst_ty.data().is_Function(), dst_ty);
