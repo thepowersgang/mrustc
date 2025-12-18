@@ -721,6 +721,7 @@ namespace {
 
             ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override {
                 size_t rv = SIZE_MAX;
+                ASSERT_BUG(sp, constructor_path_params.m_types.size() == params.m_types.size(), "");
                 for(size_t i = 0; i < constructor_path_params.m_types.size(); i++) {
                     const auto& t = constructor_path_params.m_types[i];
                     if( t.data().is_Generic() && t.data().as_Generic() == ge ) {
@@ -733,13 +734,14 @@ namespace {
                 {
                     ASSERT_BUG(sp, !m_frozen, "get_type would add a new param after freeze - " << ge);
                     rv = constructor_path_params.m_types.size();
-                    DEBUG("Add param: " << ::HIR::TypeRef(ge.name, rv));
+                    DEBUG("Add param: " << ::HIR::TypeRef(ge.name, rv) << " <- " << ge);
                     constructor_path_params.m_types.push_back(HIR::TypeRef(ge.name, ge.binding));
                     params.m_types.push_back(::HIR::TypeParamDef());
                     //params.m_types.back().m_is_sized = true;
                     params.m_types.back().m_is_sized = resolve.type_is_sized(sp, constructor_path_params.m_types.back());
                     params.m_types.back().m_name = ge.name;
                 }
+                ASSERT_BUG(sp, rv < params.m_types.size(), ge << " -> " << rv << " < " << params.m_types.size());
                 return ::HIR::TypeRef(params.m_types[rv].m_name, rv);
             }
             ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
@@ -1420,14 +1422,12 @@ namespace {
             public ::HIR::ExprVisitorDef
         {
             const Monomorph& m_monomorph;
-            const ::HIR::TypeRef&   m_self_arg_type;
             const std::map<unsigned, unsigned>&   m_variable_rewrites;
 
             ::HIR::ExprNodeP    m_replacement;
         public:
-            ExprVisitor_GeneratorRewrite(const Monomorph& monomorph, const ::HIR::TypeRef& self_arg_type, const std::map<unsigned, unsigned>& rewrites)
+            ExprVisitor_GeneratorRewrite(const Monomorph& monomorph, const std::map<unsigned, unsigned>& rewrites)
                 : m_monomorph(monomorph)
-                , m_self_arg_type(self_arg_type)
                 , m_variable_rewrites(rewrites)
             {
             }
@@ -1495,10 +1495,15 @@ namespace {
             ::std::map<unsigned, unsigned> variable_rewrites;
             ::std::vector<HIR::ValueUsage> capture_usages;
             ::std::vector<HIR::TypeRef>   new_locals;
+            // NOTE: The first entry in this is the state, but that isn't know yet - so is just `MaybeUninit<_>`
             ::std::vector< ::HIR::VisEnt< ::HIR::TypeRef> > struct_ents;
             ::std::vector<HIR::ExprNodeP>   capture_nodes;
+
+            void set_state_type(HIR::TypeRef ty) {
+                this->struct_ents.at(0).ent.data_mut().as_Path().path.m_data.as_Generic().m_params.m_types.at(0) = std::move(ty);
+            }
         };
-        CrVars coroutine_vars(const Span& sp, const ::HIR::ExprNode_Generator::AvuCache& avu_cache, unsigned n_args, const ::HIR::TypeRef& state_type, const Monomorph& monomorph_cb) const
+        CrVars coroutine_vars(const Span& sp, const ::HIR::ExprNode_Generator::AvuCache& avu_cache, unsigned n_args, const Monomorph& monomorph_cb) const
         {
             CrVars  rv;
             // 3. Classify varibles
@@ -1522,7 +1527,7 @@ namespace {
             // Wrap the state in MaybeUninit to prevent any attempt at using niche optimisations
             rv.struct_ents.push_back(HIR::VisEnt<HIR::TypeRef> {
                 HIR::Publicity::new_none(),
-                ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_MaybeUninit, ::HIR::PathParams(state_type.clone())), &unm_MaybeUninit )
+                ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_MaybeUninit, ::HIR::PathParams(::HIR::TypeRef())), &unm_MaybeUninit )
             });
 
             // Add captures to the locals list first
@@ -1574,6 +1579,12 @@ namespace {
         {
             const auto& sp = node.span();
 
+            // NOTE: Most of generator's lowering is done in MIR lowering
+            // - This is because it needs to rewrite the flow quite severely.
+            // > HOWEVER: The code is extracted here and passed over to the new impl
+            // Update the type params in the state type path, now that everything has been visited (and thus all parameters are known)
+            
+
             TRACE_FUNCTION_F("Extract generator - " << node.m_res_type);
 
             // 1. Recurse to obtain useful metadata
@@ -1583,6 +1594,17 @@ namespace {
             ::HIR::GenericParams params;
             ::HIR::PathParams constructor_path_params;
             auto monomorph_cb = create_params(sp, m_resolve, params, constructor_path_params);
+
+            // Generate the structure, 
+            auto cr_vars = coroutine_vars(node.span(), node.m_avu_cache, 1 + (TARGETVER_LEAST_1_74 ? 1 : 0), monomorph_cb);
+
+            {
+                TRACE_FUNCTION_F("-- Rewrite variables");
+                ExprVisitor_GeneratorRewrite visitor_rewrite(monomorph_cb, cr_vars.variable_rewrites);
+                visitor_rewrite.visit_node_ptr(node.m_code);
+            }
+
+            monomorph_cb.add_bounds(sp, m_resolve);
 
             // Create state index enum
             auto state_idx_type = m_out.new_type("gen_state_idx#", m_new_type_suffix, ::HIR::Enum {
@@ -1603,16 +1625,10 @@ namespace {
             state_str.m_data.as_Tuple().push_back(HIR::VisEnt<HIR::TypeRef> { HIR::Publicity::new_none(), state_idx_ty.clone() });
             ::HIR::SimplePath   state_struct_path;
             const ::HIR::TypeItem* state_struct_ptr;
-            ::std::tie(state_struct_path, state_struct_ptr) = m_out.new_type("gen_state#", m_new_type_suffix, mv$(state_str));
+            ::std::tie(state_struct_path, state_struct_ptr) = m_out.new_type("gen_state#", m_new_type_suffix, std::move(state_str));
             auto state_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, params.make_nop_params(0)), &state_struct_ptr->as_Struct() );
-            node.m_state_data_type = state_type.clone();
-
-
-            // NOTE: Most of generator's lowering is done in MIR lowering
-            // - This is because it needs to rewrite the flow quite severely.
-            // > HOWEVER: The code is extracted here and passed over to the new impl
-
-            auto cr_vars = coroutine_vars(node.span(), node.m_avu_cache, 1 + (TARGETVER_LEAST_1_74 ? 1 : 0), state_type, monomorph_cb);
+            DEBUG("state_type = " << state_type);
+            cr_vars.set_state_type(state_type.clone());
 
             auto gen_str = ::HIR::Struct {
                 params.clone(),
@@ -1624,11 +1640,17 @@ namespace {
             const ::HIR::TypeItem* gen_struct_ptr;
             ::std::tie(gen_struct_path, gen_struct_ptr) = m_out.new_type(GENERATOR_PATH_PREFIX, m_new_type_suffix, mv$(gen_str));
             const auto& gen_struct_ref = gen_struct_ptr->as_Struct();
+            DEBUG(gen_struct_path << " -> args=" << params.fmt_args() << " where " << params.fmt_bounds());
 
             // Mark the object pathname in the closure.
             node.m_obj_ptr = &gen_struct_ref;
-            node.m_obj_path = ::HIR::GenericPath( gen_struct_path, mv$(constructor_path_params) );
+            node.m_obj_path = ::HIR::GenericPath( gen_struct_path, monomorph_cb.freeze() );
             node.m_captures = std::move(cr_vars.capture_nodes);
+            node.m_state_data_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, node.m_obj_path.m_params.clone()), &state_struct_ptr->as_Struct() );
+
+            auto lang_Pin = m_resolve.m_crate.get_lang_item_path(sp, "pin");
+            // Return wrapper: Renamed in 1.90
+            auto lang_GeneratorState = m_resolve.m_crate.get_lang_item_path(sp, TARGETVER_LEAST_1_90 ? "coroutine_state" : "generator_state");
 
             ::HIR::TypeRef& self_arg_ty = cr_vars.new_locals[0];
             // `::path::to::struct`
@@ -1638,16 +1660,11 @@ namespace {
             if( TARGETVER_LEAST_1_74 ) {
                 cr_vars.new_locals[1] = node.m_resume_ty.clone();
             }
-            auto lang_Pin = m_resolve.m_crate.get_lang_item_path(sp, "pin");
-            auto lang_GeneratorState = m_resolve.m_crate.get_lang_item_path(sp, "generator_state");
             // `Pin<&mut Self>`
             self_arg_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_Pin, ::HIR::PathParams(std::move(self_arg_ty))), &m_resolve.m_crate.get_struct_by_path(sp, lang_Pin) );
 
             auto body_node = std::move(node.m_code);
             {
-                ExprVisitor_GeneratorRewrite visitor_rewrite(monomorph_cb, self_arg_ty, cr_vars.variable_rewrites);
-                visitor_rewrite.visit_node_ptr(body_node);
-
                 DEBUG("-- Fixing types in body code");
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
                 fixup.visit_node_ptr( body_node );
@@ -1704,16 +1721,16 @@ namespace {
 
             // -- Create impl
             ::HIR::TraitImpl    impl;
-            impl.m_params = std::move(params);
             if( TARGETVER_LEAST_1_74 )
             {
                 impl.m_trait_args.m_types.push_back( monomorph_cb.monomorph_type(sp, node.m_resume_ty) );
             }
-            impl.m_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, impl.m_params.make_nop_params(0)), &gen_struct_ref );
+            impl.m_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, params.make_nop_params(0)), &gen_struct_ref );
             impl.m_types.insert(std::make_pair( RcString::new_interned("Yield" ), ::HIR::TraitImpl::ImplEnt<HIR::TypeRef> { false, monomorph_cb.monomorph_type(sp, node.m_yield_ty) } ));
             impl.m_types.insert(std::make_pair( RcString::new_interned("Return"), ::HIR::TraitImpl::ImplEnt<HIR::TypeRef> { false, monomorph_cb.monomorph_type(sp, node.m_return) } ));
             impl.m_methods.insert(std::make_pair( RcString::new_interned("resume"), ::HIR::TraitImpl::ImplEnt<HIR::Function> { false, std::move(fcn_resume) } ));
-            m_out.trait_impls.push_back(std::make_pair("generator", std::move(impl)));
+            impl.m_params = std::move(params);
+            m_out.trait_impls.push_back(std::make_pair(TARGETVER_LEAST_1_90 ? "coroutine" : "generator", std::move(impl)));
         }
 
         void visit(::HIR::ExprNode_AsyncBlock& node) override
@@ -1729,6 +1746,15 @@ namespace {
             ::HIR::GenericParams params;
             ::HIR::PathParams constructor_path_params;
             auto monomorph_cb = create_params(sp, m_resolve, params, constructor_path_params);
+
+            auto cr_vars = coroutine_vars(node.span(), node.m_avu_cache, 2, monomorph_cb);
+
+            {
+                ExprVisitor_GeneratorRewrite visitor_rewrite(monomorph_cb, cr_vars.variable_rewrites);
+                visitor_rewrite.visit_node_ptr(node.m_code);
+            }
+
+            monomorph_cb.add_bounds(sp, m_resolve);
 
             // Create state index enum
             auto state_idx_type = m_out.new_type("async_state_idx#", m_new_type_suffix, ::HIR::Enum {
@@ -1751,9 +1777,9 @@ namespace {
             const ::HIR::TypeItem* state_struct_ptr;
             ::std::tie(state_struct_path, state_struct_ptr) = m_out.new_type("async_state#", m_new_type_suffix, std::move(state_str));
             auto state_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, params.make_nop_params(0)), &state_struct_ptr->as_Struct() );
-            node.m_state_data_type = state_type.clone();
 
-            auto cr_vars = coroutine_vars(node.span(), node.m_avu_cache, 2, state_type, monomorph_cb);
+            // Update the state type entry, now that it's known
+            cr_vars.set_state_type(state_type.clone());
 
             // NOTE: Most of async lowering is done in MIR lowering
             // - This is because it needs to rewrite the flow quite severely.
@@ -1770,10 +1796,13 @@ namespace {
             ::std::tie(gen_struct_path, gen_struct_ptr) = m_out.new_type(PATH_PREFIX_FUTURE, m_new_type_suffix, mv$(gen_str));
             const auto& gen_struct_ref = gen_struct_ptr->as_Struct();
 
+            DEBUG(gen_struct_path << " -> args=" << params.fmt_args() << " where " << params.fmt_bounds());
+
             // Mark the object pathname
             node.m_obj_ptr = &gen_struct_ref;
-            node.m_obj_path = ::HIR::GenericPath( gen_struct_path, mv$(constructor_path_params) );
+            node.m_obj_path = ::HIR::GenericPath( gen_struct_path, monomorph_cb.freeze() );
             node.m_captures = std::move(cr_vars.capture_nodes);
+            node.m_state_data_type = state_type.clone();
 
             ::HIR::TypeRef& self_arg_ty = cr_vars.new_locals[0];
             // `::path::to::struct`
@@ -1794,9 +1823,6 @@ namespace {
             auto return_ty = node.m_code->m_res_type.clone();
             auto body_node = std::move(node.m_code);
             {
-                ExprVisitor_GeneratorRewrite visitor_rewrite(monomorph_cb, self_arg_ty, cr_vars.variable_rewrites);
-                visitor_rewrite.visit_node_ptr(body_node);
-
                 DEBUG("-- Fixing types in body code");
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
                 fixup.visit_node_ptr( body_node );
