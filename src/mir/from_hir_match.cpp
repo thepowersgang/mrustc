@@ -81,6 +81,20 @@ struct PatternRuleset
 
     bool is_before(const PatternRuleset& other) const;
 };
+struct PatternDump {
+    const StaticTraitResolve& resolve;
+    const HIR::TypeRef& ty;
+    const ::std::vector<PatternRule>& rules;
+    PatternDump(const StaticTraitResolve& resolve, const HIR::TypeRef& ty, const ::std::vector<PatternRule>& rules)
+        : resolve(resolve)
+        , ty(ty)
+        , rules(rules)
+    {}
+    friend ::std::ostream& operator<<(::std::ostream& os, const PatternDump& x) {
+        os << "[" << x.rules << "]";
+        return os;
+    }
+};
 /// Generated code for an arm
 struct ArmCode {
     bool has_condition = false;
@@ -607,9 +621,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // If duplicate rule, (and neither is conditional)
             if( (it-1)->m_rules == it->m_rules && !arm_code[it->arm_idx].has_condition && !arm_code[(it-1)->arm_idx].has_condition )
             {
+                WARNING(node.m_arms[it->arm_idx].m_code->span(), W0000,
+                    "Duplicate match pattern, unreachable code"
+                    << "\n - Pattern : " << PatternDump(builder.resolve(), match_ty, it->m_rules)
+                    << "\n - Previous at " << node.m_arms[(it-1)->arm_idx].m_code->span()
+                );
                 // Remove
                 it = arm_rules.erase(it);
-                WARNING(node.m_arms[it->arm_idx].m_code->span(), W0000, "Duplicate match pattern, unreachable code");
             }
             else
             {
