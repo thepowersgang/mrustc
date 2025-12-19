@@ -55,7 +55,7 @@ namespace {
                     if( origin.m_data.is_UfcsInherent() && origin.m_data.as_UfcsInherent().item != m_method_name ) {
                         return ;
                     }
-                    auto ty_name = RcString::new_interned(FMT("erased#" << m_method_name << "_" << m_var_index));
+                    auto ty_name = RcString::new_interned(FMT(ATY_PREFIX_ERASED << m_method_name << "_" << m_var_index));
                     m_var_index += 1;
                     
                     if( m_target_impl ) {
@@ -117,7 +117,7 @@ namespace {
 
             if( m_target_trait && m_var_index > 0 && fcn.m_code ) {
                 for(size_t i = 0; i < m_var_index; i ++) {
-                    auto ty_name = RcString::new_interned(FMT("erased#" << m_method_name << "_" << i));
+                    auto ty_name = RcString::new_interned(FMT(ATY_PREFIX_ERASED << m_method_name << "_" << i));
                     auto& ty = m_target_trait->m_types.at(ty_name);
                     ty.m_default = std::move(m_tys.at(i));
                 }
@@ -194,8 +194,12 @@ namespace {
             ::std::unordered_map< ::std::string,unsigned int>  assoc_type_indexes;
             struct Foo {
                 ::HIR::Trait*   trait_ptr;
-                ::HIR::GenericParams    params;
-                bool has_conflict;
+                ::HIR::GenericParams    params_def;
+                ::HIR::PathParams   params_use;
+                bool has_conflict = false;
+                Foo(HIR::Trait& root_trait)
+                    : trait_ptr(&root_trait)
+                {}
                 void add_types_from_trait(const HIR::GenericPath& path, const HIR::Trait& tr, const HIR::TraitPath::assoc_list_t& assoc) {
                     for(const auto& ty : tr.m_types) {
                         bool is_known = false;
@@ -207,7 +211,7 @@ namespace {
                             }
                         }
                         if( !is_known ) {
-                            auto i = params.m_types.size();
+                            auto i = params_def.m_types.size();
                             DEBUG(ty.first << " #" << i << " (from " << path << ")");
                             auto rv = trait_ptr->m_type_indexes.insert( ::std::make_pair(ty.first, static_cast<unsigned>(i)) );
                             if(rv.second == false) {
@@ -218,15 +222,17 @@ namespace {
                                 this->has_conflict = true;
                             }
                             else {
-                                params.m_types.push_back( ::HIR::TypeParamDef { RcString::new_interned(FMT("a#" << ty.first)), {}, ty.second.is_sized } );
+                                params_def.m_types.push_back( ::HIR::TypeParamDef { RcString::new_interned(FMT("a#" << ty.first)), {}, ty.second.is_sized } );
+                                //params_use.m_types.push_back( ::HIR::TypeRef(tp.m_name, &tp - tr.m_params.m_types.data()) );
                             }
                         }
                     }
                 }
             };
-            Foo visitor { &tr, {}, false };
+            Foo visitor { tr };
             for(const auto& tp : tr.m_params.m_types) {
-                visitor.params.m_types.push_back( ::HIR::TypeParamDef { tp.m_name, {}, tp.m_is_sized } );
+                visitor.params_def.m_types.push_back( ::HIR::TypeParamDef { tp.m_name, {}, tp.m_is_sized } );
+                visitor.params_use.m_types.push_back( ::HIR::TypeRef(tp.m_name, &tp - tr.m_params.m_types.data()) );
             }
             visitor.add_types_from_trait(trait_path, tr, {});
             for(const auto& st : tr.m_all_parent_traits)
@@ -235,7 +241,7 @@ namespace {
                 visitor.add_types_from_trait(st.m_path, *st.m_trait_ptr, st.m_type_bounds);
             }
             bool has_conflicting_aty_name = visitor.has_conflict;
-            auto args = mv$(visitor.params);
+            auto args = std::move(visitor.params_def);
 
             struct VtableConstruct {
                 const OuterVisitor* m_outer;
@@ -432,19 +438,29 @@ namespace {
                     i ++;
                 }
                 for(const auto& ty : tr.m_type_indexes) {
-                    ::HIR::Path path( ::HIR::TypeRef::new_self(), trait_path.clone(), ty.first );
+                    DEBUG("ATY " << ty.first << " : " << ty.second);
+                    auto ty_def = tr.get_aty_def(ty.first);
+                    ASSERT_BUG(sp, ty_def.first, "Unable to find ATY defintiion");
+                    auto aty_params = ty_def.first->m_generics.make_nop_params(1);
+                    ::HIR::Path path( ::HIR::TypeRef::new_self(), trait_path.clone(), ty.first, std::move(aty_params) );
                     params.m_types.push_back( ::HIR::TypeRef::new_path( mv$(path), {} ) );
                 }
             }
+            ASSERT_BUG(sp,
+                true
+                && args.m_types.size() == params.m_types.size()
+                && args.m_values.size() == params.m_values.size()
+                , "Count mismatch args=" << args.fmt_args() << " params=" << params
+            );
             // TODO: Would like to have access to the publicity marker
             auto item_path = m_new_type(
                 true,
                 RcString::new_interned(FMT(p.get_name() << "#vtable")),
-                ::HIR::Struct(mv$(args), ::HIR::Struct::Repr::C, ::HIR::Struct::Data(mv$(fields)))
+                ::HIR::Struct(std::move(args), ::HIR::Struct::Repr::C, ::HIR::Struct::Data(mv$(fields)))
                 );
             tr.m_vtable_path = item_path;
             DEBUG("Vtable structure created - " << item_path);
-            ::HIR::GenericPath  path( mv$(item_path), mv$(params) );
+            ::HIR::GenericPath  path( mv$(item_path), std::move(params) );
 
             tr.m_values.insert( ::std::make_pair(
                 RcString::new_interned("vtable#"),

@@ -25,11 +25,12 @@ namespace {
             if( val.is_NotYetKnown() && ee.m_origin.m_data.is_UfcsKnown() )
             {
                 const auto& v = ee.m_origin.m_data.as_UfcsKnown();
-                auto name = RcString::new_interned(FMT("erased#" << v.item << "_" << ee.m_index));
+                auto name = RcString::new_interned(FMT(ATY_PREFIX_ERASED << v.item << "_" << ee.m_index));
                 new_ty = ::HIR::TypeRef::new_path(::HIR::Path(
                     v.type.clone(),
                     v.trait.clone(),
-                    name
+                    name,
+                    v.params.clone()
                 ),{});
             }
             else

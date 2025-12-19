@@ -917,7 +917,7 @@ namespace {
                             // - Also record the mapping
                             if( const auto* ty_p = ty_l.data().opt_Path() ) {
                                 if( const auto* path_p = ty_p->path.m_data.opt_UfcsKnown() ) {
-                                    if( path_p->item.compare(0, 7, "erased#") == 0  ) {
+                                    if( path_p->item.compare(0, strlen(ATY_PREFIX_ERASED), ATY_PREFIX_ERASED) == 0  ) {
                                         mapping.insert(std::make_pair(path_p->item, &ty_r));
                                         return ::HIR::Compare::Equal;
                                     }

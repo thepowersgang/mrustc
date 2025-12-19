@@ -1539,7 +1539,7 @@ const ::HIR::TypeRef& StaticTraitResolve::fix_trait_default_return(const Span& s
     const auto& top_ip = p.get_top_ip();
     if( top_ip.ty && top_ip.trait && *top_ip.ty == ::HIR::TypeRef::new_self() )
     {
-        auto prefix = FMT("erased#" << p.name << "_");
+        auto prefix = FMT(ATY_PREFIX_ERASED << p.name << "_");
         const auto& trait = m_crate.get_trait_by_path(sp, *top_ip.trait);
         tmp = clone_ty_with(sp, tpl, [&](const ::HIR::TypeRef& tpl, ::HIR::TypeRef& out)->bool {
             if( const auto* p = tpl.data().opt_Path() ) {

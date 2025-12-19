@@ -1309,6 +1309,21 @@ unsigned HIR::Trait::get_vtable_parent_index(const Span& sp, const HIR::PathPara
     }
     return 0;
 }
+::std::pair<const ::HIR::AssociatedType*,const ::HIR::PathParams*> HIR::Trait::get_aty_def(const RcString& name) const
+{
+    auto it = m_types.find(name);
+    if( it != m_types.end() ) {
+        return std::make_pair(&it->second, nullptr);
+    }
+    for(const auto& parent : m_all_parent_traits)
+    {
+        it = parent.m_trait_ptr->m_types.find(name);
+        if( it != parent.m_trait_ptr->m_types.end() ) {
+            return std::make_pair(&it->second, &parent.m_path.m_params);
+        }
+    }
+    return std::make_pair(nullptr, nullptr);
+}
 
 /// Helper for getting the struct associated with a pattern path
 const ::HIR::Struct& HIR::pattern_get_struct(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding, bool is_tuple)

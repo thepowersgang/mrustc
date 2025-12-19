@@ -498,6 +498,7 @@ public:
     ::HIR::TypeRef get_vtable_type(const Span& sp, const ::HIR::Crate& crate, const ::HIR::TypeData::Data_TraitObject& te) const;
     unsigned get_vtable_value_index(const HIR::GenericPath& trait_path, const RcString& name) const;
     unsigned get_vtable_parent_index(const Span& sp, const HIR::PathParams& this_params, const HIR::GenericPath& trait_path) const;
+    ::std::pair<const ::HIR::AssociatedType*,const ::HIR::PathParams*> get_aty_def(const RcString& name) const;
 };
 
 class ProcMacro

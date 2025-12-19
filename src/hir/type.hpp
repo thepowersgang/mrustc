@@ -21,6 +21,7 @@
 constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
 constexpr const char* GENERATOR_PATH_PREFIX = "generator#";
 constexpr const char* PATH_PREFIX_FUTURE = "future#";
+constexpr const char* ATY_PREFIX_ERASED = "erased#";
 
 namespace HIR {
 

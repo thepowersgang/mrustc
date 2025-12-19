@@ -2765,7 +2765,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                         return false;
                     }
                     else {
-                        if( pe.item.compare(0, 7, "erased#") == 0 ) {
+                        if( pe.item.compare(0, strlen(ATY_PREFIX_ERASED), ATY_PREFIX_ERASED) == 0 ) {
                             DEBUG("Erased (ITIT), setting opaque");
                             e.binding = ::HIR::TypePathBinding::make_Opaque({});
                             return true;
