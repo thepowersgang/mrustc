@@ -616,7 +616,7 @@ namespace
                         }
 
                         // If there is a lifetime on the stack (that wasn't from a `'static` pushed above), then use it
-                        if( /*v.lfts.empty() &&*/ !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
+                        if( v.lfts.empty() && !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
                             DEBUG("ErasedType: Use wrapping lifetime - " << *m_current_lifetime.back());
                             e->m_lifetimes.push_back( *m_current_lifetime.back() );
                         }
