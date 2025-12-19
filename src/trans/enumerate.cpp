@@ -134,7 +134,7 @@ namespace MIR {
 
         void apply(EnumState& state, const Trans_Params& pp) const
         {
-            TRACE_FUNCTION_F("");
+            TRACE_FUNCTION_F(" w/ impl=" << pp.pp_impl << " method=" << pp.pp_method);
             for(const auto* ty_p : this->typeids)
             {
                 DEBUG("TypeID " << *ty_p);
