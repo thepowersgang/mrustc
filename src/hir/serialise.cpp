@@ -242,7 +242,8 @@
 
                 m_out.write_bool(e.m_is_sized);
                 serialise_vec(e.m_traits);
-                serialise_vec(e.m_lifetimes);
+                serialise_vec(e.m_lifetime_bounds);
+                serialise_pathparams(e.m_use);
                 }
             TU_ARMA(Array, e) {
                 serialise_type(e.inner);

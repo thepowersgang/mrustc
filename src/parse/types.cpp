@@ -382,7 +382,8 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
     Token   tok;
 
     auto ps = lex.start_span();
-    TypeData::Data_ErasedType   rv_data;
+    Type_ErasedType   rv_data;
+    rv_data.is_edition_2024_or_later = lex.edition_after(AST::Edition::Rust2024);
     do {
         if( lex.getTokenIf(TOK_LIFETIME, tok) ) {
             rv_data.lifetimes.push_back(AST::LifetimeRef( /*lex.point_span(),*/ tok.ident() ));
@@ -397,6 +398,9 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
             rv_data.traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
             lex.getTokenCheck(TOK_PAREN_CLOSE);
         }
+        else if( lex.getTokenIf(TOK_RWORD_USE) ) {
+            TODO(lex.point_span(), "`use` in impl-trait");
+        }
         else
         {
             if( lex.getTokenIf(TOK_TILDE) ) {
@@ -409,6 +413,6 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
         }
     } while( lex.getTokenIf(TOK_PLUS) );
 
-    return TypeRef(lex.end_span(ps), mv$(rv_data));
+    return TypeRef(lex.end_span(ps), box$(rv_data));
 }
 

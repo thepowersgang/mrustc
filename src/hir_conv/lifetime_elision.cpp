@@ -562,12 +562,46 @@ namespace
                     DEBUG("TraitObject: Final lifetime " << e->m_lifetime);
                 }
                 if(auto* e = ty.data_mut().opt_ErasedType()) {
+
+                    // If in arguments, don't visit an omitted lifetime (so we don't add an elided lifetime for something that will be generic)
+                    if( (!e->m_lifetime_bounds.empty() && e->m_lifetime_bounds.front().binding == HIR::LifetimeRef::UNKNOWN) && (m_cur_params && m_create_elided) ) {
+                    }
+                    else {
+                        for(auto& lft : e->m_lifetime_bounds)
+                            visit_lifetime(sp, lft);
+                    }
+
                     // For an erased type, check if there's a lifetime within any of the ATYs
                     // - If so, use that [citation needed]
                     // https://rust-lang.github.io/rfcs/1951-expand-impl-trait.html#scoping-for-type-and-lifetime-parameters
                     // Any mentioned lifetimes within the trait are considered as "captured"
                     // - So, enumerate the mentioned lifetimes and create a composite for it.
-                    if( e->m_lifetimes.empty() ) {
+
+                    // TODO: Replace use of `m_lifetimes` with `m_use`
+
+                    // Is there a `use<>` annotation?
+                    switch(e->m_use_present)
+                    {
+                    case ::HIR::TypeData_ErasedType::Use::Present:
+                        break;
+                    case ::HIR::TypeData_ErasedType::Use::Omitted2024:
+                        // Add all in-scope generics
+                        if( m_resolve.m_impl_generics ) {
+                            auto p = m_resolve.m_impl_generics->make_nop_params(0);
+                            for(const auto& l : p.m_lifetimes) {
+                                DEBUG("2024: add " << l);
+                                e->m_use.m_lifetimes.push_back(l);
+                            }
+                        }
+                        if( m_resolve.m_item_generics ) {
+                            auto p = m_resolve.m_item_generics->make_nop_params(1);
+                            for(const auto& l : p.m_lifetimes) {
+                                DEBUG("2024: add " << l);
+                                e->m_use.m_lifetimes.push_back(l);
+                            }
+                        }
+                        break;
+                    case ::HIR::TypeData_ErasedType::Use::OmittedOld: {
                         // If there is no lifetime assigned, then grab all mentioned lifetimes?
                         struct V: public HIR::Visitor {
                             std::set<HIR::LifetimeRef>  lfts;
@@ -586,6 +620,7 @@ namespace
                                 this->lfts.insert(lft);
                             }
                             void visit_type(HIR::TypeRef& ty) override {
+                                TRACE_FUNCTION_F(ty);
                                 if(const auto* tep = ty.data().opt_Borrow()) {
                                     add_lifetime(tep->lifetime);
                                 }
@@ -598,14 +633,24 @@ namespace
                                     // Push HRLs?
                                 }
                                 if(auto* tep = ty.data_mut().opt_ErasedType()) {
-                                    for(const auto& lft : tep->m_lifetimes) {
-                                        add_lifetime(lft);
+                                    if( tep->m_lifetime_bounds.size() == 1 && tep->m_lifetime_bounds.front().binding == HIR::LifetimeRef::UNKNOWN ) {
+                                        // Ignore unbound?
+                                    }
+                                    else {
+                                        for(const auto& lft : tep->m_lifetime_bounds) {
+                                            add_lifetime(lft);
+                                        }
                                     }
                                 }
                                 HIR::Visitor::visit_type(ty);
                             }
                         } v;
                         v.visit_type(ty);
+                        // TODO: In 2024 edition, these rules change
+                        // - Before: generics/lifetimes not mentioned in the `impl Foo` are omitted
+                        // - After: All included
+                        // - Both: Unless there's a `use<Foo>` present
+
                         if( v.lfts.empty() && !(!m_current_lifetime.empty() && m_current_lifetime.back() && !pushed) ) {
                             // If this is on a by-value method, then assume it captures `self` (and thus all contained liftimes)
                             // REF: rustc-1.90.0-src/compiler/rustc_data_structures/src/graph/linked_graph/mod.rs:278
@@ -618,43 +663,42 @@ namespace
                         // If there is a lifetime on the stack (that wasn't from a `'static` pushed above), then use it
                         if( v.lfts.empty() && !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
                             DEBUG("ErasedType: Use wrapping lifetime - " << *m_current_lifetime.back());
-                            e->m_lifetimes.push_back( *m_current_lifetime.back() );
+                            e->m_use.m_lifetimes.push_back( *m_current_lifetime.back() );
                         }
                         else if( v.lfts.empty() ) {
                             // No contained lifetimes, it's `'static`?
                             DEBUG("No inner lifetimes, will be `'static`");
-                            e->m_lifetimes.push_back( HIR::LifetimeRef::new_static() );
+                            e->m_use.m_lifetimes.push_back( HIR::LifetimeRef::new_static() );
                         }
                         else if( v.lfts.size() == 1) {
                             // Easy, just assign this lifetime
                             DEBUG("ErasedType: Use contained lifetime " << *v.lfts.begin());
-                            e->m_lifetimes.push_back( *v.lfts.begin() );
+                            e->m_use.m_lifetimes.push_back( *v.lfts.begin() );
                         }
                         else {
                             // If in arguments: Create a new input lifetime with a union of these lifetimes.
                             if( m_cur_params && m_create_elided ) {
-                                e->m_lifetimes.push_back( HIR::LifetimeRef(m_cur_params_level * 256 + m_cur_params->m_lifetimes.size()) );
+                                e->m_use.m_lifetimes.push_back( HIR::LifetimeRef(m_cur_params_level * 256 + m_cur_params->m_lifetimes.size()) );
                                 m_cur_params->m_lifetimes.push_back(HIR::LifetimeDef { });
                                 for(const auto& l : v.lfts) {
-                                    m_cur_params->m_bounds.push_back(HIR::GenericBound::make_Lifetime({ e->m_lifetimes[0], l }));
+                                    m_cur_params->m_bounds.push_back(HIR::GenericBound::make_Lifetime({ e->m_use.m_lifetimes[0], l }));
                                 }
                             }
                             // In return: Save the list?
-                            else {
-                                e->m_lifetimes.clear();
+                            else if( m_cur_params ) {
+                                ASSERT_BUG(sp, e->m_use.m_lifetimes.size() == 0, "");
                                 for(const auto& lft : v.lfts) {
-                                    e->m_lifetimes.push_back( lft );
+                                    e->m_use.m_lifetimes.push_back( lft );
                                 }
                             }
+                            else {
+                            }
                         }
+                        }
+                        break;
                     }
-
-                    // If in arguments, don't visit an omitted lifetime (so we don't add an elided lifetime for something that will be generic)
-                    if( (!e->m_lifetimes.empty() && e->m_lifetimes.front().binding == HIR::LifetimeRef::UNKNOWN) && (m_cur_params && m_create_elided) ) {
-                    }
-                    else {
-                        for(auto& lft : e->m_lifetimes)
-                            visit_lifetime(sp, lft);
+                    for(const auto& l : e->m_use.m_lifetimes) {
+                        ASSERT_BUG(sp, l.binding != HIR::LifetimeRef::UNKNOWN, "Unbound lifetime? - " << l);
                     }
                 }
                 if(pushed) {
@@ -747,8 +791,8 @@ namespace
                                 add_lifetime(tep->m_lifetime);
                                 // Push HRLs?
                             }
-                            if(const auto* tep = ty.data().opt_ErasedType()) {
-                                for(const auto& lft : tep->m_lifetimes) {
+                            if(auto* tep = ty.data().opt_ErasedType()) {
+                                for(const auto& lft : tep->m_lifetime_bounds) {
                                     add_lifetime(lft);
                                 }
                             }
@@ -1079,7 +1123,7 @@ namespace
                             // Push HRLs?
                         }
                         if(auto* tep = ty.data_mut().opt_ErasedType()) {
-                            for(const auto& lft : tep->m_lifetimes) {
+                            for(const auto& lft : tep->m_lifetime_bounds) {
                                 add_lifetime(lft);
                             }
                         }

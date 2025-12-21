@@ -2232,18 +2232,22 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             Resolve_Absolute_Lifetime(context, type.span(), lft);
         }
     TU_ARMA(ErasedType, e) {
-        for(auto& trait : e.traits) {
+        for(auto& trait : e->traits) {
             context.push( trait.hrbs );
             Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, *trait.path);
             context.pop(trait.hrbs);
         }
-        for(auto& trait : e.maybe_traits) {
+        for(auto& trait : e->maybe_traits) {
             context.push( trait.hrbs );
             Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, *trait.path);
             context.pop(trait.hrbs);
         }
-        for(auto& lft : e.lifetimes)
+        for(auto& lft : e->lifetimes) {
             Resolve_Absolute_Lifetime(context, type.span(), lft);
+        }
+        if(e->use) {
+            Resolve_Absolute_PathParams(context, type.span(), *e->use);
+        }
         }
     }
 }

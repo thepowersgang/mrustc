@@ -157,7 +157,11 @@ TypeRef TypeRef::clone() const
     _COPY(Generic)
     _CLONE(Path, std::make_unique<AST::Path>(*old))
     _COPY(TraitObject)
-    _COPY(ErasedType)
+    _CLONE(ErasedType, std::make_unique<Type_ErasedType>(Type_ErasedType {
+        old->traits, old->maybe_traits, old->lifetimes,
+        old->use ? box$(*old->use) : ::std::unique_ptr<AST::PathParams>(),
+        old->is_edition_2024_or_later
+    }))
     #undef _COPY
     #undef _CLONE
     }
@@ -238,9 +242,14 @@ Ordering TypeRef::ord(const TypeRef& x) const
         return ::ord(ent.traits, x_ent.traits);
         ),
     (ErasedType,
-        ORD(ent.traits, ent.traits);
-        ORD(ent.maybe_traits, ent.maybe_traits);
-        ORD(ent.lifetimes, ent.lifetimes);
+        ORD(ent->traits, x_ent->traits);
+        ORD(ent->maybe_traits, x_ent->maybe_traits);
+        ORD(ent->lifetimes, x_ent->lifetimes);
+        ORD(ent->use != 0, x_ent->use != 0);
+        if( ent->use ) {
+            ORD(*ent->use, *x_ent->use);
+        }
+        ORD(ent->is_edition_2024_or_later, x_ent->is_edition_2024_or_later);
         return OrdEqual;
         )
     )
@@ -360,22 +369,25 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
     _(ErasedType,
         os << "impl ";
         bool needs_plus = false;
-        for( const auto& it : ent.traits ) {
+        for( const auto& it : ent->traits ) {
             if(needs_plus)  os << "+";
             needs_plus = true;
             os << it.hrbs;
             it.path->print_pretty(os, true, is_debug);
         }
-        for( const auto& it : ent.maybe_traits ) {
+        for( const auto& it : ent->maybe_traits ) {
             if(needs_plus)  os << "+";
             needs_plus = true;
             os << it.hrbs;
             it.path->print_pretty(os, true, is_debug);
         }
-        for( const auto& it : ent.lifetimes ) {
+        for( const auto& it : ent->lifetimes ) {
             if(needs_plus)  os << "+";
             needs_plus = true;
             os << it;
+        }
+        if( ent->use ) {
+            os << "use" << *ent->use;
         }
         os << "";
         )

@@ -113,6 +113,7 @@ struct TyVisitor
             for(auto& trait : e.m_traits)
                 if( visit_trait_path(trait) )
                     return true;
+            visit_path_params(e.m_use);
             TU_MATCH_HDRA( (e.m_inner), {)
             TU_ARMA(Fcn, ee) {
                 if( visit_path(ee.m_origin) ) {
@@ -270,7 +271,7 @@ struct TyVisitorMonomorphNeeded: TyVisitor<WConst>
             if( ty.data().is_TraitObject() && is_generic_lft(ty.data().as_TraitObject().m_lifetime) )
                 return true;
             if( ty.data().is_ErasedType() ) {
-                for( const auto& l : ty.data().as_ErasedType().m_lifetimes ) {
+                for( const auto& l : ty.data().as_ErasedType().m_lifetime_bounds ) {
                     if( is_generic_lft(l) )
                         return true;
                 }
@@ -352,7 +353,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         for(const auto& trait : e.m_traits)
             traits.push_back( this->monomorph_traitpath(sp, trait, allow_infer, false) );
         ::std::vector< ::HIR::LifetimeRef>  lfts;
-        for(const auto& lft : e.m_lifetimes)
+        for(const auto& lft : e.m_lifetime_bounds)
             lfts.push_back(monomorph_lifetime(sp, lft));
 
         HIR::TypeData_ErasedType_Inner  inner;
@@ -378,7 +379,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
             e.m_is_sized,
             mv$(traits),
             mv$(lfts),
-            mv$(inner)
+            mv$(inner),
+            this->monomorph_path_params(sp, e.m_use, allow_infer),
+            e.m_use_present
             } );
         }
     TU_ARMA(Array, e) {

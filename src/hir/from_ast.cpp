@@ -1076,19 +1076,19 @@ namespace {
         return ::HIR::TypeRef( ::HIR::TypeData::make_TraitObject( mv$(v) ) );
         }
     TU_ARMA(ErasedType, e) {
-        ASSERT_BUG(ty.span(), e.traits.size() > 0, "ErasedType with no traits");
+        ASSERT_BUG(ty.span(), e->traits.size() > 0, "ErasedType with no traits");
 
         // TODO: There can be associated type bounds, those need to be propagated
 
         ::std::vector< ::HIR::TraitPath>    traits;
-        for(const auto& t : e.traits)
+        for(const auto& t : e->traits)
         {
             DEBUG("t = " << *t.path);
             // TODO: Handle ATY bounds
             traits.push_back( LowerHIR_TraitPath(ty.span(), *t.path, t.hrbs, /*allow_aty_trait_bounds=*/true) );
         }
         bool is_sized = true;
-        for(const auto& t : e.maybe_traits) {
+        for(const auto& t : e->maybe_traits) {
             auto tp = LowerHIR_TraitPath(ty.span(), *t.path, t.hrbs, /*allow_aty_trait_bounds=*/true);
             if( tp.m_path.m_path == path_Sized ) {
                 is_sized = false;
@@ -1098,16 +1098,8 @@ namespace {
             }
         }
         std::vector<::HIR::LifetimeRef>  lfts;
-        if( e.lifetimes.size() == 0 )
-        {
-            // NOTE: This signals to the lifetime elision code
-            //lfts.push_back(::HIR::LifetimeRef());
-        }
-        else
-        {
-            for(const auto& lft : e.lifetimes) {
-                lfts.push_back( LowerHIR_LifetimeRef(lft) );
-            }
+        for(const auto& lft : e->lifetimes) {
+            lfts.push_back( LowerHIR_LifetimeRef(lft) );
         }
         ::HIR::TypeData_ErasedType_Inner    inner;
         if( g_impl_trait_source.path ) {
@@ -1126,7 +1118,13 @@ namespace {
             is_sized,
             mv$(traits),
             mv$(lfts),
-            mv$(inner)
+            mv$(inner),
+            e->use
+            ? LowerHIR_PathParams(ty.span(), *e->use, false)
+            : HIR::PathParams(),
+            e->use
+            ? ::HIR::TypeData_ErasedType::Use::Present
+            : (e->is_edition_2024_or_later ? ::HIR::TypeData_ErasedType::Use::Omitted2024 : ::HIR::TypeData_ErasedType::Use::OmittedOld)
             } );
         }
     TU_ARMA(Function, e) {

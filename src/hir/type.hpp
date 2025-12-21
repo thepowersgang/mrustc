@@ -17,6 +17,7 @@
 #include "literal.hpp"
 #include "generic_ref.hpp"
 #include "generic_params.hpp"
+#include <memory>
 
 constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
 constexpr const char* GENERATOR_PATH_PREFIX = "generator#";
@@ -187,8 +188,19 @@ struct TypeData_ErasedType
 {
     bool m_is_sized;
     ::std::vector< ::HIR::TraitPath>    m_traits;
-    ::std::vector< ::HIR::LifetimeRef>  m_lifetimes;
+    ::std::vector< ::HIR::LifetimeRef>  m_lifetime_bounds;
     TypeData_ErasedType_Inner   m_inner;
+    /// Contents of the `use<...>` annotation/bound
+    ::HIR::PathParams  m_use;
+    /// Indicates if `use<...>` was present (and what edition)
+    enum class Use {
+        /// @brief Omitted, but pre-2024 edition: Uses types/lifetimes present in bounds
+        OmittedOld,
+        /// @brief Omitted, 2024 edition and later: Uses all in-scope types/lifetimes
+        Omitted2024,
+        /// @brief `use<...>` was present
+        Present,
+    } m_use_present;
 };
 struct TypeData_FunctionPointer
 {

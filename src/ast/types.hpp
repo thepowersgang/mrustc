@@ -29,6 +29,7 @@ class Expr;
 class LifetimeParam;
 
 class Path;
+class PathParams;
 class MacroInvocation;
 }
 class TypeRef;
@@ -100,6 +101,16 @@ struct Type_TraitPath
 
     Ordering ord(const Type_TraitPath& x) const;
 };
+struct Type_ErasedType
+{
+    
+    ::std::vector<Type_TraitPath>   traits;
+    ::std::vector<Type_TraitPath>   maybe_traits;
+    ::std::vector<AST::LifetimeRef> lifetimes;
+    ::std::unique_ptr<AST::PathParams> use;
+    /// Was this `impl` from 2024 or later edition? This changes the behaviour if `use` is not present
+    bool is_edition_2024_or_later;
+};
 
 TAGGED_UNION(TypeData, None,
     (None, struct { }),
@@ -144,11 +155,7 @@ TAGGED_UNION(TypeData, None,
         ::std::vector<Type_TraitPath>   traits;
         ::std::vector<AST::LifetimeRef> lifetimes;
         }),
-    (ErasedType, struct {
-        ::std::vector<Type_TraitPath>   traits;
-        ::std::vector<Type_TraitPath>   maybe_traits;
-        ::std::vector<AST::LifetimeRef> lifetimes;
-        })
+    (ErasedType, std::unique_ptr<Type_ErasedType>)
     );
 
 /// A type

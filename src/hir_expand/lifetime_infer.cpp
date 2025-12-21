@@ -677,11 +677,12 @@ namespace {
                     this->equate_pps(sp, l.m_markers[i].m_params, r.m_markers[i].m_params);
                 }
             TU_ARMA(ErasedType, l, r) {
-                for(size_t i = 0; i < l.m_lifetimes.size(); i++)
-                    this->equate_lifetimes(sp, l.m_lifetimes[i], r.m_lifetimes[i]);
+                for(size_t i = 0; i < l.m_lifetime_bounds.size(); i++)
+                    this->equate_lifetimes(sp, l.m_lifetime_bounds[i], r.m_lifetime_bounds[i]);
                 ASSERT_BUG(sp, l.m_traits.size() == r.m_traits.size(), "");
                 for(size_t i = 0; i < l.m_traits.size(); i ++)
                     this->equate_traitpath(sp, l.m_traits[i], r.m_traits[i]);
+                this->equate_pps(sp, l.m_use, r.m_use);
                 TU_MATCH_HDRA( (l.m_inner, r.m_inner),{ )
                 TU_ARMA(Known, l_ie, r_ie) {
                     this->equate_types(sp, l_ie, r_ie);
@@ -1273,7 +1274,7 @@ namespace {
                             // TODO: If the above didn't return anything, then assign a "only this function" liftime
                         }
                         else if( const auto* e = t.data().opt_ErasedType() ) {
-                            for(const auto& lft : e->m_lifetimes)
+                            for(const auto& lft : e->m_lifetime_bounds)
                                 equate_lifetime(lft);
                             //if( e->m_trait.m_hrls ) {
                             //    push_hrls(*e->m_trait.m_hrls);
@@ -2326,10 +2327,10 @@ namespace {
                     struct V: public HIR::Visitor {
                         LifetimeInferState& state;
                         const Span& sp;
-                        const std::vector<HIR::LifetimeRef>& dst_lfts;
+                        const ThinVector<HIR::LifetimeRef>& dst_lfts;
                         std::vector<HIR::PathParams>    m_hrls;
 
-                        V( LifetimeInferState& state, const Span& sp, const std::vector<HIR::LifetimeRef>& dst_lfts)
+                        V( LifetimeInferState& state, const Span& sp, const ThinVector<HIR::LifetimeRef>& dst_lfts)
                             : state(state)
                             , sp(sp)
                             , dst_lfts(dst_lfts)
@@ -2337,12 +2338,15 @@ namespace {
                         }
 
                         void equate_lifetime(const HIR::LifetimeRef& src) {
-                            if( src.is_hrl() ) {
+                            const auto& src_real = state.get_final_lft(sp, src);
+                            if( src_real.is_hrl() ) {
                                 ASSERT_BUG(sp, m_hrls.size() > 0, "Encountered HRL with no HRL in the stack");
                                 //parent.equate_lifetimes(sp, dst_lft, m_hrls.back().m_lifetimes[src.binding & 0xFF]);
                             }
+                            else if( src_real.binding == HIR::LifetimeRef::STATIC ) {
+                                // Ignore `'static`, it's always valid
+                            }
                             else {
-                                const auto& src_real = state.get_final_lft(sp, src);
                                 for(const auto& dst_lft : dst_lfts) {
                                     std::vector<HIR::LifetimeRef>   fails;
                                     if( state.check_lifetimes(sp, dst_lft, src_real, fails) )
@@ -2376,7 +2380,7 @@ namespace {
                                     // TODO: If the above didn't return anything, then assign a "only this function" liftime
                                 }
                                 else if( const auto* e = t.data().opt_ErasedType() ) {
-                                    for(const auto& lft : e->m_lifetimes) {
+                                    for(const auto& lft : e->m_lifetime_bounds) {
                                         DEBUG("Erased " << t);
                                         equate_lifetime(lft);
                                     }
@@ -2411,7 +2415,7 @@ namespace {
                                 m_hrls.pop_back();
                             }
                         }
-                    } v { state, ep->m_span, tpl.data().as_ErasedType().m_lifetimes };
+                    } v { state, ep->m_span, tpl.data().as_ErasedType().m_use.m_lifetimes };
 
                     DEBUG("Checking erased: " << ep.m_erased_types[e->m_index]);
                     DEBUG("vs " << tpl);

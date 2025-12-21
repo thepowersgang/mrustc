@@ -61,6 +61,7 @@ void Expand_Expr(const ExpandState& es, ::AST::ExprNodeP& node);
 void Expand_Expr(const ExpandState& es, AST::Expr& node);
 void Expand_Expr(const ExpandState& es, ::std::shared_ptr<AST::ExprNode>& node);
 void Expand_Path(const ExpandState& es, ::AST::Module& mod, ::AST::Path& p);
+void Expand_PathParams(const ExpandState& es, ::AST::Module& mod, ::AST::PathParams& params);
 
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
     g_decorators.insert(::std::make_pair( RcString::new_interned(name), mv$(handler) )); 
@@ -670,10 +671,16 @@ void Expand_Type(const ExpandState& es, ::AST::Module& mod, ::TypeRef& ty)
         }
         }
     TU_ARMA(ErasedType, e) {
-        for(auto& p : e.traits)
-        {
+        for(auto& p : e->traits) {
             // TODO: p.hrbs?
             Expand_Path(es, mod,  *p.path);
+        }
+        for(auto& p : e->maybe_traits) {
+            // TODO: p.hrbs?
+            Expand_Path(es, mod,  *p.path);
+        }
+        if( e->use ) {
+            Expand_PathParams(es, mod, *e->use);
         }
         }
     }

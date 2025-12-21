@@ -299,10 +299,11 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
                 os << "+";
             os << tr;
         }
-        if( !e.m_lifetimes.empty() ) {
-            for(const auto& lft : e.m_lifetimes)
+        if( !e.m_lifetime_bounds.empty() ) {
+            for(const auto& lft : e.m_lifetime_bounds)
                 os << "+" << lft;
         }
+        os << "+use" << e.m_use;
         os << "/*";
         TU_MATCH_HDRA( (e.m_inner), {)
         TU_ARMA(Known, ee) {
@@ -1255,8 +1256,10 @@ HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
         return ::HIR::TypeRef( TypeData::make_ErasedType({
             e.m_is_sized,
             mv$(traits),
-            e.m_lifetimes,
-            mv$(inner)
+            e.m_lifetime_bounds,
+            mv$(inner),
+            e.m_use.clone(),
+            e.m_use_present
             }) );
         }
     TU_ARMA(Array, e) {

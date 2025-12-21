@@ -393,10 +393,12 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
                 os << "+";
             print_traitpath(tr);
         }
-        if( !e.m_lifetimes.empty() ) {
-            for(const auto& lft : e.m_lifetimes)
+        if( !e.m_lifetime_bounds.empty() ) {
+            for(const auto& lft : e.m_lifetime_bounds)
                 os << "+" << lft;
         }
+        os << "+use";
+        this->print_pathparams(os, e.m_use, outer_stack);
         os << "/*";
         TU_MATCH_HDRA( (e.m_inner), {)
         TU_ARMA(Fcn, ee) {

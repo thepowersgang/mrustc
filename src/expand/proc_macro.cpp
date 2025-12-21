@@ -855,18 +855,29 @@ namespace {
             (ErasedType,
                 m_pmi.send_rword("impl");
                 bool needs_plus = false;
-                for(const auto& t : te.traits)
+                for(const auto& t : te->traits)
                 {
                     if(needs_plus)  m_pmi.send_symbol("+");
                     needs_plus = true;
                     this->visit_hrbs(t.hrbs);
                     this->visit_path(*t.path);
                 }
-                for(const auto& lft : te.lifetimes) {
+                for(const auto& t : te->maybe_traits)
+                {
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
+                    m_pmi.send_symbol("?");
+                    this->visit_hrbs(t.hrbs);
+                    this->visit_path(*t.path);
+                }
+                for(const auto& lft : te->lifetimes) {
                     if(needs_plus)  m_pmi.send_symbol("+");
                     needs_plus = true;
                     m_pmi.send_symbol("+");
                     this->visit_lifetime(lft);
+                }
+                if( te->use ) {
+                    TODO(Span(), "`use`");
                 }
                 )
             )

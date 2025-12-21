@@ -531,7 +531,7 @@ namespace {
                                 m.monomorph_traitpath(sp, trait, false)
                                 }));
                         }
-                        for(const auto& lft : te->m_lifetimes)
+                        for(const auto& lft : te->m_lifetime_bounds)
                         {
                             m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
                                 new_ty.clone(),

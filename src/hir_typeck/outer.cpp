@@ -403,7 +403,7 @@ namespace {
             // If an ErasedType is encountered, check if it has an origin set.
             if(auto* e = ty.data_mut().opt_ErasedType())
             {
-                for(auto& lft : e->m_lifetimes)
+                for(auto& lft : e->m_lifetime_bounds)
                     visit_lifetime(sp, lft);
             }
         }
