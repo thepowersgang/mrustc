@@ -583,9 +583,11 @@ namespace
                     switch(e->m_use_present)
                     {
                     case ::HIR::TypeData_ErasedType::Use::Present:
+                        DEBUG("ErasedType use present");
                         break;
                     case ::HIR::TypeData_ErasedType::Use::Omitted2024:
                         // Add all in-scope generics
+                        DEBUG("ErasedType use omitted: 2024Edition");
                         if( m_resolve.m_impl_generics ) {
                             auto p = m_resolve.m_impl_generics->make_nop_params(0);
                             for(const auto& l : p.m_lifetimes) {
@@ -602,6 +604,7 @@ namespace
                         }
                         break;
                     case ::HIR::TypeData_ErasedType::Use::OmittedOld: {
+                        DEBUG("ErasedType use omitted: Older Editions");
                         // If there is no lifetime assigned, then grab all mentioned lifetimes?
                         struct V: public HIR::Visitor {
                             std::set<HIR::LifetimeRef>  lfts;
@@ -991,6 +994,13 @@ namespace
             }
 
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
+        }
+        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
+        {
+            auto ty_self = ::HIR::TypeRef::new_self();
+            m_resolve.m_self_type = &ty_self;
+            auto _ = m_resolve.set_impl_generics(/*impl.m_type,*/ item.m_params);
+            ::HIR::Visitor::visit_trait(p, item);
         }
 
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
