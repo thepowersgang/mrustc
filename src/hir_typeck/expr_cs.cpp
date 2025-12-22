@@ -6896,7 +6896,23 @@ namespace
                 }
                 if( found_ty && !failed ) {
                     DEBUG("- Bounded and possible type - " << *found_ty);
-                    context.equate_types(sp, ty_l, *found_ty);
+                    // Replace ivars in this type with new ivars (TODO: only if it's a fuzzy match)
+                    auto t = clone_ty_with(sp, *found_ty, [&](const HIR::TypeRef& t1, HIR::TypeRef& out)->bool {
+                        if( t1.data().is_Infer() ) {
+                            const auto& t = context.get_type(t1);
+                            if( t.data().is_Infer() ) {
+                                out = context.m_ivars.new_ivar_tr();
+                            }
+                            else {
+                                out = t.clone();
+                            }
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                    });
+                    context.equate_types(sp, ty_l, t);
                     return true;
                 }
             }
