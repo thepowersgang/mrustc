@@ -390,24 +390,22 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
     Token   tok;
 
     do {
-        GET_TOK(tok, lex);
-        if( tok.type() == TOK_BRACE_OPEN ) {
+        if( lex.lookahead(0) == TOK_BRACE_OPEN || lex.lookahead(0) == TOK_SEMICOLON ) {
             break;
         }
 
-        if( tok.type() == TOK_LIFETIME )
+        if( lex.getTokenIf(TOK_LIFETIME, tok) )
         {
-            auto lhs = get_LifetimeRef(lex, mv$(tok));
+            auto lhs = get_LifetimeRef(lex, std::move(tok));
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             do {
                 GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
                 auto rhs = get_LifetimeRef(lex, mv$(tok));
                 params.add_bound( AST::GenericBound::make_Lifetime({lhs, rhs}) );
-            } while( GET_TOK(tok, lex) == TOK_PLUS );
-            PUTBACK(tok, lex);
+            } while( lex.getTokenIf(TOK_PLUS) );
         }
         // Higher-ranked types/lifetimes
-        else if( tok.type() == TOK_RWORD_FOR )
+        else if( lex.getTokenIf(TOK_RWORD_FOR) )
         {
             auto hrbs = Parse_HRB(lex);
 
@@ -417,13 +415,11 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
         }
         else
         {
-            PUTBACK(tok, lex);
             TypeRef type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             Parse_TypeBound(lex, params, mv$(type));
         }
-    } while( GET_TOK(tok, lex) == TOK_COMMA );
-    PUTBACK(tok, lex);
+    } while( lex.getTokenIf(TOK_COMMA) );
 }
 
 // Parse a single function argument
