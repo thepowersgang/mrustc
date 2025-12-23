@@ -841,7 +841,7 @@ namespace {
                     auto& impl_fcn = e.second.data;
                     const auto& trait_fcn = v_it->second.as_Function();
 
-                    auto fcn_params = impl_fcn.m_params.make_nop_params(1);
+                    auto fcn_params = trait_fcn.m_params.make_nop_params(1);
                     MonomorphStatePtr   ms { &impl.m_type, &impl.m_trait_args, &fcn_params };
                     HIR::TypeRef    tmp;
                     auto maybe_monomorph = [&](const HIR::TypeRef& ty)->const HIR::TypeRef& {
