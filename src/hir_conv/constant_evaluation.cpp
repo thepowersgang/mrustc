@@ -1112,7 +1112,7 @@ namespace MIR { namespace eval {
                     try
                     {
                         item.m_value_generated = true;
-                        item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone());
+                        item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone(), std::move(const_ms));
                         item.m_value_generated = true;
                     }
                     catch(const Defer& )
@@ -3148,6 +3148,7 @@ namespace HIR {
             if( resolve.m_impl_generics ) {
                 ms.pp_impl = &(nop_params_impl = resolve.m_impl_generics->make_nop_params(0));
             }
+            DEBUG("(was empty) ms = " << ms);
         }
 
         if( mir ) {
