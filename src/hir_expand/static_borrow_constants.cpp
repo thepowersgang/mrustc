@@ -159,8 +159,9 @@ namespace static_borrow_constants {
                     return v == 0;
                     })();
 
-                // Not generic (can't check for interior mutability)
-                if( !is_zst && monomorphise_type_needed(value_ptr->m_res_type) )
+                // TODO: Check for interior mutability (or contained generic types in the VALUE)
+                // - Use a different visitor to check for imut or generics within composites
+                if( false && !is_zst && monomorphise_type_needed(value_ptr->m_res_type) )
                 {
                     DEBUG("-- " << value_ptr->m_res_type << " is generic");
                 }
@@ -188,7 +189,7 @@ namespace static_borrow_constants {
                 // TODO: It would be nice if this could see through indexing/fields, but indexing needs a constant index
                 if( dynamic_cast<::HIR::ExprNode_PathValue*>(node.m_value.get()) && node.m_value->m_usage == HIR::ValueUsage::Borrow )
                 {
-                    m_is_constant =  true;
+                    m_is_constant = true;
                 }
             }
 
