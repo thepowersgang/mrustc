@@ -3747,6 +3747,10 @@ void Context::equate_types_assoc(
         DEBUG("(DUPLICATE " << a << ")");
         return ;
     }
+    if( impl_ty.data().is_Path() && impl_ty.data().as_Path().path.m_data.is_UfcsKnown() ) {
+        auto& i = impl_ty.data().as_Path().path.m_data.as_UfcsKnown();
+        this->add_trait_bound(sp, i.type, i.trait.m_path, i.trait.m_params.clone());
+    }
     this->link_assoc.push_back(Associated {
         this->next_rule_idx ++,
         sp,

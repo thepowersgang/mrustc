@@ -398,12 +398,6 @@ namespace resolve_ufcs {
                     if( e->type == tr ) {
                         DEBUG(" - Match");
                         if( locate_in_trait_and_set(pc, e->trait.m_path, m_crate.get_trait_by_path(sp, e->trait.m_path.m_path),  pd) ) {
-                            if( m_in_expr )
-                            {
-                                auto s = pd.as_UfcsKnown().trait.m_params.m_types.size();
-                                pd.as_UfcsKnown().trait.m_params.m_types.resize(0);
-                                pd.as_UfcsKnown().trait.m_params.m_types.resize(s);
-                            }
                             return true;
                         }
                     }
@@ -412,7 +406,7 @@ namespace resolve_ufcs {
             }
             return false;
         }
-        static ::HIR::Path::Data get_ufcs_known(::HIR::Visitor::PathContext pc, ::HIR::Path::Data::Data_UfcsUnknown e,  ::HIR::GenericPath trait_path_real, const ::HIR::Trait& trait)
+        ::HIR::Path::Data get_ufcs_known(::HIR::Visitor::PathContext pc, ::HIR::Path::Data::Data_UfcsUnknown e,  ::HIR::GenericPath trait_path_real, const ::HIR::Trait& trait) const
         {
             struct MonomorphEraseHrls: public Monomorphiser {
                 ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
@@ -440,9 +434,13 @@ namespace resolve_ufcs {
                     e.params.m_lifetimes.resize( aty.m_generics.m_lifetimes.size() );
                 }
             }
-            //auto s = trait_path.m_params.m_types.size();
-            //trait_path.m_params.m_types.clear();
-            //trait_path.m_params.m_types.resize(s);
+            // TODO: Only do this when there's multiple options?
+            if( m_in_expr )
+            {
+                auto s = trait_path.m_params.m_types.size();
+                trait_path.m_params.m_types.resize(0);
+                trait_path.m_params.m_types.resize(s);
+            }
             return ::HIR::Path::Data::make_UfcsKnown({ mv$(e.type), mv$(trait_path), mv$(e.item), mv$(e.params)} );
         }
         static bool locate_item_in_trait(::HIR::Visitor::PathContext pc, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
