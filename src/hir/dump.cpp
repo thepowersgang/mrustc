@@ -456,7 +456,7 @@ namespace {
                     m_os << " if ";
                     for(auto& c : arm.m_guards)
                     {
-                        if( &c == &arm.m_guards.front() )
+                        if( &c != &arm.m_guards.front() )
                             m_os << " && ";
                         m_os << "let " << c.pat << " = ";
                         this->visit_node_ptr(c.val);
