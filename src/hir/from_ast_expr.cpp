@@ -560,82 +560,7 @@ struct LowerHIR_ExprNode_Visitor:
         }
     }
     virtual void visit(::AST::ExprNode_WhileLet& v) override {
-
-#if 0
-        {
-            ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-
-            // - Matches pattern - Run inner code
-            arms.push_back(::HIR::ExprNode_Match::Arm {
-                ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
-                ::HIR::ExprNodeP(),
-                lower(v.m_code)
-                });
-            // - Matches anything else - break
-            arms.push_back(::HIR::ExprNode_Match::Arm {
-                ::make_vec1( ::HIR::Pattern() ),
-                ::HIR::ExprNodeP(),
-                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl( v.span(), v.m_label.name, false) )
-                });
-
-            m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
-                v.m_label.name,
-                ::HIR::ExprNodeP(new ::HIR::ExprNode_Match( v.span(),
-                    lower(v.m_cond),
-                    mv$(arms)
-                ))
-            ) );
-        }
-#else
-        TODO(v.span(), "while let (chained)");
-#endif
-
-        // Iterate the constructed loop and determine if there are any `break` statements pointing to it
-        {
-            struct LoopVisitor:
-                public ::HIR::ExprVisitorDef
-            {
-                const RcString& top_label;
-                bool    top_is_broken;
-                ::std::vector< const RcString*>   name_stack;
-
-                LoopVisitor(const RcString& top_label):
-                    top_label(top_label),
-                    top_is_broken(false),
-                    name_stack()
-                {}
-
-                void visit(::HIR::ExprNode_Loop& node) override {
-                    bool push = !node.m_require_label;  // Ignore any loops that require a targeted break
-                    if( push ) {
-                        this->name_stack.push_back( &node.m_label );
-                    }
-                    ::HIR::ExprVisitorDef::visit(node);
-                    if( push ) {
-                        this->name_stack.pop_back( );
-                    }
-                }
-                void visit(::HIR::ExprNode_LoopControl& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-
-                    if( node.m_continue ) {
-                    }
-                    else {
-                        for( auto it = this->name_stack.rbegin(); it != this->name_stack.rend(); ++ it )
-                        {
-                            if( node.m_label == "" || node.m_label == **it )
-                                return ;
-                        }
-                        if( node.m_label == "" || node.m_label == this->top_label ) {
-                            this->top_is_broken = true;
-                        }
-                        else {
-                            // break is for a higher loop
-                        }
-                    }
-                }
-            };
-        }
+        TODO(v.span(), "`while let` left sugared");
     }
     virtual void visit(::AST::ExprNode_Match& v) override {
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
@@ -680,32 +605,7 @@ struct LowerHIR_ExprNode_Visitor:
             ));
     }
     virtual void visit(::AST::ExprNode_IfLet& v) override {
-#if 0
-        ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-
-        std::vector<HIR::Pattern>   patterns;
-        patterns.reserve(v.m_patterns.size());
-        for(const auto& pat : v.m_patterns)
-            patterns.push_back( LowerHIR_Pattern(pat) );
-        // - Matches pattern - Take true branch
-        arms.push_back(::HIR::ExprNode_Match::Arm {
-            mv$(patterns),
-            ::HIR::ExprNodeP(),
-            lower(v.m_true)
-            });
-        // - Matches anything else - take false branch
-        arms.push_back(::HIR::ExprNode_Match::Arm {
-            ::make_vec1( ::HIR::Pattern() ),
-            ::HIR::ExprNodeP(),
-            v.m_false ? lower(v.m_false) : ::HIR::ExprNodeP(new ::HIR::ExprNode_Tuple(v.span(), {}))
-            });
-        m_rv.reset( new ::HIR::ExprNode_Match( v.span(),
-            lower(v.m_value),
-            mv$(arms)
-            ));
-#else
-TODO(v.span(), "while let (chained)");
-#endif
+        TODO(v.span(), "`if let` left sugared");
     }
 
     virtual void visit(::AST::ExprNode_WildcardPattern& v) override {
