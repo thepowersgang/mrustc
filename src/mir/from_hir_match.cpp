@@ -378,6 +378,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // Generate `if` guard and destructuring code
         // - Prefers to use one copy (if all rules have the same binding set)
         {
+            // Do all rules in this `match` arm have the same set of bindings?
+            // - Checks in `arm_rules`, which has all arms in it
             bool same_bindings = std::all_of(arm_rules.begin() + first_arm_rule_idx+1, arm_rules.end(),
                     [&](const PatternRuleset& r)->bool{ return r.m_bindings == arm_rules[first_arm_rule_idx].m_bindings; }
                     );
@@ -398,22 +400,27 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
                     bool is_cond_bb_set = false;
 
-                    // These are ANDs
+                    // The guards are chanined, and all must match for the arm to be taken
+                    // I.e. These are ANDs
                     for( auto& c : arm.m_guards )
                     {
                         // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
-
                         conv.visit_node_ptr( c.val );
                         MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
+                        DEBUG("GUARD " << c.pat << " = " << match_cond_val);
 
+                        /// Block for when this guard successfully matches
                         auto destructure = builder.new_bb_unlinked();
 
+                        // Generate simplified rules from patterns
                         auto pat_builder = PatternRulesetBuilder { builder.resolve() };
                         pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);
 
-                        // These are ORs
+                        /// Block for when a pattern fails to match
                         auto local_false = builder.new_bb_unlinked();
+                        /// Was an arm seen that was possible to match? (indicates that `local_false` has been set as the current block)
                         bool had_possible = false;
+                        // These are ORs - multiple options for this guard pattern to match
                         for(auto& sr : pat_builder.m_rulesets)
                         {
                             DEBUG("sr.m_rules = " << sr.m_rules);
@@ -441,21 +448,23 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                             // No patterns as output, so `false` is unreachable?
                         }
                         if( had_possible ) {
-                            // Currently in `false` from the last attempt, need to jump the global false (ensuring that it exists)
+                            // Currently in `local_false`
+                            DEBUG("GUARD: Clean up and jump to `cond_false`");
+                            builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
                             builder.end_block(::MIR::Terminator::make_Goto(cond_false));
                         }
-                        DEBUG("cond_false = " << cond_false);
+                        else {
+                            // TODO: What does it mean if there's no possible arms?
+                        }
 
                         ASSERT_BUG(node.span(), !builder.block_active(), "Block still active?");
-                        builder.set_cur_block(cond_false);
-                        cond_false = builder.new_bb_unlinked();
-                        builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
-                        builder.end_block(::MIR::Terminator::make_Goto(cond_false));
-
                         builder.set_cur_block(destructure);
                     }
-                    builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
-                    builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
+                    // Now we're in BB`destructure` from the last loop
+
+                    // End scopes, releasing temporaries
+                    builder.terminate_scope( arm.m_code->span(), std::move(tmp_scope) );
+                    builder.terminate_scope( arm.m_code->span(), std::move(freeze_scope) );
                 }
 
                 conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
@@ -465,6 +474,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 };
             if( same_bindings )
             {
+                // If the patterns share the same set of bindings (same paths), the `condition` code can be shared
                 TRACE_FUNCTION_FR("Bindings (common)", "Bindings (common)");
                 MIR::BasicBlockId cond_false_block = ~0u;
                 auto entry_block = builder.new_bb_unlinked();
@@ -482,6 +492,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             }
             else
             {
+                // Different paths to the bound varibles, the condition code needs to be specialised for each pattern
                 for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
                 {
                     TRACE_FUNCTION_FR("Bindings (AR" << i << ")", "Bindings (AR" << i << ")");
