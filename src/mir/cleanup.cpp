@@ -135,9 +135,11 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             auto it = hir_const.m_monomorph_cache.find(path);
             if( it == hir_const.m_monomorph_cache.end() )
             {
-                // TODO: Emit a bug if the cache is empty? (or if this is in the post-monomorph pass)
+                // Emit a bug if the cache is empty? (or if this is in the post-monomorph pass)
                 if( g_is_post_monomorph && !monomorphise_path_needed(path) ) {
-                    MIR_BUG(state, "Constant with Defer literal and no cached monomorphisation - " << path);
+                    //MIR_BUG(state, "Constant with Defer literal and no cached monomorphisation - " << path);
+                    // NOTE: Dead code can trigger this :(
+                    // - There's a check in hir/serialise.cpp that makes sure that this doesn't reach the saved MIR
                 }
                 DEBUG("Generic, but no cached monomorphisation: " << hir_const.m_monomorph_cache.size() << " entries");
                 return nullptr;
