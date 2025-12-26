@@ -1163,7 +1163,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         ),
     (Box, {
         const auto& v = p.data().as_Box();
-        m_os << "& ";
+        m_os << "box ";
         print_pattern(*v.sub, is_refutable);
         }),
     (Ref, {
@@ -1196,7 +1196,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             print_pattern(sp.pat, is_refutable);
             m_os << ",";
         }
-        if( v.is_exhaustive ) {
+        if( !v.is_exhaustive ) {
             m_os << "..";
         }
         m_os << "}";
