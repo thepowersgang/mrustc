@@ -6503,6 +6503,8 @@ void MIR_OptimiseCrate(::HIR::Crate& crate, bool do_minimal_optimisation)
             else {
                 MIR_Optimise(res, p, mir, args, ty);
             }
+            // Run cleanup to handle now-monomoprhised inlined constants
+            MIR_Cleanup(res, p, mir, args, ty);
         }
         };
     ov.visit_crate(crate);

@@ -18,6 +18,7 @@ extern void MIR_CheckCrate_Full(/*const*/ ::HIR::Crate& crate);
 extern void MIR_BorrowCheck_Crate(::HIR::Crate& crate);
 
 extern void MIR_CleanupCrate(::HIR::Crate& crate);
+extern void MIR_Cleanup_SetPostMonomorph();
 extern void MIR_OptimiseCrate(::HIR::Crate& crate, bool minimal_optimisations);
 extern void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list, bool post_save);
 

@@ -19,6 +19,11 @@
 #include <trans/target.hpp>
 #include <algorithm>
 
+namespace {
+    /// @brief Used to tell the constant replacement code that replacements should be available
+    bool g_is_post_monomorph = false;
+}
+
 class MirMutator
 {
     ::MIR::Function& m_fcn;
@@ -131,7 +136,10 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             if( it == hir_const.m_monomorph_cache.end() )
             {
                 // TODO: Emit a bug if the cache is empty? (or if this is in the post-monomorph pass)
-                //MIR_BUG(state, "Constant with Defer literal and no cached monomorphisation - " << path);
+                if( g_is_post_monomorph && !monomorphise_path_needed(path) ) {
+                    MIR_BUG(state, "Constant with Defer literal and no cached monomorphisation - " << path);
+                }
+                DEBUG("Generic, but no cached monomorphisation: " << hir_const.m_monomorph_cache.size() << " entries");
                 return nullptr;
             }
             return &it->second; }
@@ -148,6 +156,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         {
             const auto& hir_const = **e;
             out_ty = params.monomorph_type(state.sp, hir_const.m_type);
+            DEBUG("NotYetKnown");
         }
         else
         {
@@ -1475,9 +1484,15 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
 void MIR_CleanupCrate(::HIR::Crate& crate)
 {
     ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, ::HIR::ExprPtr& expr_ptr, const auto& args, const auto& ty){
+        if( expr_ptr ) {
             MIR_Cleanup(res, p, expr_ptr.get_mir_or_error_mut(Span()), args, ty);
             MIR_Validate(res, p, expr_ptr.get_mir_or_error_mut(Span()), args, ty);
+        }
         } };
     ov.visit_crate(crate);
 }
 
+void MIR_Cleanup_SetPostMonomorph()
+{
+    g_is_post_monomorph = true;
+}

@@ -10,6 +10,7 @@
 #include <macro_rules/macro_rules.hpp>
 #include <mir/mir.hpp>
 #include "serialise_lowlevel.hpp"
+#include "../hir_typeck/monomorph.hpp"  // monomorphise_path_needed
 
 //namespace {
     class HirSerialiser
@@ -1068,6 +1069,7 @@
                 m_out.write_string(e);
                 ),
             (Const,
+                ASSERT_BUG(Span(), monomorphise_path_needed(*e.p), "Unexpected Constant: " << *e.p);
                 serialise_path(*e.p);
                 ),
             (Generic,

@@ -281,7 +281,7 @@ void Dumper::dump_struct(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
         auto indent2 = RepeatLitStr { "   ", nindent+1 };
         for(const auto& f : se)
         {
-            ::std::cout << indent2 << f.second.publicity << " " << f.first << ": " << f.second.ent << ",\n";
+            ::std::cout << indent2 << f.vis << " " << f.name << ": " << f.ty << ",\n";
         }
         ::std::cout << indent << "}\n";
         }

@@ -176,6 +176,7 @@ void init_debug_list()
         "Trans Auto Impls",
         "Trans Monomorph",
         "MIR Optimise Inline",
+        "MIR Cleanup 2",
         "MIR Optimise Inline PostSave",
         "Trans Enumerate Cleanup",
         "Trans Codegen"
@@ -870,6 +871,12 @@ int main(int argc, char *argv[])
         CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
         // - Do post-monomorph inlining
         CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items, false); });
+
+        // - Expand constants in HIR (using ones that were monomorphised above)
+        CompilePhaseV("MIR Cleanup 2", [&]() {
+            MIR_Cleanup_SetPostMonomorph();
+            MIR_CleanupCrate(*hir_crate);
+            });
 
         memory_dump("Trans");
 
