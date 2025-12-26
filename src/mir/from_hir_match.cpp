@@ -1354,7 +1354,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             path.push_back(FIELD_DEREF);
         }
 
-        this->push_binding(PatternBinding(path, pb));
+        this->push_binding(PatternBinding(std::move(path), pb));
     }
 
     const auto* ty_p = &top_ty;
@@ -1474,6 +1474,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching tuple with invalid pattern - " << pat); ),
         (Any,
+            // TODO: Avoid storing the empty patterns, to save on space/cost
             for(const auto& sty : e) {
                 this->append_from(sp, empty_pattern, sty);
                 m_field_path.back() ++;
