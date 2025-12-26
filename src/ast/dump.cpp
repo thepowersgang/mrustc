@@ -51,6 +51,9 @@ public:
             m_os << "const ";
             break;
         }
+        if( n.m_label.name != RcString() ) {
+            m_os << "'" << n.m_label << ": ";
+        }
         m_os << "{";
         inc_indent();
         if( n.m_local_mod )
@@ -198,6 +201,9 @@ public:
         case AST::ExprNode_Flow::CONTINUE:  m_os << "continue ";  break;
         case AST::ExprNode_Flow::YEET:      m_os << "do yeet ";  break;
         }
+        if( n.m_target.name != "" ) {
+            m_os << "'" << n.m_target << " ";
+        }
         AST::NodeVisitor::visit(n.m_value);
     }
     virtual void visit(AST::ExprNode_LetBinding& n) override {
@@ -292,6 +298,10 @@ public:
     virtual void visit(AST::ExprNode_Loop& n) override {
         bool expr_root = m_expr_root;
         m_expr_root = false;
+
+        if( n.m_label.name != "" ) {
+            m_os << "'" << n.m_label << ": ";
+        }
 
         switch(n.m_type)
         {
