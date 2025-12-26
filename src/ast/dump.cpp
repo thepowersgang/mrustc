@@ -210,6 +210,10 @@ public:
             m_os << " = ";
             AST::NodeVisitor::visit(n.m_value);
         }
+        if( n.m_else ) {
+            m_os << " else ";
+            AST::NodeVisitor::visit(n.m_else);
+        }
         m_os << ";";
     }
     virtual void visit(AST::ExprNode_Assign& n) override {
@@ -1319,7 +1323,7 @@ void RustPrinter::handle_enum(const AST::Enum& s)
             inc_indent();
             for( const auto& i : e.m_fields )
             {
-                m_os << indent() << i.m_name << ": " << i.m_type.print_pretty() << "\n";
+                m_os << indent() << i.m_name << ": " << i.m_type.print_pretty() << ",\n";
             }
             dec_indent();
             m_os << indent() << "}";
