@@ -855,7 +855,7 @@ namespace typecheck
                         }
                     }
                     if( !loop_node_ptr ) {
-                        ERROR(node.span(), E0000, "Break statement with no acive loop");
+                        ERROR(node.span(), E0000, "Break statement with no active loop");
                     }
                 }
                 node.m_target_node = loop_node_ptr;
