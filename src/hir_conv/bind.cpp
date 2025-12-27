@@ -952,7 +952,22 @@ namespace {
                     out_path.m_trait_ptr = &tr;
                     fill_type_aliases(out_path);
                     // TODO: HRLs?
-                    supertraits.push_back( mv$(out_path) );
+                    supertraits.push_back( std::move(out_path) );
+                    // Fill aliases from this path too
+                    for(auto& st : supertraits) {
+                        for(auto& tb : path.m_type_bounds) {
+                            if( tb.second.source_trait == st.m_path ) {
+                                DEBUG("Add TypeBound: " << tb.first << " = " << tb.second.type);
+                                st.m_type_bounds.insert(std::make_pair(tb.first, std::move(tb.second)));
+                            }
+                        }
+                        for(auto& tb : path.m_trait_bounds) {
+                            if( tb.second.source_trait == st.m_path ) {
+                                DEBUG("Add TraitBound: " << tb.first << ": " << tb.second.traits);
+                                st.m_trait_bounds.insert(std::make_pair(tb.first, std::move(tb.second)));
+                            }
+                        }
+                    }
                     tp_stack.pop_back();
                 }
 
@@ -1044,23 +1059,24 @@ namespace {
                 {
                     if( prev->m_path == it->m_path )
                     {
-                        if( *prev == *it ) {
-                        }
-                        else if( prev->m_type_bounds.size() == 0 ) {
-                            ::std::swap(*prev, *it);
-                        }
-                        else if( it->m_type_bounds.size() == 0 ) {
-                        }
-                        else {
-                            for(auto& e : it->m_type_bounds ) {
-                                if( prev->m_type_bounds.count(e.first) ) {
-                                    ASSERT_BUG(sp, prev->m_type_bounds[e.first].type == e.second.type,
-                                        "TODO: Handle mismatched type bounds in merging supertrait ATY bounds: " << e.first << " =\n " <<
-                                        prev->m_type_bounds[e.first] << "\n " << e.second.type);
-                                }
-                                prev->m_type_bounds.insert(std::move(e));
+                        DEBUG("MERGE:");
+                        DEBUG("- " << *prev);
+                        DEBUG("- " << *it);
+                        for(auto& e : it->m_type_bounds ) {
+                            if( prev->m_type_bounds.count(e.first) ) {
+                                ASSERT_BUG(sp, prev->m_type_bounds[e.first].type == e.second.type,
+                                    "TODO: Handle mismatched type bounds in merging supertrait ATY bounds: " << e.first << " =\n " <<
+                                    prev->m_type_bounds[e.first] << "\n " << e.second.type);
                             }
+                            prev->m_type_bounds.insert(std::move(e));
                         }
+                        for(auto& e : it->m_trait_bounds ) {
+                            if( prev->m_trait_bounds.count(e.first) ) {
+                                TODO(sp, "Merge trait bounds (and make sure to check the source trait)");
+                            }
+                            prev->m_trait_bounds.insert(std::move(e));
+                        }
+                        DEBUG("= " << *prev);
                         it = e.supertraits.erase(it);
                         dedeup_done = true;
                     }
@@ -1074,7 +1090,7 @@ namespace {
                     DEBUG("supertraits dd = " << e.supertraits);
                 }
             }
-            tr.m_all_parent_traits = mv$(e.supertraits);
+            tr.m_all_parent_traits = std::move(e.supertraits);
         }
     };
 
