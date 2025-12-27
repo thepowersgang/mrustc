@@ -349,6 +349,10 @@ public:
         bool expr_root = m_expr_root;
         m_expr_root = false;
 
+        if( n.m_label.name != "" ) {
+            m_os << "'" << n.m_label << ": ";
+        }
+
         m_os << "while ";
         visit_iflet_conditions(n.m_conditions);
         if( expr_root )
