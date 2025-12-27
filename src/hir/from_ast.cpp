@@ -731,62 +731,108 @@ namespace {
     }
 
     struct H {
+        static ::HIR::GenericPath find_source_trait_hir(
+            const Span& sp,
+            const ::HIR::GenericPath& path, const HIR::Trait& trait, const RcString& name,
+            const Monomorphiser& ms
+            )
+        {
+            auto it = trait.m_types.find(name);
+            if(it != trait.m_types.end()) {
+                return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
+            }
+            auto cb = MonomorphStatePtr(&ty_Self, &path.m_params, nullptr);
+            for(const auto& st : trait.m_all_parent_traits)
+            {
+                // NOTE: st.m_trait_ptr isn't populated yet
+                const auto& t = g_crate_ptr->get_trait_by_path(sp, st.m_path.m_path);
+
+                auto it = t.m_types.find(name);
+                if(it != t.m_types.end()) {
+                    // Monomorphse into outer scope, then run the outer monomorph
+                    auto p = cb.monomorph_genericpath(sp, st.m_path, /*allow_infer=*/false);
+                    return ms.monomorph_genericpath(sp, p, /*allow_infer=*/false);
+                }
+            }
+            return ::HIR::GenericPath();
+        }
+        static ::HIR::GenericPath find_source_trait_ast(
+            const Span& sp,
+            const ::HIR::GenericPath& path, const AST::Trait& trait, const RcString& name,
+            const Monomorphiser& ms
+            )
+        {
+            for(const auto& i : trait.items())
+            {
+                if( i.data.is_Type() && i.name == name ) {
+                    // Return current path.
+                    return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
+                }
+            }
+
+            auto cb = MonomorphStatePtr(&ty_Self, &path.m_params, nullptr);
+            for( const auto& st : trait.supertraits() )
+            {
+                auto b = LowerHIR_TraitPath(sp, *st.ent.path, st.ent.hrbs, true);
+                ASSERT_BUG(sp, st.ent.path->m_bindings.type.binding.is_Trait(), "Not a trait: " << *st.ent.path);
+                auto rv = H::find_source_trait(sp, b.m_path, st.ent.path->m_bindings.type.binding.as_Trait(), name, cb);
+                if(rv != HIR::GenericPath())
+                    return ms.monomorph_genericpath(sp, rv, /*allow_infer=*/false);
+            }
+            return ::HIR::GenericPath();
+        }
         static ::HIR::GenericPath find_source_trait(
             const Span& sp,
-            const ::HIR::GenericPath& path, const AST::PathBinding_Type::Data_Trait& pbe, const RcString& name,
+            const ::HIR::GenericPath& path, const AST::PathBinding_Type& pb, const RcString& name,
             const Monomorphiser& ms
         )
         {
             TRACE_FUNCTION_F(path);
-            if(pbe.hir)
-            {
-                assert(pbe.hir);
-                const auto& trait = *pbe.hir;
-
-                auto it = trait.m_types.find(name);
-                if(it != trait.m_types.end()) {
-                    return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
+            if( pb.is_Trait() ) {
+                const auto& pbe = pb.as_Trait();
+                if( pbe.hir ) {
+                    assert(pbe.hir);
+                    return find_source_trait_hir(sp, path, *pbe.hir, name, ms);
                 }
-                auto cb = MonomorphStatePtr(&ty_Self, &path.m_params, nullptr);
-                for(const auto& st : trait.m_all_parent_traits)
-                {
-                    // NOTE: st.m_trait_ptr isn't populated yet
-                    const auto& t = g_crate_ptr->get_trait_by_path(sp, st.m_path.m_path);
-
-                    auto it = t.m_types.find(name);
-                    if(it != t.m_types.end()) {
-                        // Monomorphse into outer scope, then run the outer monomorph
-                        auto p = cb.monomorph_genericpath(sp, st.m_path, /*allow_infer=*/false);
-                        return ms.monomorph_genericpath(sp, p, /*allow_infer=*/false);
+                else if( pbe.trait_ ) {
+                    assert(pbe.trait_);
+                    return find_source_trait_ast(sp, path, *pbe.trait_, name, ms);
+                }
+                else {
+                    BUG(sp, "Unbound path");
+                }
+            }
+            else if( pb.is_TraitAlias() ) {
+                const auto& pbe = pb.as_TraitAlias();
+                if( pbe.hir ) {
+                    for(const auto& sub_trait : pbe.hir->m_traits) {
+                        auto p = ms.monomorph_genericpath(sp, sub_trait.m_path);
+                        const auto& t = g_crate_ptr->get_trait_by_path(sp, p.m_path);
+                        auto rv = find_source_trait_hir(sp, p, t, name, MonomorphStatePtr(&ty_Self, &p.m_params, nullptr));
+                        if( rv != HIR::GenericPath() ) {
+                            return rv;
+                        }
                     }
+                    return HIR::GenericPath();
                 }
-            }
-            else if( pbe.trait_ )
-            {
-                assert(pbe.trait_);
-                const auto& trait = *pbe.trait_;
-                for(const auto& i : trait.items())
-                {
-                    if( i.data.is_Type() && i.name == name ) {
-                        // Return current path.
-                        return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
+                else if( pbe.trait_ ) {
+                    auto cb = MonomorphStatePtr(&ty_Self, &path.m_params, nullptr);
+                    for(const auto& st : pbe.trait_->traits ) {
+                        auto b = LowerHIR_TraitPath(sp, *st.ent.path, st.ent.hrbs, true);
+                        auto rv = H::find_source_trait(sp, b.m_path, st.ent.path->m_bindings.type.binding, name, cb);
+                        if( rv != HIR::GenericPath() ) {
+                            return ms.monomorph_genericpath(sp, rv, /*allow_infer=*/false);
+                        }
                     }
+                    return HIR::GenericPath();
                 }
-
-                auto cb = MonomorphStatePtr(&ty_Self, &path.m_params, nullptr);
-                for( const auto& st : trait.supertraits() )
-                {
-                    auto b = LowerHIR_TraitPath(sp, *st.ent.path, st.ent.hrbs, true);
-                    auto rv = H::find_source_trait(sp, b.m_path, st.ent.path->m_bindings.type.binding.as_Trait(), name, cb);
-                    if(rv != HIR::GenericPath())
-                        return ms.monomorph_genericpath(sp, rv, /*allow_infer=*/false);
+                else {
+                    BUG(sp, "Unbound path");
                 }
             }
-            else
-            {
-                BUG(sp, "Unbound path");
+            else {
+                BUG(sp, "Not a trait: " << path << " : " << pb.tag_str());
             }
-            return ::HIR::GenericPath();
         }
         static std::pair<RcString,HIR::PathParams> get_aty_node(const Span& sp, const ::AST::PathNode& pn)
         {
@@ -808,7 +854,7 @@ namespace {
         TU_ARMA(Value, _) {}
         TU_ARMA(AssociatedTyEqual, assoc) {
             auto name_args = H::get_aty_node(sp, assoc.first);
-            auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), name_args.first, MonomorphiserNop());
+            auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding, name_args.first, MonomorphiserNop());
             DEBUG("src_trait = " << src_trait << " for " << assoc.first);
             rv.m_type_bounds.insert(::std::make_pair( name_args.first, ::HIR::TraitPath::AtyEqual {
                 std::move(src_trait), std::move(name_args.second), LowerHIR_Type(assoc.second)
@@ -822,7 +868,7 @@ namespace {
             else
             {
                 auto name_args = H::get_aty_node(sp, assoc.first);
-                auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), name_args.first, MonomorphiserNop());
+                auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding, name_args.first, MonomorphiserNop());
                 DEBUG("src_trait = " << src_trait << " for " << assoc.first);
                 //if(src_trait == ::HIR::GenericPath())
                 //    ERROR(sp, E0000, "Unable to find source trait for " << b->first << " in " << bound_trait_path.m_path);
@@ -1053,8 +1099,9 @@ namespace {
         for(const auto& t : e.traits)
         {
             DEBUG("t = " << *t.path);
+            ASSERT_BUG(ty.span(), t.path->m_bindings.type.binding.is_Trait(), "Not a trait: " << *t.path);
             const auto& tb = t.path->m_bindings.type.binding.as_Trait();
-            assert( tb.trait_ || tb.hir );
+            ASSERT_BUG(ty.span(), tb.trait_ || tb.hir, "Null bindings?: " << *t.path);
             if( (tb.trait_ ? tb.trait_->is_marker() : tb.hir->m_is_marker) )
             {
                 if( tb.hir ) {
