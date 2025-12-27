@@ -987,7 +987,9 @@ namespace {
                 }
                 else {
                     m_pmi.send_symbol("::");
-                    m_pmi.send_string(pe.crate.c_str());
+                    //m_pmi.send_string(pe.crate.c_str());
+                    assert(pe.crate.c_str()[0] == '=');
+                    m_pmi.send_ident(pe.crate.c_str() + 1);
                 }
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
