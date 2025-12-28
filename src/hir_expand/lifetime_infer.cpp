@@ -97,6 +97,7 @@ namespace {
         const StaticTraitResolve& m_resolve;
         bool    m_in_constant_context;
         std::vector<LifetimeBound>  m_bounds;
+        /// @brief Locally started/located lifetimes (i.e. borrows of locals/temporaries)
         std::vector<LocalLifetime>  m_locals;
         std::vector<IvarLifetime>   m_ivars;
         /// Assignment values to Type-Alias Impl-Trait, so they can be assigned after all is done
@@ -1981,11 +1982,27 @@ namespace {
                     }
                 }
             }
+            else {
+                node.m_capture_lifetime = ::HIR::LifetimeRef::new_static();
+            }
             m_returns.pop_back();
         }
         void visit(::HIR::ExprNode_Generator& node) override {
+            const Span& sp = node.span();
+
             m_returns.push_back(&node.m_return);
             m_yields.push_back(&node.m_yield_ty);
+
+            if( node.m_is_move ) {
+                node.m_capture_lifetime = ::HIR::LifetimeRef::new_static();
+            }
+            else {
+                if( node.m_capture_lifetime == HIR::LifetimeRef() || this->remove_locals ) {
+                    node.m_capture_lifetime = m_state.allocate_ivar(sp);
+                    DEBUG("m_capture_lifetime = " << node.m_capture_lifetime);
+                }
+            }
+            
             // TODO: Yield?
             HIR::ExprVisitorDef::visit(node);
             m_yields.pop_back();
@@ -1993,6 +2010,21 @@ namespace {
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override {
             BUG(node.span(), "Encountered ExprNode_GeneratorWrapper too early");
+        }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override {
+            const Span& sp = node.span();
+
+            if( node.m_is_move ) {
+                node.m_capture_lifetime = ::HIR::LifetimeRef::new_static();
+            }
+            else {
+                if( node.m_capture_lifetime == HIR::LifetimeRef() || this->remove_locals ) {
+                    node.m_capture_lifetime = m_state.allocate_ivar(sp);
+                    DEBUG("m_capture_lifetime = " << node.m_capture_lifetime);
+                }
+            }
+
+            HIR::ExprVisitorDef::visit(node);
         }
     };
 
@@ -2327,12 +2359,14 @@ namespace {
                     struct V: public HIR::Visitor {
                         LifetimeInferState& state;
                         const Span& sp;
+                        const ::std::vector<HIR::TypeRef>& bindings;
                         const ThinVector<HIR::LifetimeRef>& dst_lfts;
                         std::vector<HIR::PathParams>    m_hrls;
 
-                        V( LifetimeInferState& state, const Span& sp, const ThinVector<HIR::LifetimeRef>& dst_lfts)
+                        V( LifetimeInferState& state, const Span& sp, const ::std::vector<HIR::TypeRef>& bindings, const ThinVector<HIR::LifetimeRef>& dst_lfts)
                             : state(state)
                             , sp(sp)
+                            , bindings(bindings)
                             , dst_lfts(dst_lfts)
                         {
                         }
@@ -2354,6 +2388,33 @@ namespace {
                                     DEBUG(dst_lft << " = " << src_real << " (" << src << ") failed: " << fails);
                                 }
                                 ERROR(sp, E0000, "None of erased lifetime lifetime bounds [" << dst_lfts << "]: " << src_real << " (" << src << ") passed");
+                            }
+                        }
+
+                        void visit_capture(
+                            const ::HIR::LifetimeRef& capture_lifetime, HIR::ValueUsage usage,
+                            unsigned root_slot, const std::vector<RcString>& fields
+                        )
+                        {
+                            ::HIR::TypeRef  tmp_ty;
+
+                            ::HIR::LifetimeRef  borrow_source = capture_lifetime;
+                            const auto* cap_ty_p = &this->bindings[root_slot];
+                            for(const auto& n : fields) {
+                                if( const auto* p = cap_ty_p->data().opt_Borrow() ) {
+                                    borrow_source = p->lifetime;
+                                }
+                                tmp_ty = state.m_resolve.get_field_type(sp, *cap_ty_p, n);
+                                state.m_resolve.expand_associated_types(sp, tmp_ty);
+                                cap_ty_p = &tmp_ty;
+                            }
+
+                            DEBUG("Capture: #" << root_slot << "{" << fields << "}: " << usage << " " << capture_lifetime << " " << *cap_ty_p);
+                            if( usage != HIR::ValueUsage::Move ) {
+                                equate_lifetime(borrow_source);
+                            }
+                            else {
+                                visit_type(const_cast<HIR::TypeRef&>(*cap_ty_p));
                             }
                         }
 
@@ -2402,6 +2463,33 @@ namespace {
                                     push_hrls(*e->m_trait.m_hrtbs);
                                 }
                             }
+                            if( const auto* e = t.data().opt_NodeType() ) {
+                                DEBUG("Node Type: " << t);
+                                TU_MATCH_HDRA((*e), {)
+                                TU_ARMA(Async, p) {
+                                    DEBUG("- " << p->m_capture_lifetime);
+                                    equate_lifetime(p->m_capture_lifetime);
+                                    for(const auto& cap : p->m_avu_cache.captured_vars) {
+                                        visit_capture(p->m_capture_lifetime, cap.second, cap.first, {});
+                                    }
+                                    }
+                                TU_ARMA(Closure, p) {
+                                    DEBUG("- " << p->m_capture_lifetime);
+                                    equate_lifetime(p->m_capture_lifetime);
+                                    for(const auto& cap : p->m_avu_cache.captured_vars) {
+                                        visit_capture(p->m_capture_lifetime, cap.usage, cap.root_slot, cap.fields);
+                                    }
+                                    }
+                                TU_ARMA(Generator, p) {
+                                    DEBUG("- " << p->m_capture_lifetime);
+                                    equate_lifetime(p->m_capture_lifetime);
+                                    for(const auto& cap : p->m_avu_cache.captured_vars) {
+                                        visit_capture(p->m_capture_lifetime, cap.second, cap.first, {});
+                                    }
+                                    }
+                                }
+
+                            }
                             if( const auto* e = t.data().opt_Function() ) {
                                 push_hrls(e->hrls);
                             }
@@ -2415,7 +2503,7 @@ namespace {
                                 m_hrls.pop_back();
                             }
                         }
-                    } v { state, ep->m_span, tpl.data().as_ErasedType().m_use.m_lifetimes };
+                    } v { state, ep->m_span, ep.m_bindings, tpl.data().as_ErasedType().m_use.m_lifetimes };
 
                     DEBUG("Checking erased: " << ep.m_erased_types[e->m_index]);
                     DEBUG("vs " << tpl);

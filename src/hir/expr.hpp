@@ -916,6 +916,8 @@ struct ExprNode_Generator:
     // Generated type information
     const ::HIR::Struct*    m_obj_ptr = nullptr;
     ::HIR::GenericPath  m_obj_path;
+    // Lifetime for captured borrows, filled by lifetime infer pass
+    ::HIR::LifetimeRef  m_capture_lifetime;
     // Captured variables (used for emitting the constructor)
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
     // State data type (needed for initialising)
@@ -978,6 +980,8 @@ struct ExprNode_AsyncBlock
     // Generated type information
     const ::HIR::Struct*    m_obj_ptr = nullptr;
     ::HIR::GenericPath  m_obj_path;
+    // Lifetime for captured borrows, filled by lifetime infer pass
+    ::HIR::LifetimeRef  m_capture_lifetime;
     // Captured variables (used for emitting the constructor)
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
     // State data type (needed for initialising)
