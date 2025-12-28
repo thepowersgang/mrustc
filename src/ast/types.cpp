@@ -360,9 +360,11 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
             it.path->print_pretty(os, true, is_debug);
         }
         for( const auto& it : ent.lifetimes ) {
-            if(needs_plus)  os << "+";
-            needs_plus = true;
-            os << it;
+            if( it.binding() != AST::LifetimeRef::BINDING_UNSPECIFIED ) {
+                if(needs_plus)  os << "+";
+                needs_plus = true;
+                os << it;
+            }
         }
         os << ")";
         )
@@ -412,6 +414,9 @@ namespace AST {
         }
         else if( x.m_binding == LifetimeRef::BINDING_INFER ) {
             os << "'_";
+        }
+        else if( x.m_binding == LifetimeRef::BINDING_UNSPECIFIED ) {
+            os << "/*'UNSPEC*/";
         }
         else {
             os << "'" << x.m_name.name;

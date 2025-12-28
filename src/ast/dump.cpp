@@ -471,6 +471,9 @@ public:
     }
     virtual void visit(AST::ExprNode_Closure& n) override {
         m_expr_root = false;
+        if( n.m_is_move ) {
+            m_os << "move ";
+        }
         m_os << "|";
         bool is_first = true;
         for( const auto& arg : n.m_args )
@@ -751,10 +754,11 @@ public:
         case AST::ExprNode_UniOp::AWait: break;
         }
 
-        if( IS(*n.m_value, AST::ExprNode_BinOp) )
+        bool wrap = IS(*n.m_value, AST::ExprNode_BinOp) || IS(*n.m_value, AST::ExprNode_Cast);
+        if( wrap )
             m_os << "(";
         AST::NodeVisitor::visit(n.m_value);
-        if( IS(*n.m_value, AST::ExprNode_BinOp) )
+        if( wrap )
             m_os << ")";
         switch(n.m_type)
         {
@@ -1324,7 +1328,9 @@ void RustPrinter::handle_enum(const AST::Enum& s)
         m_os << indent() << "/*"<<idx<<"*/" << i.m_name;
         TU_MATCH(AST::EnumVariantData, (i.m_data), (e),
         (Value,
-            m_os << " = " << e.m_value;
+            if( e.m_value ) {
+                m_os << " = " << e.m_value;
+            }
             ),
         (Tuple,
             m_os << "(";
