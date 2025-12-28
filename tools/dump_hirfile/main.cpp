@@ -447,6 +447,20 @@ namespace {
             TU_ARMA(Token, e) {
                 os << e;
                 }
+            TU_ARMA(Concat, e) {
+                os << "${concat(";
+                for(const auto& v : e) {
+                    TU_MATCH_HDRA((v), {)
+                    TU_ARMA(Ident, ee) {
+                        os << ee;
+                        }
+                    TU_ARMA(Named, ee) {
+                        os << "$" << ee;
+                        }
+                    }
+                }
+                os << ")}";
+                }
             }
         }
     }
