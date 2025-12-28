@@ -970,13 +970,21 @@ namespace {
                 }
             TU_ARMA(Self, pe) {
                 m_pmi.send_rword("self");
-                m_pmi.send_symbol("::");
+                if( !pe.nodes.empty() ) {
+                    m_pmi.send_symbol("::");
+                }
                 nodes = &pe.nodes;
                 }
             TU_ARMA(Super, pe) {
+                assert(pe.count > 0);
                 for(unsigned i = 0; i < pe.count; i ++)
                 {
+                    if( i > 0 ) {
+                        m_pmi.send_symbol("::");
+                    }
                     m_pmi.send_rword("super");
+                }
+                if( !pe.nodes.empty() ) {
                     m_pmi.send_symbol("::");
                 }
                 nodes = &pe.nodes;
