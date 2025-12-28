@@ -403,8 +403,19 @@ size_t ::MIR::TypeResolve::intrinsic_offset_of(const ::HIR::TypeRef& ty, const :
             }
             else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Struct() ) {
                 const auto& str = **bep;
-                const auto& fields = str.m_data.as_Named();
-                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
+                TU_MATCH_HDRA((str.m_data), {)
+                TU_ARMA(Named, fields) {
+                    idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
+                    }
+                TU_ARMA(Tuple, fields) {
+                    char* end = nullptr;
+                    idx = ::std::strtoul(field_name.c_str(), &end, 10);
+                    MIR_ASSERT(*this, *end == '\0', "Failed to parse: " << field_name << " as an integer for " << *cur_ty);
+                    }
+                TU_ARMA(Unit, _) {
+                    MIR_BUG(*this, "Empty struct: " << *cur_ty << " ." << field_name);
+                    }
+                }
             }
             else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Union() ) {
                 const auto& unm = **bep;
@@ -413,6 +424,7 @@ size_t ::MIR::TypeResolve::intrinsic_offset_of(const ::HIR::TypeRef& ty, const :
             }
             else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Enum() ) {
                 const auto& enm = **bep;
+                MIR_ASSERT(*this, enm.m_data.is_Data(), "Non-Data enum: " << *cur_ty << " ." << field_name);
                 const auto& fields = enm.m_data.as_Data();
                 idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
             }
