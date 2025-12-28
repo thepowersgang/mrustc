@@ -13,6 +13,13 @@
 
 namespace {
 
+    struct MonomorphCheckLft: public MonomorphiserNop {
+        HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
+            ASSERT_BUG(sp, lft.binding <= ::HIR::LifetimeRef::STATIC, "Found local/ivar lifetime - " << lft);
+            return lft;
+        }
+    };
+
     void expand_erased_type(const Span& sp, const StaticTraitResolve& m_resolve, HIR::TypeRef& ty)
     {
         const auto& e = ty.data().as_ErasedType();
@@ -42,6 +49,8 @@ namespace {
                 ASSERT_BUG(sp, ee.m_index < erased_types.size(), "Erased type index out of range for " << ee.m_origin << " - " << ee.m_index << " >= " << erased_types.size());
                 const auto& tpl = erased_types[ee.m_index];
 
+                MonomorphCheckLft().monomorph_type(sp, tpl);
+
                 new_ty = monomorph_cb.monomorph_type(sp, tpl);
             }
             m_resolve.expand_associated_types(sp, new_ty);
@@ -50,6 +59,7 @@ namespace {
             if( ee.inner->type == HIR::TypeRef() ) {
                 ERROR(Span(), E0000, "Erased type alias " << ee.inner->type << " never set?");
             }
+            MonomorphCheckLft().monomorph_type(sp, ee.inner->type);
             new_ty = MonomorphStatePtr(nullptr, &ee.params, nullptr).monomorph_type(sp, ee.inner->type);
             m_resolve.expand_associated_types(sp, new_ty);
             }
@@ -58,13 +68,6 @@ namespace {
             }
         }
         DEBUG("> " << ty << " => " << new_ty);
-        struct M: public MonomorphiserNop {
-            HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
-                ASSERT_BUG(sp, lft.binding <= ::HIR::LifetimeRef::STATIC, "Found local/ivar lifetime - " << lft);
-                return lft;
-            }
-        };
-        M().monomorph_type(sp, new_ty);
         ty = mv$(new_ty);
     }
 
