@@ -533,6 +533,7 @@ public:
         case CORETYPE_UINT:
         case CORETYPE_ANY:
             m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
         case CORETYPE_I8:
         case CORETYPE_I16:
@@ -541,6 +542,7 @@ public:
         case CORETYPE_I128:
         case CORETYPE_INT:
             m_os << n.m_value;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
         }
     }
@@ -548,19 +550,25 @@ public:
         m_expr_root = false;
         switch(n.m_datatype)
         {
+        case CORETYPE_ANY:
+            m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
+            m_os << n.m_value;
+            break;
         case CORETYPE_F16:
         case CORETYPE_F32:
             m_os.precision(::std::numeric_limits<float>::max_digits10 + 1);
             m_os << n.m_value;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
-        case CORETYPE_ANY:
         case CORETYPE_F64:
             m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
             m_os << n.m_value;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
         case CORETYPE_F128:
             m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
             m_os << n.m_value;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
         default:
             break;
