@@ -748,8 +748,9 @@ namespace {
         }
 
         /// Locate the named item in HIR (resolving `Import` references too)
-        ResolveItemRef find_item_hir(const HIR::Module& mod, const RcString& item_name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr)
+        ResolveItemRef find_item_hir(const HIR::Module& mod, const RcString& item_name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr, const ::HIR::SimplePath* vis_path_p=nullptr)
         {
+            const auto& vis_path = vis_path_p ? *vis_path_p : ::HIR::SimplePath();
             TRACE_FUNCTION_F(item_name);
             if( out_path ) {
                 ASSERT_BUG(sp, out_path->crate != "", "Crate not filled");
@@ -769,7 +770,7 @@ namespace {
             {
             case ResolveNamespace::Namespace: {
                 auto it = mod.m_mod_items.find(item_name);
-                if( it != mod.m_mod_items.end() && it->second->publicity.is_global() ) {
+                if( it != mod.m_mod_items.end() && it->second->publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR namespace");
                     const HIR::TypeItem*    ti;
                     if(const auto* p = it->second->ent.opt_Import()) {
@@ -793,7 +794,7 @@ namespace {
                 } break;
             case ResolveNamespace::Value: {
                 auto it = mod.m_value_items.find(item_name);
-                if( it != mod.m_value_items.end() && it->second->publicity.is_global() ) {
+                if( it != mod.m_value_items.end() && it->second->publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR value");
                     const HIR::ValueItem*    vi;
                     if(const auto* p = it->second->ent.opt_Import()) {
@@ -816,7 +817,7 @@ namespace {
                 if( it == mod.m_macro_items.end() ) {
                     DEBUG("Did not find `" << item_name << "` in HIR macro");
                 }
-                else if( !it->second->publicity.is_global() ) {
+                else if( !it->second->publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR macro - but not public, ignoring");
                 }
                 else {
@@ -916,7 +917,15 @@ ResolveItemRef_Macro Resolve_Lookup_Macro(const Span& span, const AST::Crate& cr
         return std::move( rv.as_Macro() );
         }
     TU_ARMA(Hir, mod_ptr) {
-        auto rv = rs.find_item_hir(*mod_ptr, item_name, ResolveNamespace::Macro, out_path);
+        const ::HIR::SimplePath* vis_path = nullptr;
+        ::HIR::SimplePath   tmp_p;
+        if( path.m_class.is_Relative() && path.m_class.as_Relative().hygiene.has_mod_path() ) {
+            const auto& in_p = path.m_class.as_Relative().hygiene.mod_path();
+            tmp_p = HIR::SimplePath(in_p.crate, in_p.ents);
+            DEBUG("vis_path=" << tmp_p);
+            vis_path = &tmp_p;
+        }
+        auto rv = rs.find_item_hir(*mod_ptr, item_name, ResolveNamespace::Macro, out_path, vis_path);
         if( rv.is_None() )
             return ResolveItemRef_Macro::make_None({});
         ASSERT_BUG(span, rv.is_Macro(), rv.tag_str());

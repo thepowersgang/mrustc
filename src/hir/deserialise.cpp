@@ -26,6 +26,7 @@ namespace {
         }
         return enabled > 1;
     }
+    ::HIR::Publicity g_vis_private = ::HIR::Publicity::new_none();
 }
 
 //namespace {
@@ -209,7 +210,7 @@ namespace {
 
         ::HIR::Publicity deserialise_pub()
         {
-            return (m_in.read_bool() ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none());
+            return (m_in.read_bool() ? ::HIR::Publicity::new_global() : g_vis_private);
         }
         template<typename T>
         ::HIR::VisEnt<T> deserialise_visent()
@@ -1718,6 +1719,7 @@ namespace {
         // NOTE: This MUST be the first item
         this->m_crate_name = m_in.read_istring();
         assert(this->m_crate_name != "" && "Empty crate name loaded from metadata");
+        g_vis_private = ::HIR::Publicity::new_priv(::HIR::SimplePath(this->m_crate_name));
         rv.m_crate_name = this->m_crate_name;
         rv.m_edition = static_cast<AST::Edition>(m_in.read_tag());
         rv.m_root_module = deserialise_module();
