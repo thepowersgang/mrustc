@@ -151,6 +151,7 @@ TAGGED_UNION_EX(PathBinding_Value, (), Unbound, (
 TAGGED_UNION_EX(PathBinding_Type, (), Unbound, (
     (Unbound, struct {
         }),
+    (Primitive, eCoreType),
     (Crate, struct {
         const ExternCrate* crate_;
         }),

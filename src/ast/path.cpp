@@ -22,6 +22,7 @@ namespace AST {
     TU_MATCHA( (x), (i),
     (Unbound, os << "_";   ),
     (Crate ,  os << "Crate";    ),
+    (Primitive, os << "Primitive"; ),
     (Module,  os << "Module";    ),
     (Trait,     os << "Trait";   ),
     (TraitAlias, os << "TraitAlias"; ),
@@ -38,6 +39,7 @@ PathBinding_Type PathBinding_Type::clone() const
 {
     TU_MATCHA( (*this), (e),
     (Unbound  , return PathBinding_Type::make_Unbound({}); ),
+    (Primitive, return e; ),
     (Module   , return PathBinding_Type::make_Module(e);   ),
     (Crate    , return PathBinding_Type(e); ),
     (Trait    , return PathBinding_Type(e); ),

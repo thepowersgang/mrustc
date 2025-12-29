@@ -901,22 +901,25 @@ namespace {
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
                 ap = AST::AbsolutePath(e.path.crate_name(), e.path.components().to_vec());
-                const auto& ec = crate.m_extern_crates.at( e.path.crate_name() );
-                // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
-                if( e.is_variant ) {
-                    auto p = e.path;
-                    p.pop_component();
-                    const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
-                    assert(e.idx < enm.num_variants());
-                    rv.type.set( ap, ::AST::PathBinding_Type::make_EnumVar({ nullptr, e.idx, &enm }) );
+                if( e.path.crate_name() == rcstring_crate_builtins ) {
+                    auto t = coretype_fromstring(e.path.components().front().c_str());
+                    rv.type.set(ap, ::AST::PathBinding_Type::make_Primitive(t));
                 }
-                else if( e.path.components().empty() )
-                {
-                    rv.type.set( ap, ::AST::PathBinding_Type::make_Module({nullptr, {&ec, &ec.m_hir->m_root_module}}) );
-                }
-                else
-                {
-                    item_ptr = &ec.m_hir->get_typeitem_by_path(span, e.path, true);    // ignore_crate_name=true
+                else {
+                    ASSERT_BUG(span, crate.m_extern_crates.count(e.path.crate_name()) != 0, "Crate not loaded for " << e.path);
+                    const auto& ec = crate.m_extern_crates.at( e.path.crate_name() );
+                    // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
+                    if( e.is_variant ) {
+                        const auto& enm = ec.m_hir->get_typeitem_by_path(span, e.path, /*ignore_crate_name*/true, /*ignore_last_node*/true).as_Enum();
+                        assert(e.idx < enm.num_variants());
+                        rv.type.set( ap, ::AST::PathBinding_Type::make_EnumVar({ nullptr, e.idx, &enm }) );
+                    }
+                    else if( e.path.components().empty() ) {
+                        rv.type.set( ap, ::AST::PathBinding_Type::make_Module({nullptr, {&ec, &ec.m_hir->m_root_module}}) );
+                    }
+                    else {
+                        item_ptr = &ec.m_hir->get_typeitem_by_path(span, e.path, /*ignore_crate_name=*/true);
+                    }
                 }
             }
             else {

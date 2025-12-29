@@ -247,6 +247,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 }
             TU_ARMA(TypeParameter, e)
                 BUG(sp, "Import was bound to type parameter");
+            TU_ARMA(Primitive, e)
+                _add_item_type(sp, mod, i_data.name, i.vis,  pb.type, !allow_collide);
             TU_ARMA(Crate , e)
                 _add_item(sp, mod, IndexName::Namespace, i_data.name, i.vis,  pb.type, !allow_collide);
             TU_ARMA(Module, e)
