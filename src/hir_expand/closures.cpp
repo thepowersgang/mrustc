@@ -207,6 +207,7 @@ namespace {
         }
 
         void visit_type(::HIR::TypeRef& ty) override {
+            DEBUG(ty);
             ty = m_monomorphiser.monomorph_type(Span(), ty, /*allow_infer=*/true);
         }
 
@@ -772,13 +773,17 @@ namespace {
                         break;
                     }
                 }
+                if( ge.group() == 0 )
+                    ASSERT_BUG(sp, resolve.m_impl_generics && ge.idx() < resolve.m_impl_generics->m_lifetimes.size(), "Unexpected impl generic lifetime - " << ge);
+                if( ge.group() == 1 )
+                    ASSERT_BUG(sp, resolve.m_item_generics && ge.idx() < resolve.m_item_generics->m_lifetimes.size(), "Unexpected item generic lifetime - " << ge);
                 ASSERT_BUG(sp, ge.group() < 2, "Unexpected HRL/placeholder - " << ge);
                 if(rv == SIZE_MAX)
                 {
                     ASSERT_BUG(sp, !m_frozen, "get_lifetime would add a new param after freeze - " << ge);
                     rv = constructor_path_params.m_lifetimes.size();
                     constructor_path_params.m_lifetimes.push_back(ge.binding);
-                    DEBUG("ADD " << constructor_path_params.m_lifetimes.back());
+                    DEBUG("ADD lifetime 'I:" << rv << " = " << constructor_path_params.m_lifetimes.back());
                     params.m_lifetimes.push_back(::HIR::LifetimeDef());
                     //params.m_values.back().m_name = ge.name;
                 }
@@ -819,7 +824,7 @@ namespace {
                             auto idx = params.m_lifetimes.size();
                             params.m_lifetimes.push_back(HIR::LifetimeDef());
                             constructor_path_params.m_lifetimes.push_back(tpl);
-                            DEBUG("Allocate lifetime: 'I" << idx);
+                            DEBUG("Allocate lifetime: 'I" << idx << " = " << tpl);
                             m_lifetime_mappings.insert(std::make_pair( tpl.binding, ::HIR::LifetimeRef(idx) ));
                             return ::HIR::LifetimeRef(idx);
                         }

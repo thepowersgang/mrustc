@@ -2251,6 +2251,7 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
                     if( input != it->second ) {
                         this->expand_associated_types_inplace(sp, it->second, stack);
                     }
+                    DEBUG("CACHED: " << input << " -> " << it->second);
                     input = it->second.clone();   
                 }
                 else {

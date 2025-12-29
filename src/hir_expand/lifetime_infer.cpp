@@ -524,17 +524,23 @@ namespace {
             return m_binding_types_ptr->at(binding);
         }
 
+        void sanity_check_lft(const Span& sp, const HIR::LifetimeRef& lft) const {
+            ASSERT_BUG(sp, lft != HIR::LifetimeRef() && lft.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << lft);
+            ASSERT_BUG(sp, !lft.is_hrl(), "Encountered HRL - " << lft);
+            if( lft.is_param() ) {
+                if( lft.as_param().group() == 0 ) {
+                    ASSERT_BUG(sp, m_resolve.m_impl_generics && lft.as_param().idx() < m_resolve.m_impl_generics->m_lifetimes.size(), "Unexpected generic: " << lft);
+                }
+                if( lft.as_param().group() == 1 ) {
+                    ASSERT_BUG(sp, m_resolve.m_item_generics && lft.as_param().idx() < m_resolve.m_item_generics->m_lifetimes.size(), "Unexpected generic: " << lft);
+                }
+            }
+        }
 
         void equate_lifetimes(const Span& sp, const HIR::LifetimeRef& lhs, const HIR::LifetimeRef& rhs) {
             DEBUG(lhs << " := " << rhs);
-            ASSERT_BUG(sp, lhs != HIR::LifetimeRef() && lhs.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << lhs);
-            ASSERT_BUG(sp, rhs != HIR::LifetimeRef() && rhs.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << rhs);
-            if( lhs.is_hrl() ) {
-                BUG(sp, "Encountered HRL - " << lhs);
-            }
-            if( rhs.is_hrl() ) {
-                BUG(sp, "Encountered HRL - " << rhs);
-            }
+            sanity_check_lft(sp, lhs);
+            sanity_check_lft(sp, rhs);
 
             if(lhs == rhs) {
                 return ;
@@ -2660,6 +2666,7 @@ namespace {
                 // Commit lifetimes
                 pp = ms.monomorph_path_params(Span(), pp, false);
                 ty = ms.monomorph_type(Span(), ty, false);
+                DEBUG("TAIT " << tait_inner.path << " pp=" << pp << " ty=" << ty);
 
                 // Do a reverse monomorph of `ty` to convert from local context into alias context
                 if( !pp.m_values.empty() ) {
@@ -2679,13 +2686,13 @@ namespace {
 
                     // No generics should be reached, as all of them should have been covered by the params.
                     ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
-                        TODO(sp, "Should this see any generics? Probably not");
+                        TODO(sp, "Should this see any generics? Probably not: Type " << g);
                     }
                     ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
-                        TODO(sp, "Should this see any generics? Probably not");
+                        TODO(sp, "Should this see any generics? Probably not: Value " << g);
                     }
                     ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
-                        TODO(sp, "Should this see any generics? Probably not");
+                        TODO(sp, "Should this see any generics? Probably not: Lifetime " << g);
                     }
 
                     HIR::TypeRef monomorph_type(const Span& sp, const HIR::TypeRef& tpl, bool allow_infer) const override {

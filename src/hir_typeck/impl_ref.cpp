@@ -247,7 +247,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp, const ::H
         }
         const ::HIR::TypeRef& tpl_ty = it->second.data;
         DEBUG("name=" << name << " tpl_ty=" << tpl_ty << " " << *this);
-        if( monomorphise_type_needed(tpl_ty) ) {
+        if( true || monomorphise_type_needed(tpl_ty) ) {
             return this->get_cb_monomorph_traitimpl(sp, params).monomorph_type(sp, tpl_ty);
         }
         else {

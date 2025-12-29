@@ -126,6 +126,7 @@ struct TyVisitor
                 }
                 }
             TU_ARMA(Alias, ee) {
+                visit_path_params(ee.params);
                 }
             }
             return false;

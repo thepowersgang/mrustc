@@ -1324,11 +1324,15 @@ namespace {
     {
         const Context& context;
         const HMTypeInferrence& ivars;
+        ::HIR::PathParams   nop_impl;
+        ::HIR::PathParams   nop_item;
     public:
         ExprVisitor_Apply(const Context& context):
             context(context),
             ivars(context.m_ivars)
         {
+            nop_impl = context.m_resolve.impl_generics().make_nop_params(0);
+            nop_item = context.m_resolve.item_generics().make_nop_params(1);
         }
         void visit_node_ptr(::HIR::ExprPtr& node_ptr)
         {
@@ -1644,6 +1648,14 @@ namespace {
             check_type_resolved(sp, ty, ty);
             ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
             DEBUG(ty);
+            #if 0   // Sanity check
+            static const HIR::TypeRef ty_self = HIR::TypeRef::new_self();
+            MonomorphStatePtr(
+                this->context.m_resolve.has_self() ? &ty_self : nullptr,
+                &nop_impl,
+                &nop_item
+            ).monomorph_type(sp, ty, false);
+            #endif
         }
 
         void check_type_resolved_constgeneric(const Span& sp, ::HIR::ConstGeneric& v, const ::HIR::TypeRef& top_type) const
