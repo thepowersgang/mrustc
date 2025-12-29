@@ -1188,7 +1188,10 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << "&mut ";
         else
             m_os << "& ";
+        // Just in case the inner binds as mut
+        m_os << "(";
         print_pattern(*v.sub, is_refutable);
+        m_os << ")";
         }),
     (Value,
         m_os << v.start;
