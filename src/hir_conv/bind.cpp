@@ -459,7 +459,6 @@ namespace {
                     fix_param_count(sp, t.m_path, trait.m_params, t.m_path.m_params, /*fill_infer=*/m_in_expr, &ty_eself);
                 }
 
-                // TODO: Do this in bind?
                 if( auto* ee = te->m_inner.opt_Fcn() )
                 {
                     DEBUG("Set origin of ErasedType - " << ty);
@@ -545,6 +544,16 @@ namespace {
                         // TODO: If we're in a top-level `type`, then it must be used as the return type of a function.
                         // https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html#type-alias
                         ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
+                    }
+                }
+                else if( auto* ee = te->m_inner.opt_Alias() )
+                {
+                    if( ee->inner->path.crate_name() != m_crate.m_crate_name ) {
+                        // Should be impossible, as these are fully expanded by the time they reach HIR serialisation
+                    }
+                    else {
+                        ee->inner->generics.m_lifetimes = m_ms.m_impl_generics->m_lifetimes;
+                        ee->params = ee->inner->generics.make_nop_params(0);
                     }
                 }
             }
