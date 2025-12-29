@@ -672,9 +672,16 @@ namespace
                         case LookupMode::Constant:
                         case LookupMode::Variable:
                             // TODO: Ensure validity? (I.e. that `Self` is a unit or tuple struct
-                            if( e->m_data.is_Path() )
+                            if( const auto* p = e->m_data.opt_Path() )
                             {
-                                return *e->m_data.as_Path();
+                                // HACK! If `Self` points to a `type`, look through it
+                                // - rustc-1.90.0-src/compiler/rustc_codegen_llvm/src/context.rs:675
+                                if( const auto* pbe = (**p).m_bindings.type.binding.opt_TypeAlias() ) {
+                                    assert(pbe->alias_);
+                                    assert(pbe->alias_->m_type.is_path());
+                                    return *pbe->alias_->m_type.m_data.as_Path();
+                                }
+                                return **p;
                             }
                         default:
                             break;
