@@ -438,11 +438,13 @@ namespace {
         }
     TU_ARMA(Borrow, te) {
         const auto* data_reloc = lit.get_reloc();
-        auto data_ptr = lit.read_uint(Target_GetPointerBits()/8);
-        MIR_ASSERT(state, data_ptr == EncodedLiteral::PTR_BASE, "TODO: Support offset pointers in borrows - 0x" << std::hex << data_ptr);
+        const auto data_ptr = lit.read_uint(Target_GetPointerBits()/8);
+        MIR_ASSERT(state, data_ptr >= EncodedLiteral::PTR_BASE, "Bad pointer value - 0x" << std::hex << data_ptr);
+        const auto ofs = data_ptr - EncodedLiteral::PTR_BASE;
 
         if(data_reloc->p)
         {
+            MIR_ASSERT(state, ofs == 0, "TODO: Support offset pointers in borrows - +0x" << std::hex << ofs);
             const auto& path = *data_reloc->p;
             auto ptr_val = ::MIR::Constant::make_ItemAddr(box$(params.monomorph_path(state.sp, path)));
             DEBUG("ptr_val = " << ptr_val);
@@ -494,31 +496,34 @@ namespace {
         else
         {
             // This is a borrow of a "string"
+            MIR_ASSERT(state, ofs <= data_reloc->bytes.size(), "Offset out of range");
+            auto s = data_reloc->bytes.begin() + ofs.truncate_u64();
+            auto e = data_reloc->bytes.end();
 
             if( te.inner.data().is_Slice() && te.inner.data().as_Slice().inner == ::HIR::CoreType::U8 ) {
                 ::std::vector<uint8_t>  bytestr;
-                for(auto v : data_reloc->bytes)
-                    bytestr.push_back( static_cast<uint8_t>(v) );
-                return ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ U128(data_reloc->bytes.size()), ::HIR::CoreType::Usize }) });
+                for(auto it = s; it != e; ++it)
+                    bytestr.push_back( static_cast<uint8_t>(*it) );
+                return ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ U128(bytestr.size()), ::HIR::CoreType::Usize }) });
             }
             else if( te.inner.data().is_Array() && te.inner.data().as_Array().inner == ::HIR::CoreType::U8 ) {
                 // TODO: How does this differ at codegen to the above?
                 ::std::vector<uint8_t>  bytestr;
-                for(auto v : data_reloc->bytes)
-                    bytestr.push_back( static_cast<uint8_t>(v) );
+                for(auto it = s; it != e; ++it)
+                    bytestr.push_back( static_cast<uint8_t>(*it) );
                 return ::MIR::Constant( mv$(bytestr) );
             }
             else if( te.inner == ::HIR::CoreType::Str ) {
-                return ::MIR::Constant::make_StaticString( data_reloc->bytes );
+                return ::MIR::Constant::make_StaticString(std::string(s,e));
             }
             else {
                 // Get repr, assert that there's only one field and it's a `[u8]` or `str`
                 // Pointer cast
                 ::std::vector<uint8_t>  bytestr;
-                for(auto v : data_reloc->bytes)
-                    bytestr.push_back( static_cast<uint8_t>(v) );
+                for(auto it = s; it != e; ++it)
+                    bytestr.push_back( static_cast<uint8_t>(*it) );
                 // Make a `*const [u8]`
-                auto ptr1 = ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ U128(data_reloc->bytes.size()), ::HIR::CoreType::Usize }) });
+                auto ptr1 = ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ U128(bytestr.size()), ::HIR::CoreType::Usize }) });
                 auto lval = mutator.in_temporary( ::HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8)), mv$(ptr1) );
                 // Cast to `*const T`
                 auto raw_ptr_ty = ::HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, te.inner.clone());
