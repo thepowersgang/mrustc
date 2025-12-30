@@ -2020,11 +2020,57 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
     auto get_vis = [&](const AST::Visibility& vis) { return LowerHIR_Vis(mod_path, vis); };
 
     // Populate trait list
-    for(const auto& trait_path : ast_mod.m_traits )
     {
-        auto sp = HIR::SimplePath((trait_path.crate == "" ? g_crate_name : trait_path.crate), trait_path.nodes);
-        if( ::std::find(mod.m_traits.begin(), mod.m_traits.end(), sp) == mod.m_traits.end() )
-            mod.m_traits.push_back( mv$(sp) );
+        struct Foo {
+            HIR::Module& mod;
+            Foo(HIR::Module& mod): mod(mod) {}
+            void push_trait(::HIR::SimplePath sp) {
+                if( ::std::find(mod.m_traits.begin(), mod.m_traits.end(), sp) == mod.m_traits.end() ) {
+                    mod.m_traits.push_back( mv$(sp) );
+                }
+            }
+            void push_trait_alias(const AST::PathBinding_Type::Data_TraitAlias& pbe) {
+                if(pbe.trait_) {
+                    push_trait_alias_ast(*pbe.trait_);
+                }
+                else if(pbe.hir) {
+                    push_trait_alias_hir(*pbe.hir);
+                }
+                else {
+                }
+            }
+            void push_trait_alias_ast(const AST::TraitAlias& ta) {
+                for(const auto& e : ta.traits) {
+                    if( const auto* pbe = e.ent.path->m_bindings.type.binding.opt_TraitAlias() ) {
+                        push_trait_alias(*pbe);
+                    }
+                    else {
+                        push_trait(LowerHIR_SimplePath(e.sp, *e.ent.path, FromAST_PathClass::Type, true));
+                    }
+                }
+            }
+            void push_trait_alias_hir(const HIR::TraitAlias& ta) {
+                for(const auto& p : ta.m_traits) {
+                    if( const auto* tap = g_crate_ptr->get_typeitem_by_path(Span(), p.m_path.m_path).opt_TraitAlias()) {
+                        push_trait_alias_hir(*tap);
+                    }
+                    else {
+                        push_trait(p.m_path.m_path);
+                    }
+                }
+            }
+        };
+        Foo f { mod };
+        for(const auto& trait_path : ast_mod.m_traits )
+        {
+            f.push_trait( HIR::SimplePath((trait_path.crate == "" ? g_crate_name : trait_path.crate), trait_path.nodes) );
+        }
+        for(const auto& i : ast_mod.m_type_items) {
+            if( const auto* pbe = i.second.path.m_bindings.type.binding.opt_TraitAlias() ) {
+                // TODO: Should expanding trait aliases instead be handled in expr_cs__enum.cpp?
+                f.push_trait_alias(*pbe);
+            }
+        }
     }
 
     for( unsigned int i = 0; i < ast_mod.anon_mods().size(); i ++ )
