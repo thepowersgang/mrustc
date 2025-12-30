@@ -313,7 +313,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             os << "fn " << ee.m_origin << "#" << ee.m_index;
             }
         TU_ARMA(Alias, ee) {
-            os << "type" << ee.params << " " << ee.inner.get();
+            os << "type" << ee.params << " " << ee.inner->path;
             }
         }
         os << "*/";

@@ -546,16 +546,6 @@ namespace {
                         ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
                     }
                 }
-                else if( auto* ee = te->m_inner.opt_Alias() )
-                {
-                    if( ee->inner->path.crate_name() != m_crate.m_crate_name ) {
-                        // Should be impossible, as these are fully expanded by the time they reach HIR serialisation
-                    }
-                    else {
-                        ee->inner->generics.m_lifetimes = m_ms.m_impl_generics->m_lifetimes;
-                        ee->params = ee->inner->generics.make_nop_params(0);
-                    }
-                }
             }
             else if( auto* te = ty.data_mut().opt_TraitObject() )
             {

@@ -703,6 +703,18 @@ namespace
                     for(const auto& l : e->m_use.m_lifetimes) {
                         ASSERT_BUG(sp, l.binding != HIR::LifetimeRef::UNKNOWN, "Unbound lifetime? - " << l);
                     }
+
+                    if( auto* ee = e->m_inner.opt_Alias() )
+                    {
+                        if( ee->inner->path.crate_name() != m_resolve.m_crate.m_crate_name ) {
+                            // Should be impossible, as these are fully expanded by the time they reach HIR serialisation
+                        }
+                        else {
+                            ASSERT_BUG(Span(), m_resolve.m_impl_generics, "No impl generics for type " << ty);
+                            ee->inner->generics.m_lifetimes = m_resolve.m_impl_generics->m_lifetimes;
+                            ee->params = ee->inner->generics.make_nop_params(0);
+                        }
+                    }
                 }
                 if(pushed) {
                     m_current_lifetime.pop_back();
@@ -995,6 +1007,13 @@ namespace
 
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
         }
+
+        void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override
+        {
+            auto _ = m_resolve.set_impl_generics(/*impl.m_type,*/ item.m_params);
+            ::HIR::Visitor::visit_type_alias(p, item);
+        }
+
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             auto ty_self = ::HIR::TypeRef::new_self();
