@@ -250,6 +250,10 @@ void Expand_Attr(const ExpandState& es, const Span& sp, const ::AST::Attribute& 
                 // HACK: tracing's #[instrument] is very slow (with mrustc), so just ignore it (this is the rustc-1.74 version)
                 if( d.mac_path.front() == "tracing_attributes-0_1_26" && d.mac_path.back() == "instrument" ) {
                 }
+                // 1.90's tracing #[instrument] - It's slow with mrustc, but also breaks due to lack of hygine in
+                // `rustc-1.90.0-src/compiler/rustc_passes/src/stability.rs:367`
+                else if( d.mac_path.front() == "tracing_attributes-0_1_30" && d.mac_path.back() == "instrument" ) {
+                }
                 else {
                     f(sp, d, a);
                     a.mark_inert();
