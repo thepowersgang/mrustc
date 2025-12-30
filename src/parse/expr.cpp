@@ -1311,13 +1311,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex)
     auto rt = TypeRef(lex.point_span());
     if( lex.getTokenIf(TOK_THINARROW) ) {
 
-        auto bang_sp = lex.point_span();
-        if( lex.getTokenIf(TOK_EXCLAM) ) {
-            rt = TypeRef(TypeRef::TagInvalid(), bang_sp);
-        }
-        else {
-            rt = Parse_Type(lex);
-        }
+        rt = Parse_Type(lex);
     }
 
     auto code = Parse_Expr0(lex);

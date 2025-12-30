@@ -269,7 +269,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
     {
     case TypeData::TAGDEAD: throw "";
     _(None,
-        os << "!!";
+        os << "!/*none*/!";
         )
     _(Any,
         os << "_";
