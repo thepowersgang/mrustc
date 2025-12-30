@@ -383,8 +383,10 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
     TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
     for(auto& tps : params.m_types)
         this->visit_type( tps.m_default );
-    for(auto& val : params.m_values)
+    for(auto& val : params.m_values) {
         this->visit_type(val.m_type);
+        this->visit_constgeneric(val.m_default);
+    }
     for(auto& bound : params.m_bounds )
         visit_generic_bound(bound);
 }

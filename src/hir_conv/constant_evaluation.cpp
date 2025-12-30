@@ -3300,23 +3300,36 @@ namespace {
             m_monomorph_state.pp_impl = nullptr;
         }
 
+        void evalulate_const_generic(const Span& sp, const ::HIR::TypeRef& ty, ::HIR::ConstGeneric& v)
+        {
+            if(v.is_Unevaluated())
+            {
+                const auto& e = *v.as_Unevaluated()->expr;
+                auto name = FMT("param_" << &v << "#");
+                auto nvs = NewvalState { *m_mod, *m_mod_path, name };
+                TRACE_FUNCTION_FR(name, name);
+                auto eval = get_eval(e->span(), nvs);
+
+                // Need to look up the required type - to do that requires knowing the item it's for
+                // - Which, might not be known at this point - might be a UfcsInherent
+                try
+                {
+                    auto val = eval.evaluate_constant( ::HIR::ItemPath(*m_mod_path, name.c_str()), e, ty.clone() );
+                    v = ::HIR::ConstGeneric::make_Evaluated(std::move(val));
+                }
+                catch(const Defer& )
+                {
+                    // Deferred - no update
+                }
+            }
+        }
         void visit_path_params(::HIR::PathParams& p) override
         {
             static Span sp;
-            ::HIR::Visitor::visit_path_params(p);
-
             for( auto& v : p.m_values )
             {
                 if(v.is_Unevaluated())
                 {
-                    const auto& e = *v.as_Unevaluated()->expr;
-                    auto name = FMT("param_" << &v << "#");
-                    auto nvs = NewvalState { *m_mod, *m_mod_path, name };
-                    TRACE_FUNCTION_FR(name, name);
-                    auto eval = get_eval(e->span(), nvs);
-
-                    // Need to look up the required type - to do that requires knowing the item it's for
-                    // - Which, might not be known at this point - might be a UfcsInherent
                     try
                     {
                         const auto& params_def = m_get_params(sp);
@@ -3324,9 +3337,7 @@ namespace {
                         ASSERT_BUG(sp, idx < params_def.m_values.size(), "");
                         const auto& ty = params_def.m_values[idx].m_type;
                         ASSERT_BUG(sp, !monomorphise_type_needed(ty), "" << ty);
-
-                        auto val = eval.evaluate_constant( ::HIR::ItemPath(*m_mod_path, name.c_str()), e, ty.clone() );
-                        v = ::HIR::ConstGeneric::make_Evaluated(std::move(val));
+                        evalulate_const_generic(sp, ty, v);
                     }
                     catch(const Defer& )
                     {
@@ -3334,6 +3345,16 @@ namespace {
                     }
                 }
             }
+            ::HIR::Visitor::visit_path_params(p);
+        }
+        void visit_params(::HIR::GenericParams& params) override
+        {
+            static Span sp;
+            for(auto& v : params.m_values)
+            {
+                evalulate_const_generic(sp, v.m_type, v.m_default);
+            }
+            HIR::Visitor::visit_params(params);
         }
         void visit_generic_path(::HIR::GenericPath& p, ::HIR::Visitor::PathContext pc) override
         {

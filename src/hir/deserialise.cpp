@@ -1271,7 +1271,8 @@ namespace {
             m_in.read_istring(),
             deserialise_type()
             };
-        DEBUG("::HIR::ValueParamDef { " << rv.m_name << ", " << rv.m_type << "}");
+        rv.m_default = deserialise_constgeneric();
+        DEBUG("::HIR::ValueParamDef { " << rv.m_name << ": " << rv.m_type << " = " << rv.m_default << "}");
         return rv;
     }
     ::HIR::GenericBound HirDeserialiser::deserialise_genericbound()

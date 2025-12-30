@@ -370,6 +370,7 @@
         void serialise(const ::HIR::ValueParamDef& pd) {
             m_out.write_string(pd.m_name);
             serialise_type(pd.m_type);
+            serialise(pd.m_default);
         }
         void serialise(const ::HIR::GenericBound& b) {
             TRACE_FUNCTION_F(b);
@@ -725,7 +726,7 @@
         }
         void serialise(const ::HIR::ConstGeneric_Unevaluated& v)
         {
-            ASSERT_BUG(v.expr->span(), v.expr->m_mir, "Encountered non-translated value in ConstGeneric");
+            ASSERT_BUG(v.expr->span(), v.expr->m_mir, "Encountered non-translated value in ConstGeneric: " << v);
             serialise_pathparams(v.params_impl);
             serialise_pathparams(v.params_item);
             serialise(*v.expr);
