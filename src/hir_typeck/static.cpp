@@ -1282,7 +1282,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     }
                     else {
                         rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const ImplRef& impl, bool)->bool {
-                            ::HIR::TypeRef have = impl.get_type(aty_name.c_str(), {});
+                            ::HIR::TypeRef have = impl.get_type(aty_name.c_str(), assoc_bound.second.aty_params);
                             if( have == HIR::TypeRef() ) {
                                 have = HIR::TypeRef::new_path(HIR::Path(impl.get_impl_type(), HIR::GenericPath(aty_src_trait.m_path, impl.get_trait_params()), aty_name), HIR::TypePathBinding::make_Unbound({}));
                             }
@@ -2679,7 +2679,7 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
                     good = true;
                     for(const auto& aty : de->m_trait.m_type_bounds) {
                         // TODO: Can ATY bounds have generics
-                        auto atyv = impl.get_type(aty.first.c_str(), {});
+                        auto atyv = impl.get_type(aty.first.c_str(), aty.second.aty_params);
                         if( atyv == ::HIR::TypeRef() )
                         {
                             // Get the trait from which this associated type comes.

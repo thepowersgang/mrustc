@@ -3314,6 +3314,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 (Named,
                     for(const auto& fld : se)
                     {
+                        DEBUG(type << " FIELD '" << fld.name << "' " << fld.ty);
                         const auto& fld_ty_mono = monomorph_get(fld.ty);
                         DEBUG("Struct::Named '" << fld.name << "' " << fld_ty_mono);
 
@@ -3747,7 +3748,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         ::HIR::TypeRef  tmp;
                         const ::HIR::TypeRef*   ty_p;
 
-                        tmp = impl.get_type(assoc_bound.first.c_str(), {});
+                        tmp = impl.get_type(assoc_bound.first.c_str(), assoc_bound.second.aty_params);
                         if( tmp == ::HIR::TypeRef() ) {
                             // This bound isn't from this particular trait, go the slow way of using expand_associated_types
                             tmp = this->expand_associated_types(sp, ::HIR::TypeRef::new_path(
@@ -4438,7 +4439,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
                     total_cmp &= cmp;
                     tmp_e.m_trait.m_path.m_params = impl.get_trait_params();
                     for(const auto& aty : de->m_trait.m_type_bounds) {
-                        auto atyv = impl.get_type(aty.first.c_str(), {});
+                        auto atyv = impl.get_type(aty.first.c_str(), aty.second.aty_params);
                         if( atyv == ::HIR::TypeRef() )
                         {
                             // Get the trait from which this associated type comes.
