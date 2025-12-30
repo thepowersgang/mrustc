@@ -798,7 +798,9 @@ namespace {
                 this->visit_lifetime(te.lifetime);
                 if( te.is_mut )
                     m_pmi.send_rword("mut");
+                m_pmi.send_symbol("(");
                 this->visit_type(*te.inner);
+                m_pmi.send_symbol(")");
                 ),
             (Pointer,
                 m_pmi.send_symbol("*");
@@ -806,7 +808,9 @@ namespace {
                     m_pmi.send_rword("mut");
                 else
                     m_pmi.send_rword("const");
+                m_pmi.send_symbol("(");
                 this->visit_type(*te.inner);
+                m_pmi.send_symbol(")");
                 ),
             (Array,
                 m_pmi.send_symbol("[");
