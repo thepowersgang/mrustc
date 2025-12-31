@@ -17,8 +17,8 @@ fi
 RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk $OUTDIR/rustc $@
 ./$OUTDIR/rustc --version
 
+./$OUTDIR/rustc samples/no_core.rs
+
 LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk -j ${PARLEVEL:-1} $OUTDIR/cargo $@
 ./$OUTDIR/cargo --version
-
-./$OUTDIR/rustc samples/no_core.rs
 #./output-1.90.0/rustc samples/1.rs
