@@ -15,10 +15,11 @@ if [[ "x$MRUSTC_TARGET" != "x" ]]; then
 fi
 
 RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk $OUTDIR/rustc $@
+set -x
 ./$OUTDIR/rustc --version
-
-./$OUTDIR/rustc samples/no_core.rs
+./$OUTDIR/rustc samples/no_core-1_90.rs
+set +x
 
 LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk -j ${PARLEVEL:-1} $OUTDIR/cargo $@
+set -x
 ./$OUTDIR/cargo --version
-#./output-1.90.0/rustc samples/1.rs
