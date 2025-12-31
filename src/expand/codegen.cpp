@@ -664,10 +664,9 @@ class CHandler_Unsafe:
                 }
             }
             else if( ident == "ffi_const" ) {
-                // A hint to the optimiser that a FFI function always returns the same value
-                // - Don't care here
-                if(auto* e = i.opt_Function()) {
-                    // Handled by HIR lower
+                if(/*auto* e =*/i.opt_Function()) {
+                    // A hint to the optimiser that a FFI function always returns the same value
+                    // - Don't care here
                 }
                 else {
                     ERROR(sp, E0000, "#[unsafe(" << ident << ")] on non-function");
