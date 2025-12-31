@@ -143,6 +143,10 @@ public:
     /// @param params Field names (must be Const::String)
     /// @return Offset in bytes
     size_t intrinsic_offset_of(const ::HIR::TypeRef& ty, const ::std::vector<MIR::Param>& params) const;
+    /// @brief Handler for the `type_name` intrinsic, strips out mrustc's helper comments
+    /// @param ty Type
+    /// @return Clean string form of the type
+    std::string intrinsic_type_name(const ::HIR::TypeRef& ty) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeResolve& x) {
         x.fmt_pos(os);

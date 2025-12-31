@@ -443,6 +443,16 @@ size_t ::MIR::TypeResolve::intrinsic_offset_of(const ::HIR::TypeRef& ty, const :
     return base_ofs;
 }
 
+std::string MIR::TypeResolve::intrinsic_type_name(const ::HIR::TypeRef& ty) const
+{
+    if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() ) {
+        auto p = ty.data().as_Path().path.m_data.as_Generic().clone();
+        p.m_params.m_lifetimes.resize(0);
+        return FMT(p);
+    }
+    return FMT(ty);
+}
+
 using namespace MIR::visit;
 
 namespace MIR {

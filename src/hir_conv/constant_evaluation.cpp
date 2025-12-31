@@ -2539,7 +2539,7 @@ namespace HIR {
                 }
                 else if( te->name == "type_name" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
-                    auto name = FMT(ty);
+                    auto name = state.intrinsic_type_name(ty);
                     dst.write_ptr(state, EncodedLiteral::PTR_BASE, AllocationPtr::allocate_ro(name.data(), name.size()));
                     dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), name.size());
                 }

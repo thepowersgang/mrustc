@@ -6195,9 +6195,9 @@ namespace {
                 }
             }
             else if( name == "type_name" ) {
-                auto s = FMT(params.m_types.at(0));
-                emit_lvalue(e.ret_val); m_of << ".PTR = \"" << FmtEscaped(s) << "\";\n\t";
-                emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
+                auto name = mir_res.intrinsic_type_name(params.m_types.at(0));
+                emit_lvalue(e.ret_val); m_of << ".PTR = \"" << FmtEscaped(name) << "\";\n\t";
+                emit_lvalue(e.ret_val); m_of << ".META = " << name.size() << "";
             }
             else if( name == "transmute" || name == "transmute_unchecked" ) {
                 const auto& ty_src = params.m_types.at(0);
