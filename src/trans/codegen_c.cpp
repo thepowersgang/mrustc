@@ -20,6 +20,7 @@
 #include "allocator.hpp"
 #include <iomanip>
 #include "target_version.hpp"
+#include <string_view.hpp>
 
 namespace {
     struct FmtShell
@@ -7440,6 +7441,7 @@ namespace {
             }
             // -- Platform Intrinsics (and SIMD) --
             else if( name.compare(0, 9, "platform:") == 0 || name.compare(0, 5, "simd_") == 0 ) {
+                auto name_strip = ::stdx::string_view(name.c_str() + (name.compare(0, 9, "platform:") == 0 ? 9 : 0));
                 struct SimdInfo {
                     unsigned count;
                     unsigned item_size;
@@ -7532,7 +7534,7 @@ namespace {
 
                 // dst: T, index: usize, val: U
                 // Insert a value at position
-                if( name == "platform:simd_insert" ) {
+                if( name_strip == "simd_insert" ) {
                     size_t size_slot = 0, size_val = 0;
                     Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size_slot);
                     Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_val);
@@ -7543,7 +7545,7 @@ namespace {
                     emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << "; ";
                     m_of << "(( "; emit_ctype(params.m_types.at(1)); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")["; emit_param(e.args.at(1)); m_of << "] = "; emit_param(e.args.at(2));
                 }
-                else if( name == "platform:simd_extract" ) {
+                else if( name_strip == "simd_extract" ) {
                     size_t size_slot = 0, size_val = 0;
                     Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size_slot);
                     Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_val);
@@ -7554,7 +7556,7 @@ namespace {
                     emit_lvalue(e.ret_val); m_of << " = (( "; emit_ctype(params.m_types.at(1)); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")["; emit_param(e.args.at(1)); m_of << "]";
                 }
                 // Truncate into a bitmask - Converts a collection of [0,!0] into bits
-                else if( name == "platform:simd_bitmask" ) {
+                else if( name_strip == "simd_bitmask" ) {
                     auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
                     size_t size_out = 0;
                     Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_out);
@@ -7565,25 +7567,25 @@ namespace {
                     m_of << "}";
                 }
                 else if(
-                        name == "platform:simd_shuffle128" ||
-                        name == "platform:simd_shuffle64" ||
-                        name == "platform:simd_shuffle32" ||
-                        name == "platform:simd_shuffle16" ||
-                        name == "platform:simd_shuffle8" ||
-                        name == "platform:simd_shuffle4" ||
-                        name == "platform:simd_shuffle2"
+                        name_strip == "simd_shuffle128" ||
+                        name_strip == "simd_shuffle64" ||
+                        name_strip == "simd_shuffle32" ||
+                        name_strip == "simd_shuffle16" ||
+                        name_strip == "simd_shuffle8" ||
+                        name_strip == "simd_shuffle4" ||
+                        name_strip == "simd_shuffle2"
                         ) {
                     // Shuffle in 8 entries
                     size_t size_slot = 0;
                     Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_slot);
                     size_t div =
-                        name == "platform:simd_shuffle128" ? 128 :
-                        name == "platform:simd_shuffle64" ? 64 :
-                        name == "platform:simd_shuffle32" ? 32 :
-                        name == "platform:simd_shuffle16" ? 16 :
-                        name == "platform:simd_shuffle8" ? 8 :
-                        name == "platform:simd_shuffle4" ? 4 :
-                        name == "platform:simd_shuffle2" ? 2 :
+                        name_strip == "simd_shuffle128" ? 128 :
+                        name_strip == "simd_shuffle64" ? 64 :
+                        name_strip == "simd_shuffle32" ? 32 :
+                        name_strip == "simd_shuffle16" ? 16 :
+                        name_strip == "simd_shuffle8" ? 8 :
+                        name_strip == "simd_shuffle4" ? 4 :
+                        name_strip == "simd_shuffle2" ? 2 :
                         throw ""
                         ;
                     size_t size_val = size_slot / div;
@@ -7595,7 +7597,7 @@ namespace {
                     m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
                     m_of << "}";
                 }
-                else if( name == "platform:simd_shuffle" ) {
+                else if( name_strip == "simd_shuffle" ) {
                     //const auto& vec_ty = params.m_types.at(0);
                     const auto& map_ty = params.m_types.at(1);
                     const auto& ret_ty = params.m_types.at(2);
@@ -7608,12 +7610,14 @@ namespace {
                     size_t div = size_map / 4;  // map must be u32s
                     size_t size_val = size_ret / div;
                     m_of << "for(int i = 0; i < " << div << "; i++) {";
-                    m_of << " int j = "; emit_param(e.args.at(2)); m_of << ".DATA[i];";
+                    m_of << " int j = "; emit_param(e.args.at(2));
+                    if(TARGETVER_LEAST_1_90)    m_of << "._0";
+                    m_of << ".DATA[i];";
                     m_of << " ((uint" << (size_val*8) << "_t*)&"; emit_lvalue(e.ret_val); m_of << ")[i]";
                     m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
                     m_of << "}";
                 }
-                else if( name == "platform:simd_cast" ) {
+                else if( name_strip == "simd_cast" ) {
                     auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
                     auto dst_info = SimdInfo::for_ty(*this, params.m_types.at(1));
                     MIR_ASSERT(mir_res, src_info.count == dst_info.count, "Element counts must match for " << name);
@@ -7622,7 +7626,7 @@ namespace {
                     m_of << "= (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i];";
                 }
                 // Select between two values
-                else if(name == "platform:simd_select") {
+                else if(name_strip == "simd_select") {
                     auto mask_info = SimdInfo::for_ty(*this, params.m_types.at(0));
                     auto val_info = SimdInfo::for_ty(*this, params.m_types.at(1));
                     MIR_ASSERT(mir_res, mask_info.count == val_info.count, "Element counts must match for " << name);
@@ -7633,7 +7637,7 @@ namespace {
                     m_of << ": (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(2)); m_of << ")[i]";
                     m_of << ";";
                 }
-                else if(name == "platform:simd_select_bitmask") {
+                else if(name_strip == "simd_select_bitmask") {
                     auto val_info = SimdInfo::for_ty(*this, params.m_types.at(1));
                     m_of << "for(int i = 0; i < " << val_info.count << "; i++) ";
                     m_of << "(("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
@@ -7643,23 +7647,23 @@ namespace {
                     m_of << ";";
                 }
                 // Comparisons
-                else if(name == "platform:simd_eq")   simd_cmp("==");
-                else if(name == "platform:simd_ne")   simd_cmp("!=");
-                else if(name == "platform:simd_lt")   simd_cmp("<" );
-                else if(name == "platform:simd_le")   simd_cmp("<=");
-                else if(name == "platform:simd_gt")   simd_cmp(">" );
-                else if(name == "platform:simd_ge")   simd_cmp(">=");
+                else if(name_strip == "simd_eq")   simd_cmp("==");
+                else if(name_strip == "simd_ne")   simd_cmp("!=");
+                else if(name_strip == "simd_lt")   simd_cmp("<" );
+                else if(name_strip == "simd_le")   simd_cmp("<=");
+                else if(name_strip == "simd_gt")   simd_cmp(">" );
+                else if(name_strip == "simd_ge")   simd_cmp(">=");
                 // Arithmetic
-                else if(name == "platform:simd_add" || name == "simd_add")    simd_arith("+");
-                else if(name == "platform:simd_sub" || name == "simd_sub")    simd_arith("-");
-                else if(name == "platform:simd_mul" || name == "simd_mul")    simd_arith("*");
-                else if(name == "platform:simd_div" || name == "simd_div")    simd_arith("/");
-                else if(name == "platform:simd_and" || name == "simd_and")    simd_arith("&");
-                else if(name == "platform:simd_or"  || name == "simd_or" )    simd_arith("|");
-                else if(name == "platform:simd_xor" || name == "simd_xor")    simd_arith("^");
-                else if(name == "platform:simd_xor" || name == "simd_xor")    simd_arith("^");
-                else if(name == "platform:simd_shr" || name == "simd_shr")    simd_arith(">>");
-                else if(name == "platform:simd_shl" || name == "simd_shl")    simd_arith("<<");
+                else if(name_strip == "simd_add" )    simd_arith("+");
+                else if(name_strip == "simd_sub" )    simd_arith("-");
+                else if(name_strip == "simd_mul" )    simd_arith("*");
+                else if(name_strip == "simd_div" )    simd_arith("/");
+                else if(name_strip == "simd_and" )    simd_arith("&");
+                else if(name_strip == "simd_or"  )    simd_arith("|");
+                else if(name_strip == "simd_xor" )    simd_arith("^");
+                else if(name_strip == "simd_xor" )    simd_arith("^");
+                else if(name_strip == "simd_shr" )    simd_arith(">>");
+                else if(name_strip == "simd_shl" )    simd_arith("<<");
                 // platform:simd_reduce_and
                 // platform:simd_reduce_max
                 // platform:simd_reduce_min
@@ -7668,11 +7672,11 @@ namespace {
                 // platform:simd_reduce_or
                 // platform:simd_saturating_add
                 // platform:simd_saturating_sub
-                else if(name == "platform:simd_ceil")    simd_call("ceil");
-                else if(name == "platform:simd_floor")    simd_call("floor");
-                else if(name == "platform:simd_fsqrt")    simd_call("sqrt");
+                else if(name_strip == "simd_ceil")    simd_call("ceil");
+                else if(name_strip == "simd_floor")    simd_call("floor");
+                else if(name_strip == "simd_fsqrt")    simd_call("sqrt");
                 // platform:simd_fma
-                else if(name == "platform::simd_fma") {
+                else if(name_strip == "simd_fma") {
                     auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
                     // Emulate!
                     m_of << "for(int i = 0; i < " << info.count << "; i++)";
