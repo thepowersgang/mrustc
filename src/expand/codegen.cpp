@@ -624,27 +624,64 @@ class CHandler_TrackCaller:
 };
 STATIC_DECORATOR("track_caller", CHandler_TrackCaller);
 
+/// @brief Various unsafe attributes, addded around 1.90
 class CHandler_Unsafe:
     public ExpandDecorator
 {
     AttrStage   stage() const override { return AttrStage::Post; }
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
-        if(auto* e = i.opt_Function()) {
-            // Handled by HIR lower
-            mi.parse_paren_ident_list([&](const Span& sp, RcString ident){
-                if( ident == "no_mangle" ) {
+        TTStream    lex(mi.span(), ParseState(), mi.data());
+        lex.getTokenCheck(TOK_PAREN_OPEN);
+        while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
+            auto ident = lex.getTokenCheck(TOK_IDENT).ident().name;
+            
+            if( ident == "no_mangle" ) {
+                DEBUG("#[unsafe(no_mangle)] " << path << " = " << path.nodes.back().c_str());
+                if(auto* e = i.opt_Function()) {
                     e->m_markings.link_name = path.nodes.back().c_str();
-                    DEBUG("#[unsafe(no_mangle)] " << path << " = " << e->m_markings.link_name);
+                }
+                else if(auto* e = i.opt_Static()) {
+                    e->m_markings.link_name = path.nodes.back().c_str();
                 }
                 else {
-                    ERROR(sp, E0000, "Unknown #[unsafe(" << ident << ")]");
+                    ERROR(sp, E0000, "#[unsafe(" << ident << ")] on bad item: " << i.tag_str());
                 }
-            });
+            }
+            else if( ident == "link_section" ) {
+                lex.getTokenCheck(TOK_EQUAL);
+                auto s = lex.getTokenCheck(TOK_STRING).str();
+                
+                DEBUG("#[unsafe(link_section)] " << path << " in `" << s);
+                if(auto* e = i.opt_Function()) {
+                    e->m_markings.link_section = s;
+                }
+                else if(auto* e = i.opt_Static()) {
+                    e->m_markings.link_section = s;
+                }
+                else {
+                    ERROR(sp, E0000, "#[unsafe(" << ident << ")] on bad item: " << i.tag_str());
+                }
+            }
+            else if( ident == "ffi_const" ) {
+                // A hint to the optimiser that a FFI function always returns the same value
+                // - Don't care here
+                if(auto* e = i.opt_Function()) {
+                    // Handled by HIR lower
+                }
+                else {
+                    ERROR(sp, E0000, "#[unsafe(" << ident << ")] on non-function");
+                }
+            }
+            else {
+                ERROR(sp, E0000, "Unknown #[unsafe(" << ident << ")]");
+            }
+
+            if(lex.lookahead(0) != TOK_COMMA)
+                break;
+            lex.getTokenCheck(TOK_COMMA);
         }
-        else {
-            ERROR(sp, E0000, "#[unsafe] on non-function");
-        }
+        lex.getTokenCheck(TOK_PAREN_CLOSE);
     }
 };
 STATIC_DECORATOR("unsafe", CHandler_Unsafe);
