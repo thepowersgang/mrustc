@@ -669,6 +669,8 @@ public:
     {
         bool    controls_dir = false;
         bool    force_no_load = false;
+        // Is this a `mod foo { ... }` or `mod foo;` (changes how `#[path]` is processed inside)
+        bool    in_mod_block = false;
         // Path to this module
         ::std::string   path = "!";
         // Directory controlled by this module

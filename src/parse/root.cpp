@@ -2336,8 +2336,17 @@ namespace {
         }
         else if( path_attr.size() > 0 )
         {
-            //sub_path = dirname(mod_fileinfo.path) / path_attr.c_str();
-            sub_path = dirname(lex.point_span().get_top_file_span().filename.c_str()) / path_attr.c_str();
+            // If in a local mod, then use this arm
+            bool in_submod = mod_fileinfo.path[mod_fileinfo.path.size()-1] == '/';
+            if( mod_fileinfo.in_mod_block ) {
+                // REF: `rustc-1.90.0-src/vendor/hashbrown-0.14.5/src/lib.rs:63`
+                sub_path = dirname(mod_fileinfo.path) / path_attr.c_str();
+            }
+            else {
+                // Otherwise use this:
+                // REF: `rustc-1.90.0-src/vendor/icu_list_data-1.5.1/data/macros.rs:30`
+                sub_path = dirname(lex.point_span().get_top_file_span().filename.c_str()) / path_attr.c_str();
+            }
         }
         else if( mod_fileinfo.controls_dir )
         {
@@ -2358,6 +2367,7 @@ namespace {
         {
         case TOK_BRACE_OPEN:
             submod.m_file_info.path = sub_path.str() + "/";
+            submod.m_file_info.in_mod_block = true;
             // TODO: If cfg fails, just eat the TT until a matching #[cfg]?
             // - Or, mark the file infor as not being valid (so child modules don't try to load)
             Parse_ModRoot(lex, submod, meta_items);
