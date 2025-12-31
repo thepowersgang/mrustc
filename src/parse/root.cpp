@@ -1114,6 +1114,18 @@ void Parse_ParentAttrs(TokenStream& lex, AST::AttributeList& out)
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
     }
 }
+namespace {
+    RcString get_tok_ident_rword(TokenStream& lex)
+    {
+        Token   tok;
+        GET_TOK(tok, lex);
+        if(tok.type() == TOK_IDENT)
+            return tok.ident().name;
+        if(tok.type() >= TOK_RWORD_PUB)
+            return tok.to_str().c_str();
+        throw ParseError::Unexpected(lex, tok, TOK_IDENT);
+    }
+}
 /// Parse a meta-item declaration (either #![ or #[)
 AST::Attribute Parse_MetaItem(TokenStream& lex)
 {
@@ -1129,7 +1141,11 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
 
     AST::AttributeName  name;
     // NOTE: After 1.19 mode, values can be present with no name
-    if( TARGETVER_LEAST_1_29 && lex.lookahead(0) != TOK_IDENT && lex.lookahead(0) != TOK_DOUBLE_COLON )
+    if( TARGETVER_LEAST_1_29
+        && lex.lookahead(0) != TOK_IDENT
+        && lex.lookahead(0) != TOK_DOUBLE_COLON
+        && lex.lookahead(0) < TOK_RWORD_PUB
+    )
     {
         // Put a fake equals token in the queue
         tok = Token(TOK_EQUAL);
@@ -1138,8 +1154,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     {
         name.has_leading = lex.getTokenIf(TOK_DOUBLE_COLON);
         do {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            name.elems.push_back(tok.ident().name);
+            name.elems.push_back( get_tok_ident_rword(lex) );
         } while(GET_TOK(tok, lex) == TOK_DOUBLE_COLON);
     }
     DEBUG("name = " << name);

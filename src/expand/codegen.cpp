@@ -623,3 +623,28 @@ class CHandler_TrackCaller:
     }
 };
 STATIC_DECORATOR("track_caller", CHandler_TrackCaller);
+
+class CHandler_Unsafe:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Post; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        if(auto* e = i.opt_Function()) {
+            // Handled by HIR lower
+            mi.parse_paren_ident_list([&](const Span& sp, RcString ident){
+                if( ident == "no_mangle" ) {
+                    e->m_markings.link_name = path.nodes.back().c_str();
+                    DEBUG("#[unsafe(no_mangle)] " << path << " = " << e->m_markings.link_name);
+                }
+                else {
+                    ERROR(sp, E0000, "Unknown #[unsafe(" << ident << ")]");
+                }
+            });
+        }
+        else {
+            ERROR(sp, E0000, "#[unsafe] on non-function");
+        }
+    }
+};
+STATIC_DECORATOR("unsafe", CHandler_Unsafe);
