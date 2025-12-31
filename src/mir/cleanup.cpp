@@ -504,7 +504,8 @@ namespace {
                 ::std::vector<uint8_t>  bytestr;
                 for(auto it = s; it != e; ++it)
                     bytestr.push_back( static_cast<uint8_t>(*it) );
-                return ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ U128(bytestr.size()), ::HIR::CoreType::Usize }) });
+                auto size = ::MIR::Constant::make_Uint({ U128(bytestr.size()), ::HIR::CoreType::Usize });
+                return ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), std::move(size) });
             }
             else if( te.inner.data().is_Array() && te.inner.data().as_Array().inner == ::HIR::CoreType::U8 ) {
                 // TODO: How does this differ at codegen to the above?
@@ -522,8 +523,9 @@ namespace {
                 ::std::vector<uint8_t>  bytestr;
                 for(auto it = s; it != e; ++it)
                     bytestr.push_back( static_cast<uint8_t>(*it) );
+                auto size = ::MIR::Constant::make_Uint({ U128(bytestr.size()), ::HIR::CoreType::Usize });
                 // Make a `*const [u8]`
-                auto ptr1 = ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ U128(bytestr.size()), ::HIR::CoreType::Usize }) });
+                auto ptr1 = ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::std::move(size) });
                 auto lval = mutator.in_temporary( ::HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8)), mv$(ptr1) );
                 // Cast to `*const T`
                 auto raw_ptr_ty = ::HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, te.inner.clone());
