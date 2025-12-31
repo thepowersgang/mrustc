@@ -109,7 +109,8 @@ static void push_dependencies(const PackageManifest& package, LockfileContents& 
         deps.push_back(&dep_c);
     });
     for(const auto* dep_c : deps) {
-        if( dep_c->get_version().m_bounds.empty() ) {
+        //if( dep_c->get_version().m_bounds.empty() ) {
+        if( dep_c->has_path() ) {
             DEBUG("Recurse " << dep_c->name());
             auto m = const_cast<PackageRef*>(dep_c)->load_manifest_raw(repo, package.directory(), [](const auto&){ return true; });
             LockfileContents::PackageKey    dep_key { m->name(), m->version() };
