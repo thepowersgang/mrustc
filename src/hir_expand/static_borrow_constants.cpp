@@ -912,6 +912,7 @@ namespace static_borrow_constants {
                 DEBUG("Generic static");
             }
 
+            ASSERT_BUG(node->span(), m_expr_ptr.m_state, "");
             auto val_expr = HIR::ExprPtr(mv$(node));
             val_expr.m_state = m_expr_ptr.m_state.clone();
             val_expr.m_state->stage = ::HIR::ExprState::Stage::Sbc;

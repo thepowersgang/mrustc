@@ -1079,6 +1079,7 @@ namespace {
             
             MonomorphState  out_params;
             StaticTraitResolve::ValuePtr v = this->m_resolve.get_value(sp, node.m_path, out_params, /*signature_only=*/true);
+            HIR::TypeRef    ty;
             TU_MATCH_HDRA( (v), {)
             TU_ARMA(NotFound, ve) {
                 BUG(sp, node.m_path << " Not found");
@@ -1088,14 +1089,12 @@ namespace {
                 BUG(sp, node.m_path << " still unknown (has ivars?)");
                 }
             TU_ARMA(Static, ve) {
-                auto ty = out_params.monomorph_type(node.span(), ve->m_type);
+                ty = out_params.monomorph_type(node.span(), ve->m_type);
                 this->m_resolve.expand_associated_types(sp, ty);
-                check_types_equal(sp, node.m_res_type, ty);
                 }
             TU_ARMA(Constant, ve) {
-                auto ty = out_params.monomorph_type(node.span(), ve->m_type);
+                ty = out_params.monomorph_type(node.span(), ve->m_type);
                 this->m_resolve.expand_associated_types(sp, ty);
-                check_types_equal(sp, node.m_res_type, ty);
                 }
             TU_ARMA(StructConstant, ve) {
                 // TODO: Check struct type
@@ -1105,14 +1104,20 @@ namespace {
                 }
             
             TU_ARMA(Function, ve) {
-                // TODO: Check function type
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({ node.m_path.clone(), ve }));
                 }
             TU_ARMA(StructConstructor, ve) {
-                // TODO: Check function type (struct constructor)
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({ node.m_path.clone(), ve.s }));
                 }
             TU_ARMA(EnumConstructor, ve) {
-                // TODO: Check function type (enum variant constructor)
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({
+                    node.m_path.clone(),
+                    ::HIR::TypeData_NamedFunction_Ty::make_EnumConstructor({ ve.e, ve.v })
+                    }));
                 }
+            }
+            if( ty != HIR::TypeRef() ) {
+                check_types_equal(sp, node.m_res_type, ty);
             }
         }
 
