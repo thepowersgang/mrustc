@@ -760,6 +760,12 @@ namespace {
             this->visit_node_ptr(node.m_value);
             auto lv_res = m_builder.get_result_in_lvalue(sp, ty_inner);
 
+            auto state_value = static_cast<unsigned>(m_generator_state.states.size());
+            m_generator_state.states.back().saved = m_builder.get_active_locals();
+            m_generator_state.states.push_back( m_builder.new_bb_unlinked() );
+            m_builder.end_block(m_generator_state.states.back().entrypoint);
+            m_builder.set_cur_block( m_generator_state.states.back().entrypoint );
+
             // Create `Pin<&mut >` as the reciever, using `Pin::new_unchecked`
             const auto& lang_Pin = m_builder.resolve().m_crate.get_lang_item_path(sp, "pin");
             auto type_mut = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, ty_inner.clone());
@@ -831,6 +837,11 @@ namespace {
                     std::move(path_local_Poll),
                     1, {}
                 }));
+                m_builder.push_stmt_assign( node.span(), generator_state_lv(), ::MIR::RValue::make_EnumVariant({
+                    m_generator_state.state_idx_enm_path.clone(),
+                    state_value,
+                    {}
+                    }) );
                 m_builder.end_block(::MIR::Terminator::make_Return({}));
 
                 m_builder.set_cur_block(bb_ready);
