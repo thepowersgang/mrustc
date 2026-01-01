@@ -807,6 +807,14 @@ namespace typecheck
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
         }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            TRACE_FUNCTION_F(&node << "(...).await");
+            this->context.add_ivars( node.m_value->m_res_type );
+            node.m_value->visit( *this );
+            // Require that `return = <[node.value] as `future_trait`>::Output`
+            this->context.equate_types_assoc(node.span(), node.m_res_type, context.m_resolve.m_lang_Future, {}, node.m_value->m_res_type, "Output", {});
+        }
 
         void visit(::HIR::ExprNode_Loop& node) override
         {
@@ -2081,9 +2089,12 @@ namespace typecheck
             this->context.add_ivars(node.m_code->m_res_type);
 
             this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_async(&node) );
+            
             // TODO: Save/clear/restore loop labels
             auto _ = this->push_inner_coerce_scoped(true);
+            this->closure_ret_types.push_back(RetTarget(node.m_code->m_res_type));
             node.m_code->visit( *this );
+            this->closure_ret_types.pop_back();
         }
 
     private:

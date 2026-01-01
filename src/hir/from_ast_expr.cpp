@@ -382,7 +382,7 @@ struct LowerHIR_ExprNode_Visitor:
             break;
 
         case ::AST::ExprNode_UniOp::AWait:
-            TODO(v.span(), "Convert AWait operator");
+            m_rv.reset(new ::HIR::ExprNode_AWait(v.span(), lower( v.m_value ) ));
             break;
 
         case ::AST::ExprNode_UniOp::INVERT: op = ::HIR::ExprNode_UniOp::Op::Invert; if(0)
@@ -605,6 +605,7 @@ struct LowerHIR_ExprNode_Visitor:
             ));
     }
     virtual void visit(::AST::ExprNode_IfLet& v) override {
+        // TODO: Do the desugar here, so irrefutable patterns can be handled nicely
         TODO(v.span(), "`if let` left sugared");
     }
 
@@ -721,9 +722,9 @@ struct LowerHIR_ExprNode_Visitor:
                 ERROR(v.span(), E0000, "Invalid use of `static` on non-yielding closure");
             }
             m_rv.reset( new ::HIR::ExprNode_Closure( v.span(),
-                mv$(args),
+                std::move(args),
                 LowerHIR_Type(v.m_return),
-                mv$(inner),
+                std::move(inner),
                 v.m_is_move
                 ) );
         }

@@ -229,12 +229,19 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
 }
 const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, const ::MIR::Param& val) const
 {
-    if (const auto* p = val.opt_LValue()) {
-        return get_lvalue_type(tmp, *p);
+    TU_MATCH_HDRA((val), {)
+    TU_ARMA(LValue, e) {
+        return get_lvalue_type(tmp, e);
+        }
+    TU_ARMA(Constant, e) {
+        return tmp = get_const_type(e);
+        }
+    TU_ARMA(Borrow, e) {
+        ::HIR::TypeRef  tmp2;
+        return tmp = ::HIR::TypeRef::new_borrow(e.type, get_lvalue_type(tmp2, e.val).clone());
+        }
     }
-    else {
-        return tmp = get_const_type(val.as_Constant());
-    }
+    throw "";
 }
 
 ::HIR::TypeRef MIR::TypeResolve::get_const_type(const ::MIR::Constant& c) const

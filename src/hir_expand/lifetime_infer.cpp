@@ -987,6 +987,7 @@ namespace {
                 NV(ExprNode_Asm2)
                 NV(ExprNode_Return)
                 NV(ExprNode_Yield)
+                NV(ExprNode_AWait)
                 NV(ExprNode_Let)
                 NV(ExprNode_Loop)
                 NV(ExprNode_LoopControl)
@@ -1110,6 +1111,12 @@ namespace {
                 ASSERT_BUG(node.span(), !m_yields.empty(), "Yield without a generator block?");
                 equate_types(node.m_value->span(), *m_yields.back(), node.m_value->m_res_type);
             }
+        }
+        void visit(::HIR::ExprNode_AWait& node) override {
+            HIR::ExprVisitorDef::visit(node);
+            auto t = ::HIR::TypeRef::new_path(::HIR::Path(node.m_value->m_res_type.clone(), m_resolve.m_lang_Future, "Output"), {});
+            m_resolve.expand_associated_types(node.span(), t);
+            equate_types(node.span(), node.m_res_type, t);
         }
         void visit(::HIR::ExprNode_Let& node) override {
             HIR::ExprVisitorDef::visit(node);
@@ -2030,7 +2037,9 @@ namespace {
                 }
             }
 
+            m_returns.push_back(&node.m_code->m_res_type);
             HIR::ExprVisitorDef::visit(node);
+            m_returns.pop_back();
         }
     };
 

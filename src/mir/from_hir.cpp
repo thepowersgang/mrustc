@@ -415,6 +415,12 @@ namespace {
             }
         }
 
+        void emit_unwind(const Span& sp)
+        {
+            // TODO: Emit the drop calls
+            m_builder.end_block(::MIR::Terminator::make_Diverge({}));
+        }
+
         // -- ExprVisitor
         void visit_node_ptr(::HIR::ExprNodeP& node_p) override
         {
@@ -706,6 +712,8 @@ namespace {
             TRACE_FUNCTION_F("_Yield");
             if( m_is_generator )
             {
+                ASSERT_BUG(node.span(), !m_generator_state.is_future, "");
+
                 ::HIR::GenericPath enm_path;
                 m_builder.with_val_type(node.span(), ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
                     const auto& te = ty.data().as_Path();
@@ -741,6 +749,94 @@ namespace {
             {
                 BUG(node.span(), "Unexpected ExprNode_Yield (should have been re-written)");
             }
+        }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            const Span& sp = node.span();
+            TRACE_FUNCTION_F("_AWait");
+            ASSERT_BUG(node.span(), m_is_generator && m_generator_state.is_future, "`.await` not in an async block/function");
+            const auto& ty_inner = node.m_value->m_res_type;
+
+            this->visit_node_ptr(node.m_value);
+            auto lv_res = m_builder.get_result_in_lvalue(sp, ty_inner);
+
+            // Create `Pin<&mut >` as the reciever, using `Pin::new_unchecked`
+            const auto& lang_Pin = m_builder.resolve().m_crate.get_lang_item_path(sp, "pin");
+            auto type_mut = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, ty_inner.clone());
+            auto pin_path = ::HIR::GenericPath(lang_Pin, ::HIR::PathParams(type_mut.clone()));
+            auto type_pin = ::HIR::TypeRef::new_path(std::move(pin_path), &m_builder.resolve().m_crate.get_struct_by_path(sp, lang_Pin));
+
+            auto lv_mut = m_builder.lvalue_or_temp(sp, type_mut, ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, std::move(lv_res) }));
+            auto lv_pin = m_builder.new_temporary(type_pin);
+            {
+                auto bb_ret = m_builder.new_bb_unlinked();
+                auto bb_panic = m_builder.new_bb_unlinked();
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    bb_ret, bb_panic,
+                    lv_pin.clone(),
+                    ::HIR::Path( type_pin.clone(), "new_unchecked" ),
+                    make_vec1(::MIR::Param(lv_mut.clone()))
+                }));
+                m_builder.moved_lvalue(node.span(), std::move(lv_mut));
+                m_builder.set_cur_block(bb_panic);
+                emit_unwind(sp);
+                m_builder.set_cur_block(bb_ret);
+            }
+            // Call `Future::poll`
+            const auto& lang_Poll = m_builder.resolve().m_crate.get_lang_item_path(sp, "Poll");
+            auto type_poll = ::HIR::TypeRef::new_path(
+                ::HIR::GenericPath(lang_Poll, ::HIR::PathParams(node.m_res_type.clone())),
+                &m_builder.resolve().m_crate.get_enum_by_path(sp, lang_Poll)
+            );
+            auto lv_poll = m_builder.new_temporary(type_poll);
+            {
+                auto bb_ret = m_builder.new_bb_unlinked();
+                auto bb_panic = m_builder.new_bb_unlinked();
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    bb_ret, bb_panic,
+                    lv_poll.clone(),
+                    ::HIR::Path(ty_inner.clone(), m_builder.resolve().m_lang_Future, "poll" ),
+                    make_vec2(
+                        ::MIR::Param(lv_pin.clone()),
+                        ::MIR::Param::make_Borrow({
+                            ::HIR::BorrowType::Unique,
+                            ::MIR::LValue::new_Deref(::MIR::LValue::new_Argument(1))    // Context is the second argument (first is `self`)
+                        })
+                    )
+                }));
+                m_builder.moved_lvalue(node.span(), std::move(lv_pin));
+                m_builder.set_cur_block(bb_panic);
+                emit_unwind(sp);
+                m_builder.set_cur_block(bb_ret);
+            }
+            // Check return
+            const auto variant_Ready = 0;
+            {
+                auto bb_pending = m_builder.new_bb_unlinked();
+                auto bb_ready = m_builder.new_bb_unlinked();
+                ASSERT_BUG(node.span(), type_poll.data().as_Path().binding.as_Enum()->find_variant("Ready") == variant_Ready, "");
+                ASSERT_BUG(node.span(), type_poll.data().as_Path().binding.as_Enum()->find_variant("Pending") == 1, "");
+                m_builder.end_block(::MIR::Terminator::make_Switch({
+                    lv_poll.clone(),
+                    make_vec2(bb_ready, bb_pending)
+                }));
+                m_builder.set_cur_block(bb_pending);
+
+                // `retval = ::core::task::Poll::Pending; RETURN`
+                HIR::GenericPath    path_local_Poll;
+                m_builder.with_val_type(sp, ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
+                    path_local_Poll = ty.data().as_Path().path.m_data.as_Generic().clone();
+                    });
+                m_builder.push_stmt_assign(node.span(), ::MIR::LValue::new_Return(), ::MIR::RValue::make_EnumVariant({
+                    std::move(path_local_Poll),
+                    1, {}
+                }));
+                m_builder.end_block(::MIR::Terminator::make_Return({}));
+
+                m_builder.set_cur_block(bb_ready);
+            }
+            // lv_poll.#0.0 to get the field of the first variant
+            m_builder.set_result(node.span(), ::MIR::LValue::new_Field(::MIR::LValue::new_Downcast(std::move(lv_poll), variant_Ready), 0));
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
@@ -1834,7 +1930,7 @@ namespace {
                     auto panic_block = m_builder.new_bb_unlinked();
                     m_builder.end_block(::MIR::Terminator::make_Call({ ok_block, panic_block, val.clone(), mv$(method_path), mv$(args) }));
                     m_builder.set_cur_block(panic_block);
-                    m_builder.end_block(::MIR::Terminator::make_Diverge({}));
+                    emit_unwind(sp);
 
                     m_builder.set_cur_block(ok_block);
                 }
@@ -1927,11 +2023,8 @@ namespace {
                 break; }
             }
 
-            // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(place__panic);
-            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
-            // TODO: Drop `place`
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            emit_unwind(node.span());
             m_builder.set_cur_block(place__ok);
 
             // 2. Get `place_raw`
@@ -1954,9 +2047,8 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(place_raw__panic);
-            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
-            // TODO: Drop `place`
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            // TODO: Drop `place` (as it's a raw pointer)
+            emit_unwind(node.span());
             m_builder.set_cur_block(place_raw__ok);
 
 
@@ -1991,10 +2083,7 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(res__panic);
-            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
-            // TODO: Should this drop the value written to the rawptr?
-            // - No, becuase it's likely invalid now. Goodbye!
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            emit_unwind(node.span());
             m_builder.set_cur_block(res__ok);
 
             m_builder.mark_value_assigned(node.span(), res);
@@ -2025,7 +2114,8 @@ namespace {
                     size_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "size_of", trait_params_data.clone() }),
                     {}
                     }));
-                m_builder.set_cur_block(size__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(size__panic);
+                emit_unwind(node.span());
                 m_builder.set_cur_block(size__ok);
                 auto align_slot = m_builder.new_temporary( ::HIR::CoreType::Usize );
                 auto align__panic = m_builder.new_bb_unlinked();
@@ -2035,7 +2125,8 @@ namespace {
                     align_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "align_of", trait_params_data.clone() }),
                     {}
                     }));
-                m_builder.set_cur_block(align__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(align__panic);
+                emit_unwind(node.span());
                 m_builder.set_cur_block(align__ok);
 
                 size_param = ::std::move(size_slot);
@@ -2054,7 +2145,8 @@ namespace {
                 place_raw.clone(), ::HIR::Path(lang_exchange_malloc),
                 make_vec2<::MIR::Param>( ::std::move(size_param), ::std::move(align_param) )
                 }));
-            m_builder.set_cur_block(place__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+            m_builder.set_cur_block(place__panic);
+            emit_unwind(node.span());
             m_builder.set_cur_block(place__ok);
 
             auto place_type = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Unique, data_ty.clone());
@@ -2075,7 +2167,8 @@ namespace {
                 res.clone(), ::MIR::CallTarget::make_Intrinsic({ "transmute", mv$(transmute_params) }),
                 make_vec1( ::MIR::Param( mv$(place) ) )
                 }));
-            m_builder.set_cur_block(cast__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+            m_builder.set_cur_block(cast__panic);
+            emit_unwind(node.span());
             m_builder.set_cur_block(cast__ok);
 
             m_builder.set_result(node.span(), mv$(res));
@@ -2347,8 +2440,7 @@ namespace {
             }
 
             m_builder.set_cur_block(panic_block);
-            // TODO: Proper panic handling, including scope destruction
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            emit_unwind(node.span());
 
             m_builder.set_cur_block( next_block );
 
@@ -2392,8 +2484,7 @@ namespace {
                 }));
 
             m_builder.set_cur_block(panic_block);
-            // TODO: Proper panic handling
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            emit_unwind(node.span());
 
             m_builder.set_cur_block( next_block );
             // TODO: Support diverging value calls
@@ -2495,7 +2586,8 @@ namespace {
                     res.clone(), ::MIR::CallTarget::make_Intrinsic({ "transmute", mv$(transmute_params) }),
                     make_vec1( ::MIR::Param( ::MIR::Constant(std::move(s)) ) )
                     }));
-                m_builder.set_cur_block(cast__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(cast__panic);
+                emit_unwind(node.span());
                 m_builder.set_cur_block(cast__ok);
 
                 m_builder.set_result(node.span(), mv$(res));
@@ -2883,7 +2975,8 @@ namespace {
                     res_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "init", ::HIR::PathParams(mv$(slot_type)) }), // I.e. `mem::zeroed`
                     {}
                     }));
-                m_builder.set_cur_block(size__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(size__panic);
+                emit_unwind(sp);
                 m_builder.set_cur_block(size__ok);
                 vals.push_back( std::move(res_slot) );
             }

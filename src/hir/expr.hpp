@@ -176,12 +176,27 @@ struct ExprNode_Return:
 
     NODE_METHODS();
 };
+/// @brief `foo = yield bar` generator yield statement
 struct ExprNode_Yield:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
 
     ExprNode_Yield(Span sp, ::HIR::ExprNodeP value):
+        ExprNode(mv$(sp)),
+        m_value( mv$(value) )
+    {
+    }
+
+    NODE_METHODS();
+};
+/// @brief Async Wait (the `.await` postfix operator)
+struct ExprNode_AWait:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_value;
+
+    ExprNode_AWait(Span sp, ::HIR::ExprNodeP value):
         ExprNode(mv$(sp)),
         m_value( mv$(value) )
     {
@@ -1011,6 +1026,7 @@ public:
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)
     NV(ExprNode_Yield)
+    NV(ExprNode_AWait)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
@@ -1067,6 +1083,7 @@ public:
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)
     NV(ExprNode_Yield)
+    NV(ExprNode_AWait)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)

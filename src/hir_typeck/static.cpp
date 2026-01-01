@@ -363,7 +363,13 @@ bool StaticTraitResolve::find_impl(
             }
             }
         TU_ARMA(Async, node_p) {
-            TODO(sp, "async impl");
+            if( TARGETVER_LEAST_1_90 && trait_path == m_lang_Future )
+            {
+                ::HIR::TraitPath::assoc_list_t   assoc;
+                assoc.insert(::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { trait_path.clone(), {}, node_p->m_code->m_res_type.clone() }));
+                ::HIR::PathParams params;
+                return found_cb( ImplRef(type.clone(), mv$(params), mv$(assoc)), ::HIR::Compare::Equal );
+            }
             }
         }
         }

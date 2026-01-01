@@ -1825,7 +1825,7 @@ namespace {
             node.m_obj_ptr = &gen_struct_ref;
             node.m_obj_path = ::HIR::GenericPath( gen_struct_path, monomorph_cb.freeze() );
             node.m_captures = std::move(cr_vars.capture_nodes);
-            node.m_state_data_type = state_type.clone();
+            node.m_state_data_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, node.m_obj_path.m_params.clone()), &state_struct_ptr->as_Struct() );
 
             ::HIR::TypeRef& self_arg_ty = cr_vars.new_locals[0];
             // `::path::to::struct`

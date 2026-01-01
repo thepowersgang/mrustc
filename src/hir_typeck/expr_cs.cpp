@@ -170,6 +170,9 @@ namespace {
         void visit(::HIR::ExprNode_Yield& node) override {
             no_revisit(node);
         }
+        void visit(::HIR::ExprNode_AWait& node) override {
+            no_revisit(node);
+        }
         void visit(::HIR::ExprNode_Let& node) override {
             no_revisit(node);
         }
@@ -1831,6 +1834,9 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Yield& node) override {
+            no_revisit(node);
+        }
+        void visit(::HIR::ExprNode_AWait& node) override {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Let& node) override {

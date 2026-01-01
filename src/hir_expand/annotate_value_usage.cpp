@@ -239,6 +239,26 @@ namespace {
                 DEBUG("yield stack=[" << scope->yield_stack << "]");
             }
         }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            auto _ = this->push_usage( ::HIR::ValueUsage::Move );
+            this->visit_node_ptr( node.m_value );
+
+            // `yield`: Increase all stack entries that don't correspond to a loop
+            CoroutineScope* scope = m_closure_stack.size() > 0 ? m_closure_stack.back().opt_Coroutine() : nullptr;
+            if(scope && scope->node.is_Async())
+            {
+                for(size_t i = 0; i < scope->yield_stack.size(); i ++)
+                {
+                    if(scope->yield_stack[i] != CoroutineScope::STACK_MARKER_LOOP) {
+                        // Assert that adding 1 won't overflow (... that'd be >65k yield statements)
+                        assert(scope->yield_stack[i] < CoroutineScope::STACK_MARKER_LOOP-1);
+                        scope->yield_stack[i] += 1;
+                    }
+                }
+                DEBUG("await stack=[" << scope->yield_stack << "]");
+            }
+        }
         void visit(::HIR::ExprNode_Let& node) override
         {
             add_defs_from_pattern(node.span(), node.m_pattern);

@@ -79,6 +79,10 @@ DEF_VISIT_H(ExprNode_Yield, node) {
     TRACE_FUNCTION_F("_Yield");
     visit_node_ptr(node.m_value);
 }
+DEF_VISIT_H(ExprNode_AWait, node) {
+    TRACE_FUNCTION_F("_AWait");
+    visit_node_ptr(node.m_value);
+}
 DEF_VISIT_H(ExprNode_Let, node) {
     TRACE_FUNCTION_F("_Let: " << node.m_pattern);
     // Visit the value FIRST as it's evaluated before the variable is defined

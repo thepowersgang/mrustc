@@ -410,6 +410,12 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
         }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            m_os << "(";
+            this->visit_node_ptr(node.m_value);
+            m_os << ").await";
+        }
         void visit(::HIR::ExprNode_Let& node) override
         {
             m_os << "let " << node.m_pattern << ": " << node.m_type;

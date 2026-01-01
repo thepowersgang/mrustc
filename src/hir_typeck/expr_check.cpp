@@ -144,6 +144,13 @@ namespace {
             check_types_equal(*this->closure_ret_types.back().yield_type, node.m_value);
             node.m_value->visit(*this);
         }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            node.m_value->visit(*this);
+            auto t = ::HIR::TypeRef::new_path(::HIR::Path(node.m_value->m_res_type.clone(), m_resolve.m_lang_Future, "Output"), {});
+            m_resolve.expand_associated_types(node.span(), t);
+            check_types_equal(node.span(), node.m_res_type, t);
+        }
         void visit(::HIR::ExprNode_Loop& node) override
         {
             TRACE_FUNCTION_F(&node << " loop { ... }");
@@ -1186,7 +1193,11 @@ namespace {
             // Can be null after generation
             if( node.m_code )
             {
+                auto loops = ::std::move(this->m_loops);
+                this->closure_ret_types.push_back(RetTarget(node.m_code->m_res_type));
                 node.m_code->visit( *this );
+                this->closure_ret_types.pop_back( );
+                this->m_loops = ::std::move(loops);
             }
         }
 
