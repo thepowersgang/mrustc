@@ -59,17 +59,17 @@ const TargetArch ARCH_POWERPC64 = {
     { /*atomic(u8)=*/true, true, true, true,  true },
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
 };
-const TargetArch ARCH_POWERPC32 = {
-    "powerpc",
-    32, true,
-    { /*atomic(u8)=*/true, false, true, false,  true },
-    TargetArch::Alignments(2, 4, 8, 8, 4, 8, 4)
-};
 const TargetArch ARCH_POWERPC64LE = {
     "powerpc64",
     64, false,
     { /*atomic(u8)=*/true, true, true, true,  true },
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
+};
+const TargetArch ARCH_POWERPC = {
+    "powerpc",
+    32, true,
+    { /*atomic(u8)=*/true, false, true, false,  true },
+    TargetArch::Alignments(2, 4, 8, 8, 4, 8, 4)
 };
 const TargetArch ARCH_RISCV64 = {
     "riscv64",
@@ -155,9 +155,9 @@ namespace
                         {
                             rv.m_arch = ARCH_M68K;
                         }
-                        else if( key_val.value.as_string() == ARCH_POWERPC32.m_name )
+                        else if( key_val.value.as_string() == ARCH_POWERPC.m_name )
                         {
-                            rv.m_arch = ARCH_POWERPC32;
+                            rv.m_arch = ARCH_POWERPC;
                         }
                         else if( key_val.value.as_string() == ARCH_POWERPC64.m_name )
                         {
@@ -634,7 +634,7 @@ namespace
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
                 "unix", "macos", "gnu", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {}},
-                ARCH_POWERPC32
+                ARCH_POWERPC
                 };
         }
         else if(target_name == "powerpc64-apple-darwin")
