@@ -161,12 +161,6 @@ namespace {
         void generator_make_drop(const Span& sp, MirBuilder& out_builder, size_t n_captures, const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper>>& mappings) const
         {
             ::MIR::LValue   self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
-            auto get_lv = [&sp,&self,&mappings](unsigned idx)->::MIR::LValue {
-                ::MIR::LValue rv = self.clone();
-                ASSERT_BUG(sp, mappings.count(idx), "No LValue for index " << idx);
-                rv.m_wrappers.insert(rv.m_wrappers.end(), mappings.at(idx).begin(), mappings.at(idx).end());
-                return rv;
-                };
 
             assert(m_generator_state.states.size() > 0);
             std::vector<::MIR::BasicBlockId>    arms; arms.reserve(m_generator_state.states.size()+1);
@@ -178,9 +172,19 @@ namespace {
             size_t arg_count = 1 + (TARGETVER_LEAST_1_74 ? 1 : 0);
             for(size_t i = 0; i < n_captures; i ++)
             {
-                out_builder.push_stmt_drop(sp, get_lv(arg_count+i));
+                // TODO: State tracking on captures, what if a by-value capture is moved?
+                if( mappings.count(arg_count+i) == 0 ) {
+                    out_builder.push_stmt_drop(sp, ::MIR::LValue::new_Field(self.clone(), 1+i));
+                }
             }
             out_builder.end_block(::MIR::Terminator::make_Return({}));
+
+            auto get_lv = [&sp,&self,&mappings](unsigned idx)->::MIR::LValue {
+                ::MIR::LValue rv = self.clone();
+                ASSERT_BUG(sp, mappings.count(idx), "No LValue for index " << idx);
+                rv.m_wrappers.insert(rv.m_wrappers.end(), mappings.at(idx).begin(), mappings.at(idx).end());
+                return rv;
+                };
 
             // Else, drop yield saves (Note: final state has no saves, so acts as the "completed" state)
             for(size_t i = 0; i < m_generator_state.states.size(); i ++)
@@ -193,6 +197,32 @@ namespace {
                     if( v.first == 0 ) {
                         continue ;
                     }
+                    struct H {
+                        static bool contains_optional(const VarState& vs) {
+                            TU_MATCH_HDRA((vs), {)
+                            TU_ARMA(Optional, ve) {
+                                return true;
+                                }
+                            TU_ARMA(Invalid, ve) {}
+                            TU_ARMA(Valid, ve) {}
+                            TU_ARMA(Partial, ve) {
+                                //if( ve.outer_flag != ~0u )
+                                //    return true;
+                                for(const auto& vs : ve.inner_states) {
+                                    if(contains_optional(vs))
+                                        return true;
+                                }
+                                }
+                            TU_ARMA(MovedOut, ve) {
+                                if( ve.outer_flag != ~0u )
+                                    return true;
+                                return contains_optional(*ve.inner_state);
+                                }
+                            }
+                            return false;
+                        }
+                    };
+                    ASSERT_BUG(sp, !H::contains_optional(v.second.get_state()), "TODO: Handle optional: " << v.second.get_state());
                     out_builder.drop_actve_local(sp, get_lv(v.first), v.second);
                 }
                 out_builder.end_block(::MIR::Terminator::make_Return({}));
@@ -3094,17 +3124,22 @@ namespace {
             {
                 unsigned idx = args.size() + i;
                 builder.define_variable(idx);
-                builder.mark_value_assigned(root_node.span(), ::MIR::LValue::new_Local(idx));
-                // self.IDX
-                mappings.insert(std::make_pair( idx, ::make_vec1(::MIR::LValue::Wrapper::new_Field(1+i)) ));
                 switch(gen_node->m_capture_usages[i])
                 {
                 case ::HIR::ValueUsage::Borrow:
-                case ::HIR::ValueUsage::Mutate:
-                    mappings[idx].push_back(::MIR::LValue::Wrapper::new_Deref());
-                    break;
+                case ::HIR::ValueUsage::Mutate: {
+                // TODO: Use `m_variable_aliases` for by-borrow captures, to avoid them being dropped
+                    auto lv = ::MIR::LValue::new_Argument(0);
+                    lv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
+                    lv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
+                    lv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(1+i));
+                    lv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());
+                    builder.add_variable_alias(root_node.span(), idx, ::HIR::PatternBinding::Type::Move, std::move(lv));
+                    } break;
                 case ::HIR::ValueUsage::Move:
                 case ::HIR::ValueUsage::Unknown:
+                    builder.mark_value_assigned(root_node.span(), ::MIR::LValue::new_Local(idx));
+                    mappings.insert(std::make_pair( idx, ::make_vec1(::MIR::LValue::Wrapper::new_Field(1+i)) ));
                     break;
                 }
             }
@@ -3158,6 +3193,8 @@ namespace {
             {
                 ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& m_mappings;
                 ::std::vector< ::MIR::Statement>    m_new_statements;
+                unsigned bb_idx = 0;
+                unsigned stmt_idx = 0;
             public:
                 Rewriter(::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& mappings)
                     :m_mappings(mappings)
@@ -3174,6 +3211,9 @@ namespace {
                             dit = lv.m_wrappers.insert(dit, ::MIR::LValue::Wrapper::new_Field(0)) + 1;  // Pin.ptr
                             dit = lv.m_wrappers.insert(dit, ::MIR::LValue::Wrapper::new_Deref()) + 1;   // *
                             dit = lv.m_wrappers.insert(dit, it->second.begin(), it->second.end()) + 1;
+                            DEBUG(
+                                "BB" << bb_idx << "/" << FMT_CB(os, if(stmt_idx == ~0u) { os << "TERM"; } else { os << stmt_idx; })
+                                << " > " << lv);
                         }
                     }
                     for(auto& w : lv.m_wrappers)
@@ -3205,11 +3245,14 @@ namespace {
                 {
                     for(auto& bb : f.blocks)
                     {
+                        this->bb_idx = &bb - f.blocks.data();
                         for(size_t stmt_idx = 0; stmt_idx < bb.statements.size(); stmt_idx ++)
                         {
+                            this->stmt_idx = stmt_idx;
                             this->visit_stmt(bb.statements[stmt_idx]);
                             this->push_statements(bb, stmt_idx);
                         }
+                        this->stmt_idx = ~0u;
                         this->visit_terminator(bb.terminator);
                         size_t stmt_idx = bb.statements.size();
                         this->push_statements(bb, stmt_idx);

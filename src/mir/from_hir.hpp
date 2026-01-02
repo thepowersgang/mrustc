@@ -56,11 +56,11 @@ TAGGED_UNION_EX(VarState, (), Invalid, (
     // Partially valid (Map of field states)
     (Partial, struct {
         ::std::vector<VarState> inner_states;
-        unsigned int outer_flag;   // If ~0u there's no condition on the outer
+        //unsigned int outer_flag;   // If ~0u there's no condition on the outer
         }),
     (MovedOut, struct {
         ::std::unique_ptr<VarState>   inner_state;
-        unsigned int outer_flag;
+        unsigned int outer_flag;    // If ~0u, the outer is always valid. If set, then the outer may have been moved (but inner state still maybe valid)
         }),
     // Optionally valid (integer indicates the drop flag index)
     (Optional, unsigned int),
@@ -205,6 +205,7 @@ class MirBuilder
     ::std::vector<VarState>   m_slot_states;
     size_t  m_first_temp_idx;
 
+    /// Mapping between variable slots and MIR arguments (for when the argument is not destructuring)
     ::std::map<unsigned,unsigned>   m_var_arg_mappings;
 
     struct ScopeDef
@@ -394,6 +395,7 @@ public:
         VarState    state;
         SavedActiveLocal(VarState vs): state(mv$(vs)) {}
     public:
+        const VarState& get_state() const { return state; }
     };
     std::map<unsigned, SavedActiveLocal> get_active_locals() const;
 

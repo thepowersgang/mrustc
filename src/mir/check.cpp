@@ -1173,9 +1173,19 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 case ::MIR::Statement::TAG_Asm2:
                     // TODO: Ensure that values are all thin pointers or integers?
                     break;
-                case ::MIR::Statement::TAG_Drop:
+                case ::MIR::Statement::TAG_Drop: {
+                    const auto& se = stmt.as_Drop();
                     // TODO: Anything need checking here?
-                    break;
+                    // - Check the path to see if this has mutable/owned access
+                    if( se.slot.is_Deref() ) {
+                        HIR::TypeRef    tmp;
+                        const auto& ty = state.get_lvalue_type(tmp, se.slot, 1);
+                        if( ty.data().is_Borrow() ) {
+                            // Note: Dropping through `&mut` happens when assigning
+                            MIR_ASSERT(state, ty.data().as_Borrow().type != HIR::BorrowType::Shared, "Droping though non-owned pointer: " << ty);
+                        }
+                    }
+                    } break;
                 case ::MIR::Statement::TAG_ScopeEnd:
                     // TODO: Mark listed values as descoped
                     break;

@@ -2405,7 +2405,7 @@ bool VarState::operator==(const VarState& x) const
         os << "Valid";
         ),
     (Optional,
-        os << "Optional(" << e << ")";
+        os << "Optional(df" << e << ")";
         ),
     (MovedOut,
         os << "MovedOut(";
@@ -2417,6 +2417,10 @@ bool VarState::operator==(const VarState& x) const
         ),
     (Partial,
         os << "Partial(";
+        //if( e.outer_flag == ~0u )
+        //    os << "-";
+        //else
+        //    os << "df" << e.outer_flag;
         os << ", [" << e.inner_states << "])";
         )
     )
