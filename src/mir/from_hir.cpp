@@ -2279,8 +2279,30 @@ namespace {
         void visit(::HIR::ExprNode_CallPath& node) override
         {
             TRACE_FUNCTION_F("_CallPath " << node.m_path);
-            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
-            auto values = get_args(node.m_args);
+            // TODO: if this is a `<foo as Index[Mut]>::index[_mut]` call then allow the borrow raise to go through to the receiver
+            ::std::vector<MIR::Param>   values;
+            bool is_operator = false;
+            if( const auto* pe = node.m_path.m_data.opt_UfcsKnown() ) {
+                if( pe->trait.m_path == m_builder.resolve().m_crate.get_lang_item_path_opt("index") ) {
+                    is_operator = true;
+                }
+                else if( pe->trait.m_path == m_builder.resolve().m_crate.get_lang_item_path_opt("index_mut") ) {
+                    is_operator = true;
+                }
+                else if( pe->trait.m_path == m_builder.resolve().m_crate.get_lang_item_path_opt("deref") ) {
+                    is_operator = true;
+                }
+                else if( pe->trait.m_path == m_builder.resolve().m_crate.get_lang_item_path_opt("deref_mut") ) {
+                    is_operator = true;
+                }
+            }
+            if(is_operator) {
+                values = get_args(node.m_args);
+            }
+            else {
+                auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+                values = get_args(node.m_args);
+            }
 
             auto panic_block = m_builder.new_bb_unlinked();
             auto next_block = m_builder.new_bb_unlinked();
