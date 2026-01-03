@@ -68,7 +68,7 @@ const TargetArch ARCH_POWERPC64LE = {
 const TargetArch ARCH_POWERPC = {
     "powerpc",
     32, true,
-    { /*atomic(u8)=*/true, false, true, false,  true },
+    { /*atomic(u8)=*/true, true, true, false,  true },
     TargetArch::Alignments(2, 4, 8, 8, 4, 8, 4)
 };
 const TargetArch ARCH_RISCV64 = {
