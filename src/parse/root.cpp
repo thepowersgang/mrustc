@@ -2309,12 +2309,14 @@ namespace {
         ::std::string path_attr;
         for(const auto& a : meta_items.m_items)
         {
+            DEBUG("[mod path_attr] " << a);
             if( a.name() == "path" ) {
                 path_attr = a.parse_equals_string(*lex.parse_state().crate, *lex.parse_state().module);
             }
             else if( a.name() == "cfg_attr" ) {
                 for(const auto& a2 : check_cfg_attr(a))
                 {
+                    DEBUG("[mod path_attr cfg_attr] " << a2);
                     if( a2.name() == "path" ) {
                         path_attr = a2.parse_equals_string(*lex.parse_state().crate, *lex.parse_state().module);
                     }
@@ -2323,6 +2325,7 @@ namespace {
             else {
             }
         }
+        DEBUG("path_attr = \"" << path_attr << "\"");
 
         //submod.m_file_info = get_submod_file(lex.end_span(ps), mod_fileinfo,  name, path_attr, LOOK_AHEAD(lex) == TOK_SEMICOLON, H::check_item_cfg(meta_items));
 
@@ -2368,13 +2371,16 @@ namespace {
         case TOK_BRACE_OPEN:
             submod.m_file_info.path = sub_path.str() + "/";
             submod.m_file_info.in_mod_block = true;
+            submod.m_file_info.is_disabled = !H::check_item_cfg(meta_items);
             // TODO: If cfg fails, just eat the TT until a matching #[cfg]?
             // - Or, mark the file infor as not being valid (so child modules don't try to load)
             Parse_ModRoot(lex, submod, meta_items);
             GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
             break;
         case TOK_SEMICOLON:
-            if( sub_path.str() == "-" ) {
+            if( mod_fileinfo.is_disabled ) {
+            }
+            else if( sub_path.str() == "-" ) {
                 ERROR(lex.point_span(), E0000, "Cannot load module from file when reading stdin");
             }
             else if( !H::check_item_cfg(meta_items) ) {

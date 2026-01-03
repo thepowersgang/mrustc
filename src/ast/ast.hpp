@@ -668,7 +668,11 @@ public:
     struct FileInfo
     {
         bool    controls_dir = false;
-        bool    force_no_load = false;
+        //// 
+        //bool    force_no_load = false;
+        // Is this module disabled (i.e. it's tagged with a failing `#[cfg]`)?
+        // Disables down-stream file loading (as that might fail)
+        bool    is_disabled = false;
         // Is this a `mod foo { ... }` or `mod foo;` (changes how `#[path]` is processed inside)
         bool    in_mod_block = false;
         // Path to this module
