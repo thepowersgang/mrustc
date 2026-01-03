@@ -7172,7 +7172,7 @@ namespace {
                     emit1("round");
                 }
                 // > Round to nearest integer, half-way rounds to zero
-                if( name == "round_ties_even_f32" || name == "round_ties_even_f64" ) {
+                else if( name == "round_ties_even_f32" || name == "round_ties_even_f64" ) {
                     // TODO: What's the libc version?
                     emit1("round");
                 }
