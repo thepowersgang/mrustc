@@ -288,7 +288,8 @@ struct ExprNode_Match:
 
     NODE_METHODS();
 };
-
+// TODO: Refactor this such that if-else if-else is represented in a flat manner, instead of being recursive
+// - `if let` is a challenge with that form
 struct ExprNode_If:
     public ExprNode
 {
@@ -642,12 +643,17 @@ struct ExprNode_CallValue:
 
     NODE_METHODS();
 };
+// TODO: Refactor to support efficient method chaining
 struct ExprNode_CallMethod:
     public ExprNode
 {
+    /// @brief Method reciever value
     ::HIR::ExprNodeP    m_value;
+    /// @brief Method name
     RcString   m_method;
+    /// @brief Generic parameters to the method
     ::HIR::PathParams  m_params;
+    /// @brief Argument values
     ::std::vector< ::HIR::ExprNodeP>    m_args;
 
     // - Set during typeck to the real path to the method
