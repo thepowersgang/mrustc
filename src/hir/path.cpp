@@ -348,23 +348,21 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
 
 ::HIR::Compare HIR::PathParams::compare_with_placeholders(const Span& sp, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder) const
 {
-    using ::HIR::Compare;
-
-    auto rv = Compare::Equal;
-    if( this->m_types.size() > 0 || x.m_types.size() > 0 ) {
-        if( this->m_types.size() != x.m_types.size() ) {
-            return Compare::Unequal;
+    struct NopMatch: public MatchGenerics {
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) override {
+            if( ty.data().is_Generic() ) {
+                return ty.data().as_Generic().binding == g.binding ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
+            }
+            return ::HIR::Compare::Unequal;
         }
-        for( unsigned int i = 0; i < x.m_types.size(); i ++ )
-        {
-            auto rv2 = this->m_types[i].compare_with_placeholders( sp, x.m_types[i], resolve_placeholder );
-            if( rv2 == Compare::Unequal )
-                return Compare::Unequal;
-            if( rv2 == Compare::Fuzzy )
-                rv = Compare::Fuzzy;
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
+            if( sz.is_Unevaluated() ) {
+                return ::HIR::Compare::Fuzzy;
+            }
+            return sz.is_Generic() && sz.as_Generic().binding == g.binding ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
         }
-    }
-    return rv;
+    } nop_match;
+    return this->match_test_generics_fuzz(sp, x, resolve_placeholder, nop_match);
 }
 ::HIR::Compare HIR::PathParams::match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& match) const
 {
