@@ -498,7 +498,7 @@ namespace resolve_ufcs {
             auto monomorph_gp_if_needed = [&](const ::HIR::GenericPath& tpl)->const ::HIR::GenericPath& {
                 // NOTE: This doesn't monomorph if the parameter set is the same
                 if( monomorphise_genericpath_needed(tpl) /*&& tpl.m_params != trait_path.m_params*/ ) {
-                    DEBUG("- Monomorph " << tpl);
+                    DEBUG("[monomorph_gp_if_needed] Monomorph tpl=" << tpl);
                     return par_trait_path_tmp = monomorph_cb.monomorph_genericpath(sp, tpl, false /*no infer*/);
                 }
                 else {
@@ -507,8 +507,10 @@ namespace resolve_ufcs {
                 };
 
             // Search supertraits (recursively)
+            static HIR::GenericParams  empty_gp;
             for(const auto& pt : trait.m_parent_traits)
             {
+                auto _ = monomorph_cb.push_hrb(pt.m_hrtbs ? *pt.m_hrtbs : empty_gp);
                 const auto& par_trait_path = monomorph_gp_if_needed(pt.m_path);
                 DEBUG("- Check " << par_trait_path);
                 if( locate_in_trait_and_set(pc, par_trait_path, *pt.m_trait_ptr,  pd) ) {
@@ -517,6 +519,7 @@ namespace resolve_ufcs {
             }
             for(const auto& pt : trait.m_all_parent_traits)
             {
+                auto _ = monomorph_cb.push_hrb(pt.m_hrtbs ? *pt.m_hrtbs : empty_gp);
                 const auto& par_trait_path = monomorph_gp_if_needed(pt.m_path);
                 DEBUG("- Check (all) " << par_trait_path);
                 if( locate_item_in_trait(pc, *pt.m_trait_ptr,  pd) ) {
