@@ -1382,6 +1382,8 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
                 }) ));
 
                 auto& s = crate.m_new_values.back().second->ent.as_Static();
+                ASSERT_BUG(Span(), !s.m_value.m_state, "ExprState set already");
+                s.m_value.m_state = ::HIR::ExprStatePtr(::HIR::ExprState(crate.m_root_module, ::HIR::SimplePath(crate.m_crate_name)));
                 s.m_value.m_state->m_impl_generics = nullptr;
                 s.m_value.m_state->m_item_generics = &s.m_params;
                 return path;
@@ -1406,6 +1408,7 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
             ASSERT_BUG(sp, e.is_Static() || e.is_Constant(), "");
             auto& p = e.is_Static() ? e.as_Static().m_params : e.as_Constant().m_params;
             auto& v = e.is_Static() ? e.as_Static().m_value : e.as_Constant().m_value;
+            ASSERT_BUG(Span(), v.m_state, "");
             v.m_state->m_impl_generics = nullptr;
             v.m_state->m_item_generics = &p;
         }
