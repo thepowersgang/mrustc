@@ -185,6 +185,12 @@ namespace {
             case ::MIR::Statement::TAG_SetDropFlag:
                 statements.push_back( ::MIR::Statement( stmt.as_SetDropFlag() ) );
                 break;
+            TU_ARM(stmt, SaveDropFlag, e) {
+                statements.push_back(::MIR::Statement::make_SaveDropFlag({ e.slot.clone(), e.bit_index, e.idx }));
+                } break;
+            TU_ARM(stmt, LoadDropFlag, e) {
+                statements.push_back(::MIR::Statement::make_LoadDropFlag({ e.idx, e.slot.clone(), e.bit_index}));
+                } break;
             case ::MIR::Statement::TAG_ScopeEnd:
                 statements.push_back( ::MIR::Statement( stmt.as_ScopeEnd() ) );
                 break;

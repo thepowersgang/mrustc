@@ -83,9 +83,15 @@ namespace {
             /// Yield points/states
             std::vector<State>  states;
 
+            // Set of drop flags that are stored in the output state
+            // These are stored in a bit-set at the end of the state structure, and remapped after lower (with sets being writes,
+            // and then re-read before use)
+            std::set<unsigned>  saved_drop_flags;
+
+            /// Path to the enum used for the state index field (used to generate enum variant construction)
             ::HIR::SimplePath   state_idx_enm_path;
 
-            /// Is this coroutine a future?
+            /// Is this coroutine a future? (as opposed to a generator)
             bool is_future = false;
         } m_generator_state;
 
@@ -117,6 +123,9 @@ namespace {
             rv = ::MIR::LValue::new_Field(mv$(rv), 0);   // .value (From ManuallyDrop)
             rv = ::MIR::LValue::new_Field(mv$(rv), 0);   // .idx
             return rv;
+        }
+        const std::set<unsigned>& generator_drop_flags() const {
+            return m_generator_state.saved_drop_flags;
         }
         std::set<unsigned> generator_finalise(const Span& sp, ::HIR::Enum& state_enm)
         {
@@ -197,32 +206,7 @@ namespace {
                     if( v.first == 0 ) {
                         continue ;
                     }
-                    struct H {
-                        static bool contains_optional(const VarState& vs) {
-                            TU_MATCH_HDRA((vs), {)
-                            TU_ARMA(Optional, ve) {
-                                return true;
-                                }
-                            TU_ARMA(Invalid, ve) {}
-                            TU_ARMA(Valid, ve) {}
-                            TU_ARMA(Partial, ve) {
-                                //if( ve.outer_flag != ~0u )
-                                //    return true;
-                                for(const auto& vs : ve.inner_states) {
-                                    if(contains_optional(vs))
-                                        return true;
-                                }
-                                }
-                            TU_ARMA(MovedOut, ve) {
-                                if( ve.outer_flag != ~0u )
-                                    return true;
-                                return contains_optional(*ve.inner_state);
-                                }
-                            }
-                            return false;
-                        }
-                    };
-                    ASSERT_BUG(sp, !H::contains_optional(v.second.get_state()), "TODO: Handle optional: " << v.second.get_state());
+                    ASSERT_BUG(sp, !v.second.get_state().get_used_drop_flags(nullptr), "TODO: Handle optional: " << v.second.get_state());
                     out_builder.drop_actve_local(sp, get_lv(v.first), v.second);
                 }
                 out_builder.end_block(::MIR::Terminator::make_Return({}));
@@ -769,7 +753,7 @@ namespace {
                 // NOTE: No scope terminate
                 m_builder.end_block( ::MIR::Terminator::make_Return({}) );
 
-                m_generator_state.states.back().saved = m_builder.get_active_locals();
+                m_generator_state.states.back().saved = m_builder.get_active_locals(node.span(), m_generator_state.saved_drop_flags);
                 m_generator_state.states.push_back( m_builder.new_bb_unlinked() );
                 m_builder.set_cur_block( m_generator_state.states.back().entrypoint );
 
@@ -791,7 +775,7 @@ namespace {
             auto lv_res = m_builder.get_result_in_lvalue(sp, ty_inner);
 
             auto state_value = static_cast<unsigned>(m_generator_state.states.size());
-            m_generator_state.states.back().saved = m_builder.get_active_locals();
+            m_generator_state.states.back().saved = m_builder.get_active_locals(node.span(), m_generator_state.saved_drop_flags);
             m_generator_state.states.push_back( m_builder.new_bb_unlinked() );
             m_builder.end_block(m_generator_state.states.back().entrypoint);
             m_builder.set_cur_block( m_generator_state.states.back().entrypoint );
@@ -3184,6 +3168,17 @@ namespace {
                         } ));
                 }
             }
+            ::std::map<unsigned,unsigned>   drop_flag_mapping;
+            for(auto idx : ev.generator_drop_flags()) {
+                drop_flag_mapping[idx] = drop_flag_mapping.size();
+                DEBUG("df$" << idx << " = BIT" << drop_flag_mapping[idx]);
+            }
+            // Add drop flags to the end
+            auto drop_flags_field_idx = fields.size();
+            fields.push_back(::HIR::VisEnt<HIR::TypeRef> {
+                HIR::Publicity::new_none(),
+                ::HIR::TypeRef::new_array( ::HIR::CoreType::U8, (drop_flag_mapping.size() + 7) / 8 )
+                });
 
             DEBUG("mappings={" << mappings << "}");
 
@@ -3191,13 +3186,27 @@ namespace {
             // - Note: Need to allocate new temporaries if indexing by an updated lvalue
             class Rewriter: public ::MIR::visit::VisitorMut
             {
-                ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& m_mappings;
+                /// Remapped locals (indexes into coroutine struct, not just into the state)
+                ///
+                /// From `Pin<&mut self>`, these are appended to `self.pin.*`
+                const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& m_mappings;
+                /// Mapping from drop flag indexes to bit sin the drop flag list
+                const ::std::map<unsigned,unsigned>& m_drop_flag_mapping;
+                /// Index of the drop flags bitset (array of u8) in the state (field 0 of top structure)
+                unsigned    m_drop_flags_field;
+                
                 ::std::vector< ::MIR::Statement>    m_new_statements;
                 unsigned bb_idx = 0;
                 unsigned stmt_idx = 0;
             public:
-                Rewriter(::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& mappings)
+                Rewriter(
+                    const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& mappings,
+                    const ::std::map<unsigned,unsigned>& drop_flag_mapping,
+                    unsigned drop_flags_field
+                )
                     :m_mappings(mappings)
+                    ,m_drop_flag_mapping(drop_flag_mapping)
+                    ,m_drop_flags_field(drop_flags_field)
                 {
                 }
 
@@ -3231,6 +3240,43 @@ namespace {
                     return true;
                 }
 
+                bool visit_stmt(::MIR::Statement& stmt) override
+                {
+                    if( auto* s = stmt.opt_Drop() ) {
+                        if( m_drop_flag_mapping.count(s->flag_idx) != 0 ) {
+                            // TODO: Need to emit a different `SetDropFlag` to load from bitset
+                            // `LoadDropFlag(df$N, src_lv, bit_num)`, where `src_lv` is an array of `u8`
+                            TODO(Span(), "Rewrite drop flag usage df$" << s->flag_idx);
+                        }
+                    }
+                    else if(auto* s = stmt.opt_SetDropFlag() ) {
+                        if( m_drop_flag_mapping.count(s->other) != 0 ) {
+                            TODO(Span(), "Rewrite drop flag usage df$" << s->other);
+                        }
+                        if( m_drop_flag_mapping.count(s->idx) != 0 ) {
+                            // Copy this statement to the output queue, and then rewrite to be:
+                            m_new_statements.push_back(*s);
+                            // `SaveDropFlag(dst_lv, bit_num, df$N)`
+                            ::MIR::LValue   slot = ::MIR::LValue::new_Argument(0);
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // .0
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(m_drop_flags_field));   // .drop_flags
+                            unsigned bit_num = m_drop_flag_mapping.at(s->idx);
+                            stmt = ::MIR::Statement::make_SaveDropFlag({
+                                std::move(slot),
+                                bit_num,
+                                s->idx
+                            });
+                            // TODO: Replace with no-op? (or let it be cleaned up later as dead code)
+                        }
+                    }
+                    else {
+                        // Doesn't use drop flags, no changes/rewrites needed
+                    }
+                    return ::MIR::visit::VisitorMut::visit_stmt(stmt);
+                }
+
                 void push_statements(::MIR::BasicBlock& bb, size_t& ofs)
                 {
                     for(auto& e : m_new_statements)
@@ -3259,7 +3305,7 @@ namespace {
                     }
                 }
             };
-            Rewriter(mappings).rewrite_fcn(fcn);
+            Rewriter(mappings, drop_flag_mapping, drop_flags_field_idx).rewrite_fcn(fcn);
 
             // 4. Generate drop glue for the generator type and save for later
             // - Make a builder

@@ -638,6 +638,12 @@ namespace MIR {
                 os << (e.new_val ? "!" : "") << "df$" << e.other;
             }
             }
+        TU_ARMA(SaveDropFlag, e) {
+            os << "SaveDropFlag()";
+            }
+        TU_ARMA(LoadDropFlag, e) {
+            os << "LoadDropFlag()";
+            }
         TU_ARMA(Drop, e) {
             os << "drop(" << e.slot;
             if(e.kind == ::MIR::eDropKind::SHALLOW)
@@ -680,6 +686,18 @@ namespace MIR {
             return ae.idx == be.idx
                 && ae.other == be.other
                 && ae.new_val == be.new_val
+                ;
+            }
+        TU_ARMA(SaveDropFlag, ae,be) {
+            return ae.idx == be.idx
+                && ae.slot == be.slot
+                && ae.bit_index == be.bit_index
+                ;
+            }
+        TU_ARMA(LoadDropFlag, ae,be) {
+            return ae.idx == be.idx
+                && ae.slot == be.slot
+                && ae.bit_index == be.bit_index
                 ;
             }
         TU_ARMA(Drop, ae,be) {

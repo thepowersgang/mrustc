@@ -686,7 +686,25 @@ TAGGED_UNION(Statement, Asm,
     (SetDropFlag, struct {
         unsigned int idx;
         bool new_val;   // If `other` is populated, this indicates that the other value should be negated
+        /// Other drop flag, used for copying/inverting another flag. If `~0u`, then the value of `new_val` is stored
         unsigned int other;
+        }),
+    // Save a drop flag to a bitset
+    (SaveDropFlag, struct {
+        /// Destination bit-set, an array of unsigned integers (nominally `u8`)
+        LValue  slot;
+        /// Destination bit v
+        unsigned int    bit_index;
+        /// Source drop flag index
+        unsigned int    idx;
+        }),
+    (LoadDropFlag, struct {
+        /// Destination drop flag index
+        unsigned int    idx;
+        /// Source bit-set, an array of unsigned integers (nominally `u8`)
+        LValue  slot;
+        /// Source bit index
+        unsigned int    bit_index;
         }),
     // Drop a value
     (Drop, struct {

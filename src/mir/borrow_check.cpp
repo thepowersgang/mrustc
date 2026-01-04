@@ -718,6 +718,8 @@ void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
                     }
                     }
                 TU_ARMA(SetDropFlag, se) {}
+                TU_ARMA(LoadDropFlag, se) {}
+                TU_ARMA(SaveDropFlag, se) {}
                 TU_ARMA(ScopeEnd, se) { /* todo */ }
                 TU_ARMA(Drop, se) { /* todo */ }
                 TU_ARMA(Asm, se) {}

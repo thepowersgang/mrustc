@@ -1125,6 +1125,12 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 }
             TU_ARMA(SetDropFlag, se) {
                 }
+            TU_ARMA(SaveDropFlag, se) {
+                MIR_Cleanup_LValue(state, mutator,  se.slot);
+                }
+            TU_ARMA(LoadDropFlag, se) {
+                MIR_Cleanup_LValue(state, mutator,  se.slot);
+                }
             TU_ARMA(ScopeEnd, se) {
                 }
             TU_ARMA(Asm, se) {

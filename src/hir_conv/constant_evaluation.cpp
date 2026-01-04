@@ -2032,6 +2032,8 @@ namespace HIR {
             }
             return;
             }
+        TU_ARMA(SaveDropFlag, se) { MIR_TODO(state, "Non-assign statement - " << stmt); }
+        TU_ARMA(LoadDropFlag, se) { MIR_TODO(state, "Non-assign statement - " << stmt); }
         TU_ARMA(Asm, se) { MIR_TODO(state, "Non-assign statement - " << stmt); }
         TU_ARMA(Asm2, se) { MIR_TODO(state, "Non-assign statement - " << stmt); }
         }

@@ -409,6 +409,12 @@ namespace visit {
                 }
             TU_ARMA(SetDropFlag, e) {
                 }
+            TU_ARMA(SaveDropFlag, e) {
+                rv |= visit_lvalue(e.slot, ValUsage::Write);
+                }
+            TU_ARMA(LoadDropFlag, e) {
+                rv |= visit_lvalue(e.slot, ValUsage::Read);
+                }
             TU_ARMA(Drop, e) {
                 rv |= visit_lvalue(e.slot, ValUsage::Move);
                 }

@@ -1855,6 +1855,12 @@ void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& 
                 }
             TU_ARMA(SetDropFlag, se) {
                 }
+            TU_ARMA(SaveDropFlag, se) {
+                Trans_Enumerate_FillFrom_MIR_LValue(state, se.slot);
+                }
+            TU_ARMA(LoadDropFlag, se) {
+                Trans_Enumerate_FillFrom_MIR_LValue(state, se.slot);
+                }
             TU_ARMA(ScopeEnd, se) {
                 }
             TU_ARMA(Drop, se) {

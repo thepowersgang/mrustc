@@ -433,6 +433,12 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 throw "";
             case ::MIR::Statement::TAG_SetDropFlag:
                 break;
+            case ::MIR::Statement::TAG_LoadDropFlag:
+                val_state.ensure_valid(state, stmt.as_LoadDropFlag().slot);
+                break;
+            case ::MIR::Statement::TAG_SaveDropFlag:
+                val_state.ensure_valid(state, stmt.as_SaveDropFlag().slot);
+                break;
             case ::MIR::Statement::TAG_Drop:
                 // Invalidate the slot
                 if( stmt.as_Drop().flag_idx == ~0u )
@@ -739,6 +745,20 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 case ::MIR::Statement::TAGDEAD:
                     throw "";
                 case ::MIR::Statement::TAG_SetDropFlag:
+                    break;
+                case ::MIR::Statement::TAG_SaveDropFlag:
+                case ::MIR::Statement::TAG_LoadDropFlag:
+                    {
+                        const auto& slot = stmt.is_SaveDropFlag() ? stmt.as_SaveDropFlag().slot : stmt.as_LoadDropFlag().slot;
+                        const auto bit = stmt.is_SaveDropFlag() ? stmt.as_SaveDropFlag().bit_index : stmt.as_LoadDropFlag().bit_index;
+                        ::HIR::TypeRef  slot_tmp;
+                        const auto& slot_ty = state.get_lvalue_type(slot_tmp, slot);
+                        MIR_ASSERT(state, slot_ty.data().is_Array(), "Save/Load Drop flag, slot not array: " << slot_ty);
+                        const auto& slot_ty_i = slot_ty.data().as_Array();
+                        MIR_ASSERT(state, slot_ty_i.inner != HIR::CoreType::U8, "Save/Load Drop flag, slot not u8 array: " << slot_ty);
+                        auto bytes = slot_ty_i.size.as_Known();
+                        MIR_ASSERT(state, bit < bytes * 8, "Save/Load drop flag, bit index out of range " << bit << " >= " << bytes*8);
+                    }
                     break;
                 case ::MIR::Statement::TAG_Assign: {
                     const auto& a = stmt.as_Assign();

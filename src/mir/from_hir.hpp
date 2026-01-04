@@ -72,6 +72,8 @@ TAGGED_UNION_EX(VarState, (), Invalid, (
         VarState clone() const;
         bool operator==(const VarState& x) const;
         bool operator!=(const VarState& x) const { return !(*this == x); }
+        /// Returns `true` if any drop flags were present (i.e. this is possibly optional)
+        bool get_used_drop_flags(std::set<unsigned>* out) const;
         )
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const VarState& x);
@@ -397,7 +399,7 @@ public:
     public:
         const VarState& get_state() const { return state; }
     };
-    std::map<unsigned, SavedActiveLocal> get_active_locals() const;
+    std::map<unsigned, SavedActiveLocal> get_active_locals(const Span& sp, std::set<unsigned>& saved_drop_flags) const;
 
     // Calls `drop_value_from_state` on the value
     void drop_actve_local(const Span& sp, ::MIR::LValue lv, const SavedActiveLocal& loc);

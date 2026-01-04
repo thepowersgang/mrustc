@@ -927,6 +927,12 @@ namespace
                             m_of << (se.new_val ? "" : "!") << "df" << se.other;
                         }
                         } break;
+                    TU_ARM(stmt, LoadDropFlag, se) {
+                        m_of << "LOADFLAG df" << se.idx << " = " << fmt(se.slot) << " BIT " << se.bit_index;
+                        } break;
+                    TU_ARM(stmt, SaveDropFlag, se) {
+                        m_of << "SAVEFLAG " << fmt(se.slot) << " BIT " << se.bit_index << " = df" << se.idx;
+                        } break;
                     TU_ARM(stmt, Asm, se) {
                         m_of << "ASM (";
                         for(const auto& v : se.outputs)

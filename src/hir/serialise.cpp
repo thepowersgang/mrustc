@@ -869,6 +869,18 @@
                 serialise_vec(e.lines);
                 serialise_vec(e.params);
                 }
+            TU_ARMA(SaveDropFlag, e) {
+                m_out.write_tag(6);
+                m_out.write_count(e.idx);
+                serialise(e.slot);
+                m_out.write_count(e.bit_index);
+                }
+            TU_ARMA(LoadDropFlag, e) {
+                m_out.write_tag(7);
+                m_out.write_count(e.idx);
+                serialise(e.slot);
+                m_out.write_count(e.bit_index);
+                }
             }
         }
         void serialise(const ::MIR::Terminator& term)

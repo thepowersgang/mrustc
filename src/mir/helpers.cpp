@@ -1028,6 +1028,12 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 TU_ARMA(SetDropFlag, se) {
                     // Ignore
                     }
+                TU_ARMA(SaveDropFlag, se) {
+                    // Ignore
+                    }
+                TU_ARMA(LoadDropFlag, se) {
+                    // Ignore
+                    }
                 TU_ARMA(ScopeEnd, se) {
                     // Ignore
                     }

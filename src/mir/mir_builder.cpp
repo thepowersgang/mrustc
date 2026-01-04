@@ -2297,13 +2297,17 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
     return lv.clone_unwrapped(count+1);
 }
 
-std::map<unsigned, MirBuilder::SavedActiveLocal> MirBuilder::get_active_locals() const
+std::map<unsigned, MirBuilder::SavedActiveLocal> MirBuilder::get_active_locals(const Span& sp, std::set<unsigned>& saved_drop_flags) const
 {
     std::map<unsigned, MirBuilder::SavedActiveLocal>    rv;
     for(size_t i = 0; i < m_slot_states.size(); i ++)
     {
         TU_MATCH_HDRA( (m_slot_states[i]), { )
         default:
+            // TODO: Handle optionals, requires some way to get the value of a drop flag
+            // - OR: Rewriting of drop flags into a bitset down the line
+            m_slot_states[i].get_used_drop_flags(&saved_drop_flags);
+            //ASSERT_BUG(Span(), !m_slot_states[i].contains_optional(), "Save state with optional (save drop flag): " << m_slot_states[i]);
             rv.insert( std::make_pair( static_cast<unsigned>(i), SavedActiveLocal(m_slot_states[i].clone()) ));
             break;
         TU_ARMA(Invalid, e) {}
@@ -2425,4 +2429,31 @@ bool VarState::operator==(const VarState& x) const
         )
     )
     return os;
+}
+bool VarState::get_used_drop_flags(std::set<unsigned>* out) const
+{
+    bool rv = false;
+    TU_MATCH_HDRA((*this), {)
+    TU_ARMA(Optional, ve) {
+        if(out) out->insert(ve);
+        rv = true;
+        }
+    TU_ARMA(Invalid, ve) {}
+    TU_ARMA(Valid, ve) {}
+    TU_ARMA(Partial, ve) {
+        //if( ve.outer_flag != ~0u )
+        //    return true;
+        for(const auto& vs : ve.inner_states) {
+            rv |= vs.get_used_drop_flags(out);
+        }
+        }
+    TU_ARMA(MovedOut, ve) {
+        if( ve.outer_flag != ~0u ) {
+            if(out) out->insert(ve.outer_flag);
+            rv = true;
+        }
+        rv |= ve.inner_state->get_used_drop_flags(out);
+        }
+    }
+    return rv;
 }

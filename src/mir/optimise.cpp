@@ -606,6 +606,12 @@ namespace
             }
         TU_ARMA(SetDropFlag, e) {
             }
+        TU_ARMA(SaveDropFlag, e) {
+            rv |= visit_mir_lvalue_raw_mut(e.slot, ValUsage::Write, cb);
+            }
+        TU_ARMA(LoadDropFlag, e) {
+            rv |= visit_mir_lvalue_raw_mut(e.slot, ValUsage::Read, cb);
+            }
         TU_ARMA(Drop, e) {
             // Well, it mutates...
             rv |= visit_mir_lvalue_raw_mut(e.slot, ValUsage::Write, cb);
@@ -1417,6 +1423,12 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                         se.new_val,
                         se.other == ~0u ? ~0u : this->df_base + se.other
                         }) );
+                    ),
+                (SaveDropFlag,
+                    TODO(Span(), "clone_bb SaveDropFlag");
+                    ),
+                (LoadDropFlag,
+                    TODO(Span(), "clone_bb LoadDropFlag");
                     ),
                 (Drop,
                     rv.statements.push_back( ::MIR::Statement::make_Drop({
@@ -3148,6 +3160,22 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     if( ae.new_val != be.new_val )
                         return false;
                     if( ae.other != be.other )
+                        return false;
+                    }
+                TU_ARMA(LoadDropFlag, ae, be) {
+                    if( ae.idx != be.idx )
+                        return false;
+                    if( ae.slot != be.slot )
+                        return false;
+                    if( ae.bit_index != be.bit_index )
+                        return false;
+                    }
+                TU_ARMA(SaveDropFlag, ae, be) {
+                    if( ae.idx != be.idx )
+                        return false;
+                    if( ae.slot != be.slot )
+                        return false;
+                    if( ae.bit_index != be.bit_index )
                         return false;
                     }
                 TU_ARMA(Drop, ae, be) {
