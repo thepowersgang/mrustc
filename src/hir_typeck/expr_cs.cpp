@@ -5705,8 +5705,13 @@ namespace {
                     // If the target type is unbound, and is this rule exactly, don't return success
                     if( te.binding.is_Unbound() && pe.type == v.impl_ty && pe.item == v.name && pe.trait.m_path == v.trait && pe.trait.m_params == v.params)
                     {
+                        #if 0
                         DEBUG("Would re-create the same rule, returning unconsumed");
                         return false;
+                        #else
+                        DEBUG("Would re-create the same rule, setting opaque");
+                        output_type.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
+                        #endif
                     }
                 }
                 context.equate_types(sp, v.left_ty, output_type);
