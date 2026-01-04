@@ -2009,7 +2009,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             for(auto& ty : pp.m_types)
                 this->expand_associated_types(sp, ty);
             DEBUG("pp -> " << pp);
-            if( pp.compare_with_placeholders(sp, trait_path.m_params, cb_ident) != HIR::Compare::Equal ) {
+            if( pp.compare_with_placeholders(sp, trait_path.m_params, cb_ident) == HIR::Compare::Unequal ) {
                 DEBUG("[expand_associated_types] - Fuzzy - params don't match: " << pp << " != " << trait_path.m_params);
                 return false;
             }
