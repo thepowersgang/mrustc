@@ -3683,16 +3683,16 @@ namespace {
             TU_ARM(stmt, SaveDropFlag, e) {
                 m_of << indent << "if(df" << e.idx << ") { ";
                 emit_lvalue(e.slot);
-                m_of << "[" << (e.bit_index/8) << "] |= (1 << " << (e.bit_index%8) << ")) != 0);";
+                m_of << ".DATA[" << (e.bit_index/8) << "] |= (1 << " << (e.bit_index%8) << ");";
                 m_of << " } else { ";
                 emit_lvalue(e.slot);
-                m_of << "[" << (e.bit_index/8) << "] &= ~(1 << " << (e.bit_index%8) << ")) != 0);";
-                m_of << "}\n";
+                m_of << ".DATA[" << (e.bit_index/8) << "] &= ~(1 << " << (e.bit_index%8) << ");";
+                m_of << " }\n";
             } break;
             TU_ARM(stmt, LoadDropFlag, e) {
                 m_of << indent << "df" << e.idx << " = ((";
                 emit_lvalue(e.slot);
-                m_of << "[" << (e.bit_index/8) << "] & (1 << " << (e.bit_index%8) << ")) != 0)";
+                m_of << ".DATA[" << (e.bit_index/8) << "] & (1 << " << (e.bit_index%8) << ")) != 0)";
                 m_of << ";\n";
             } break;
             case ::MIR::Statement::TAG_Drop: {

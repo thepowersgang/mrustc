@@ -5504,6 +5504,15 @@ bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             used_drop_flags[e->flag_idx] = true;
                         }
                     }
+                    else if( const auto* e = stmt.opt_SaveDropFlag() )
+                    {
+                        read_drop_flags[e->idx] = true;
+                        used_drop_flags[e->idx] = true;
+                    }
+                    else if( const auto* e = stmt.opt_LoadDropFlag() )
+                    {
+                        used_drop_flags[e->idx] = true;
+                    }
                 }
                 });
         DEBUG("Un-read drop flags:" << FMT_CB(ss,
@@ -5515,6 +5524,10 @@ bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 for(auto it = block.statements.begin(); it != block.statements.end(); )
                 {
                     if(it->is_SetDropFlag() && ! read_drop_flags[it->as_SetDropFlag().idx] ) {
+                        removed_statement = true;
+                        it = block.statements.erase(it);
+                    }
+                    else if( it->is_LoadDropFlag() && ! read_drop_flags[it->as_LoadDropFlag().idx] ) {
                         removed_statement = true;
                         it = block.statements.erase(it);
                     }

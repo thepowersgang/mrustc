@@ -167,12 +167,37 @@ namespace {
 
             return used_vars;
         }
-        void generator_make_drop(const Span& sp, MirBuilder& out_builder, size_t n_captures, const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper>>& mappings) const
+        void generator_make_drop(
+            const Span& sp, MirBuilder& out_builder,
+            size_t n_captures, const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper>>& mappings,
+            unsigned drop_state_field_idx,
+            const std::map<unsigned, unsigned>& drop_flag_mapping
+            ) const
         {
             ::MIR::LValue   self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
 
             assert(m_generator_state.states.size() > 0);
             std::vector<::MIR::BasicBlockId>    arms; arms.reserve(m_generator_state.states.size()+1);
+
+            // Set all drop flags from input
+            if( !drop_flag_mapping.empty() )
+            {
+                auto slot = ::MIR::LValue::new_Argument(0);
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());    // Deref `&mut Self`
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // Get state field
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast(1));   // .value (From MaybeUninit)
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));   // .value (From ManuallyDrop)
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(drop_state_field_idx));    // drop flag bitset
+                for(const auto& flag_mapping : drop_flag_mapping) {
+                    auto i = out_builder.new_drop_flag(false);
+                    assert(i == flag_mapping.second);   // Should hold, as the map was created in-order
+                    out_builder.push_stmt(sp, ::MIR::Statement::make_LoadDropFlag({
+                        flag_mapping.first,
+                        slot.clone(),
+                        flag_mapping.second,
+                    }));
+                }
+            }
 
             auto entry_block = out_builder.pause_cur_block();
             // if state is 0, then drop captures (this is the pre-run state)
@@ -192,6 +217,7 @@ namespace {
                 ::MIR::LValue rv = self.clone();
                 ASSERT_BUG(sp, mappings.count(idx), "No LValue for index " << idx);
                 rv.m_wrappers.insert(rv.m_wrappers.end(), mappings.at(idx).begin(), mappings.at(idx).end());
+                DEBUG("get_lv: " << rv);
                 return rv;
                 };
 
@@ -206,7 +232,8 @@ namespace {
                     if( v.first == 0 ) {
                         continue ;
                     }
-                    ASSERT_BUG(sp, !v.second.get_state().get_used_drop_flags(nullptr), "TODO: Handle optional: " << v.second.get_state());
+                    // Note: Conditional drop handled by drop flags above
+                    // HACK: The caller re-maps drop flags
                     out_builder.drop_actve_local(sp, get_lv(v.first), v.second);
                 }
                 out_builder.end_block(::MIR::Terminator::make_Return({}));
@@ -3168,6 +3195,9 @@ namespace {
                         } ));
                 }
             }
+            for(const auto& m : mappings) {
+                DEBUG("Mapping _" << m.first << " = " << m.second);
+            }
             ::std::map<unsigned,unsigned>   drop_flag_mapping;
             for(auto idx : ev.generator_drop_flags()) {
                 drop_flag_mapping[idx] = drop_flag_mapping.size();
@@ -3179,8 +3209,6 @@ namespace {
                 HIR::Publicity::new_none(),
                 ::HIR::TypeRef::new_array( ::HIR::CoreType::U8, (drop_flag_mapping.size() + 7) / 8 )
                 });
-
-            DEBUG("mappings={" << mappings << "}");
 
             // 3. Rewrite usage of saved values
             // - Note: Need to allocate new temporaries if indexing by an updated lvalue
@@ -3261,6 +3289,8 @@ namespace {
                             slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
                             slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
                             slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // .0
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast(1));   // .value (From MaybeUninit)
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));   // .value (From ManuallyDrop)
                             slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(m_drop_flags_field));   // .drop_flags
                             unsigned bit_num = m_drop_flag_mapping.at(s->idx);
                             stmt = ::MIR::Statement::make_SaveDropFlag({
@@ -3315,8 +3345,17 @@ namespace {
             {
                 TRACE_FUNCTION_F("Generating drop impl");
                 MirBuilder  drop_builder(sp, resolve, HIR::TypeRef::new_unit(), gen_node->m_drop_fcn_ptr->m_args, *drop_impl_body);
-                ev.generator_make_drop(sp, drop_builder, gen_node->m_capture_usages.size(), mappings);
+                ev.generator_make_drop(sp, drop_builder, gen_node->m_capture_usages.size(), mappings, drop_flags_field_idx, drop_flag_mapping);
                 drop_builder.final_cleanup();
+            }
+            for(auto& bb : drop_impl_body->blocks) {
+                for(auto& stmt : bb.statements) {
+                    if( auto* d = stmt.opt_Drop() ) {
+                        if( d->flag_idx != ~0u ) {
+                            d->flag_idx = drop_flag_mapping.at(d->flag_idx);
+                        }
+                    }
+                }
             }
             gen_node->m_drop_fcn_ptr->m_code.m_mir = std::move(drop_impl_body);
         }

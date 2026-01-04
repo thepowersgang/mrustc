@@ -755,7 +755,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         const auto& slot_ty = state.get_lvalue_type(slot_tmp, slot);
                         MIR_ASSERT(state, slot_ty.data().is_Array(), "Save/Load Drop flag, slot not array: " << slot_ty);
                         const auto& slot_ty_i = slot_ty.data().as_Array();
-                        MIR_ASSERT(state, slot_ty_i.inner != HIR::CoreType::U8, "Save/Load Drop flag, slot not u8 array: " << slot_ty);
+                        MIR_ASSERT(state, slot_ty_i.inner == HIR::CoreType::U8, "Save/Load Drop flag, slot not u8 array: " << slot_ty);
                         auto bytes = slot_ty_i.size.as_Known();
                         MIR_ASSERT(state, bit < bytes * 8, "Save/Load drop flag, bit index out of range " << bit << " >= " << bytes*8);
                     }
