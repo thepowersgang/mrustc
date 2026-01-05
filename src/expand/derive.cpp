@@ -2011,6 +2011,7 @@ static const Deriver* find_impl(const RcString& trait_name)
 namespace {
     std::vector<AST::Path>   get_derive_items(const AST::Attribute& attr)
     {
+        Token   tok;
         std::vector<AST::Path> rv;
 
         TTStream    lex(attr.span(), ParseState(), attr.data());
@@ -2026,6 +2027,12 @@ namespace {
                     item += AST::PathNode(lex.getTokenCheck(TOK_IDENT).ident().name);
                 } while(lex.getTokenIf(TOK_DOUBLE_COLON));
                 rv.push_back(std::move(item));
+            }
+            else if( lex.getTokenIf(TOK_INTERPOLATED_TYPE, tok) ) {
+                const auto& ty = tok.frag_type();
+                ASSERT_BUG(lex.point_span(), ty.is_path(), "TODO: No path :ty in derive, " << ty);
+                ASSERT_BUG(lex.point_span(), ty.m_data.as_Path(), "" << ty);
+                rv.push_back(*ty.m_data.as_Path());
             }
             else {
                 auto item = AST::Path::new_relative({}, {});
