@@ -3097,7 +3097,13 @@ namespace HIR {
                 if( inner_alloc->is_writable() )
                 {
                     auto inner_val = allocation_to_encoded(inner_alloc->get_type(), *inner_alloc);
-                    auto item_path = nvs.new_static( inner_alloc->get_type().clone(), mv$(inner_val) );
+                    // Clone type with all lifetimes set to `'static`
+                    struct M: MonomorphiserNop {
+                        ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
+                            return ::HIR::LifetimeRef::new_static();
+                        }
+                    };
+                    auto item_path = nvs.new_static( M().monomorph_type(Span(), inner_alloc->get_type()), mv$(inner_val) );
 
                     rv.relocations.push_back(Reloc::new_named(r.offset, Target_GetPointerBits()/8, mv$(item_path)));
                 }

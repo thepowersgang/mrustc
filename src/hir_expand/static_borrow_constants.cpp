@@ -935,7 +935,7 @@ namespace static_borrow_constants {
                 return HIR::LifetimeRef(g.binding);
             }
             HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
-                if( lft == HIR::LifetimeRef() ) {
+                if( !lft.is_param() ) {
                     return  HIR::LifetimeRef::new_static();
                 }
                 else {
