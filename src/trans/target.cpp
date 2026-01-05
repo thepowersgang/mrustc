@@ -1514,6 +1514,10 @@ namespace {
                 {
                     auto t = monomorph(e[0].type);
                     const auto* inner_repr = Target_GetTypeRepr(sp, resolve, t);
+                    if( !inner_repr ) {
+                        DEBUG("Generic type in enum - " << t);
+                        return nullptr;
+                    }
                     rv.fields.push_back(TypeRepr::Field { 0, mv$(t) });
                     rv.size = inner_repr->size;
                     rv.align = inner_repr->align;
