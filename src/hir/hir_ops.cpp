@@ -1213,13 +1213,17 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 //Debug_SetStagePre("Expand HIR Statics Mark");
                 HIR_Expand_StaticBorrowConstants_Mark_Expr(*this, ip, ep_mut);
             }
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::Lifetimes )
+            {
+                //Debug_SetStagePre("Expand HIR Lifetimes");
+                HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
+                ep.m_state->stage = ::HIR::ExprState::Stage::Lifetimes;
+            }
             if( ep.m_state->stage < ::HIR::ExprState::Stage::Sbc )
             {
                 if( ep.m_state->stage == ::HIR::ExprState::Stage::SbcRequest )
                     ERROR(Span(), E0000, "Loop in constant evaluation");
                 ep.m_state->stage = ::HIR::ExprState::Stage::SbcRequest;
-                //Debug_SetStagePre("Expand HIR Lifetimes");
-                HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Closures");
                 HIR_Expand_Closures_Expr(*this, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Statics");

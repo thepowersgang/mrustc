@@ -2736,6 +2736,7 @@ namespace {
         // Run type de-duplication over the tree again
         ExprVisitor_CompactTypes().visit_root(ep);
         DEBUG("\n" << FMT_CB(os, HIR_DumpExpr(os, ep)));
+        ep.m_state->stage = ::HIR::ExprState::Stage::Lifetimes;
     }
 
     class OuterVisitor:

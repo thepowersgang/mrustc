@@ -1151,6 +1151,7 @@ namespace static_borrow_constants {
 
                     if( !new_static.m_params.is_generic() )
                     {
+                        new_static.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
                         new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( new_static_pair.path, new_static.m_value, new_static.m_type.clone());
                         new_static.m_value_generated = true;
                     }
@@ -1384,6 +1385,7 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
                 auto& s = crate.m_new_values.back().second->ent.as_Static();
                 ASSERT_BUG(Span(), !s.m_value.m_state, "ExprState set already");
                 s.m_value.m_state = ::HIR::ExprStatePtr(::HIR::ExprState(crate.m_root_module, ::HIR::SimplePath(crate.m_crate_name)));
+                s.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
                 s.m_value.m_state->m_impl_generics = nullptr;
                 s.m_value.m_state->m_item_generics = &s.m_params;
                 return path;
@@ -1392,6 +1394,7 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
 
         if( !new_static.m_params.is_generic() )
         {
+            new_static.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
             new_static.m_value_res = ::HIR::Evaluator(sp, crate, nvs).evaluate_constant( path, new_static.m_value, new_static.m_type.clone());
             new_static.m_value_generated = true;
         }
