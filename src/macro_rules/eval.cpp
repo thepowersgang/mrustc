@@ -998,6 +998,8 @@ namespace
         case TOK_RWORD_SELF:
         case TOK_DOUBLE_COLON:
         case TOK_INTERPOLATED_PATH:
+        case TOK_LT:
+        case TOK_DOUBLE_LT:
             if( !consume_path(lex, true) )
                 return false;
             // Macro invocation?
