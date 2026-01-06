@@ -135,14 +135,21 @@ namespace static_borrow_constants {
                     break;
                 }
                 // If the inner value is already a static or it's a constant, then treat as a valid static
-                auto& value_ptr = *value_ptr_ptr;
-                if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(value_ptr_ptr->get()))
+                // - Seek through field accesses
                 {
-                    (void)inner_node;
-                    m_all_constant = saved_all_constant;
-                    m_is_constant = true;
-                    return ;
+                    auto vpp = value_ptr_ptr;
+                    while(auto* inner_node = dynamic_cast<::HIR::ExprNode_Field*>(vpp->get())) {
+                        vpp = &inner_node->m_value;
+                    }
+                    if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(vpp->get()))
+                    {
+                        (void)inner_node;
+                        m_all_constant = saved_all_constant;
+                        m_is_constant = true;
+                        return ;
+                    }
                 }
+                auto& value_ptr = *value_ptr_ptr;
                 //auto usage = value_ptr->m_usage;
 
                 bool is_unsized = false;
