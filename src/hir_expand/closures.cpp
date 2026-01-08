@@ -1084,7 +1084,6 @@ namespace {
             capture_types.reserve( node.m_avu_cache.captured_vars.size() );
             capture_nodes.reserve( node.m_avu_cache.captured_vars.size() );
             node.m_is_copy = true;
-            bool lifetime_needed = false;
             for(const auto& binding : node.m_avu_cache.captured_vars)
             {
                 auto binding_type = binding.usage;
@@ -1130,37 +1129,21 @@ namespace {
                 }
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty_mono) } );
             }
-            // - Fix type to replace closure types with known paths
+            assert( constructor_path_params.m_lifetimes.size() == params.m_lifetimes.size() );
+            
+            auto ref_capture_lft_idx = params.m_lifetimes.size();
+            bool lifetime_needed = false;
+            for(size_t i = 0; i < capture_types.size(); i ++)
             {
-                ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb, &m_out };
-                for(size_t i = 0; i < capture_types.size(); i ++)
-                {
-                    auto binding_type = node.m_avu_cache.captured_vars[i].usage;
-                    HIR::TypeRef& ty_mono = capture_types[i].ent;
-                    fixup.m_resolve.expand_associated_types(sp, ty_mono);
-                    fixup.visit_type(ty_mono);
-                    if( !fixup.m_resolve.type_is_copy(sp, ty_mono) )
-                    {
-                        node.m_is_copy = false;
-                    }
-                    if( binding_type != ::HIR::ValueUsage::Move ) {
-                        lifetime_needed = true;
-                    }
+                auto binding_type = node.m_avu_cache.captured_vars[i].usage;
+                auto& ty_mono = capture_types[i].ent;
+                if( binding_type != ::HIR::ValueUsage::Move ) {
+                    ty_mono.data_mut().as_Borrow().lifetime = HIR::LifetimeRef(ref_capture_lft_idx);
+                    lifetime_needed = true;
                 }
             }
-            assert( constructor_path_params.m_lifetimes.size() == params.m_lifetimes.size() );
+
             if( lifetime_needed ) {
-                auto ref_capture_lft_idx = params.m_lifetimes.size();
-
-                for(size_t i = 0; i < capture_types.size(); i ++)
-                {
-                    auto binding_type = node.m_avu_cache.captured_vars[i].usage;
-                    auto& ty_mono = capture_types[i].ent;
-                    if( binding_type != ::HIR::ValueUsage::Move ) {
-                        ty_mono.data_mut().as_Borrow().lifetime = HIR::LifetimeRef(ref_capture_lft_idx);
-                    }
-                }
-
                 // Add `'a: 'captures` for all captured lifetimes
                 for(size_t i = 0; i < params.m_lifetimes.size(); i++) {
                     params.m_bounds.push_back(::HIR::GenericBound::make_Lifetime({ HIR::LifetimeRef(params.m_lifetimes.size()), HIR::LifetimeRef(i) }));
@@ -1175,14 +1158,30 @@ namespace {
             // Any lifetimes added need to be included (arguments and captures)
             assert( constructor_path_params.m_lifetimes.size() == params.m_lifetimes.size() );
 
+            monomorph_cb.add_bounds(sp, m_resolve);
+            DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
+
             // --- ---
+            // - Fix type to replace closure types with known paths
+            {
+                ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb, &m_out };
+                for(size_t i = 0; i < capture_types.size(); i ++)
+                {
+                    auto binding_type = node.m_avu_cache.captured_vars[i].usage;
+                    HIR::TypeRef& ty_mono = capture_types[i].ent;
+                    fixup.m_resolve.expand_associated_types(sp, ty_mono);
+                    fixup.visit_type(ty_mono);
+                    if( !fixup.m_resolve.type_is_copy(sp, ty_mono) )
+                    {
+                        DEBUG("Non-copy capture: " << ty_mono);
+                        node.m_is_copy = false;
+                    }
+                }
+            }
             if( node.m_is_copy )
             {
                 DEBUG("Copy closure");
             }
-
-            monomorph_cb.add_bounds(sp, m_resolve);
-            DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
 
             auto impl_path_params = params.make_nop_params(0);
             auto str = ::HIR::Struct {
