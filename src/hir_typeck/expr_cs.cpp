@@ -2477,6 +2477,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
             mutable ::std::vector<::HIR::TypeRef>   m_temp_ivars;
             mutable ::HIR::TypeRef  m_possible_type;
+            mutable const ::HIR::Pattern*  m_possible_type_pattern = nullptr;
 
             MatchErgonomicsRevisit(Span sp, ::HIR::TypeRef outer, ::HIR::Pattern& pat, ::HIR::PatternBinding::Type binding_mode=::HIR::PatternBinding::Type::Move):
                 sp(mv$(sp)), m_outer_ty(mv$(outer)),
@@ -2670,9 +2671,10 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
             }
             const ::HIR::TypeRef& get_possible_type(Context& context, ::HIR::Pattern& pattern) const
             {
-                if( m_possible_type == ::HIR::TypeRef() )
+                if( m_possible_type == ::HIR::TypeRef() || m_possible_type_pattern != &pattern )
                 {
                     m_possible_type = get_possible_type_inner(context, pattern);
+                    m_possible_type_pattern = &pattern;
                 }
                 return m_possible_type;
             }
@@ -2782,14 +2784,14 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         if( possible_type_p )
                         {
                             const auto& possible_type = *possible_type_p;
-                            if( const auto* te = ty_p->data().opt_Infer() )
-                            {
-                                context.possible_equate_ivar(sp, te->index, possible_type, Context::PossibleTypeSource::UnsizeTo);
-                            }
-                            else if( is_fallback )
+                            if( is_fallback )
                             {
                                 DEBUG("Fallback equate " << possible_type);
                                 context.equate_types(sp, *ty_p, possible_type);
+                            }
+                            else if( const auto* te = ty_p->data().opt_Infer() )
+                            {
+                                context.possible_equate_ivar(sp, te->index, possible_type, Context::PossibleTypeSource::UnsizeTo);
                             }
                             else
                             {
