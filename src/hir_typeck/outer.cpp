@@ -1016,9 +1016,11 @@ namespace {
                     }
 
                     // HACK: Clone the expected type, so the lifetimes match.
+                    DEBUG("Updating < " << impl.m_type << " as " << trait_path << impl.m_trait_args << " >::" << e.first);
                     impl_fcn.m_return = exp_ret_ty.clone();
                     for( size_t i = 0; i < std::min(impl_fcn.m_args.size(), trait_fcn.m_args.size()); i ++ )
                     {
+                        DEBUG("ARG" << i << "> " << trait_fcn.m_args[i].second);
                         impl_fcn.m_args[i].second = m_resolve.monomorph_expand(sp, trait_fcn.m_args[i].second, ms);
                     }
                     DEBUG("Updated < " << impl.m_type << " as " << trait_path << impl.m_trait_args << " >::" << e.first);

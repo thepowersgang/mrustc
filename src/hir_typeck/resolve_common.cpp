@@ -136,6 +136,10 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::H
                     ::HIR::TypePathBinding::make_Opaque({})
                 );
 
+                if( outer_hrtbs && outer_hrtbs->is_empty() ) {
+                    outer_hrtbs = nullptr;
+                }
+
                 // TODO: what if `trait_mono` has HRLs too?
                 if( outer_hrtbs && trait_mono.m_hrtbs ) {
                     TODO(sp, "Double-layerd HRLs - outer=" << outer_hrtbs->fmt_args() << " and inner=" << trait_mono.m_hrtbs->fmt_args());

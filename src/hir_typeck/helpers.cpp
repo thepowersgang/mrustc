@@ -3016,6 +3016,10 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                     }
 
                     auto tp_mono = monomorph_cb.monomorph_traitpath(sp, bound, false);
+                    if(tp_mono.m_hrtbs) {
+                        auto p = tp_mono.m_hrtbs->make_empty_params(true);
+                        tp_mono = MonomorphHrlsOnly(p).monomorph_traitpath(sp, tp_mono, true, true);
+                    }
                     // - Expand associated types
                     for(auto& ty : tp_mono.m_type_bounds) {
                         ty.second.type = this->expand_associated_types(sp, mv$(ty.second.type));
@@ -3701,6 +3705,12 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 auto _ = matcher.push_hrb(be.hrtbs ? *be.hrtbs : empty_params);
                 auto real_type = matcher.monomorph_type(sp, be.type, false);
                 auto real_trait = matcher.monomorph_traitpath(sp, be.trait, false);
+                // TODO: If `real_trait` has HRLs, replace them?
+                if( real_trait.m_hrtbs ) {
+                    auto p = real_trait.m_hrtbs->make_empty_params(true);
+                    real_trait.m_hrtbs.reset();
+                    real_trait = MonomorphHrlsOnly(p).monomorph_traitpath(sp, real_trait, true);
+                }
                 real_type = this->expand_associated_types(sp, mv$(real_type));
                 for(auto& p : real_trait.m_path.m_params.m_types) {
                     p = this->expand_associated_types(sp, mv$(p));

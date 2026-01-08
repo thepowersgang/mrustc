@@ -2072,12 +2072,64 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
 
 bool StaticTraitResolve::replace_equalities(::HIR::TypeRef& input) const
 {
+    const Span  sp;
     TRACE_FUNCTION_F("input="<<input);
     DEBUG("m_type_equalities = {" << m_type_equalities << "}");
     // - Check if there's an alias for this opaque name
     auto a = m_type_equalities.find(input);
     if( a != m_type_equalities.end() ) {
-        input = a->second.ty.clone();
+        // HACK: Shouldn't need this, but works around some missing cases
+        if( a->second.hrbs.is_empty() ) {
+            input = a->second.ty.clone();
+            return true;
+        }
+        // Match HRLs in the source, and expand them into the output
+        struct MatchHrls: public HIR::MatchGenerics, public Monomorphiser {
+            ::HIR::PathParams   hrls;
+            MatchHrls(const ::HIR::GenericParams& x)
+                : hrls(x.make_empty_params(true))
+            {
+            }
+
+            virtual ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, HIR::t_cb_resolve_type resolve_cb) {
+                return (ty.data().is_Generic() && ty.data().as_Generic().binding == g.binding)
+                    ? ::HIR::Compare::Equal
+                    : ::HIR::Compare::Unequal;
+            }
+            virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) {
+                return sz == g
+                    ? ::HIR::Compare::Equal
+                    : ::HIR::Compare::Unequal;
+            }
+            virtual ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& lft) {
+                if( g.group() == ::HIR::GENERIC_Hrtb ) {
+                    ASSERT_BUG(Span(), g.idx() < hrls.m_lifetimes.size(), "HRL index out of range");
+                    hrls.m_lifetimes.at(g.idx()) = lft;
+                    return ::HIR::Compare::Equal;
+                }
+                return lft.binding == g.binding
+                    ? ::HIR::Compare::Equal
+                    : ::HIR::Compare::Unequal;
+            }
+        
+            // Monomorphiser
+            ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const {
+                return ::HIR::TypeRef(g.name, g.binding);
+            }
+            ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const {
+                return g;
+            }
+            ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const {
+                if( g.group() == ::HIR::GENERIC_Hrtb ) {
+                    return hrls.m_lifetimes.at(g.idx());
+                }
+                return ::HIR::LifetimeRef(g.binding);
+            }
+        } match_hrls { a->second.hrbs };
+        DEBUG("Found for" << a->second.hrbs.fmt_args() << " " << a->second.ty);
+        a->first.match_test_generics(sp, input, HIR::ResolvePlaceholdersNop(), match_hrls);
+        DEBUG("HRLs resolved to: " << match_hrls.hrls);
+        input = match_hrls.monomorph_type(sp, a->second.ty);
         DEBUG("- Replace with " << input);
         return true;
     }
