@@ -333,6 +333,11 @@ public:
         RcString   name;
         bool is_struct; // Indicates that the variant does not show up in the value namespace
         ::HIR::TypeRef  type;
+
+        /// Optional explicit descriminant value, only valid when repr isn't Repr::Auto
+        ::HIR::ExprPtr  discriminant_expr;
+        // Constant-evaluated descriminant value
+        uint64_t discriminant_value;
     };
     enum class Repr
     {
@@ -350,8 +355,6 @@ public:
         (Data, ::std::vector<DataVariant>),
         (Value, struct {
             ::std::vector<ValueVariant> variants;
-            // Flag indicating that constant evaluation has completed
-            bool    evaluated;
             })
         );
 
@@ -359,6 +362,9 @@ public:
     bool    m_is_c_repr;
     Repr    m_tag_repr;
     Class   m_data;
+
+    // Flag indicating that constant evaluation has completed
+    bool    discriminants_evaluated;
 
     TraitMarkings   m_markings;
 
@@ -373,7 +379,7 @@ public:
     uint32_t get_value(size_t variant) const;
 
     /// Get a type for the given repr value
-    static ::HIR::TypeRef   get_repr_type(Repr r);
+    static ::HIR::CoreType   get_repr_type(Repr r);
 };
 class Struct
 {

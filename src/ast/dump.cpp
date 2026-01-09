@@ -1338,10 +1338,7 @@ void RustPrinter::handle_enum(const AST::Enum& s)
     {
         m_os << indent() << "/*"<<idx<<"*/" << i.m_name;
         TU_MATCH(AST::EnumVariantData, (i.m_data), (e),
-        (Value,
-            if( e.m_value ) {
-                m_os << " = " << e.m_value;
-            }
+        (Unit,
             ),
         (Tuple,
             m_os << "(";
@@ -1360,6 +1357,9 @@ void RustPrinter::handle_enum(const AST::Enum& s)
             m_os << indent() << "}";
             )
         )
+        if( i.m_discriminant_value ) {
+            m_os << " = " << i.m_discriminant_value;
+        }
         m_os << ",\n";
         idx ++;
     }

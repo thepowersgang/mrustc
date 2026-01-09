@@ -974,7 +974,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto name = tok.ident().name;
         // Tuple-like variants
-        if( GET_TOK(tok, lex) == TOK_PAREN_OPEN )
+        if( lex.getTokenIf(TOK_PAREN_OPEN) )
         {
             ::std::vector<AST::TupleItem>  items;
             // Get type list
@@ -989,11 +989,10 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
                 items.emplace_back( std::move(field_attrs), AST::Visibility::make_global(), std::move(ty) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            GET_TOK(tok, lex);
             variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(items)) );
         }
         // Struct-like variants
-        else if( tok.type() == TOK_BRACE_OPEN )
+        else if( lex.getTokenIf(TOK_BRACE_OPEN) )
         {
             ::std::vector<::AST::StructItem>   fields;
             do
@@ -1015,25 +1014,21 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
                 fields.push_back( ::AST::StructItem(mv$(field_attrs), AST::Visibility::make_global(), mv$(name), mv$(ty), mv$(def)) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_BRACE_CLOSE);
-            GET_TOK(tok, lex);
 
             variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(fields)) );
-        }
-        // Value variants
-        else if( tok.type() == TOK_EQUAL )
-        {
-            auto node = Parse_Expr(lex);
-            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(node)) );
-            GET_TOK(tok, lex);
         }
         // Unit variants
         else
         {
-            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), ::AST::Expr()) );
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name)) );
         }
 
-        if( tok.type() != TOK_COMMA ) {
-            PUTBACK(tok, lex);
+        if( lex.getTokenIf(TOK_EQUAL) )
+        {
+            variants.back().m_discriminant_value = Parse_Expr(lex);
+        }
+
+        if( !lex.getTokenIf(TOK_COMMA) ) {
             break;
         }
         // Consumed the comma

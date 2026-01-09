@@ -281,7 +281,7 @@ uint32_t HIR::Enum::get_value(size_t idx) const
         throw "";
     }
 }
-/*static*/ ::HIR::TypeRef HIR::Enum::get_repr_type(Repr r)
+/*static*/ ::HIR::CoreType HIR::Enum::get_repr_type(Repr r)
 {
     switch(r)
     {

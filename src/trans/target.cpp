@@ -1458,6 +1458,11 @@ namespace {
             return resolve.monomorph_expand(sp, tpl, monomorph_cb);
         };
 
+        if(!enm.discriminants_evaluated) {
+            ConvertHIR_ConstantEvaluate_Enum(resolve.m_crate, te.path.m_data.as_Generic().m_path, enm);
+            assert(enm.discriminants_evaluated);
+        }
+
         TypeRepr  rv;
         switch(enm.m_data.tag())
         {
@@ -1485,6 +1490,8 @@ namespace {
                     max_size  = ::std::max(max_size , size);
                     max_align = ::std::max(max_align, align);
                     rv.fields.push_back(TypeRepr::Field { 0, mv$(t) });
+
+                    ASSERT_BUG(sp, !var.discriminant_expr, "TODO: Handle explicit discriminants with repr(C) data");
                 }
                 DEBUG("max_size = " << max_size << ", max_align = " << max_align);
 
@@ -1537,10 +1544,16 @@ namespace {
                     ::HIR::TypeRef  type;
                     ::std::vector<Ent>  ents;
                 };
+                /// Is there an explicitly specified discriminant value provided?
+                bool has_explcit_value = false;
                 std::vector< Variant>    variants;
                 variants.reserve( e.size() );
                 for(const auto& var : e)
                 {
+                    if( var.discriminant_expr ) {
+                        has_explcit_value = true;
+                    }
+
                     variants.push_back({ monomorph(var.type), {} });
                     TRACE_FUNCTION_F("Variant #" << (&var - e.data()));
                     if( var.type == ::HIR::TypeRef::new_unit() ) {
@@ -1555,6 +1568,7 @@ namespace {
 
                 if( enm.m_tag_repr == ::HIR::Enum::Repr::Auto )
                 {
+                    ASSERT_BUG(sp, !has_explcit_value, "Explicit tag without a repr");
                     // Non-zero optimisation
                     if( rv.variants.is_None() && variants.size() == 2 )
                     {
@@ -1921,6 +1935,7 @@ namespace {
                     }
                     else
                     {
+                        ASSERT_BUG(sp, !has_explcit_value, "Explicit tag without a repr");
                         if( e.size() <= 1 ) {
                             // Unreachable
                             BUG(sp, "Reached auto tag type logic with zero/one-sized enum");
@@ -1980,16 +1995,22 @@ namespace {
                         rv.size ++;
                     rv.align = max_align;
 
-                    rv.variants = TypeRepr::VariantMode::make_Linear({ { e.size(), tag_size, {} }, 0, e.size() });
+                    if( has_explcit_value ) {
+                        ::std::vector<uint64_t> vals;
+                        for(const auto& v : e) {
+                            vals.push_back(v.discriminant_value);
+                        }
+                        DEBUG("vals = " << vals);
+                        rv.variants = TypeRepr::VariantMode::make_Values({ { e.size(), tag_size, {} }, ::std::move(vals) });
+                    }
+                    else {
+                        rv.variants = TypeRepr::VariantMode::make_Linear({ { e.size(), tag_size, {} }, 0, e.size() });
+                    }
                 }
             }
             } break;
         TU_ARM(enm.m_data, Value, e) {
             // TODO: If the values aren't yet populated, force const evaluation
-            if(!e.evaluated) {
-                ConvertHIR_ConstantEvaluate_Enum(resolve.m_crate, te.path.m_data.as_Generic().m_path, enm);
-                assert(e.evaluated);
-            }
             switch(enm.m_tag_repr)
             {
             case ::HIR::Enum::Repr::Auto:

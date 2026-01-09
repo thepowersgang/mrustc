@@ -2811,9 +2811,7 @@ void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
     for(auto& variant : e.variants())
     {
         TU_MATCH(::AST::EnumVariantData, (variant.m_data), (s),
-        (Value,
-            auto _h = item_context.enter_rootblock();
-            Resolve_Absolute_Expr(item_context,  s.m_value);
+        (Unit,
             ),
         (Tuple,
             for(auto& field : s.m_items) {
@@ -2827,6 +2825,8 @@ void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
             }
             )
         )
+        auto _h = item_context.enter_rootblock();
+        Resolve_Absolute_Expr(item_context,  variant.m_discriminant_value);
     }
 
     item_context.pop( e.params() );

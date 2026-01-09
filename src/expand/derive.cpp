@@ -279,7 +279,7 @@ struct Deriver
         for(const auto& v : enm.variants())
         {
             TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
-            (Value,
+            (Unit,
                 ),
             (Tuple,
                 for(const auto& ent : e.m_items)
@@ -530,7 +530,7 @@ public:
             AST::Path   variant_path = base_path + v.m_name;
 
             TU_MATCH_HDRA( (v.m_data), {)
-            TU_ARMA(Value, e) {
+            TU_ARMA(Unit, e) {
                 code = NEWNODE(CallMethod,
                     NEWNODE(NamedValue, AST::Path(rcstring_f)),
                     AST::PathNode(rcstring_write_str,{}),
@@ -644,7 +644,7 @@ public:
             auto variant_path = base_path + v.m_name;
 
             TU_MATCH_HDRA( (v.m_data), {)
-            TU_ARMA(Value, e) {
+            TU_ARMA(Unit, e) {
                 code = this->equal_value(sp, opts.core_name);
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Named(variant_path));
                 pat_b = AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Named(variant_path));
@@ -902,7 +902,7 @@ public:
             auto variant_path = base_path + v.m_name;
 
             TU_MATCH_HDRA( (v.m_data), {)
-            TU_ARMA(Value, e) {
+            TU_ARMA(Unit, e) {
                 code = NEWNODE(Block);
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Named(variant_path));
                 }
@@ -1119,7 +1119,7 @@ public:
             AST::Pattern    pat_a;
 
             TU_MATCH_HDRA( (v.m_data), {)
-            TU_ARMA(Value, e) {
+            TU_ARMA(Unit, e) {
                 code = NEWNODE(NamedValue, base_path + v.m_name);
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Named(base_path + v.m_name));
                 }
@@ -1329,7 +1329,7 @@ public:
         ::std::vector<TypeRef>  bound_tys;
         AST::ExprNodeP  node;
         TU_MATCH_HDRA( (default_var->m_data), { )
-        TU_ARMA(Value, e) {
+        TU_ARMA(Unit, e) {
             node = NEWNODE(NamedValue, std::move(var_path));
             }
         TU_ARMA(Tuple, e) {
@@ -1460,7 +1460,7 @@ public:
             auto block = new_block(sp);
             block->push_stmt(mv$(var_idx_hash));
             TU_MATCH_HDRA( (v.m_data), {)
-            TU_ARMA(Value, e) {
+            TU_ARMA(Unit, e) {
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Named(var_path));
                 }
             TU_ARMA(Tuple, e) {
@@ -1642,7 +1642,7 @@ public:
             AST::Pattern    pat_a;
 
             TU_MATCH_HDRA((v.m_data), {)
-            TU_ARMA(Value, e) {
+            TU_ARMA(Unit, e) {
                 code = NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_enum_variant",
                     vec$(
                         s_ent->clone(),
@@ -1879,7 +1879,7 @@ public:
             AST::ExprNodeP  code;
 
             TU_MATCH_HDRA( (v.m_data), {)
-            TU_ARMA(Value, e) {
+            TU_ARMA(Unit, e) {
                 code = NEWNODE(NamedValue, base_path + v.m_name);
                 }
             TU_ARMA(Tuple, e) {

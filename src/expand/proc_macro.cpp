@@ -1504,12 +1504,7 @@ namespace {
                 this->visit_attrs(v.m_attrs);
                 m_pmi.send_ident(v.m_name.c_str());
                 TU_MATCH_HDRA( (v.m_data), { )
-                TU_ARMA(Value, e) {
-                    if( e.m_value )
-                    {
-                        m_pmi.send_symbol("=");
-                        this->visit_nodes(e.m_value);
-                    }
+                TU_ARMA(Unit, e) {
                     }
                 TU_ARMA(Tuple, e) {
                     m_pmi.send_symbol("(");
@@ -1533,6 +1528,11 @@ namespace {
                     }
                     m_pmi.send_symbol("}");
                     }
+                }
+                if( v.m_discriminant_value)
+                {
+                    m_pmi.send_symbol("=");
+                    this->visit_nodes(v.m_discriminant_value);
                 }
                 m_pmi.send_symbol(",");
             }

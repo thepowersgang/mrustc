@@ -2154,7 +2154,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                     }
                     else {
                         TU_MATCH_HDRA( (it->m_data), { )
-                        TU_ARMA(Value, e) {}
+                        TU_ARMA(Unit, e) {}
                         TU_ARMA(Tuple, e) {
                             H::filter_cfg(e.m_items);
                             }
@@ -2356,8 +2356,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                 Expand_Attrs_CfgAttr(var.m_attrs);
                 Expand_Attrs(es, var.m_attrs, AttrStage::Pre,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, var); });
                 TU_MATCH_HDRA( (var.m_data), {)
-                TU_ARMA(Value, e) {
-                    Expand_Expr(es,  e.m_value);
+                TU_ARMA(Unit, e) {
                     }
                 TU_ARMA(Tuple, e) {
                     for(auto it = e.m_items.begin(); it != e.m_items.end(); ) {
@@ -2388,6 +2387,7 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                     }
                     }
                 }
+                Expand_Expr(es,  var.m_discriminant_value);
                 Expand_Attrs(es, var.m_attrs, AttrStage::Post,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, var); });
             }
             // Handle cfg on variants (kinda hacky)

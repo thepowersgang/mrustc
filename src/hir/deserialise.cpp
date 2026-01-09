@@ -1312,7 +1312,6 @@ namespace {
                 case ::HIR::Enum::Class::TAG_Value:
                     return ::HIR::Enum::Class::make_Value({
                         des.deserialise_vec<::HIR::Enum::ValueVariant>(),
-                        true
                         });
                 default:
                     BUG(Span(), "Bad tag for HIR::Enum::Class - " << tag);
@@ -1324,6 +1323,7 @@ namespace {
             m_in.read_bool(),
             static_cast< ::HIR::Enum::Repr>(m_in.read_tag()),
             H::deserialise_enumclass(*this),
+            true,
             deserialise_markings()
             };
     }

@@ -1427,28 +1427,16 @@ namespace {
 ::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(RcString, ::HIR::Struct)> push_struct, HIR::Module& out_mod)
 {
     // 1. Figure out what sort of enum this is (value or data)
-    bool has_value = false;
     bool has_data = false;
     for(const auto& var : ent.variants())
     {
-        if( TU_TEST1(var.m_data, Value, .m_value.is_valid()) )
-        {
-            has_value = true;
-        }
-        else if( var.m_data.is_Tuple() || var.m_data.is_Struct() )
-        {
+        if( var.m_data.is_Tuple() || var.m_data.is_Struct() ) {
             has_data = true;
         }
-        else
-        {
+        else {
             // Unit-like
-            assert(var.m_data.is_Value());
+            assert(var.m_data.is_Unit());
         }
-    }
-
-    if( has_value && has_data )
-    {
-        ERROR(Span(), E0000, "Enum " << path << " has both value and data variants");
     }
 
     bool is_repr_c = ent.m_markings.is_repr_c;
@@ -1476,14 +1464,13 @@ namespace {
         ::std::vector<::HIR::Enum::ValueVariant>    variants;
         for(const auto& var : ent.variants())
         {
-            const auto& ve = var.m_data.as_Value();
             // TODO: Quick consteval on the expression?
             variants.push_back({
-                var.m_name, LowerHIR_Expr(ve.m_value), 0
+                var.m_name, LowerHIR_Expr(var.m_discriminant_value), 0
                 });
         }
 
-        data = ::HIR::Enum::Class::make_Value({ mv$(variants), false });
+        data = ::HIR::Enum::Class::make_Value({ mv$(variants) });
     }
     // NOTE: empty enums are encoded as empty Data enums
     else
@@ -1491,20 +1478,11 @@ namespace {
         ::std::vector<::HIR::Enum::DataVariant>    variants;
         for(const auto& var : ent.variants())
         {
-            if( var.m_data.is_Value() )
+            if( var.m_data.is_Unit() )
             {
                 // TODO: Should this make its own unit-like struct?
                 variants.push_back({ var.m_name, false, ::HIR::TypeRef::new_unit() });
             }
-            //else if( TU_TEST1(var.m_data, Tuple, m_sub_types.size() == 0) )
-            //{
-            //    variants.push_back({ var.m_name, false, ::HIR::TypeRef::new_unit() });
-            //}
-            //else if( TU_TEST1(var.m_data, Tuple, m_sub_types.size() == 1) )
-            //{
-            //    const auto& ty = var.m_data.as_Tuple().m_sub_types[0];
-            //    variants.push_back({ var.m_name, false, LowerHIR_Type(ty) });
-            //}
             else
             {
                 ::HIR::Struct::Data data;
@@ -1541,6 +1519,13 @@ namespace {
                 ty_path.m_data.as_Generic().m_params = params.make_nop_params(0);
                 variants.push_back({ var.m_name, var.m_data.is_Struct(), ::HIR::TypeRef::new_path( mv$(ty_path), {} ) });
             }
+
+            if( var.m_discriminant_value ) {
+                if( repr == ::HIR::Enum::Repr::Auto ) {
+                    ERROR(var.m_discriminant_value.node().span(), E0000, "Discrimiant value set on enum with no `repr` set");
+                }
+                variants.back().discriminant_expr = LowerHIR_Expr(var.m_discriminant_value);
+            }
         }
 
         switch(repr)
@@ -1553,7 +1538,7 @@ namespace {
             // - `rustc-1.19.0-src\src\vendor\idna\src\uts46.rs:33` has `#[repr(u16)]`
             //ERROR(Span(), E0000, "#[repr] not allowed on enums with data");
 
-            // TODO: Save the repr for use in `trans/target.cpp`
+            // NOTE: We save the repr for use in `trans/target.cpp`
             // https://github.com/rust-lang/rfcs/blob/master/text/2195-really-tagged-unions.md
             // - `repr(int)` packs the tag into the variants (which can be more efficient for alignment, with `Variant(u8, u16)`)
             // - `repr(C,int)` has the tag before variants (so will be less alignment efficient)

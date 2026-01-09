@@ -3661,51 +3661,50 @@ namespace {
 
         static void visit_enum_inner(const ::HIR::Crate& crate, const ::HIR::ItemPath& p, const ::HIR::Module& mod, const ::HIR::ItemPath& mod_path, const char* name, ::HIR::Enum& item)
         {
-            if( auto* e = item.m_data.opt_Value() )
+            auto ty = ::HIR::Enum::get_repr_type(item.m_tag_repr);
+            bool is_signed = false;
+            switch(ty)
             {
-                auto ty = ::HIR::Enum::get_repr_type(item.m_tag_repr);
-                bool is_signed = false;
-                switch(ty.data().as_Primitive())
-                {
-                case ::HIR::CoreType::I8:
-                case ::HIR::CoreType::I16:
-                case ::HIR::CoreType::I32:
-                case ::HIR::CoreType::I64:
-                case ::HIR::CoreType::Isize:
-                case ::HIR::CoreType::I128: // TODO: Emulation
-                    is_signed = true;
-                    break;
-                case ::HIR::CoreType::Bool:
-                case ::HIR::CoreType::U8:
-                case ::HIR::CoreType::U16:
-                case ::HIR::CoreType::U32:
-                case ::HIR::CoreType::U64:
-                case ::HIR::CoreType::Usize:
-                case ::HIR::CoreType::Char:
-                case ::HIR::CoreType::U128: // TODO: Emulation
-                    is_signed = false;
-                    break;
-                case ::HIR::CoreType::F16:
-                case ::HIR::CoreType::F32:
-                case ::HIR::CoreType::F64:
-                case ::HIR::CoreType::F128:
-                    TODO(Span(), "Floating point enum tag.");
-                    break;
-                case ::HIR::CoreType::Str:
-                    BUG(Span(), "Unsized tag?!");
-                }
+            case ::HIR::CoreType::I8:
+            case ::HIR::CoreType::I16:
+            case ::HIR::CoreType::I32:
+            case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::Isize:
+            case ::HIR::CoreType::I128: // TODO: Emulation
+                is_signed = true;
+                break;
+            case ::HIR::CoreType::Bool:
+            case ::HIR::CoreType::U8:
+            case ::HIR::CoreType::U16:
+            case ::HIR::CoreType::U32:
+            case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::Usize:
+            case ::HIR::CoreType::Char:
+            case ::HIR::CoreType::U128: // TODO: Emulation
+                is_signed = false;
+                break;
+            case ::HIR::CoreType::F16:
+            case ::HIR::CoreType::F32:
+            case ::HIR::CoreType::F64:
+            case ::HIR::CoreType::F128:
+                TODO(Span(), "Floating point enum tag.");
+                break;
+            case ::HIR::CoreType::Str:
+                BUG(Span(), "Unsized tag?!");
+            }
+            TU_MATCH_HDRA((item.m_data), {)
+            TU_ARMA(Value, e) {
                 uint64_t i = 0;
-                for(auto& var : e->variants)
+                for(auto& var : e.variants)
                 {
-
                     if( var.expr )
                     {
-                        auto nvs = NewvalState { mod, mod_path, FMT(name << "_" << var.name << "#") };
+                        auto nvs = NewvalState { mod, mod_path, FMT(name << "#" << var.name << "_") };
                         auto eval = ::HIR::Evaluator { var.expr->span(), crate, nvs };
                         eval.resolve.set_impl_generics_raw(MetadataType::None, item.m_params);
                         try
                         {
-                            auto val = eval.evaluate_constant(p, var.expr, ty.clone());
+                            auto val = eval.evaluate_constant(p, var.expr, ty);
                             DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
                             if( is_signed ) {
                                 i = EncodedLiteralSlice(val).read_sint().truncate_i64();
@@ -3716,7 +3715,7 @@ namespace {
                         }
                         catch(const Defer&)
                         {
-                            BUG(var.expr->span(), "");
+                            BUG(var.expr->span(), "`Defer` thrown during evaluation of enum discriminant");
                         }
                     }
                     var.val = i;
@@ -3726,8 +3725,38 @@ namespace {
                     }
                     i ++;
                 }
-                e->evaluated = true;
+                }
+            TU_ARMA(Data, e) {
+                uint64_t i = 0;
+                for(auto& var : e)
+                {
+                    if( var.discriminant_expr )
+                    {
+                        auto nvs = NewvalState { mod, mod_path, FMT(name << "#" << var.name << "_") };
+                        auto eval = ::HIR::Evaluator { var.discriminant_expr->span(), crate, nvs };
+                        eval.resolve.set_impl_generics_raw(MetadataType::None, item.m_params);
+                        try
+                        {
+                            auto val = eval.evaluate_constant(p, var.discriminant_expr, ty);
+                            DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
+                            if( is_signed ) {
+                                i = EncodedLiteralSlice(val).read_sint().truncate_i64();
+                            }
+                            else {
+                                i = EncodedLiteralSlice(val).read_uint().truncate_u64();
+                            }
+                        }
+                        catch(const Defer&)
+                        {
+                            BUG(var.discriminant_expr->span(), "`Defer` thrown during evaluation of enum discriminant");
+                        }
+                    }
+                    var.discriminant_value = i;
+                    i ++;
+                }
+                }
             }
+            item.discriminants_evaluated = true;
         }
     };
 

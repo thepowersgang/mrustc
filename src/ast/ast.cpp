@@ -308,8 +308,8 @@ Enum Enum::clone() const
     for(const auto& var : m_variants)
     {
         TU_MATCHA( (var.m_data), (e),
-        (Value,
-            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, e.m_value.clone()) );
+        (Unit,
+            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name) );
             ),
         (Tuple,
             decltype(e.m_items) new_st;
@@ -324,6 +324,7 @@ Enum Enum::clone() const
             new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, mv$(new_fields)) );
             )
         )
+        new_variants.back().m_discriminant_value = var.m_discriminant_value.clone();
     }
     return Enum(m_params.clone(), mv$(new_variants));
 }

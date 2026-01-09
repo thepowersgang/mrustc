@@ -158,7 +158,7 @@ namespace {
             enum_variants.push_back(HIR::Enum::ValueVariant {
                 RcString::new_interned("END"), ::HIR::ExprPtr(), arm_targets.size()-1
                 });
-            state_enm.m_data = ::HIR::Enum::Class::make_Value({ mv$(enum_variants), true });
+            state_enm.m_data = ::HIR::Enum::Class::make_Value({ mv$(enum_variants) });
 
             m_builder.set_cur_block(m_generator_state.bb_open);
 

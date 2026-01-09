@@ -333,10 +333,9 @@ public:
     Trait clone() const;
 };
 
-TAGGED_UNION_EX(EnumVariantData, (), Value,
+TAGGED_UNION_EX(EnumVariantData, (), Unit,
     (
-    (Value, struct {
-        ::AST::Expr m_value;
+    (Unit, struct {
         }),
     (Tuple, struct {
         ::std::vector<TupleItem>    m_items;
@@ -356,29 +355,31 @@ struct EnumVariant
     AttributeList   m_attrs;
     RcString   m_name;
     EnumVariantData m_data;
+    /// Optional discriminant value
+    Expr    m_discriminant_value;
 
     EnumVariant()
     {
     }
 
-    EnumVariant(AttributeList attrs, RcString name, Expr&& value):
+    EnumVariant(AttributeList attrs, RcString name):
         m_attrs( mv$(attrs) ),
         m_name( mv$(name) ),
-        m_data( EnumVariantData::make_Value({mv$(value)}) )
+        m_data( EnumVariantData::make_Unit({}) )
     {
     }
 
     EnumVariant(AttributeList attrs, RcString name, ::std::vector<TupleItem> sub_types):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
-        m_data( EnumVariantData::make_Tuple( {mv$(sub_types)} ) )
+        m_data( EnumVariantData::make_Tuple({ std::move(sub_types) }) )
     {
     }
 
     EnumVariant(AttributeList attrs, RcString name, ::std::vector<StructItem> fields):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
-        m_data( EnumVariantData::make_Struct( {mv$(fields)} ) )
+        m_data( EnumVariantData::make_Struct({ std::move(fields) }) )
     {
     }
 
@@ -386,8 +387,7 @@ struct EnumVariant
     {
         os << "EnumVariant(" << x.m_name;
         TU_MATCH(EnumVariantData, (x.m_data), (e),
-        (Value,
-            os << " = " << e.m_value;
+        (Unit,
             ),
         (Tuple,
             os << "(" << e.m_items << ")";
@@ -396,6 +396,9 @@ struct EnumVariant
             os << " { " << e.m_fields << " }";
             )
         )
+        if( x.m_discriminant_value ) {
+            os << " = " << x.m_discriminant_value;
+        }
         return os << ")";
     }
 };
