@@ -1310,6 +1310,7 @@
             m_out.write_string(v.name);
             m_out.write_bool(v.is_struct);
             serialise(v.type);
+            m_out.write_u64(v.discriminant_value);
         }
 
         void serialise(const ::HIR::TraitMarkings& m)

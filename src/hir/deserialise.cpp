@@ -1334,7 +1334,9 @@ namespace {
         return ::HIR::Enum::DataVariant {
             mv$(name),
             m_in.read_bool(),
-            deserialise_type()
+            deserialise_type(),
+            ::HIR::ExprPtr {},
+            m_in.read_u64()
             };
     }
     ::HIR::Enum::ValueVariant HirDeserialiser::deserialise_enumvaluevariant()
