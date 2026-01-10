@@ -4163,7 +4163,12 @@ namespace {
                         }
                         }
                     TU_ARMA(Values, re) {
-                        emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
+                        if( re.field.index == 0 ) {
+                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
+                        }
+                        else {
+                            emit_lvalue(e.dst); m_of << ".DATA.TAG = "; emit_enum_variant_val(repr, ve.index);
+                        }
                         if( !enm_p->is_value() )
                         {
                             emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index; }, ve.vals, indent_level, true);
@@ -4537,7 +4542,11 @@ namespace {
                 // Optimisation: If there's only one arm with a different value, then emit an `if` isntead of a `switch`
                 if( odd_arm != static_cast<size_t>(-1) )
                 {
-                    m_of << indent << "if("; emit_lvalue(val); m_of << ".TAG == ";
+                    m_of << indent << "if("; emit_lvalue(val);
+                    if( e.field.index != 0 ) {
+                        m_of << ".DATA";
+                    }
+                    m_of << ".TAG == ";
                     // Handle signed values
                     if( is_signed ) {
                         m_of << static_cast<int64_t>(e.values[odd_arm]);
@@ -4551,7 +4560,12 @@ namespace {
                     return ;
                 }
 
-                m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
+                m_of << indent << "switch(";
+                emit_lvalue(val);
+                if( e.field.index != 0 ) {
+                    m_of << ".DATA";
+                }
+                m_of << ".TAG) {\n";
                 for(size_t j = 0; j < n_arms; j ++)
                 {
                     // Handle signed values
