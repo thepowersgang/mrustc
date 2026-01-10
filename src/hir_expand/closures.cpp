@@ -1158,29 +1158,37 @@ namespace {
             // Any lifetimes added need to be included (arguments and captures)
             assert( constructor_path_params.m_lifetimes.size() == params.m_lifetimes.size() );
 
-            monomorph_cb.add_bounds(sp, m_resolve);
-            DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
-
             // --- ---
             // - Fix type to replace closure types with known paths
             {
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb, &m_out };
                 for(size_t i = 0; i < capture_types.size(); i ++)
                 {
-                    auto binding_type = node.m_avu_cache.captured_vars[i].usage;
+                    //auto binding_type = node.m_avu_cache.captured_vars[i].usage;
                     HIR::TypeRef& ty_mono = capture_types[i].ent;
                     fixup.m_resolve.expand_associated_types(sp, ty_mono);
                     fixup.visit_type(ty_mono);
-                    if( !fixup.m_resolve.type_is_copy(sp, ty_mono) )
+                }
+            }
+            monomorph_cb.add_bounds(sp, m_resolve);
+            DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
+
+            {
+                StaticTraitResolve  local_resolve { m_resolve.m_crate };
+                local_resolve.set_impl_generics_raw(MetadataType::None, params);   // Closure types are sized
+
+                for(const auto& v : capture_types)
+                {
+                    if( !local_resolve.type_is_copy(sp, v.ent) )
                     {
-                        DEBUG("Non-copy capture: " << ty_mono);
+                        DEBUG("Non-copy capture: " << v.ent);
                         node.m_is_copy = false;
                     }
                 }
-            }
-            if( node.m_is_copy )
-            {
-                DEBUG("Copy closure");
+                if( node.m_is_copy )
+                {
+                    DEBUG("Copy closure");
+                }
             }
 
             auto impl_path_params = params.make_nop_params(0);
