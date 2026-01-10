@@ -2434,7 +2434,7 @@ void Context::add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb,
 }
 
 // NOTE: Mutates the pattern to add ivars to contained paths
-void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type)
+void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type, bool is_irrefutable/*=false*/)
 {
     TRACE_FUNCTION_F("pat = " << pat << ", type = " << type);
 
@@ -2471,6 +2471,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
             public Revisitor
         {
             Span    sp;
+            bool    m_is_irrefutable;
             ::HIR::TypeRef  m_outer_ty;
             ::HIR::Pattern& m_pattern;
             ::HIR::PatternBinding::Type m_outer_mode;
@@ -2479,8 +2480,10 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
             mutable ::HIR::TypeRef  m_possible_type;
             mutable const ::HIR::Pattern*  m_possible_type_pattern = nullptr;
 
-            MatchErgonomicsRevisit(Span sp, ::HIR::TypeRef outer, ::HIR::Pattern& pat, ::HIR::PatternBinding::Type binding_mode=::HIR::PatternBinding::Type::Move):
-                sp(mv$(sp)), m_outer_ty(mv$(outer)),
+            MatchErgonomicsRevisit(Span sp, bool is_irrefutable, ::HIR::TypeRef outer, ::HIR::Pattern& pat, ::HIR::PatternBinding::Type binding_mode=::HIR::PatternBinding::Type::Move)
+                : sp(mv$(sp))
+                , m_is_irrefutable(is_irrefutable)
+                , m_outer_ty(mv$(outer)),
                 m_pattern(pat),
                 m_outer_mode(binding_mode)
             {}
@@ -2506,7 +2509,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 if( !revisit_inner_real(context, pattern, type, binding_mode, false) )
                 {
                     DEBUG("Add revisit for " << pattern << " : " << type << "(mode = " << (int)binding_mode << ")");
-                    context.add_revisit_adv( box$(( MatchErgonomicsRevisit { sp, type.clone(), pattern, binding_mode } )) );
+                    context.add_revisit_adv( box$(( MatchErgonomicsRevisit { sp, m_is_irrefutable, type.clone(), pattern, binding_mode } )) );
                 }
                 return true;
             }
@@ -2791,7 +2794,19 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                             }
                             else if( const auto* te = ty_p->data().opt_Infer() )
                             {
-                                context.possible_equate_ivar(sp, te->index, possible_type, Context::PossibleTypeSource::UnsizeTo);
+                                // If this is a slice pattern (i.e. the possible type is an array), then add deref-to-slice too
+                                if( const auto* te2 = possible_type.data().opt_Array() ) {
+                                    if( m_is_irrefutable ) {
+                                        context.possible_equate_ivar(sp, te->index, possible_type, Context::PossibleTypeSource::UnsizeTo);
+                                    }
+                                    else {
+                                        auto t = ::HIR::TypeRef::new_slice(te2->inner.clone());
+                                        context.possible_equate_ivar(sp, te->index, t, Context::PossibleTypeSource::UnsizeTo);
+                                    }
+                                }
+                                else {
+                                    context.possible_equate_ivar(sp, te->index, possible_type, Context::PossibleTypeSource::UnsizeTo);
+                                }
                             }
                             else
                             {
@@ -3209,7 +3224,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
         MatchErgonomicsRevisit::create_bindings(sp, *this, pat);
         // - Add a revisit for the outer pattern (saving the current target type as well as the pattern)
         DEBUG("Handle match ergonomics - " << pat << " with " << type);
-        this->add_revisit_adv( box$(( MatchErgonomicsRevisit { sp, type.clone(), pat } )) );
+        this->add_revisit_adv( box$(( MatchErgonomicsRevisit { sp, is_irrefutable, type.clone(), pat } )) );
         return ;
     }
 

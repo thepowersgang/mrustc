@@ -893,7 +893,7 @@ namespace typecheck
             TRACE_FUNCTION_F(&node << " let " << node.m_pattern << ": " << node.m_type);
 
             this->context.add_ivars( node.m_type );
-            this->context.handle_pattern(node.span(), node.m_pattern, node.m_type);
+            this->context.handle_pattern(node.span(), node.m_pattern, node.m_type, true);
 
             if( node.m_value )
             {
