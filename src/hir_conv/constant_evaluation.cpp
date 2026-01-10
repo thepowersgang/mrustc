@@ -1957,8 +1957,8 @@ namespace HIR {
 
     AllocationPtr Evaluator::run_until_stack_empty()
     {
-        const unsigned MAX_BLOCK_COUNT = 1'000'000;
-        const unsigned MAX_STMT_COUNT = 4'000'000;
+        const unsigned MAX_BLOCK_COUNT = 4'000'000;
+        const unsigned MAX_STMT_COUNT = 8'000'000;
         assert( !this->call_stack.empty() );
         unsigned int num_stmts_run = 0;
         unsigned int idx;
