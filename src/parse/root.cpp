@@ -1516,6 +1516,22 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
 {
     TRACE_FUNCTION_FR(path, entries);
     Token   tok;
+    
+    while( lex.getTokenIf(TOK_RWORD_SUPER) ) {
+        lex.getTokenCheck(TOK_DOUBLE_COLON);
+        if(auto* p = path.m_class.opt_Super() ) {
+            if( p->nodes.empty() ) {
+                p->count += 1;
+            }
+            else {
+                p->nodes.pop_back();
+            }
+        }
+        else {
+            ASSERT_BUG(lex.point_span(), path.nodes().size() > 0, "super in empty path");
+            path.nodes().pop_back();
+        }
+    }
 
     do
     {
@@ -1550,12 +1566,11 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
                     entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
                 }
                 else {
-                    size_t l = path.nodes().size();
+                    auto saved_path = AST::Path(path);
 
                     Parse_Use_Inner(lex, entries, path);
 
-                    assert(l <= path.nodes().size());
-                    path.nodes().resize( l );
+                    path = std::move(saved_path);
                 }
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_BRACE_CLOSE);
