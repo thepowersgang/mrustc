@@ -8001,6 +8001,10 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i]) ) {
+                    // HACK: For `gix v0.73.0`, but really a good idea: only set one ivar per pass.
+                    // - Ideally, would determine if this ivar is used in any other rules, and prevent ivars mentioned in those rules
+                    //   from also being guessed.
+                    break;
                     static Span sp;
                     //assert( context.possible_ivar_vals[i].has_rules() );
                     // Disable all metioned ivars in the possibilities
