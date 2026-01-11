@@ -4050,7 +4050,8 @@ namespace {
                     }
                 TU_ARMA(DstMeta, ve) {
                     emit_lvalue(e.dst);
-                    if( ty.data().is_Primitive() || ty.data().is_Pointer() ) {
+                    // TODO: Why? Probably for getting `VTable`
+                    if( ty.data().is_Primitive() || ty.data().is_Pointer() || ty.data().is_Borrow() ) {
                     }
                     else {
                         m_of << "._0._0";
