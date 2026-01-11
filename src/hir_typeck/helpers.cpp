@@ -1581,39 +1581,13 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
     return false;
 }
 
-bool TraitResolution::find_trait_impls(const Span& sp,
-        const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
-        const ::HIR::TypeRef& ty,
-        t_cb_trait_impl_r callback,
-        bool magic_trait_impls /*=true*/
-        ) const
+bool TraitResolution::find_trait_impls_types(
+    const Span& sp,
+    const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
+    const ::HIR::TypeRef& type,
+    t_cb_trait_impl_r callback
+) const
 {
-    static ::HIR::PathParams    null_params;
-    static ::HIR::TraitPath::assoc_list_t   null_assoc;
-
-    const auto& type = this->m_ivars.get_type(ty);
-    TRACE_FUNCTION_F("trait = " << trait << params  << ", type = " << type);
-
-#if 0
-    if( const auto* te = type.data().opt_Infer() )
-    {
-        if( !te->is_lit() ) {
-            // NOTE: Can't hope to find an impl if we know nothing about the type.
-            return false;
-        }
-    }
-#endif
-
-    //const auto& trait_index = this->m_crate.get_lang_item_path(sp, "index");
-    //const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
-
-    if( magic_trait_impls )
-    {
-        if( find_trait_impls_magic(sp, trait, params, ty, callback) ) {
-            return true;
-        }
-    }
-
     TU_MATCH_HDRA( (type.data()), {)
     default:
         break;
@@ -1693,6 +1667,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     // Magic Fn* trait impls for function pointers
     TU_ARMA(Function, e) {
         if( trait == m_lang_Fn || trait == m_lang_FnMut || trait == m_lang_FnOnce ) {
+            DEBUG("Fn* trait for fn pointer");
             if( params.m_types.size() != 1 )
                 BUG(sp, "Fn* traits require a single tuple argument");
             if( !params.m_types[0].data().is_Tuple() )
@@ -1811,6 +1786,51 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         }
 #endif
         }
+    }
+    return false;
+}
+
+bool TraitResolution::find_trait_impls(const Span& sp,
+        const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
+        const ::HIR::TypeRef& ty,
+        t_cb_trait_impl_r callback,
+        bool magic_trait_impls /*=true*/
+        ) const
+{
+    static ::HIR::PathParams    null_params;
+    static ::HIR::TraitPath::assoc_list_t   null_assoc;
+
+    const auto& type = this->m_ivars.get_type(ty);
+    TRACE_FUNCTION_F("trait = " << trait << params  << ", type = " << type);
+
+#if 0
+    if( const auto* te = type.data().opt_Infer() )
+    {
+        if( !te->is_lit() ) {
+            // NOTE: Can't hope to find an impl if we know nothing about the type.
+            return false;
+        }
+    }
+#endif
+
+    //const auto& trait_index = this->m_crate.get_lang_item_path(sp, "index");
+    //const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
+
+    if( magic_trait_impls )
+    {
+        if( find_trait_impls_magic(sp, trait, params, ty, callback) ) {
+            return true;
+        }
+    }
+    
+    if( find_trait_impls_types(sp, trait, params, ty, callback) ) {
+        return true;
+    }
+
+    // Trait impls from complex bounds
+    TU_MATCH_HDRA( (type.data()), {)
+    default:
+        break;
     // Trait objects automatically implement their own traits
     // - IF object safe (TODO)
     TU_ARMA(TraitObject, e) {
@@ -2703,6 +2723,29 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     }
 
     if( this->find_trait_impls_magic(sp, trait_path.m_path, trait_path.m_params, pe.type, [&](auto impl, auto qual)->bool {
+        DEBUG("[expand_associated_types__UfcsKnown] Found " << impl << " qual=" << qual);
+        // If it's a fuzzy match, keep going (but count if a concrete hasn't been found)
+        if( qual == ::HIR::Compare::Fuzzy ) {
+        }
+        else {
+            auto ty = impl.get_type( pe.item.c_str(), pe.params );
+            if( ty == ::HIR::TypeRef() )
+            {
+                DEBUG("Assuming that " << input << " is an opaque name");
+                e.binding = ::HIR::TypePathBinding::make_Opaque({});
+            }
+            else
+            {
+                input = mv$(ty);
+            }
+        }
+        return true;
+        }) )
+    {
+        return ;
+    }
+
+    if( this->find_trait_impls_types(sp, trait_path.m_path, trait_path.m_params, pe.type, [&](auto impl, auto qual)->bool {
         DEBUG("[expand_associated_types__UfcsKnown] Found " << impl << " qual=" << qual);
         // If it's a fuzzy match, keep going (but count if a concrete hasn't been found)
         if( qual == ::HIR::Compare::Fuzzy ) {
