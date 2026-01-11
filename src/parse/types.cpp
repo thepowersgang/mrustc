@@ -399,7 +399,11 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
             lex.getTokenCheck(TOK_PAREN_CLOSE);
         }
         else if( lex.getTokenIf(TOK_RWORD_USE) ) {
-            TODO(lex.point_span(), "`use` in impl-trait");
+            lex.getTokenCheck(TOK_LT);
+            if( rv_data.use ) {
+                ERROR(lex.point_span(), E0000, "Multiple `use` seen in erased type");
+            }
+            rv_data.use.reset(new ::AST::PathParams(Parse_Path_GenericList(lex)));
         }
         else
         {
