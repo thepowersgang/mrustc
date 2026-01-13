@@ -450,6 +450,7 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
             }
             }
         }
+        this->visit_path_params(e.m_use);
         for(auto& trait : e.m_traits) {
             this->visit_trait_path(trait);
         }

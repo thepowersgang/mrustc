@@ -2102,7 +2102,7 @@ bool StaticTraitResolve::replace_equalities(::HIR::TypeRef& input) const
                     : ::HIR::Compare::Unequal;
             }
             virtual ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& lft) {
-                if( g.group() == ::HIR::GENERIC_Hrtb ) {
+                if( !::HIR::MatchGenerics::has_hrb() && g.group() == ::HIR::GENERIC_Hrtb ) {
                     ASSERT_BUG(Span(), g.idx() < hrls.m_lifetimes.size(), "HRL index out of range");
                     hrls.m_lifetimes.at(g.idx()) = lft;
                     return ::HIR::Compare::Equal;

@@ -759,6 +759,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
 {
     return callback.cmp_type(sp, *this, x_in, resolve_placeholder);
 }
+HIR::TrackHrbStack::PopOnDrop HIR::TrackHrbStack::push_hrb(const std::unique_ptr<HIR::GenericParams>& params) const {
+    static HIR::GenericParams  empty_params;
+    return push_hrb(params ? *params : empty_params);
+}
 ::HIR::Compare HIR::MatchGenerics::cmp_path(const Span& sp, const ::HIR::Path& path_l, const ::HIR::Path& path_r, t_cb_resolve_type resolve_placeholder)
 {
     ::HIR::Compare  rv = Compare::Unequal;
@@ -1009,6 +1013,8 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         if( te.m_markers.size() != xe.m_markers.size() ) {
             return Compare::Unequal;
         }
+        static const HIR::GenericParams empty_params;
+        auto _ = push_hrb(te.m_trait.m_hrtbs ? *te.m_trait.m_hrtbs : empty_params);
         auto cmp = match_generics_pp(sp, te.m_trait.m_path.m_params, xe.m_trait.m_path.m_params, resolve_placeholder, *this);
         for(unsigned int i = 0; i < te.m_markers.size(); i ++)
         {
@@ -1120,6 +1126,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             return Compare::Unequal;
         if( te.m_arg_types.size() != xe.m_arg_types.size() )
             return Compare::Unequal;
+        auto _ = push_hrb(te.hrls);
         auto rv = Compare::Equal;
         for( unsigned int i = 0; i < te.m_arg_types.size(); i ++ ) {
             rv &= this->cmp_type(sp, te.m_arg_types[i], xe.m_arg_types[i], resolve_placeholder);

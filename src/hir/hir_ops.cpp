@@ -1267,11 +1267,15 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
 
     const auto& vtable_ty_spath = this->m_vtable_path;
     const auto& vtable_ref = crate.get_struct_by_path(sp, vtable_ty_spath);
+    HIR::PathParams pp_hrls;
+    if(te.m_trait.m_hrtbs) {
+        pp_hrls = te.m_trait.m_hrtbs->make_empty_params(true);
+    }
     // Copy the param set from the trait in the trait object
     ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
     vtable_params.m_types = ThinVector<HIR::TypeRef>( te.m_trait.m_path.m_params.m_types.size() + this->m_type_indexes.size() );
     for(size_t i = 0; i < te.m_trait.m_path.m_params.m_types.size(); i ++) {
-        vtable_params.m_types[i] = te.m_trait.m_path.m_params.m_types[i].clone();
+        vtable_params.m_types[i] = MonomorphHrlsOnly(pp_hrls).monomorph_type(sp, te.m_trait.m_path.m_params.m_types[i]);
     }
     // - Include associated types on bound
     for(const auto& ty_b : te.m_trait.m_type_bounds) {
@@ -1280,7 +1284,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
             continue ;
         }
         auto idx = this->m_type_indexes.at(ty_b.first);
-        vtable_params.m_types.at(idx) = ty_b.second.type.clone();
+        vtable_params.m_types.at(idx) = MonomorphHrlsOnly(pp_hrls).monomorph_type(sp, ty_b.second.type);
     }
     return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
 }

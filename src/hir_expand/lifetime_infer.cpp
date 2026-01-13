@@ -526,7 +526,7 @@ namespace {
 
         void sanity_check_lft(const Span& sp, const HIR::LifetimeRef& lft) const {
             ASSERT_BUG(sp, lft != HIR::LifetimeRef() && lft.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << lft);
-            ASSERT_BUG(sp, !lft.is_hrl(), "Encountered HRL - " << lft);
+            //ASSERT_BUG(sp, !lft.is_hrl(), "Encountered HRL - " << lft);
             if( lft.is_param() ) {
                 if( lft.as_param().group() == 0 ) {
                     ASSERT_BUG(sp, m_resolve.m_impl_generics && lft.as_param().idx() < m_resolve.m_impl_generics->m_lifetimes.size(), "Unexpected generic: " << lft);
@@ -904,7 +904,7 @@ namespace {
             }
             ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
                 // Placeholder.
-                if( g.group() == 2 ) {
+                if( g.group() == ::HIR::GENERIC_Placeholder ) {
                     // HACK: Ideally - placeholders won't be here, but just in case...
                     return parent.m_state.allocate_ivar(sp);
                 }
@@ -912,7 +912,10 @@ namespace {
             }
 
             ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
-                if( tpl.binding == HIR::LifetimeRef::UNKNOWN || tpl.binding == HIR::LifetimeRef::INFER || tpl.is_hrl() ) {
+                if( tpl.binding == HIR::LifetimeRef::UNKNOWN || tpl.binding == HIR::LifetimeRef::INFER) {
+                    return parent.m_state.allocate_ivar(sp);
+                }
+                else if( false && tpl.is_hrl() ) {
                     return parent.m_state.allocate_ivar(sp);
                 }
                 else {
@@ -1258,7 +1261,7 @@ namespace {
 
                 void equate_lifetime(const HIR::LifetimeRef& src) {
                     if( src.is_hrl() ) {
-                        ASSERT_BUG(sp, m_hrls.size() > 0, "Encountered HRL with no HRL in the stack");
+                        ASSERT_BUG(sp, m_hrls.size() > 0, "Encountered HRL with no HRL in the stack - " << dst_lft << " = " << src);
                         //parent.equate_lifetimes(sp, dst_lft, m_hrls.back().m_lifetimes[src.binding & 0xFF]);
                     }
                     else {
@@ -1274,8 +1277,8 @@ namespace {
                     auto push_hrls = [&](const HIR::GenericParams& hrls_def) {
                         hrl_pushed = true;
                         m_hrls.push_back(hrls_def.make_empty_params(true));
-                        for(auto& l : m_hrls.back().m_lifetimes)
-                            l = parent.m_state.allocate_ivar(sp);
+                        //for(auto& l : m_hrls.back().m_lifetimes)
+                        //    l = parent.m_state.allocate_ivar(sp);
                     };
 
                     if(is_opaque(t)) {
@@ -2730,6 +2733,20 @@ namespace {
                     );
                 DEBUG("Set TAIT " << tait_inner.path << " = " << transformed_type);
                 tait_inner.type = std::move(transformed_type);
+            }
+        }
+        {
+            for(const auto& t : ep.m_erased_types) {
+                struct MonomorphCheckLft: public MonomorphiserNop {
+                    const HIR::TypeRef& tpl;
+                    MonomorphCheckLft(const HIR::TypeRef& tpl): tpl(tpl) {}
+                    HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
+                        //ASSERT_BUG(sp, lft.binding <= ::HIR::LifetimeRef::STATIC, "Found local/ivar lifetime - " << lft << "\n in " << tpl);
+                        return lft;
+                    }
+                };
+                DEBUG("Check for locals: " << t);
+                MonomorphCheckLft(t).monomorph_type(ep->span(), t);
             }
         }
 

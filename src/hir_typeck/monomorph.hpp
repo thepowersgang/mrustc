@@ -13,10 +13,10 @@ extern bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl, bool igno
 extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes=false);
 
 class Monomorphiser
+    : virtual public HIR::TrackHrbStack
 {
     const HIR::Crate*   consteval_crate;
     HIR::ItemPath consteval_path;
-    mutable std::vector<const HIR::GenericParams*>  m_hrb_stack;
 public:
     Monomorphiser()
         : consteval_crate(nullptr)
@@ -24,21 +24,6 @@ public:
     {
     }
     virtual ~Monomorphiser() = default;
-    
-    class PopOnDrop {
-        friend class Monomorphiser;
-        std::vector<const HIR::GenericParams*>& v;
-        PopOnDrop(std::vector<const HIR::GenericParams*>& v): v(v) {
-        }
-    public:
-        ~PopOnDrop() {
-            v.pop_back();
-        }
-    };
-    PopOnDrop push_hrb(const HIR::GenericParams& params) const {
-        m_hrb_stack.push_back(&params);
-        return PopOnDrop(m_hrb_stack);
-    }
 
     void set_consteval_state(const HIR::Crate& crate, HIR::ItemPath ip) {
         this->consteval_crate = &crate;
