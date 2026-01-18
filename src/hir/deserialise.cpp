@@ -1232,13 +1232,20 @@ namespace {
                 deserialise_pathparams()
                 } );
         case 2:
+        case 3: {
+            std::unique_ptr<HIR::GenericParams> hrtbs;
+            if( tag == 3 ) {
+                hrtbs = std::make_unique<HIR::GenericParams>(deserialise_genericparams());
+            }
             DEBUG("Known");
             return ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown {
                 deserialise_type(),
                 deserialise_genericpath(),
                 m_in.read_istring(),
-                deserialise_pathparams()
+                deserialise_pathparams(),
+                std::move(hrtbs)
                 } );
+            }
         default:
             BUG(Span(), "Bad tag for HIR::Path - " << tag);
         }

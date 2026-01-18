@@ -341,7 +341,13 @@
                 serialise_pathparams(e.impl_params);
                 }
             TU_ARMA(UfcsKnown, e) {
-                m_out.write_tag(2);
+                if(e.hrtbs) {
+                    m_out.write_tag(3);
+                    serialise_generics(*e.hrtbs);
+                }
+                else {
+                    m_out.write_tag(2);
+                }
                 serialise_type(e.type);
                 serialise_genericpath(e.trait);
                 m_out.write_string(e.item);
