@@ -912,20 +912,20 @@ int main(int argc, char *argv[])
             throw "";
         case ::AST::Crate::Type::RustLib:
             // Generate a linkable .o
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::StaticLibrary, trans_opt, *hir_crate, std::move(items), hir_file); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::StaticLibrary, trans_opt, std::move(hir_crate), std::move(items), hir_file); });
             break;
         case ::AST::Crate::Type::RustDylib:
         case ::AST::Crate::Type::CDylib:
             // Generate a .so/.dll
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::DynamicLibrary, trans_opt, *hir_crate, std::move(items), hir_file); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::DynamicLibrary, trans_opt, std::move(hir_crate), std::move(items), hir_file); });
             break;
         case ::AST::Crate::Type::ProcMacro: {
             // Needs: An executable (the actual macro handler), metadata (for `extern crate foo;`)
             // - Metadata was done before enumerate
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, *hir_crate, std::move(items), hir_file); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, std::move(hir_crate), std::move(items), hir_file); });
             break; }
         case ::AST::Crate::Type::Executable:
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, *hir_crate, std::move(items), ""); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, std::move(hir_crate), std::move(items), ""); });
             break;
         }
     }
