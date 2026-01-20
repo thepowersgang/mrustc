@@ -778,6 +778,7 @@ namespace {
                         e = &tmp_ft.data().as_Function();
                     }
                     auto hrls = e->hrls.make_empty_params(true);
+                    DEBUG("hrls=" << hrls);
                     auto m = MonomorphHrlsOnly(hrls);
                     for( const auto& arg : e->m_arg_types ) {
                         node.m_arg_types.push_back(m.monomorph_type(node.span(), arg));
@@ -1650,6 +1651,7 @@ namespace {
         void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
             check_type_resolved(sp, ty, ty);
             ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+            MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, ty);
             DEBUG(ty);
             #if 0   // Sanity check
             static const HIR::TypeRef ty_self = HIR::TypeRef::new_self();
@@ -2094,6 +2096,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         if( ivar_idx < m_ivars_sized.size() && m_ivars_sized.at(ivar_idx) ) {
             this->require_sized(sp, src);
         }
+        // Ensure no HRLs
         if( visit_ty_with(src, [&](const HIR::TypeRef& ity){ return ity == dst; }) ) {
             DEBUG("Start of a loop detected: rewrite");
             // Ensure that there's an unexpanded ATY in here (containing the ivar)
@@ -8233,7 +8236,10 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         context.m_resolve.compact_ivars(context.m_ivars);
     }
     if( count == MAX_ITERATIONS ) {
-        BUG(root_ptr->span(), "Typecheck ran for too many iterations, max - " << MAX_ITERATIONS);
+        if( !context.has_rules() ) {
+            BUG(root_ptr->span(), "Typecheck ran for too many iterations, max - " << MAX_ITERATIONS);
+        }
+        WARNING(root_ptr->span(), W0000, "Typecheck ran for too many iterations, max - " << MAX_ITERATIONS);
     }
 
     if( context.has_rules() )

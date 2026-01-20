@@ -48,7 +48,7 @@ namespace
         bool m_create_elided = false;
         ::HIR::GenericParams* m_cur_params = nullptr;
         unsigned m_cur_params_level = 0;
-        ::std::vector< ::HIR::LifetimeRef* >    m_current_lifetime;
+        ::std::vector< const ::HIR::LifetimeRef* >    m_current_lifetime;
         /// The type of `Self` if we're in a by-value method
         const ::HIR::TypeRef*   m_value_self_type = nullptr;
 
@@ -299,6 +299,7 @@ namespace
         }
         void visit_type(::HIR::TypeRef& ty) override
         {
+            static const HIR::LifetimeRef   lft_hrtb = ::HIR::LifetimeRef(HIR::GenericRef(RcString(), HIR::GENERIC_Hrtb, 0).binding);
             static Span _sp;
             const Span& sp = _sp;
 
@@ -319,14 +320,26 @@ namespace
             }
             if(auto* e = ty.data_mut().opt_Function()) {
                 m_current_lifetime.push_back(nullptr);
-                set_params(&e->hrls, 3);
+                set_params(&e->hrls, HIR::GENERIC_Hrtb);
+                auto saved_create = m_create_elided;
+                m_create_elided = true;
+                for(auto& t : e->m_arg_types) {
+                    this->visit_type(t);
+                }
+                m_create_elided = false;
+                if( e->hrls.m_lifetimes.size() == 1 ) {
+                    m_current_lifetime.pop_back();
+                    m_current_lifetime.push_back(&lft_hrtb);
+                }
+                this->visit_type(e->m_rettype);
+                m_create_elided = saved_create;
             }
             if(auto* e = ty.data_mut().opt_TraitObject()) {
                 // TODO: Create? but what if it's not used?
                 if( e->m_trait.m_hrtbs )
                 {
                     m_current_lifetime.push_back(nullptr);
-                    set_params(&*e->m_trait.m_hrtbs, 3);
+                    set_params(&*e->m_trait.m_hrtbs, HIR::GENERIC_Hrtb);
                 }
 
 

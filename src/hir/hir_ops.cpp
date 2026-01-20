@@ -1272,11 +1272,8 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
         pp_hrls = te.m_trait.m_hrtbs->make_empty_params(true);
     }
     // Copy the param set from the trait in the trait object
-    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-    vtable_params.m_types = ThinVector<HIR::TypeRef>( te.m_trait.m_path.m_params.m_types.size() + this->m_type_indexes.size() );
-    for(size_t i = 0; i < te.m_trait.m_path.m_params.m_types.size(); i ++) {
-        vtable_params.m_types[i] = MonomorphHrlsOnly(pp_hrls).monomorph_type(sp, te.m_trait.m_path.m_params.m_types[i]);
-    }
+    ::HIR::PathParams   vtable_params = MonomorphHrlsOnly(pp_hrls).monomorph_path_params(sp, te.m_trait.m_path.m_params, false);
+    vtable_params.m_types.resize( te.m_trait.m_path.m_params.m_types.size() + this->m_type_indexes.size() );
     // - Include associated types on bound
     for(const auto& ty_b : te.m_trait.m_type_bounds) {
         if( this->m_type_indexes.count(ty_b.first) == 0 ) {

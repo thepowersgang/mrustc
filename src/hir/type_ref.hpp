@@ -53,6 +53,7 @@ public:
     class PopOnDrop {
         friend class TrackHrbStack;
         std::vector<const HIR::GenericParams*>* v;
+        PopOnDrop(): v(nullptr) {}
         PopOnDrop(std::vector<const HIR::GenericParams*>& v): v(&v) {
         }
     public:
@@ -70,8 +71,8 @@ public:
         m_hrb_stack.push_back(&params);
         return PopOnDrop(m_hrb_stack);
     }
-    bool has_hrb() const {
-        return !m_hrb_stack.empty();
+    const HIR::GenericParams* has_hrb() const {
+        return !m_hrb_stack.empty() ? m_hrb_stack.back() : nullptr;
     }
 };
 

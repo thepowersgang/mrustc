@@ -189,12 +189,10 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp, const ::H
         return this->get_cb_monomorph_traitimpl(sp, {}).monomorph_path_params(sp, e.impl->m_trait_args, true);
         }
     TU_ARMA(BoundedPtr, e) {
-        return MonomorphHrlsOnly(e.hrls ? e.hrls->make_empty_params(true) : HIR::PathParams())
-            .monomorph_path_params(sp, *e.trait_args, true);
+        return MonomorphHrlsOnly(e.hrls).monomorph_path_params(sp, *e.trait_args, true);
         }
     TU_ARMA(Bounded, e) {
-        return MonomorphHrlsOnly(e.hrls.make_empty_params(true))
-            .monomorph_path_params(sp, e.trait_args, true);
+        return MonomorphHrlsOnly(e.hrls).monomorph_path_params(sp, e.trait_args, true);
         }
     }
     throw "";
@@ -214,14 +212,12 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp, const ::H
     TU_ARMA(BoundedPtr, e) {
         if( idx >= e.trait_args->m_types.size() )
             return ::HIR::TypeRef();
-        return MonomorphHrlsOnly(e.hrls ? e.hrls->make_empty_params(true) : HIR::PathParams())
-            .monomorph_type(sp, e.trait_args->m_types.at(idx), true);
+        return MonomorphHrlsOnly(e.hrls).monomorph_type(sp, e.trait_args->m_types.at(idx), true);
         }
     TU_ARMA(Bounded, e) {
         if( idx >= e.trait_args.m_types.size() )
             return ::HIR::TypeRef();
-        return MonomorphHrlsOnly(e.hrls.make_empty_params(true))
-            .monomorph_type(sp, e.trait_args.m_types.at(idx), true);
+        return MonomorphHrlsOnly(e.hrls).monomorph_type(sp, e.trait_args.m_types.at(idx), true);
         }
     }
     throw "";
@@ -247,28 +243,21 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp, const ::H
         }
         const ::HIR::TypeRef& tpl_ty = it->second.data;
         DEBUG("name=" << name << " tpl_ty=" << tpl_ty << " " << *this);
-        if( true || monomorphise_type_needed(tpl_ty) ) {
-            return this->get_cb_monomorph_traitimpl(sp, params).monomorph_type(sp, tpl_ty);
-        }
-        else {
-            return tpl_ty.clone();
-        }
+        return this->get_cb_monomorph_traitimpl(sp, params).monomorph_type(sp, tpl_ty);
         }
     TU_ARMA(BoundedPtr, e) {
         auto it = e.assoc->find(name);
         if(it == e.assoc->end())
             return ::HIR::TypeRef();
-        ASSERT_BUG(Span(), !params.has_params(), "TODO: BoundedPtr with params?");
-        return MonomorphHrlsOnly(e.hrls ? e.hrls->make_empty_params(true) : HIR::PathParams())
-            .monomorph_type(sp, it->second.type, true);
+        ASSERT_BUG(Span(), !params.has_params(), "TODO: BoundedPtr ATY with params?");
+        return MonomorphHrlsOnly(e.hrls).monomorph_type(sp, it->second.type, true);
         }
     TU_ARMA(Bounded, e) {
         auto it = e.assoc.find(name);
         if(it == e.assoc.end())
             return ::HIR::TypeRef();
-        ASSERT_BUG(Span(), !params.has_params(), "TODO: BoundedPtr with params?");
-        return MonomorphHrlsOnly(e.hrls.make_empty_params(true))
-            .monomorph_type(sp, it->second.type, true);
+        ASSERT_BUG(Span(), !params.has_params(), "TODO: Bounded ATY with params?");
+        return MonomorphHrlsOnly(e.hrls).monomorph_type(sp, it->second.type, true);
         }
     }
     return ::HIR::TypeRef();
@@ -332,10 +321,10 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp, const ::H
         assert(e.type);
         assert(e.trait_args);
         assert(e.assoc);
-        os << "bound (ptr) " << *e.type << " : ?" << *e.trait_args << " + {" << *e.assoc << "}";
+        os << "bound (ptr) for" << e.hrls << " " << *e.type << " : ?" << *e.trait_args << " + {" << *e.assoc << "}";
         }
     TU_ARM(x.m_data, Bounded, e) {
-        os << "bound " << e.type << " : ?" << e.trait_args << " + {"<<e.assoc<<"}";
+        os << "bound for" << e.hrls << " " << e.type << " : ?" << e.trait_args << " + {"<<e.assoc<<"}";
         }
     }
     return os;

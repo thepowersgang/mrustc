@@ -917,14 +917,16 @@ namespace {
                     m_resolve.expand_associated_types(node.span(), tmp_ft);
                     e = &tmp_ft.data().as_Function();
                 }
+                auto hrls = e->hrls.make_empty_params(true);
+                auto m = MonomorphHrlsOnly(hrls);
                 if( e->is_variadic ? node.m_args.size() < e->m_arg_types.size() : node.m_args.size() != e->m_arg_types.size() ) {
                     ERROR(node.span(), E0000, "Incorrect number of arguments to call via " << val_ty);
                 }
                 for( unsigned int i = 0; i < e->m_arg_types.size(); i ++ )
                 {
-                    check_types_equal(node.m_args[i]->span(), e->m_arg_types[i], node.m_args[i]->m_res_type);
+                    check_types_equal(node.m_args[i]->span(), m.monomorph_type(node.span(), e->m_arg_types[i]), node.m_args[i]->m_res_type);
                 }
-                check_types_equal(node.span(), node.m_res_type, e->m_rettype);
+                check_types_equal(node.span(), node.m_res_type, m.monomorph_type(node.span(), e->m_rettype));
             }
             else if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
             {
@@ -1237,6 +1239,8 @@ namespace {
             //    return check_types_equal(sp, l, m_cur_expr->m_erased_types.at(e->m_index));
             //}
             DEBUG(sp << " - " << l << " == " << r);
+            MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, l);
+            MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, r);
             if( /*l.data().is_Diverge() ||*/ r.data().is_Diverge() ) {
                 // Diverge, matches everything.
                 // TODO: Is this always true?

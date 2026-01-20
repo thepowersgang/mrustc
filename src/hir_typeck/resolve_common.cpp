@@ -35,7 +35,10 @@ void TraitResolveCommon::prep_indexes(const Span& sp)
     DEBUG(m_trait_bounds.size() << " trait bounds");
     for(const auto& tb : m_trait_bounds)
     {
-        DEBUG(tb.first.first << " : " << tb.first.second << " - " << tb.second.assoc);
+        DEBUG(tb.first.first
+            << " : " << (!tb.second.hrbs.is_empty() ? "for" : "") << tb.second.hrbs.fmt_args() << tb.first.second
+            << " - " << tb.second.assoc
+        );
     }
 }
 void TraitResolveCommon::prep_indexes__add_equality(const Span& sp, const ::HIR::GenericParams* hrtbs, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty)
@@ -50,12 +53,12 @@ void TraitResolveCommon::prep_indexes__add_equality(const Span& sp, const ::HIR:
 }
 void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::HIR::GenericParams* outer_hrtbs, ::HIR::TypeRef type, ::HIR::TraitPath trait_path, bool add_parents/*=true*/)
 {
-    TRACE_FUNCTION_F(type << " : " << trait_path);
+    TRACE_FUNCTION_F(FMT_CB(os, if(outer_hrtbs) os << "for" << outer_hrtbs->fmt_args() << " ";) << type << " : " << trait_path);
 
     auto get_or_add_trait_bound = [&](const HIR::GenericParams* hrbs, const HIR::GenericPath& trait_path)->CachedBound& {
         auto it = m_trait_bounds.find(std::make_pair(std::ref(type), std::ref(trait_path)));
         if( it != m_trait_bounds.end() ) {
-            DEBUG("[get_or_add_trait_bound] Use " << FMT_CB(os, if(hrbs) os << "for" << hrbs->fmt_args() << " ";) << trait_path);
+            DEBUG("[get_or_add_trait_bound] Existing " << FMT_CB(os, if(hrbs) os << "for" << hrbs->fmt_args() << " ";) << trait_path);
             return it->second;
         }
         DEBUG("[get_or_add_trait_bound] Add " << FMT_CB(os, if(outer_hrtbs) os << "for" << outer_hrtbs->fmt_args() << " ";) << " ?: " << FMT_CB(os, if(hrbs) os << "for" << hrbs->fmt_args() << " ";) << trait_path);
@@ -85,6 +88,7 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::H
 #endif
 
     get_or_add_trait_bound(trait_path.m_hrtbs.get(), trait_path.m_path);
+
     for( const auto& tb : trait_path.m_type_bounds )
     {
         DEBUG("Equality (TB) - <" << type << " as " << tb.second.source_trait << ">::" << tb.first << " = " << tb.second);
@@ -93,6 +97,16 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, const ::H
         auto ty_l = ::HIR::TypeRef::new_path( ::HIR::Path( type.clone(), tb.second.source_trait.clone(), tb.first ), ::HIR::TypePathBinding::make_Opaque({}) );
         prep_indexes__add_equality( sp, trait_path.m_hrtbs.get(), mv$(ty_l), tb.second.type.clone() );
     }
+
+    if( trait_path.m_hrtbs && !trait_path.m_hrtbs->is_empty() )
+    {
+        if( outer_hrtbs && !outer_hrtbs->is_empty() )
+        {
+            TODO(sp, "Handle multiple layers of HRTBs");
+        }
+        outer_hrtbs = trait_path.m_hrtbs.get();
+    }
+
     // ATY Trait bounds
     for( const auto& tb : trait_path.m_trait_bounds )
     {

@@ -336,11 +336,13 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         if( e.m_trait.m_hrtbs ) {
             to.m_trait.m_hrtbs = box$(e.m_trait.m_hrtbs->clone());
         }
-        auto _ = push_hrb(e.m_trait.m_hrtbs);
-        to.m_trait = this->monomorph_traitpath(sp, e.m_trait, allow_infer, false);
-        for(const auto& trait : e.m_markers)
         {
-            to.m_markers.push_back( this->monomorph_genericpath(sp, trait, allow_infer, false) );
+            auto _ = push_hrb(e.m_trait.m_hrtbs);
+            to.m_trait = this->monomorph_traitpath(sp, e.m_trait, allow_infer, false);
+            for(const auto& trait : e.m_markers)
+            {
+                to.m_markers.push_back( this->monomorph_genericpath(sp, trait, allow_infer, false) );
+            }
         }
         to.m_lifetime = monomorph_lifetime(sp, e.m_lifetime);
         return ::HIR::TypeRef( mv$(to) );
@@ -434,11 +436,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     if( lft.is_param() ) {
         HIR::GenericRef g {"", lft.binding};
 
-        // TODO: Have a flag/stack here for current defined HRL batches (trait paths and function pointers), if in one then do the hack
+        // Have a flag/stack here for current defined HRL batches (trait paths and function pointers), if in one then do the hack
         // - Otherwise, pass to `get_lifetime`
-        if( has_hrb() && g.group() == 3 )  {
-            // TODO: Ensure that the param is in range.
-            return lft;
+        if( g.group() == HIR::GENERIC_Hrtb )  {
+            if( const auto* hrtb = has_hrb() ) {
+                // TODO: Ensure that the param is in range (has some issues with nested?)
+                //ASSERT_BUG(sp, g.idx() < hrtb->m_lifetimes.size(), "Found HRTB out of range - " << g << " from for" << hrtb->fmt_args());
+                return lft;
+            }
         }
 
         return get_lifetime(sp, g);
@@ -500,11 +505,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     for(const auto& assoc : tpl.m_type_bounds) {
         rv.m_type_bounds.insert(::std::make_pair(
             assoc.first,
-            HIR::TraitPath::AtyEqual {
-                this->monomorph_genericpath(sp, assoc.second.source_trait, allow_infer, false),
-                {},
-                this->monomorph_type(sp, assoc.second.type, allow_infer)
-                }
+            this->monomorph_tp_aty_equal(sp, assoc.second, allow_infer)
             ));
     }
     for(const auto& assoc : tpl.m_trait_bounds) {
@@ -515,6 +516,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     }
 
     return rv;
+}
+::HIR::TraitPath::AtyEqual Monomorphiser::monomorph_tp_aty_equal(const Span& sp, const ::HIR::TraitPath::AtyEqual& tpl, bool allow_infer) const
+{
+    return HIR::TraitPath::AtyEqual {
+        this->monomorph_genericpath(sp, tpl.source_trait, allow_infer, false),
+        {},
+        this->monomorph_type(sp, tpl.type, allow_infer)
+        };
 }
 ::HIR::ConstGeneric Monomorphiser::monomorph_constgeneric(const Span& sp, const ::HIR::ConstGeneric& val, bool allow_infer) const
 {

@@ -548,14 +548,14 @@ namespace {
 ::MIR::LValue MIR_Cleanup_Virtualize(
     const Span& sp, const ::MIR::TypeResolve& state, MirMutator& mutator,
     ::MIR::LValue& receiver_lvp,
-    const ::HIR::TypeData::Data_TraitObject& te, const ::HIR::Path::Data::Data_UfcsKnown& pe
+    const ::HIR::Path::Data::Data_UfcsKnown& pe
     )
 {
     TRACE_FUNCTION_F("<" << pe.type << " as " << pe.trait << ">::" << pe.item << pe.params);
 
-    assert( te.m_trait.m_trait_ptr );
     assert( pe.type.data().is_TraitObject() );
-    assert( &te == &pe.type.data().as_TraitObject() );
+    const ::HIR::TypeData::Data_TraitObject& te = pe.type.data().as_TraitObject();
+    assert( te.m_trait.m_trait_ptr );
     const auto& trait = *te.m_trait.m_trait_ptr;
 
     // 1. Get the vtable index for this function
@@ -1375,7 +1375,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                             )
                         )
                     {
-                        auto tgt_lvalue = MIR_Cleanup_Virtualize(sp, state, mutator, e.args.front().as_LValue(), te, pe);
+                        auto tgt_lvalue = MIR_Cleanup_Virtualize(sp, state, mutator, e.args.front().as_LValue(), pe);
                         e.fcn = mv$(tgt_lvalue);
                     }
                 }

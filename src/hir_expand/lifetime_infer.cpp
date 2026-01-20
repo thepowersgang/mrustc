@@ -545,6 +545,10 @@ namespace {
             if(lhs == rhs) {
                 return ;
             }
+
+            ASSERT_BUG(sp, !lhs.is_hrl(), "Encountered HRL - " << lhs);
+            ASSERT_BUG(sp, !rhs.is_hrl(), "Encountered HRL - " << rhs);
+
             if( auto* iv = m_state.opt_ivar(sp, lhs) ) {
                 iv->sources.push_back(rhs);
             }
@@ -1210,6 +1214,9 @@ namespace {
                         se = tmp.data().opt_Function();
                     }
 
+                    // TODO: Check that the HRLs are compatible
+                    //ASSERT_BUG(node.span(), se->hrls.m_lifetimes.size() == de->hrls.m_lifetimes.size(),
+                    //    "HRL count mismatch in casting " << src << " to " << dst);
                     auto pp_s = se->hrls.make_empty_params(true);
                     visit_path_params(pp_s);
                     auto ms_s = MonomorphHrlsOnly(pp_s);
@@ -1531,10 +1538,13 @@ namespace {
             for(size_t i = 0; i < fcn.m_args.size(); i ++)
             {
                 auto arg_ty = m_resolve.monomorph_expand(node.m_args[i]->span(), fcn.m_args[i].second, ms);
+                DEBUG("arg_ty " << i << " = " << arg_ty);
                 this->equate_types(node.m_args[i]->span(), arg_ty, node.m_args[i]->m_res_type);
                 this->equate_types(node.m_args[i]->span(), node.m_cache.m_arg_types[i], arg_ty);
             }
-            this->equate_types(node.span(), node.m_cache.m_arg_types.back(), m_resolve.monomorph_expand(node.span(), fcn.m_return, ms));
+            auto ret_mono = m_resolve.monomorph_expand(node.span(), fcn.m_return, ms);
+            DEBUG("ret_mono = " << ret_mono);
+            this->equate_types(node.span(), node.m_cache.m_arg_types.back(), ret_mono);
             this->equate_types(node.span(), node.m_res_type, node.m_cache.m_arg_types.back());
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
@@ -1597,53 +1607,27 @@ namespace {
                 bool found = m_resolve.find_impl(node.span(), trait, &params, val_ty, [&](ImplRef impl_ref, bool fuzzy)->bool{
                     ASSERT_BUG(node.span(), !fuzzy, "Fuzzy match in check pass");
 
-                    TU_MATCH_HDRA( (impl_ref.m_data), { )
-                    TU_ARMA(TraitImpl, e) {
-                        DEBUG("impl_ref = " << impl_ref);
-                        equate_pps(node.span(), impl_ref.get_trait_params(), params);
-                        auto res_ty = impl_ref.get_type("Output", {});
-                        m_resolve.expand_associated_types(node.span(), res_ty);
-                        equate_types(node.span(), node.m_res_type, res_ty);
-                        }
+                    HIR::PathParams*    hrls = nullptr;
+                    TU_MATCH_HDRA((impl_ref.m_data), {)
+                    TU_ARMA(TraitImpl, e) {}
                     TU_ARMA(Bounded, e) {
-                        if( e.hrls.m_lifetimes.size() > 0 ) {
-                            // Monomorphise with some new lifetime params
-                            ::HIR::PathParams   hrl_params = e.hrls.make_empty_params(true);
-                            this->visit_path_params(hrl_params);
-                            auto ms = MonomorphHrlsOnly(hrl_params);
-                            DEBUG("(Bounded) trait_args = " << e.trait_args);
-                            auto mm_trait_args = ms.monomorph_path_params(node.span(), e.trait_args, true);
-                            auto mm_res = ms.monomorph_type(node.span(), e.assoc.at("Output").type, true);
-                            DEBUG("mm_trait_args=" << mm_trait_args << " mm_res=" << mm_res);
-
-                            equate_pps(node.span(), mm_trait_args, params);
-                            equate_types(node.span(), node.m_res_type, mm_res);
-                        }
-                        else {
-                            equate_pps(node.span(), e.trait_args, params);
-                            equate_types(node.span(), node.m_res_type, impl_ref.get_type("Output", {}));
-                        }
+                        hrls = &e.hrls;
                         }
                     TU_ARMA(BoundedPtr, e) {
-                        if( e.hrls && e.hrls->m_lifetimes.size() > 0 ) {
-                            // Monomorphise with some new lifetime params
-                            ::HIR::PathParams   hrl_params = e.hrls->make_empty_params(true);
-                            this->visit_path_params(hrl_params);
-                            auto ms = MonomorphHrlsOnly(hrl_params);
-                            DEBUG("(BoundedPtr) trait_args = " << *e.trait_args << " res=" << e.assoc->at("Output").type);
-                            auto mm_trait_args = ms.monomorph_path_params(node.span(), *e.trait_args, true);
-                            auto mm_res = ms.monomorph_type(node.span(), e.assoc->at("Output").type, true);
-                            DEBUG("mm_trait_args=" << mm_trait_args << " mm_res=" << mm_res);
-
-                            equate_pps(node.span(), mm_trait_args, params);
-                            equate_types(node.span(), node.m_res_type, mm_res);
-                        }
-                        else {
-                            equate_pps(node.span(), *e.trait_args, params);
-                            equate_types(node.span(), node.m_res_type, impl_ref.get_type("Output", {}));
-                        }
+                        hrls = &e.hrls;
                         }
                     }
+                    if(hrls) {
+                        for(auto& lft : hrls->m_lifetimes) {
+                            if( lft.binding == HIR::LifetimeRef::UNKNOWN || lft.binding == HIR::LifetimeRef::INFER) {
+                                lft = m_state.allocate_ivar(node.span());
+                            }
+                        }
+                    }
+                    equate_pps(node.span(), impl_ref.get_trait_params(), params);
+                    auto res_ty = impl_ref.get_type("Output", {});
+                    m_resolve.expand_associated_types(node.span(), res_ty);
+                    equate_types(node.span(), node.m_res_type, res_ty);
 
                     return true;
                     });
@@ -1660,26 +1644,45 @@ namespace {
             HIR::ExprVisitorDef::visit(node);
 
             TRACE_FUNCTION_FR("_CallMethod: " << node.m_method_path, "_CallMethod");
+
             // Equate arguments and returns (monomorphised)
             MonomorphState  ms;
             auto v = m_resolve.get_value(node.span(), node.m_method_path, ms, /*signature_only*/true);
             if( const auto* pe = node.m_method_path.m_data.opt_UfcsInherent() ) {
                 this->equate_pps(node.span(), pe->impl_params, *ms.pp_impl);
             }
+            HIR::PathParams pp_hrls;
+            if( const auto* pe = node.m_method_path.m_data.opt_UfcsKnown() ) {
+                if( const auto* te = pe->type.data().opt_TraitObject() ) {
+                    if(te->m_trait.m_hrtbs) {
+                        pp_hrls = te->m_trait.m_hrtbs->make_empty_params(true);
+                        this->visit_path_params(pp_hrls);
+                    }
+                }
+                if( pe->hrtbs ) {
+                    TODO(node.span(), "Handle HRTBs on trait");
+                }
+            }
+            MonomorphHrlsOnly   ms2(pp_hrls);
             const auto& fcn = *v.as_Function();
 
             for(size_t i = 0; i < fcn.m_args.size(); i ++)
             {
                 const auto& n = (i == 0 ? node.m_value : node.m_args[i-1]);
                 auto arg_ty = m_resolve.monomorph_expand(n->span(), fcn.m_args[i].second, ms);
+                arg_ty = ms2.monomorph_type(n->span(), arg_ty);
                 DEBUG("ARG " << arg_ty);
                 this->equate_types(n->span(), arg_ty, n->m_res_type);
-                this->equate_types(n->span(), node.m_cache.m_arg_types[i], arg_ty);
+                //this->equate_types(n->span(), node.m_cache.m_arg_types[i], arg_ty);
+                node.m_cache.m_arg_types[i] = std::move(arg_ty);
             }
+            DEBUG("Raw Ret " << fcn.m_return);
             auto ret_mono = m_resolve.monomorph_expand(node.span(), fcn.m_return, ms);
+            ret_mono = ms2.monomorph_type(node.span(), ret_mono);
             DEBUG("RET " << ret_mono);
-            this->equate_types(node.span(), node.m_cache.m_arg_types.back(), ret_mono);
-            this->equate_types(node.span(), node.m_res_type, node.m_cache.m_arg_types.back());
+            this->equate_types(node.span(), node.m_res_type, ret_mono);
+            //this->equate_types(node.span(), node.m_cache.m_arg_types.back(), ret_mono);
+            node.m_cache.m_arg_types.back() = std::move(ret_mono);
         }
 
         void visit(::HIR::ExprNode_Literal& node) override {
@@ -2463,9 +2466,12 @@ namespace {
                                         DEBUG("Erased " << t);
                                         equate_lifetime(lft);
                                     }
-                                    //if( e->m_trait.m_hrls ) {
-                                    //    push_hrls(*e->m_trait.m_hrls);
-                                    //}
+                                    for(size_t i = 1; i < e->m_traits.size(); i ++) {
+                                        assert(!e->m_traits[i].m_hrtbs);
+                                    }
+                                    if( e->m_traits[0].m_hrtbs ) {
+                                        push_hrls(*e->m_traits[0].m_hrtbs);
+                                    }
                                 }
                                 else {
                                     TODO(sp, "Get lifetime (from bounds) for opaque type - " << t);

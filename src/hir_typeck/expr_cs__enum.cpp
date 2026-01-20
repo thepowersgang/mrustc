@@ -223,6 +223,8 @@ namespace typecheck
 
         const ::HIR::Function*  fcn_ptr = nullptr;
 
+        MonomorphHrlsOnly(HIR::PathParams()).monomorph_path(sp, path);
+
         struct Monomorph:
             public Monomorphiser
         {
