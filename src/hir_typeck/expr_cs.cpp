@@ -7883,7 +7883,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     // - Build up ruleset from node tree
     Typecheck_Code_CS__EnumerateRules(context, ms, args, result_type, expr, root_ptr);
 
-    const unsigned int MAX_ITERATIONS = 1000;
+    const unsigned int MAX_ITERATIONS = 5000;
     unsigned int count = 0;
     while( context.take_changed() /*&& context.has_rules()*/ && count < MAX_ITERATIONS )
     {
