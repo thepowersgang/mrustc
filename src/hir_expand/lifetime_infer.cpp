@@ -1276,6 +1276,16 @@ namespace {
                     }
                 }
 
+                void visit_trait_path(HIR::TraitPath& tp) override {
+                    // Handle HRLs
+                    if( tp.m_hrtbs ) {
+                        m_hrls.push_back(tp.m_hrtbs->make_empty_params(true));
+                    }
+                    HIR::Visitor::visit_trait_path(tp);
+                    if( tp.m_hrtbs ) {
+                        m_hrls.pop_back();
+                    }
+                }
                 void visit_type(HIR::TypeRef& t) override {
                     if(t.data().is_Borrow())
                         equate_lifetime(t.data().as_Borrow().lifetime);
@@ -1312,13 +1322,14 @@ namespace {
                     if( const auto* e = t.data().opt_TraitObject() ) {
                         // Get the lifetime
                         equate_lifetime(e->m_lifetime);
-                        // Handle HRLs
-                        if( e->m_trait.m_hrtbs ) {
-                            push_hrls(*e->m_trait.m_hrtbs);
-                        }
                     }
                     if( const auto* e = t.data().opt_Function() ) {
                         push_hrls(e->hrls);
+                    }
+                    if( const auto* e = t.data().opt_ErasedType() ) {
+                        for(const auto& l : e->m_use.m_lifetimes) {
+                            equate_lifetime(l);
+                        }
                     }
                     if( t.data().is_Path() && t.data().as_Path().path.m_data.is_Generic() ) {
                         for(const auto& l : t.data().as_Path().path.m_data.as_Generic().m_params.m_lifetimes)
@@ -1330,6 +1341,7 @@ namespace {
                     }
                 }
             } v { *this, sp, dst_lft };
+            DEBUG(ty);
             v.visit_type(const_cast<HIR::TypeRef&>(ty));
         }
         void unsize_types(const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) {
