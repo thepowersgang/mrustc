@@ -2006,8 +2006,8 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
     const auto& r_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(ri), r_tmp);
 
     // Strip HRLs, just in case
-    MonomorphEraseHrls().monomorph_type(sp, l_t);
-    MonomorphEraseHrls().monomorph_type(sp, r_t);
+    MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, l_t);
+    MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, r_t);
 
     if( l_t.data().is_Diverge() && !r_t.data().is_Infer() ) {
         return ;

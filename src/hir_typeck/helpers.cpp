@@ -2352,6 +2352,7 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
                     if( input.data().is_Path() && input.data().as_Path().binding.is_Unbound() ) {
                     }
                     else {
+                        DEBUG("CACHE+: " << k << " = " << input);
                         m_eat_cache.insert(::std::make_pair(k, input.clone()));
                     }
                 }
@@ -2613,10 +2614,11 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 }
                 if( cmp != ::HIR::Compare::Unequal )
                 {
+                    auto hrls = get_hrls(sp, trait.m_hrtbs, trait_gp.m_params, trait_path.m_params);
                     {
                         auto it = trait.m_type_bounds.find( pe.item );
                         if( it != trait.m_type_bounds.end() ) {
-                            input = it->second.type.clone();
+                            input = MonomorphHrlsOnly(hrls).monomorph_type(sp, it->second.type);
                             return ;
                         }
                     }
@@ -2640,18 +2642,26 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             // NOTE: `params` (aka des_params) is not used (TODO)
             bool is_supertrait = this->find_named_trait_in_trait(sp, trait_path.m_path, trait_path.m_params, *trait.m_trait_ptr, trait_gp.m_path,trait_gp.m_params, pe.type,
                 [&](const HIR::TraitPath& i_tp) {
+                    if( i_tp.m_hrtbs && !i_tp.m_hrtbs->is_empty() && trait.m_hrtbs && !trait.m_hrtbs->is_empty() ) {
+                        TODO(sp, "Nested HRTBs");
+                    }
                     // The above is just the monomorphised params and associated set. Comparison is still needed.
                     auto cmp = this->compare_pp(sp, i_tp.m_path.m_params, pe.trait.m_params);
                     if( cmp != ::HIR::Compare::Unequal ) {
+                        //auto hrls = get_hrls(sp, trait.m_hrtbs, i_tp.m_path.m_params, trait_path.m_params);
                         auto it = i_tp.m_type_bounds.find( pe.item );
-                        if( it != i_tp.m_type_bounds.end() ) {
-                            input = it->second.type.clone();
-                            return true;
+                        if( it == i_tp.m_type_bounds.end() ) {
+                            // NOTE: (currently) there can only be one trait with this name, so if we found this trait and the item is present - good.
+                            it = trait.m_type_bounds.find( pe.item );
                         }
-                        // NOTE: (currently) there can only be one trait with this name, so if we found this trait and the item is present - good.
-                        it = trait.m_type_bounds.find( pe.item );
                         if( it != trait.m_type_bounds.end() ) {
-                            input = it->second.type.clone();
+                            auto hrls = get_hrls(sp,
+                                (trait.m_hrtbs && !trait.m_hrtbs->is_empty()) ? trait.m_hrtbs.get() : i_tp.m_hrtbs.get(),
+                                i_tp.m_path.m_params,
+                                trait_path.m_params
+                                );
+                            DEBUG("hrls = " << hrls);
+                            input = MonomorphHrlsOnly(hrls).monomorph_type(sp, it->second.type);
                             return true;
                         }
                         return false;
