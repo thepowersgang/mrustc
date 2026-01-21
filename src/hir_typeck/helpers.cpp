@@ -2691,8 +2691,10 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         if( it != m_type_equalities.end() )
         {
             result_type = ResultType::Recurse;
-            DEBUG("Equality");
-            input = it->second.ty.clone();
+            DEBUG("Equality: for" << it->second.hrbs.fmt_args());
+            MatchHrls   m { &it->second.hrbs };
+            input.match_test_generics_fuzz(sp, it->first, HIR::ResolvePlaceholdersNop(), m);
+            input = MonomorphHrlsOnly(m.hrls).monomorph_type(sp, it->second.ty);
             rv = true;
         }
     }
