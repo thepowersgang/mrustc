@@ -521,6 +521,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
         // If deferring codegen, add a new job for running the codegen backend
         if( job_p->get_codegen() != helpers::path() )
         {
+            // TODO: Ensure that the dependency tree is correct here
             auto job_codegen = ::std::make_unique<Job_Codegen>(run_state, job_p->name(), job_p->get_outfile(), job_p->get_codegen());
             job_codegen->m_is_dirty = is_dirty;
             convert_state.add_job(std::move(job_codegen), output_ts, is_dirty);
@@ -866,7 +867,12 @@ void Job_Build::push_args_common(StringList& args, const helpers::path& outfile,
         args.push_back("-g");
     }
     if( true ) {
-        args.push_back("--cfg"); args.push_back("debug_assertions");
+        if( parent.is_rustc() ) {
+            args.push_back("-C"); args.push_back("debug-assertions");
+        }
+        else {
+            args.push_back("--cfg"); args.push_back("debug_assertions");
+        }
     }
     if( true /*parent.m_opts.enable_optimise*/ ) {
         args.push_back("-O");
