@@ -23,3 +23,24 @@
 +#[cfg(not(rust_compiler="mrustc"))]
  #[cfg(all(target_pointer_width = "64", any(target_arch = "aarch64", target_arch = "x86_64")))]
  rustc_data_structures::static_assert_size!(Parser<'_>, 288);
+
+# Workaround for some strange cases of method lookups
+--- compiler/rustc_middle/src/ty/sty.rs
++++ compiler/rustc_middle/src/ty/sty.rs
+@@ -2026,4 +2026,4 @@
+ impl<'tcx> rustc_type_ir::inherent::Tys<TyCtxt<'tcx>> for &'tcx ty::List<Ty<'tcx>> {
+     fn inputs(self) -> &'tcx [Ty<'tcx>] {
+-        self.split_last().unwrap().1
++        (**self).split_last().unwrap().1
+     }
+--- rustc-1.90.0-src/compiler/rustc_middle/src/ty/generic_args.rs
++++ rustc-1.90.0-src/compiler/rustc_middle/src/ty/generic_args.rs
+@@ -703,7 +703,7 @@
+ impl<'tcx, T: TypeVisitable<TyCtxt<'tcx>>> TypeVisitable<TyCtxt<'tcx>> for &'tcx ty::List<T> {
+     #[inline]
+     fn visit_with<V: TypeVisitor<TyCtxt<'tcx>>>(&self, visitor: &mut V) -> V::Result {
+-        walk_visitable_list!(visitor, self.iter());
++        walk_visitable_list!(visitor, (***self).iter());
+         V::Result::output()
+     }
+ }
