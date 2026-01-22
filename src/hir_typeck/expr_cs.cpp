@@ -455,10 +455,7 @@ namespace {
                     // Check that the ABI and unsafety is correct
                     if( s_e.m_abi != e.m_abi || (s_e.is_unsafe && s_e.is_unsafe != e.is_unsafe) || s_e.m_arg_types.size() != e.m_arg_types.size() )
                         bad_cast(sp, src_ty, tgt_ty, "fcn nargs");
-
-                    this->context.equate_types(sp, e.m_rettype, s_e.m_rettype);
-                    for(size_t i = 0; i < e.m_arg_types.size(); i++)
-                        this->context.equate_types(sp, e.m_arg_types[i], s_e.m_arg_types[i]);
+                    this->context.equate_types(sp, tgt_ty, ft);
                     this->m_completed = true;
                     }
                 }
