@@ -81,8 +81,10 @@ Process Process::spawn(
         abort();
     }
     // Create logfile output directory (if the parent path is valid, i.e. the logile path isn't a single component)
-    if( logfile.parent().is_valid() ) {
-        mkdir(logfile.parent());
+    if( logfile.is_valid() ) {
+        if( logfile.parent().is_valid() ) {
+            mkdir(logfile.parent());
+        }
     }
 
     if( getenv("MINICARGO_DUMPENV") )
@@ -161,6 +163,7 @@ Process Process::spawn(
     {
         si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
     }
+    if( logfile.is_valid() )
     {
         SECURITY_ATTRIBUTES sa = { 0 };
         sa.nLength = sizeof(sa);
@@ -208,11 +211,13 @@ Process Process::spawn(
     }
     {
         posix_spawn_file_actions_init(&fa);
-        posix_spawn_file_actions_addopen(&fa, 1, logfile_str.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
-        if( capture_stderr ) {
-            posix_spawn_file_actions_adddup2(&fa, stderr_streams[1], 2);
+        if( logfile.is_valid() ) {
+            posix_spawn_file_actions_addopen(&fa, 1, logfile_str.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
+            if( capture_stderr ) {
+                posix_spawn_file_actions_adddup2(&fa, stderr_streams[1], 2);
+            }
+            // Note: JobServer FDs should get propagated
         }
-        // Note: JobServer FDs should get propagated
     }
 
     // Generate `argv`
@@ -224,7 +229,9 @@ Process Process::spawn(
         ::std::cout << ">";
         for(const auto& p : argv)
             ::std::cout  << " " << p;
-        ::std::cout << " > " << logfile;
+        if( logfile.is_valid() ) {
+            ::std::cout << " > " << logfile;
+        }
         ::std::cout << ::std::endl;
     }
     else

@@ -159,6 +159,37 @@ public:
 
     RunnableJob start() override;
     helpers::path get_outfile() const override;
+    helpers::path get_codegen() const;
+};
+class Job_Codegen: public Job
+{
+    std::string m_name;
+    helpers::path   m_rlib_outfile;
+    helpers::path   m_command_file;
+    std::vector<std::string>    m_dependencies;
+public:
+    Job_Codegen(const RunState& parent, const std::string& parent_name, helpers::path parent_outfile, helpers::path path)
+        : m_name(parent_name+" (codegen)")
+        , m_rlib_outfile(parent_outfile)
+        , m_command_file(path)
+    {
+        m_dependencies.push_back(parent_name);
+    }
+    bool is_already_complete() const override {
+        return !m_is_dirty;
+    }
+    const char* verb() const override { return "CODEGEN"; }
+    const std::string& name() const { return m_name; }
+    const std::vector<std::string>& dependencies() const {
+        return m_dependencies;
+    }
+    bool is_runnable() const override {
+        return true;
+    }
+    RunnableJob start() override;
+    bool complete(bool was_successful) override;
+
+    bool    m_is_dirty;
 };
 class Job_BuildScript: public Job_Build
 {
@@ -484,7 +515,16 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
             }
         });
         job->m_is_dirty = is_dirty;
+        auto job_p = job.get();
         convert_state.add_job(std::move(job), output_ts, is_dirty);
+
+        // If deferring codegen, add a new job for running the codegen backend
+        if( job_p->get_codegen() != helpers::path() )
+        {
+            auto job_codegen = ::std::make_unique<Job_Codegen>(run_state, job_p->name(), job_p->get_outfile(), job_p->get_codegen());
+            job_codegen->m_is_dirty = is_dirty;
+            convert_state.add_job(std::move(job_codegen), output_ts, is_dirty);
+        }
     }
 
     std::string bs_job_name;
@@ -876,6 +916,14 @@ helpers::path Job_BuildTarget::get_outfile() const
 {
     return parent.get_crate_path(m_manifest, m_target, m_is_for_host, nullptr, nullptr);
 }
+helpers::path Job_BuildTarget::get_codegen() const
+{
+    if( getenv("MINICARGO_DEFER_CODEGEN") )
+    {
+        return this->get_outfile() + "-codegen.sh";
+    }
+    return helpers::path();
+}
 RunnableJob Job_BuildTarget::start()
 {
     const char* crate_type;
@@ -909,6 +957,12 @@ RunnableJob Job_BuildTarget::start()
             args.push_back("--target"); args.push_back(parent.m_opts.target_name);
             //args.push_back("-C"); args.push_back(format("emit-build-command=",outfile,".sh"));
         }
+    }
+
+    if( this->get_codegen() != helpers::path() )
+    {
+        args.push_back("-C");
+        args.push_back(format("emit-build-command=",this->get_codegen()));
     }
 
     for(const auto& dir : m_manifest.build_script_output().rustc_link_search) {
@@ -986,6 +1040,38 @@ RunnableJob Job_BuildTarget::start()
     push_env_common(env, m_manifest);
 
     return RunnableJob(parent.m_compiler_path.str().c_str(), std::move(args), std::move(env), outfile + "_dbg.txt");
+}
+
+//
+//
+//
+RunnableJob Job_Codegen::start()
+{
+    std::string line;
+    ::std::getline(::std::ifstream(this->m_command_file), line);
+    while(!line.empty() && std::isblank(line.back())) {
+        line.pop_back();
+    }
+    StringList  args;
+    #ifdef _WIN32
+    const auto* exe = "cmd.exe";
+    args.push_back("/c");
+    args.push_back(std::move(line));
+    #else
+    const auto* exe = getenv("SHELL");
+    args.push_back("-c");
+    args.push_back(std::move(line));
+    StringListKV    env;
+    #endif
+    return RunnableJob(exe, std::move(args), std::move(env), helpers::path());
+}
+bool Job_Codegen::complete(bool was_successful)
+{
+    if(!was_successful) {
+        // On failure, remove the output (to force a rebuild next time)
+        remove(this->m_rlib_outfile.str().c_str());
+    }
+    return true;
 }
 
 //
