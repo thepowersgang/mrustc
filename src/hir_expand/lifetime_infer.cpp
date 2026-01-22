@@ -1327,7 +1327,7 @@ namespace {
                         push_hrls(e->hrls);
                     }
                     if( const auto* e = t.data().opt_ErasedType() ) {
-                        for(const auto& l : e->m_use.m_lifetimes) {
+                        for(const auto& l : e->m_lifetime_bounds) {
                             equate_lifetime(l);
                         }
                     }
