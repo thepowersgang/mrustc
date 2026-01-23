@@ -8001,36 +8001,47 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i]) ) {
-                    // HACK: For `gix v0.73.0`, but really a good idea: only set one ivar per pass.
-                    // - Ideally, would determine if this ivar is used in any other rules, and prevent ivars mentioned in those rules
-                    //   from also being guessed.
-                    break;
-                    static Span sp;
-                    //assert( context.possible_ivar_vals[i].has_rules() );
-                    // Disable all metioned ivars in the possibilities
-                    for(const auto& ty : context.possible_ivar_vals[i].types_coerce_to)
-                        context.possible_equate_type_unknown(sp, ty.ty, Context::IvarUnknownType::From);
-                    for(const auto& ty : context.possible_ivar_vals[i].types_coerce_from)
-                        context.possible_equate_type_unknown(sp, ty.ty, Context::IvarUnknownType::To);
-
-                    // Also disable inferrence (for this pass) for all ivars in affected bounds
-                    if(false)
-                    for(const auto& la : context.link_assoc)
-                    {
-                        bool found = false;
-                        auto cb = [&](const auto& t) { return TU_TEST1(t.data(), Infer, .index == i); };
-                        if( la.left_ty != ::HIR::TypeRef() )
-                            found |= visit_ty_with( la.left_ty, cb );
-                        found |= visit_ty_with( la.impl_ty, cb );
-                        for(const auto& t : la.params.m_types)
-                            found |= visit_ty_with( t, cb );
-                        if( found )
-                        {
-                            if(la.left_ty != ::HIR::TypeRef())
-                                context.possible_equate_type_unknown(sp, la.left_ty, Context::IvarUnknownType::From);
-                            context.possible_equate_type_unknown(sp, la.impl_ty, Context::IvarUnknownType::From);
-                            for(const auto& t : la.params.m_types)
-                                context.possible_equate_type_unknown(sp, t, Context::IvarUnknownType::From);
+                    // Look at all other ivar possibility sets, and disable processing if they depend on this ivar (prevents races)
+                    auto contains_ty = [&i](const HIR::TypeRef& t) {
+                        auto cb = [&](const HIR::TypeRef& t) {
+                            // TODO: Resolve ivars
+                            return TU_TEST1(t.data(), Infer, .index == i);
+                        };
+                        return visit_ty_with( t, cb );
+                    };
+                    auto disable_in = [&context](const HIR::TypeRef& t)->bool {
+                        auto cb = [&](const HIR::TypeRef& tr) {
+                            const auto& t = context.m_ivars.get_type(tr);
+                            if(const auto* te = t.data().opt_Infer()) {
+                                DEBUG("Disable IVar " << te->index);
+                                context.possible_ivar_vals[te->index].force_disable = true;
+                            }
+                            return false;
+                        };
+                        return visit_ty_with( t, cb );
+                        };
+                    for(const auto& r : context.link_assoc) {
+                        if( contains_ty(r.impl_ty) || contains_ty(r.left_ty) || ::std::any_of(r.params.m_types.begin(), r.params.m_types.end(), contains_ty) ) {
+                            disable_in(r.impl_ty);
+                            for(const auto& t : r.params.m_types) {
+                                disable_in(t);
+                            }
+                        }
+                    }
+                    for(auto& e : context.possible_ivar_vals) {
+                        bool references_this = false;
+                        for(const auto& t : e.types_coerce_from) {
+                            references_this |= contains_ty(t.ty);
+                        }
+                        for(const auto& t : e.types_coerce_to) {
+                            references_this |= contains_ty(t.ty);
+                        }
+                        for(const auto& t : e.bounded) {
+                            references_this |= contains_ty(t);
+                        }
+                        if(references_this) {
+                            DEBUG("Block IVar " << (&e - context.possible_ivar_vals.data()));
+                            e.force_disable = true;
                         }
                     }
                 }
