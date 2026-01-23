@@ -96,35 +96,6 @@ public:
     }
 };
 
-static void push_dependencies(const PackageManifest& package, LockfileContents& resolved, Repository& repo, DepSpecQueue& queue)
-{
-    TRACE_FUNCTION_F(package.name() << " v" << package.version());
-    LockfileContents::PackageKey    package_key { package.name(), package.version() };
-    resolved.package_deps[package_key];
-    std::vector<const PackageRef*>  deps;
-    package.iter_main_dependencies([&](const PackageRef& dep_c) {
-        deps.push_back(&dep_c);
-    });
-    package.iter_build_dependencies([&](const PackageRef& dep_c) {
-        deps.push_back(&dep_c);
-    });
-    for(const auto* dep_c : deps) {
-        //if( dep_c->get_version().m_bounds.empty() ) {
-        if( dep_c->has_path() ) {
-            DEBUG("Recurse " << dep_c->name());
-            auto m = const_cast<PackageRef*>(dep_c)->load_manifest_raw(repo, package.directory(), [](const auto&){ return true; });
-            LockfileContents::PackageKey    dep_key { m->name(), m->version() };
-            if( resolved.package_deps[package_key].insert(dep_key).second ) {
-                push_dependencies(*m, resolved, repo, queue);
-            }
-        }
-        else {
-            DEBUG("PUSH " << dep_c->name() << " " << dep_c->get_version());
-            queue.stack.push_back(DepSpec(package_key, dep_c->name(), dep_c->get_version()));
-        }
-    }
-}
-
 namespace {
     struct InnerState {
         /// Output lock file
@@ -234,7 +205,7 @@ namespace {
             if( inner.rv.package_deps[dep_spec.source].insert(dep_key).second ) {
                 // Only push if not already in the output (avoids double-visiting)
                 if( inner.rv.package_deps.count(dep_key) == 0 ) {
-                    push_dependencies(dep_package, inner.rv, repo, inner.queue);
+                    push_dependencies(dep_package);
                     //inner.push_depths1[dep_key] = this->backtrack_stack.size();
                 }
                 else {
@@ -245,6 +216,36 @@ namespace {
                 DEBUG("BUG? " << dep_key << " already a dependency of " << dep_spec.source);
             }
             return nullptr;
+        }
+
+
+        void push_dependencies(const PackageManifest& package)
+        {
+            TRACE_FUNCTION_F(package.name() << " v" << package.version());
+            LockfileContents::PackageKey    package_key { package.name(), package.version() };
+            inner.rv.package_deps[package_key];
+            this->inner.push_depths.insert(std::make_pair(package_key, this->backtrack_stack.size()+1));
+            std::vector<const PackageRef*>  deps;
+            package.iter_main_dependencies([&](const PackageRef& dep_c) {
+                deps.push_back(&dep_c);
+            });
+            package.iter_build_dependencies([&](const PackageRef& dep_c) {
+                deps.push_back(&dep_c);
+            });
+            for(const auto* dep_c : deps) {
+                if( dep_c->has_path() ) {
+                    DEBUG("Recurse " << dep_c->name());
+                    auto m = const_cast<PackageRef*>(dep_c)->load_manifest_raw(repo, package.directory(), [](const auto&){ return true; });
+                    LockfileContents::PackageKey    dep_key { m->name(), m->version() };
+                    if( inner.rv.package_deps[package_key].insert(dep_key).second ) {
+                        push_dependencies(*m);
+                    }
+                }
+                else {
+                    DEBUG("PUSH " << dep_c->name() << " " << dep_c->get_version());
+                    inner.queue.stack.push_back(DepSpec(package_key, dep_c->name(), dep_c->get_version()));
+                }
+            }
         }
     };
 }
@@ -259,7 +260,7 @@ LockfileContents ResolveDependencies_Cargo(Repository& repo, const PackageManife
     // - 3: changes default fallback behaviour
 
     // Push dependencies from the root package
-    push_dependencies(root_manifest, state.inner.rv, repo, state.inner.queue);
+    state.push_dependencies(root_manifest);
     for(;;)
     {
         DepSpec dep_spec;
