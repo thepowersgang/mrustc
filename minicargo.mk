@@ -310,6 +310,8 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)$(LLVM_DIR)/CMakeLists.txt
 	@mkdir -p $(RUSTCSRC)build
 	$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../$(LLVM_DIR)
 
+$(RUSTCSRC)$(LLVM_DIR)/CMakeLists.txt: RUSTCSRC
+
 #
 # Developement-only targets
 #

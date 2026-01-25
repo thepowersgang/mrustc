@@ -27,14 +27,22 @@ elif [[ "$RUSTC_VERSION" == "1.90.0" ]]; then
     RUSTC_VERSION_NEXT=1.91.1
     RUN_RUSTC_SUF=-1.90.0
 else
-    echo "Unknown rustc version"
+    echo "Unknown rustc version ${RUSTC_VERSION}"
+    false
 fi
 
-MAKEFLAGS=-j${PARLEVEL:-8}
+PARLEVEL=${PARLEVEL:-$(nproc)}
+MAKEFLAGS=${MAKEFLAGS:--j${PARLEVEL}}
 export MAKEFLAGS
+MRUSTC_TARGET_VER=${RUSTC_VERSION}
+export MRUSTC_TARGET_VER
+OUTDIR_SUF=${RUN_RUSTC_SUF}
+export OUTDIR_SUF
 
 echo "=== Building stage0 rustc (with libstd)"
-make -C run_rustc RUSTC_VERSION=${RUSTC_VERSION}
+make RUSTCSRC all RUSTC_VERSION=${RUSTC_VERSION}
+make LIBS RUSTC_VERSION=${RUSTC_VERSION}
+MAKEFLAGS=-j1 make -C run_rustc RUSTC_VERSION=${RUSTC_VERSION} PARLEVEL=${PARLEVEL}
 
 PREFIX=${PWD}/run_rustc/output${RUN_RUSTC_SUF}/prefix/
 
