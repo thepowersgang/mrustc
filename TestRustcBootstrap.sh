@@ -22,6 +22,9 @@ elif [[ "$RUSTC_VERSION" == "1.54.0" ]]; then
 elif [[ "$RUSTC_VERSION" == "1.74.0" ]]; then
     RUSTC_VERSION_NEXT=1.75.0
     RUN_RUSTC_SUF=-1.74.0
+elif [[ "$RUSTC_VERSION" == "1.90.0" ]]; then
+    RUSTC_VERSION_NEXT=1.91.0
+    RUN_RUSTC_SUF=-1.90.0
 else
     echo "Unknown rustc version"
 fi
