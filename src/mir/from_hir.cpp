@@ -23,27 +23,6 @@
 #include "helpers.hpp"
 
 namespace {
-
-    template<typename T>
-    struct SaveAndEditVal {
-        T&  m_dst;
-        T   m_saved;
-        SaveAndEditVal(T& dst, T newval):
-            m_dst(dst),
-            m_saved(dst)
-        {
-            m_dst = mv$(newval);
-        }
-        ~SaveAndEditVal()
-        {
-            this->m_dst = this->m_saved;
-        }
-    };
-    template<typename T>
-    SaveAndEditVal<T> save_and_edit(T& dst, typename ::std::remove_reference<T&>::type newval) {
-        return SaveAndEditVal<T> { dst, mv$(newval) };
-    }
-
     class ExprVisitor_Conv:
         public MirConverter
     {
@@ -109,6 +88,11 @@ namespace {
                 m_generator_state.states.push_back(GeneratorState::State(builder.new_bb_unlinked()));
                 builder.set_cur_block(m_generator_state.states.back().entrypoint);
             }
+        }
+
+        SaveAndEditVal<const ScopeHandle*> disable_borrow_extension() override
+        {
+            return save_and_edit(m_borrow_raise_target, nullptr);
         }
 
         // Get a LValue pointing at the state index
@@ -1051,9 +1035,11 @@ namespace {
         void visit(::HIR::ExprNode_Match& node) override
         {
             TRACE_FUNCTION_FR("_Match", "_Match");
-            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
-            //auto stmt_scope = m_builder.new_scope_temp(node.span());
-            this->visit_node_ptr(node.m_value);
+            {
+                auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+                //auto stmt_scope = m_builder.new_scope_temp(node.span());
+                this->visit_node_ptr(node.m_value);
+            }
             auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
 
             if( node.m_arms.size() == 0 ) {
@@ -1846,6 +1832,72 @@ namespace {
                 m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), ::MIR::Constant::make_ItemAddr({}) }) );
             }
         }
+        void visit_index_operator(::HIR::ExprNode_Index& node, const ::HIR::TypeRef& ty_val, MIR::LValue value, const ::HIR::TypeRef& ty_idx, MIR::LValue index)
+        {
+            DEBUG("");
+            const Span& sp = node.span();
+
+            // NOTE: Do operator replacement here after handling scope-raising for _Borrow
+            if( m_borrow_raise_target && m_in_borrow )
+            {
+                DEBUG("- Raising deref in borrow to scope " << *m_borrow_raise_target);
+                m_builder.raise_temporaries(sp, value, *m_borrow_raise_target);
+            }
+
+            const char* langitem = nullptr;
+            const char* method = nullptr;
+            ::HIR::BorrowType   bt;
+            switch( node.m_value->m_usage )
+            {
+            case ::HIR::ValueUsage::Unknown:
+                BUG(sp, "Usage of index reciever is still `Unknown`");
+                break;
+            case ::HIR::ValueUsage::Borrow:
+                bt = ::HIR::BorrowType::Shared;
+                langitem = method = "index";
+                break;
+            case ::HIR::ValueUsage::Mutate:
+                bt = ::HIR::BorrowType::Unique;
+                langitem = method = "index_mut";
+                break;
+            case ::HIR::ValueUsage::Move:
+                TODO(sp, "Support moving out of indexed values");
+                break;
+            }
+            // Needs replacement, continue
+            assert(langitem);
+            assert(method);
+
+            // - Construct trait path - Index*<IdxTy>
+            ::HIR::PathParams   pp_trait;
+            pp_trait.m_types.push_back( ty_idx.clone() );
+            ::HIR::GenericPath  trait { m_builder.resolve().m_crate.get_lang_item_path(node.span(), langitem), std::move(pp_trait) };
+
+            ::HIR::PathParams   pp_method;
+            pp_method.m_lifetimes.push_back(HIR::LifetimeRef());
+            auto method_path = ::HIR::Path(ty_val.clone(), std::move(trait), RcString::new_interned(method), std::move(pp_method));
+
+            // Store a borrow of the input value
+            ::std::vector<::MIR::Param>    args;
+            args.push_back( m_builder.lvalue_or_temp(sp,
+                        ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone()),
+                        ::MIR::RValue::make_Borrow({ bt, false, std::move(value) })
+                        ) );
+            args.push_back( std::move(index) );
+            m_builder.moved_lvalue(node.span(), args[0].as_LValue());
+            m_builder.moved_lvalue(node.span(), args[1].as_LValue());
+            auto res_val = m_builder.new_temporary(::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()));
+            // Call the above trait method
+            // Store result of that call in `val` (which will be derefed below)
+            auto ok_block = m_builder.new_bb_unlinked();
+            auto panic_block = m_builder.new_bb_unlinked();
+            m_builder.end_block(::MIR::Terminator::make_Call({ ok_block, panic_block, res_val.clone(), std::move(method_path), std::move(args) }));
+            m_builder.set_cur_block(panic_block);
+            emit_unwind(sp);
+
+            m_builder.set_cur_block(ok_block);
+            m_builder.set_result( node.span(), ::MIR::LValue::new_Deref( std::move(res_val) ) );
+        }
         void visit(::HIR::ExprNode_Index& node) override
         {
             TRACE_FUNCTION_F("_Index");
@@ -1859,10 +1911,19 @@ namespace {
             this->visit_node_ptr(node.m_value);
             auto value = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
 
+            if( ty_idx != ::HIR::CoreType::Usize )
+            {
+                DEBUG("non-usize index");
+                visit_index_operator(node, ty_val, std::move(value), ty_idx, std::move(index));
+                return ;
+            }
+
             ::MIR::RValue   limit_val;
             TU_MATCH_HDRA( (ty_val.data()), {)
             default:
-                BUG(node.span(), "Indexing unsupported type " << ty_val);
+                DEBUG("non-builtin type");
+                visit_index_operator(node, ty_val, std::move(value), ty_idx, std::move(index));
+                return ;
             TU_ARMA(Array, e) {
                 TU_MATCH_HDRA( (e.size), {)
                 TU_ARMA(Unevaluated, se) {
@@ -1880,11 +1941,6 @@ namespace {
             TU_ARMA(Slice, e) {
                 limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value) });
                 }
-            }
-
-            if( ty_idx != ::HIR::CoreType::Usize )
-            {
-                BUG(node.span(), "Indexing using unsupported index type " << ty_idx);
             }
 
             // Range checking (DISABLED)
@@ -1932,13 +1988,12 @@ namespace {
                 }
                 else
                 {
-                    // TODO: Do operator replacement here after handling scope-raising for _Borrow
+                    // NOTE: Do operator replacement here after handling scope-raising for _Borrow
                     if( m_borrow_raise_target && m_in_borrow )
                     {
                         DEBUG("- Raising deref in borrow to scope " << *m_borrow_raise_target);
                         m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
                     }
-
 
                     const char* langitem = nullptr;
                     const char* method = nullptr;

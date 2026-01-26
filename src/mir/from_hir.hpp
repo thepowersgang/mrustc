@@ -405,6 +405,27 @@ public:
     void drop_actve_local(const Span& sp, ::MIR::LValue lv, const SavedActiveLocal& loc);
 };
 
+
+template<typename T>
+struct SaveAndEditVal {
+    T&  m_dst;
+    T   m_saved;
+    SaveAndEditVal(T& dst, T newval):
+        m_dst(dst),
+        m_saved(dst)
+    {
+        m_dst = mv$(newval);
+    }
+    ~SaveAndEditVal()
+    {
+        this->m_dst = this->m_saved;
+    }
+};
+template<typename T>
+SaveAndEditVal<T> save_and_edit(T& dst, typename ::std::remove_reference<T&>::type newval) {
+    return SaveAndEditVal<T> { dst, mv$(newval) };
+}
+
 /// Wrapper interfae
 class MirConverter:
     public ::HIR::ExprVisitor
@@ -415,6 +436,8 @@ public:
 
     virtual void destructure_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
     virtual void destructure_aliases_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
+
+    virtual SaveAndEditVal<const ScopeHandle*> disable_borrow_extension() = 0;
 };
 
 extern void MIR_LowerHIR_Match(MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val);

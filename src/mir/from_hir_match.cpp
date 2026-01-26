@@ -378,6 +378,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // Generate `if` guard and destructuring code
         // - Prefers to use one copy (if all rules have the same binding set)
         {
+            auto _dbe = conv.disable_borrow_extension();
             // Do all rules in this `match` arm have the same set of bindings?
             // - Checks in `arm_rules`, which has all arms in it
             bool same_bindings = std::all_of(arm_rules.begin() + first_arm_rule_idx+1, arm_rules.end(),
