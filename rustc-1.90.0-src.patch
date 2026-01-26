@@ -33,8 +33,8 @@
 -        self.split_last().unwrap().1
 +        (**self).split_last().unwrap().1
      }
---- rustc-1.90.0-src/compiler/rustc_middle/src/ty/generic_args.rs
-+++ rustc-1.90.0-src/compiler/rustc_middle/src/ty/generic_args.rs
+--- compiler/rustc_middle/src/ty/generic_args.rs
++++ compiler/rustc_middle/src/ty/generic_args.rs
 @@ -703,7 +703,7 @@
  impl<'tcx, T: TypeVisitable<TyCtxt<'tcx>>> TypeVisitable<TyCtxt<'tcx>> for &'tcx ty::List<T> {
      #[inline]
