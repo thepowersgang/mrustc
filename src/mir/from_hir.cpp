@@ -465,7 +465,7 @@ namespace {
 
             for(unsigned int i = 0; i < node.m_nodes.size(); i ++)
             {
-                auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+                auto _ = this->disable_borrow_extension();
                 auto& subnode = node.m_nodes[i];
                 const Span& sp = subnode->span();
 
@@ -1323,6 +1323,7 @@ namespace {
         {
             TRACE_FUNCTION_F("_Assign");
             const auto& sp = node.span();
+            auto _ = disable_borrow_extension();    // A bit of a hack
 
             this->visit_node_ptr(node.m_value);
             ::MIR::RValue val = m_builder.get_result(sp);
