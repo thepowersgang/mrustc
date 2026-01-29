@@ -874,6 +874,10 @@ void Job_Build::push_args_common(StringList& args, const helpers::path& outfile,
             args.push_back("--cfg"); args.push_back("debug_assertions");
         }
     }
+    if( parent.is_rustc() ) {
+        args.push_back("-Z");
+        args.push_back("force-unstable-if-unmarked");
+    }
     if( true /*parent.m_opts.enable_optimise*/ ) {
         args.push_back("-O");
     }
