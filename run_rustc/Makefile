@@ -49,11 +49,6 @@ TARGETVER_LEAST_1_74 := $(shell test "$(RUSTC_VERSION)" ">" "1.74" && echo yes)
 RUSTC_BINNAME := rustc_binary
 CARGO_FLAGS_rustc := 
 ifneq ($(TARGETVER_LEAST_1_54),)
- ifneq ($(TARGETVER_LEAST_1_74),)
-  RUST_SRC_HELLO := $(RUST_SRC)tests/ui/hello.rs
- else
-  RUST_SRC_HELLO := $(RUST_SRC)src/test/ui/hello.rs
- endif
  RUST_SRC_LIBS := $(RUST_SRC)library/
  RUST_SRC_RUSTC := $(RUST_SRC)compiler/rustc/
  RUST_SRC_CODEGEN := $(RUST_SRC)compiler/rustc_codegen_llvm/
@@ -61,18 +56,17 @@ ifneq ($(TARGETVER_LEAST_1_54),)
  RUSTC_BINNAME := rustc-main
  CARGO_FLAGS_rustc += --features llvm
 else ifneq ($(TARGETVER_LEAST_1_39),)
- RUST_SRC_HELLO := $(RUST_SRC)src/test/ui/hello.rs
  RUST_SRC_LIBS := $(RUST_SRC)src/lib
  RUST_SRC_RUSTC := $(RUST_SRC)src/rustc/
  RUST_SRC_CODEGEN := $(RUST_SRC)src/librustc_codegen_llvm/
  VENDOR_DIR := $(RUST_SRC)vendor
 else
- RUST_SRC_HELLO := $(RUST_SRC)src/test/run-pass/hello.rs
  RUST_SRC_LIBS := $(RUST_SRC)src/lib
  RUST_SRC_RUSTC := $(RUST_SRC)src/rustc/
  # librustc_codegen_llvm
  VENDOR_DIR := $(RUST_SRC)src/vendor
 endif
+RUST_SRC_HELLO := ../samples/hello.rs
 
 RUSTC_ARCH := $(firstword $(subst -, ,$(RUSTC_TARGET)))
 
