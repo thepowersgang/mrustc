@@ -455,7 +455,7 @@ impl Literal {
             val: LiteralValue::UnsignedInt(ch as _, 8),
         }
     }
-    pub fn c_string(bytes: &::core::ffi::CStr) -> Literal {
+    pub fn c_string(bytes: &::std::ffi::CStr) -> Literal {
         Literal {
             span: Span::call_site(),
             val: LiteralValue::CString(bytes.to_bytes().to_owned()),
