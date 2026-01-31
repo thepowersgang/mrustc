@@ -573,6 +573,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 else
                 {
                     // TODO: Error, becuase this has just been leaked
+                    // Can't error, as this doesn't know if the value has been partially moved out of (as this code doesn't track that detailed)
+                    //MIR_BUG(state, "Value _" << i << ": " << fcn.locals[i] << " still valid?");
                 }
             }
             }

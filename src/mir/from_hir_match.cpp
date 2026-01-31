@@ -398,6 +398,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
                     // A scope for temporary variables defined within these expressions
                     auto tmp_scope = builder.new_scope_temp(top_span);
+                    //auto split_scope = builder.new_scope_split(top_span);
 
                     bool is_cond_bb_set = false;
 
@@ -452,6 +453,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                             // Currently in `local_false`
                             DEBUG("GUARD: Clean up and jump to `cond_false`");
                             builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
+                            builder.uncomplete_scope(tmp_scope);    // Remove the `complete` flag
+                            //builder.end_split_arm(arm.m_code->span(), split_scope, true);
                             builder.end_block(::MIR::Terminator::make_Goto(cond_false));
                         }
                         else {
@@ -464,6 +467,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     // Now we're in BB`destructure` from the last loop
 
                     // End scopes, releasing temporaries
+                    //builder.terminate_scope( arm.m_code->span(), std::move(split_scope) );
                     builder.terminate_scope( arm.m_code->span(), std::move(tmp_scope) );
                     builder.terminate_scope( arm.m_code->span(), std::move(freeze_scope) );
                 }

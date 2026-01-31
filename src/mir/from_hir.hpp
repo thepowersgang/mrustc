@@ -360,6 +360,12 @@ public:
     /// Terminates the current split condition clause (used for the conditional portion of a match arm)
     void end_split_condition(const Span& sp, const ScopeHandle&);
 
+    void uncomplete_scope(const ScopeHandle& scope) {
+        auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
+        auto& s = m_scopes.at(*it);
+        s.complete = false;
+    }
+
     const ScopeHandle& fcn_scope() const {
         return m_fcn_scope;
     }
