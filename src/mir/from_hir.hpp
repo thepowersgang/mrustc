@@ -210,6 +210,9 @@ class MirBuilder
     /// Mapping between variable slots and MIR arguments (for when the argument is not destructuring)
     ::std::map<unsigned,unsigned>   m_var_arg_mappings;
 
+    /// Re-mapped dropped flags (all flags in the vector are to be set when the key flag is set)
+    ::std::map<unsigned, std::vector<unsigned>> m_drop_flag_aliases;
+
     struct ScopeDef
     {
         const Span& span;
@@ -339,6 +342,8 @@ public:
     unsigned int new_drop_flag(bool default_state);
     unsigned int new_drop_flag_and_set(const Span& sp, bool set_state);
     bool get_drop_flag_default(const Span& sp, unsigned int index);
+    /// Add a drop flag to be set when another is also set (used to rewrite drop flags after the fact)
+    void drop_flag_alias(unsigned int old_idx, unsigned int new_idx);
 
     // --- Scopes ---
     ScopeHandle new_scope_var(const Span& sp);

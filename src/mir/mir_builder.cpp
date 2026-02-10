@@ -85,6 +85,57 @@ void MirBuilder::final_cleanup()
         terminate_scope(sp, ScopeHandle(*this, 1), /*emit_cleanup=*/false);
         terminate_scope(sp, mv$(m_fcn_scope), /*emit_cleanup=*/false);
     }
+
+    // Rewrite drop flags
+    // - Expand recursive lookups
+    for(;;)
+    {
+        bool added = false;
+        for(auto& a : m_drop_flag_aliases)
+        {
+            auto& mapped_flags = a.second;
+            // Iterate every "destination" flag
+            for(size_t i = 0; i < mapped_flags.size(); i ++)
+            {
+                auto it2 = m_drop_flag_aliases.find(mapped_flags[i]);
+                if( it2 != m_drop_flag_aliases.end() )
+                {
+                    for(unsigned other_flag : it2->second) {
+                        // If this flag is not in the current list, add it and mark that something changed
+                        if( std::find(mapped_flags.begin(), mapped_flags.end(), other_flag) == mapped_flags.end() ) {
+                            mapped_flags.push_back(other_flag);
+                            added = true;
+                        }
+                    }
+                }
+            }
+        }
+        if(!added) {
+            break ;
+        }
+    }
+
+    for(auto& b : m_output.blocks) {
+        for(auto it = b.statements.begin(); it != b.statements.end(); ++it)
+        {
+            // NOTE: Only need to worry about SetDropFlag, as the other ways of setting a flag are not generated yet.
+            if( auto* p = it->opt_SetDropFlag() ) {
+                // Take a copy, which will be mutated to create the copies
+                auto v = *p;
+                auto df_it = m_drop_flag_aliases.find(v.idx);
+                if( df_it != m_drop_flag_aliases.end() )
+                {
+                    // For each entry in `df_it->second`, add a copy of this SetDropFlag _before_ `it` (so it doesn't get re-visited)
+                    for(unsigned other_idx : df_it->second)
+                    {
+                        v.idx = other_idx;
+                        // Ensure that `it` always points to the original
+                        it = b.statements.insert(it, ::MIR::Statement(v)) + 1;
+                    }
+                }
+            }
+        }
+    }
 }
 
 const ::HIR::TypeRef* MirBuilder::is_type_owned_box(const ::HIR::TypeRef& ty) const
@@ -716,6 +767,10 @@ bool MirBuilder::get_drop_flag_default(const Span& sp, unsigned int idx)
 {
     return m_output.drop_flags.at(idx);
 }
+void MirBuilder::drop_flag_alias(unsigned int old_idx, unsigned int new_idx)
+{
+    m_drop_flag_aliases[old_idx].push_back(new_idx);
+}
 
 ScopeHandle MirBuilder::new_scope_var(const Span& sp)
 {
@@ -1215,6 +1270,7 @@ namespace
                         assert( !builder.is_type_owned_box(ty) );
                         is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                         });
+                
                 // Create a Partial filled with copies of the Optional
                 // TODO: This can lead to contradictions when one field is moved and another not.
                 // - Need to allocate a new drop flag and handle the case where old_state is the state before the
@@ -1228,7 +1284,7 @@ namespace
                     for(size_t i = 0; i < nse.inner_states.size(); i ++)
                     {
                         auto new_flag = builder.new_drop_flag(builder.get_drop_flag_default(sp, old_state.as_Optional()));
-                        builder.push_stmt_set_dropflag_other(sp, new_flag,  old_state.as_Optional());
+                        builder.drop_flag_alias(old_state.as_Optional(), new_flag);
                         inner.push_back(VarState::make_Optional( new_flag ));
                     }
                     old_state = VarState::make_Partial({ mv$(inner) });
