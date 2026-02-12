@@ -5,10 +5,11 @@
 
 name: MSBuild
 
-on:
-  push:
-  pull_request:
-    branches: [ "master" ]
+on: []
+#on:
+#  push:
+#  pull_request:
+#    branches: [ "master" ]
 
 env:
   # Path to the solution file relative to the root of the project.
