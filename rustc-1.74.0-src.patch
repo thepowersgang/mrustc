@@ -124,3 +124,25 @@
 +#[cfg(all(target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  from_hex_array_impl! {
 
+--- src/llvm-project/llvm/include/llvm/ADT/SmallVector.h
++++ src/llvm-project/llvm/include/llvm/ADT/SmallVector.h
+@@ -21,2 +21,3 @@
+ #include <cstddef>
++#include <cstdint>
+ #include <cstdlib>
+--- src/llvm-project/llvm/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.h
++++ src/llvm-project/llvm/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.h
+@@ -14,4 +14,5 @@
+ #define LLVM_LIB_TARGET_X86_MCTARGETDESC_X86MCTARGETDESC_H
+ 
++#include <cstdint>
+ #include <memory>
+ #include <string>
+--- src/llvm-project/llvm/lib/Target/AMDGPU/MCTargetDesc/AMDGPUMCTargetDesc.h
++++ src/llvm-project/llvm/lib/Target/AMDGPU/MCTargetDesc/AMDGPUMCTargetDesc.h
+@@ -16,4 +16,5 @@
+ #define LLVM_LIB_TARGET_AMDGPU_MCTARGETDESC_AMDGPUMCTARGETDESC_H
+ 
++#include <cstdint>
+ #include <memory>
+ 

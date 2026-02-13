@@ -386,6 +386,11 @@ namespace {
             auto cb_monomorph = MonomorphStatePtr(&impl_ty, &impl.m_trait_args, nullptr);
             auto cb_monomorph2 = MonomorphStatePtr(nullptr, &impl_params, nullptr);
 
+            // TODO: Only emit impls if the type is going to be visible to downstream crates
+            // - But how to tell that? What if the type is exposed via `-> impl Foo`?
+            // - Lazy (wrong) version would be to not emit if the type is private - but private types can be leaked
+            //   - Could flag leaked private types in a previous pass?
+
             // Emit each method/static (in the trait itself)
             const auto& trait = resolve.m_crate.get_trait_by_path(sp, trait_path);
             for(const auto& vi : trait.m_values)
@@ -1382,6 +1387,10 @@ void Trans_Enumerate_Types(EnumState& state)
                 tv.visit_type(gpath.m_params.m_types[0]);
             }
         }
+        for(const auto& ty : state.rv.auto_clone_impls)
+        {
+            tv.visit_type(ty);
+        }
 
         constructors_added = false;
         for(unsigned int i = types_count; i < state.rv.m_types.size(); i ++ )
@@ -1411,6 +1420,8 @@ void Trans_Enumerate_Types(EnumState& state)
 
             if( const auto* ity = tv.m_resolve.is_type_owned_box(ty) )
             {
+                // NOTE: Save the params before visiting, as the TypeRef might move as types are added, but the inner data won't move
+                const auto& p = ty.data().as_Path().path.m_data.as_Generic().m_params;
                 tv.visit_type(*ity);
                 
                 if( TARGETVER_MOST_1_54 )
@@ -1418,7 +1429,6 @@ void Trans_Enumerate_Types(EnumState& state)
                     // Reqire drop glue for inner type.
                     // - Should that already exist?
                     // Requires box_free lang item
-                    const auto& p = ty.data().as_Path().path.m_data.as_Generic().m_params;
                     Trans_Enumerate_FillFrom_PathMono(state, ::HIR::GenericPath( state.crate.get_lang_item_path(sp, "box_free"), p.clone() ));
                 }
             }
