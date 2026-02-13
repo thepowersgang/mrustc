@@ -884,8 +884,8 @@ namespace {
                             {
                             case FmtArgs::Align::Unspec:    flags |= 3 << 29; break;
                             case FmtArgs::Align::Left:      flags |= 0 << 29; break;
-                            case FmtArgs::Align::Center:    flags |= 1 << 29; break;
-                            case FmtArgs::Align::Right:     flags |= 2 << 29; break;
+                            case FmtArgs::Align::Right:     flags |= 1 << 29; break;
+                            case FmtArgs::Align::Center:    flags |= 2 << 29; break;
                             }
 
                             flags |= 1 << 31;
