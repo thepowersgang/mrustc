@@ -209,6 +209,7 @@ public:
     struct Markings {
         std::vector<unsigned> rustc_legacy_const_generics;
         bool track_caller = false;
+        bool is_naked = false;
         enum Inline {
             Auto,   // no annotation
             Never,  // #[inline(never)]

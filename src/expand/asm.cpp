@@ -18,6 +18,7 @@
 #include <hir/asm.hpp>
 #include <trans/target.hpp>
 #include <cctype>
+#include "cfg.hpp"
 
 namespace
 {
@@ -255,16 +256,19 @@ public:
         std::vector<std::pair<Span,std::string>>    raw_lines;
         do {
             auto ps = lex.start_span();
+            auto attrs = Parse_ItemAttrs(lex);
             auto text = get_string(sp, lex,  crate, mod);
             auto sp = lex.end_span(ps);
-            raw_lines.push_back(std::make_pair(sp, std::move(text)));
+            if( check_cfg_attrs(attrs) ) {
+                raw_lines.push_back(std::make_pair(sp, std::move(text)));
+            }
 
             if( lex.lookahead(0) == TOK_EOF ) {
                 GET_TOK(tok, lex);
                 break;
             }
             GET_CHECK_TOK(tok, lex, TOK_COMMA);
-        } while( lex.lookahead(0) == TOK_STRING );
+        } while( lex.lookahead(0) == TOK_STRING || lex.lookahead(0) == TOK_HASH );
 
 
         std::vector<AST::ExprNode_Asm2::Param>  params;

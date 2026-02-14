@@ -246,6 +246,7 @@ public:
             Always
         } inline_type = Inline::Auto;
         bool is_cold = false;
+        bool is_naked = false;
         std::vector<unsigned>   rustc_legacy_const_generics;
 
         std::string link_name;

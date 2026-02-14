@@ -5613,11 +5613,12 @@ namespace {
                 m_of << "(\"";
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
                     m_of << ".intel_syntax noprefix; ";
+                bool escape_percent = true || !inputs.empty() || !outputs.empty();
                 for(const auto& l : se.lines)
                 {
                     for(const auto& f : l.frags)
                     {
-                        m_of << FmtGccAsm(f.before, !inputs.empty() || !outputs.empty());
+                        m_of << FmtGccAsm(f.before, escape_percent);
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
                         m_of << "%";
                         if( arg_mappings.at(f.index) == UINT8_MAX-1 ) {
@@ -5639,7 +5640,7 @@ namespace {
                         }
                         m_of << arg_mappings.at(f.index);
                     }
-                    m_of << FmtGccAsm(l.trailing, !inputs.empty() || !outputs.empty());
+                    m_of << FmtGccAsm(l.trailing, escape_percent);
                     m_of << ";\\n ";
                 }
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
@@ -5801,6 +5802,16 @@ namespace {
         {
             ::HIR::TypeRef  tmp;
             const auto& ret_ty = monomorphise_fcn_return(tmp, item, params);
+            if( item.m_markings.is_naked ) {
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "__attribute__((naked)) ";
+                    break;
+                case Compiler::Msvc:
+                    TODO(Span(), "Naked functions in msvc");
+                }
+            }
             auto cb = FMT_CB(ss,
                 // TODO: Cleaner ABI handling
                 if( item.m_abi == "system" && m_compiler == Compiler::Msvc )

@@ -1852,6 +1852,7 @@ namespace {
     {
         markings.track_caller = true;
     }
+    markings.is_naked = f.m_markings.is_naked;
 
     ::HIR::Linkage  linkage;
     switch(f.m_markings.linkage) {

@@ -672,6 +672,15 @@ class CHandler_Unsafe:
                     ERROR(sp, E0000, "#[unsafe(" << ident << ")] on non-function");
                 }
             }
+            else if( ident == "naked" ) {
+                if(auto* e =i.opt_Function()) {
+                    // Flag this function as being a bare symbol (no prologue/epilogue)
+                    e->m_markings.is_naked = true;
+                }
+                else {
+                    ERROR(sp, E0000, "#[unsafe(" << ident << ")] on non-function");
+                }
+            }
             else {
                 ERROR(sp, E0000, "Unknown #[unsafe(" << ident << ")]");
             }
