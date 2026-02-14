@@ -23,13 +23,14 @@ elif [[ "$RUSTC_VERSION" == "1.74.0" ]]; then
     RUSTC_VERSION_NEXT=1.75.0
     RUN_RUSTC_SUF=-1.74.0
 elif [[ "$RUSTC_VERSION" == "1.90.0" ]]; then
-    RUSTC_VERSION_NEXT=1.91.0
+    # 1.91 had a patch release
+    RUSTC_VERSION_NEXT=1.91.1
     RUN_RUSTC_SUF=-1.90.0
 else
     echo "Unknown rustc version"
 fi
 
-MAKEFLAGS=-j8
+MAKEFLAGS=-j${PARLEVEL:-8}
 export MAKEFLAGS
 
 echo "=== Building stage0 rustc (with libstd)"
