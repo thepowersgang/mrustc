@@ -52,6 +52,7 @@ ifneq ($(TARGETVER_LEAST_1_54),)
  RUST_SRC_LIBS := $(RUST_SRC)library/
  RUST_SRC_RUSTC := $(RUST_SRC)compiler/rustc/
  RUST_SRC_CODEGEN := $(RUST_SRC)compiler/rustc_codegen_llvm/
+ RUST_SRC_CARGO := $(RUST_SRC)src/tools/cargo/
  VENDOR_DIR := $(RUST_SRC)vendor
  RUSTC_BINNAME := rustc-main
  CARGO_FLAGS_rustc += --features llvm
@@ -59,10 +60,12 @@ else ifneq ($(TARGETVER_LEAST_1_39),)
  RUST_SRC_LIBS := $(RUST_SRC)src/lib
  RUST_SRC_RUSTC := $(RUST_SRC)src/rustc/
  RUST_SRC_CODEGEN := $(RUST_SRC)src/librustc_codegen_llvm/
+ RUST_SRC_CARGO := $(RUST_SRC)src/tools/cargo/
  VENDOR_DIR := $(RUST_SRC)vendor
 else
  RUST_SRC_LIBS := $(RUST_SRC)src/lib
  RUST_SRC_RUSTC := $(RUST_SRC)src/rustc/
+ RUST_SRC_CARGO := $(RUST_SRC)src/tools/cargo/
  # librustc_codegen_llvm
  VENDOR_DIR := $(RUST_SRC)src/vendor
 endif
@@ -135,7 +138,7 @@ $(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
 $(BINDIR_S)rustc: ../output$(OUTDIR_SUF)/rustc
 	@mkdir -p $(dir $@)
 	cp $< $@
-$(BINDIR)cargo: ../output$(OUTDIR_SUF)/cargo
+$(BINDIR_S)cargo: ../output$(OUTDIR_SUF)/cargo
 	@mkdir -p $(dir $@)
 	cp $< $@
 
@@ -173,17 +176,17 @@ $(BINDIR_S)hello_world: $(RUST_SRC_HELLO) $(LIBDIR_S)libstd.rlib $(BINDIR_S)rust
 # ---
 CARGO_OUTDIR_STAGE2_STD := $(OUTDIR)build-std2/$(RUSTC_TARGET)/release/
 CARGO_ENV_STAGE2_STD := CARGO_TARGET_DIR=$(OUTDIR)build-std2 RUSTC=$(abspath rustc_proxy.sh) PROXY_RUSTC=$(abspath $(BINDIR_2)rustc) PROXY_MRUSTC=$(abspath $(BINDIR_S)rustc) $(CARGO_ENV)
-$(LIBDIR_2)libtest.rlib: $(LIBDIR_S)libstd.rlib $(BINDIR_2)rustc $(BINDIR_S)rustc $(BINDIR)cargo $(CARGO_HOME)config Makefile
+$(LIBDIR_2)libtest.rlib: $(LIBDIR_S)libstd.rlib $(BINDIR_2)rustc $(BINDIR_S)rustc $(BINDIR_S)cargo $(CARGO_HOME)config Makefile
 	@mkdir -p $(LIBDIR_2)
 	@echo [CARGO] $(RUST_SRC_LIBS)test/Cargo.toml '>' $(OUTDIR)build-std2
 ifneq ($(TARGETVER_LEAST_1_74),)
-	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)sysroot/Cargo.toml --features panic-unwind
+	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)sysroot/Cargo.toml --features panic-unwind
 else ifeq ($(TARGETVER_LEAST_1_39),)
-	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)std/Cargo.toml --features panic-unwind
+	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)std/Cargo.toml --features panic-unwind
 	$Vcp --remove-destination $(CARGO_OUTDIR_STAGE2_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE2_STD)deps/*.$(DYLIB_EXT) $(LIBDIR_2)
-	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml
+	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml
 else
-	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml --features panic-unwind
+	$V$(CARGO_ENV_STAGE2_STD) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml --features panic-unwind
 endif
 	$Vcp $(CARGO_OUTDIR_STAGE2_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE2_STD)deps/*.rmeta $(CARGO_OUTDIR_STAGE2_STD)deps/*.$(DYLIB_EXT) $(LIBDIR_2)
 
@@ -198,13 +201,13 @@ $(BINDIR_2)rustc: ../output$(OUTDIR_SUF)/rustc
 CARGO_OUTDIR_RUSTC := $(OUTDIR)build-rustc/$(RUSTC_TARGET)/release/
 CARGO_ENV_RUSTC := CARGO_TARGET_DIR=$(OUTDIR)build-rustc RUSTC=$(abspath rustc_proxy.sh) PROXY_RUSTC=$(abspath $(BINDIR_2)rustc) PROXY_MRUSTC=$(abspath $(BINDIR_S)rustc) $(CARGO_ENV)
 # - Build rustc with itself (so we have a rustc with the right ABI)
-$(BINDIR)rustc: $(BINDIR_2)rustc $(BINDIR)cargo $(CARGO_HOME)config $(LIBDIR_2)libtest.rlib
+$(BINDIR)rustc: $(BINDIR_2)rustc $(BINDIR_S)cargo $(CARGO_HOME)config $(LIBDIR_2)libtest.rlib
 	@mkdir -p $(PREFIX)tmp
 	@echo [CARGO] $(RUST_SRC_RUSTC)Cargo.toml '>' $(OUTDIR)build-rustc/
-	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_RUSTC)Cargo.toml $(CARGO_FLAGS_rustc)
+	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_RUSTC)Cargo.toml $(CARGO_FLAGS_rustc)
 ifeq ($(RUSTC_VERSION),1.39.0)
 	@echo [CARGO] $(RUST_SRC_CODEGEN)Cargo.toml '>' $(OUTDIR)build-rustc/
-	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR)cargo rustc $(CARGO_FLAGS) --manifest-path $(RUST_SRC_CODEGEN)Cargo.toml -- -L $(abspath $(CARGO_OUTDIR_RUSTC)deps)
+	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR_S)cargo rustc $(CARGO_FLAGS) --manifest-path $(RUST_SRC_CODEGEN)Cargo.toml -- -L $(abspath $(CARGO_OUTDIR_RUSTC)deps)
 	@mkdir -p $(LIBDIR)../codegen-backends
 	@echo "[CP] libraries and results ($@)"
 	$V$(call fn_opt_copy,$(CARGO_OUTDIR_RUSTC)librustc_codegen_llvm.$(DYLIB_EXT),$(LIBDIR)../codegen-backends/librustc_codegen_llvm-llvm.$(DYLIB_EXT))
@@ -223,19 +226,31 @@ endif
 	$Vprintf '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(OUTDIR)prefix/lib):$(abspath $(LIBDIR))" $$d/rustc_binary "$$@"' >$@
 	$Vchmod +x $@
 
+#
+#
+#
+$(BINDIR)cargo: $(BINDIR)rustc
+	@echo [CARGO] $(RUST_SRC_RUSTC)Cargo.toml '>' $(OUTDIR)build-rustc/
+	$VTMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_CARGO)Cargo.toml
+	$Vcp $(CARGO_OUTDIR_RUSTC)cargo $(BINDIR)cargo
+
+
+#
+#
+#
 CARGO_OUTDIR_STAGE3_STD := $(OUTDIR)build-std/$(RUSTC_TARGET)/release/
 CARGO_ENV_STAGE3_STD := CARGO_TARGET_DIR=$(OUTDIR)build-std RUSTC=$(abspath rustc_proxy.sh) PROXY_RUSTC=$(abspath $(BINDIR)rustc) PROXY_MRUSTC=$(abspath $(BINDIR_2)rustc) $(CARGO_ENV)
 $(LIBDIR)libstd.rlib: $(BINDIR)rustc
 	@mkdir -p $(LIBDIR)
 	@echo [CARGO] $(RUST_SRC_LIBS)test/Cargo.toml '>' $(OUTDIR)build-std2
 ifneq ($(TARGETVER_LEAST_1_74),)
-	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)sysroot/Cargo.toml --features panic-unwind
+	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)sysroot/Cargo.toml --features panic-unwind
 else ifeq ($(TARGETVER_LEAST_1_39),)
-	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)std/Cargo.toml --features panic-unwind
+	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)std/Cargo.toml --features panic-unwind
 	$Vcp --remove-destination $(CARGO_OUTDIR_STAGE3_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE3_STD)deps/*.$(DYLIB_EXT) $(LIBDIR)
-	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml
+	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml
 else
-	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml --features panic-unwind
+	$V$(CARGO_ENV_STAGE3_STD) $(BINDIR_S)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_LIBS)test/Cargo.toml --features panic-unwind
 endif
 	$Vcp $(CARGO_OUTDIR_STAGE3_STD)deps/*.rlib $(CARGO_OUTDIR_STAGE3_STD)deps/*.$(DYLIB_EXT) $(LIBDIR)
 
