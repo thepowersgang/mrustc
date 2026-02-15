@@ -218,6 +218,7 @@ endif
 	$Vcp $(LIBDIR_2)*.$(DYLIB_EXT) $(PREFIX)lib
 	$Vcp $(CARGO_OUTDIR_RUSTC)deps/*.rlib $(LIBDIR)
 	$Vcp $(CARGO_OUTDIR_RUSTC)deps/*.$(DYLIB_EXT) $(LIBDIR)
+	@mkdir -p $(BINDIR)
 ifeq ($(RUSTC_VERSION),1.19.0)
 	$Vcp $(CARGO_OUTDIR_RUSTC)rustc $(BINDIR)rustc_binary
 else
