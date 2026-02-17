@@ -29,7 +29,7 @@ class Expr;
 class LifetimeParam;
 
 class Path;
-class PathParams;
+struct PathParams;
 class MacroInvocation;
 }
 class TypeRef;

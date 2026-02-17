@@ -37,7 +37,8 @@ namespace {
             TAGGED_UNION(CRNode, Generator,
                 (Generator, ::HIR::ExprNode_Generator*),
                 (Async, ::HIR::ExprNode_AsyncBlock*)
-            ) node;
+            );
+            CRNode node;
 
             // Note: Counts the total number of `yield`s encountered
             // - Loops are pre-counted to either be `-2` (no inner yields) or `-1` (has an inner yield)

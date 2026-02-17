@@ -394,7 +394,7 @@ const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef
     return m_resolve.is_type_owned_box(ty);
 }
 
-size_t ::MIR::TypeResolve::intrinsic_offset_of(const ::HIR::TypeRef& ty, const ::std::vector<MIR::Param>& values) const
+size_t MIR::TypeResolve::intrinsic_offset_of(const ::HIR::TypeRef& ty, const ::std::vector<MIR::Param>& values) const
 {
     const auto* cur_ty = &ty;
     size_t base_ofs = 0;
