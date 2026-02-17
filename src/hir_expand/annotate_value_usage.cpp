@@ -31,11 +31,14 @@ namespace {
         };
 
         /// Scope state for generators
-        struct GeneratorScope
+        struct CoroutineScope
         {
             static const unsigned STACK_MARKER_LOOP;
-
-            ::HIR::ExprNode_Generator&  node;
+            TAGGED_UNION(CRNode, Generator,
+                (Generator, ::HIR::ExprNode_Generator*),
+                (Async, ::HIR::ExprNode_AsyncBlock*)
+            );
+            CRNode node;
 
             // Note: Counts the total number of `yield`s encountered
             // - Loops are pre-counted to either be `-2` (no inner yields) or `-1` (has an inner yield)
@@ -52,8 +55,14 @@ namespace {
             };
             std::map<unsigned, Var> used_variables;
 
-            GeneratorScope(::HIR::ExprNode_Generator& node):
-                node(node)
+            CoroutineScope(::HIR::ExprNode_Generator& node):
+                node(&node)
+            {
+                // This should always be non-empty
+                yield_stack.push_back(0);
+            }
+            CoroutineScope(::HIR::ExprNode_AsyncBlock& node):
+                node(&node)
             {
                 // This should always be non-empty
                 yield_stack.push_back(0);
@@ -62,7 +71,7 @@ namespace {
         TAGGED_UNION(Scope, None,
             (None, struct{}),
             (Closure, ClosureScope),
-            (Generator, GeneratorScope)
+            (Coroutine, CoroutineScope)
         );
 
         const StaticTraitResolve&    m_resolve;
@@ -148,7 +157,7 @@ namespace {
 
         void visit(::HIR::ExprNode_Block& node) override
         {
-            GeneratorScope* scope = m_closure_stack.size() > 0 ? m_closure_stack.back().opt_Generator() : nullptr;
+            CoroutineScope* scope = m_closure_stack.size() > 0 ? m_closure_stack.back().opt_Coroutine() : nullptr;
             if(scope) {
                 scope->yield_stack.push_back(0);
             }
@@ -163,7 +172,7 @@ namespace {
 
             if(scope) {
                 // NOTE: Have to get the pointer again (it might have changed due to inner push/pop)
-                scope = &m_closure_stack.back().as_Generator();
+                scope = &m_closure_stack.back().as_Coroutine();
                 scope->yield_stack.pop_back();
             }
         }
@@ -217,18 +226,38 @@ namespace {
             this->visit_node_ptr( node.m_value );
 
             // `yield`: Increase all stack entries that don't correspond to a loop
-            GeneratorScope* scope = m_closure_stack.size() > 0 ? m_closure_stack.back().opt_Generator() : nullptr;
-            if(scope)
+            CoroutineScope* scope = m_closure_stack.size() > 0 ? m_closure_stack.back().opt_Coroutine() : nullptr;
+            if(scope && scope->node.is_Generator())
             {
                 for(size_t i = 0; i < scope->yield_stack.size(); i ++)
                 {
-                    if(scope->yield_stack[i] != GeneratorScope::STACK_MARKER_LOOP) {
+                    if(scope->yield_stack[i] != CoroutineScope::STACK_MARKER_LOOP) {
                         // Assert that adding 1 won't overflow (... that'd be >65k yield statements)
-                        assert(scope->yield_stack[i] < GeneratorScope::STACK_MARKER_LOOP-1);
+                        assert(scope->yield_stack[i] < CoroutineScope::STACK_MARKER_LOOP-1);
                         scope->yield_stack[i] += 1;
                     }
                 }
                 DEBUG("yield stack=[" << scope->yield_stack << "]");
+            }
+        }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            auto _ = this->push_usage( ::HIR::ValueUsage::Move );
+            this->visit_node_ptr( node.m_value );
+
+            // `yield`: Increase all stack entries that don't correspond to a loop
+            CoroutineScope* scope = m_closure_stack.size() > 0 ? m_closure_stack.back().opt_Coroutine() : nullptr;
+            if(scope && scope->node.is_Async())
+            {
+                for(size_t i = 0; i < scope->yield_stack.size(); i ++)
+                {
+                    if(scope->yield_stack[i] != CoroutineScope::STACK_MARKER_LOOP) {
+                        // Assert that adding 1 won't overflow (... that'd be >65k yield statements)
+                        assert(scope->yield_stack[i] < CoroutineScope::STACK_MARKER_LOOP-1);
+                        scope->yield_stack[i] += 1;
+                    }
+                }
+                DEBUG("await stack=[" << scope->yield_stack << "]");
             }
         }
         void visit(::HIR::ExprNode_Let& node) override
@@ -242,7 +271,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Loop& node) override
         {
-            GeneratorScope* scope = m_closure_stack.size() > 0 ? m_closure_stack.back().opt_Generator() : nullptr;
+            CoroutineScope* scope = m_closure_stack.size() > 0 ? m_closure_stack.back().opt_Coroutine() : nullptr;
             if(scope) {
                 // 1. Determine if there's a yield within this
                 struct InnerVisitor: public ::HIR::ExprVisitorDef
@@ -257,6 +286,10 @@ namespace {
                     {
                         // Ignore inner generators (yields can't pass them)
                     }
+                    void visit(::HIR::ExprNode_AsyncBlock& ) override
+                    {
+                        // Ignore inner asyncs (yields can't pass them)
+                    }
                     void visit(::HIR::ExprNode_Yield& node) override
                     {
                         m_has_yield = true;
@@ -268,7 +301,7 @@ namespace {
                 // 2. If so, push `STACK_MARKER_LOOP`
                 if( v.m_has_yield ) {
                     DEBUG("Loop with inner yield");
-                    scope->yield_stack.push_back(GeneratorScope::STACK_MARKER_LOOP);
+                    scope->yield_stack.push_back(CoroutineScope::STACK_MARKER_LOOP);
                 }
                 else {
                     // Clear `scope` to prevent the pop
@@ -282,7 +315,7 @@ namespace {
 
             if(scope) {
                 // NOTE: Have to get the pointer again (it might have changed due to inner push/pop)
-                scope = &m_closure_stack.back().as_Generator();
+                scope = &m_closure_stack.back().as_Coroutine();
                 scope->yield_stack.pop_back();
             }
         }
@@ -302,7 +335,7 @@ namespace {
                 for( const auto& arm : node.m_arms )
                 {
                     for( const auto& pat : arm.m_patterns ) {
-                        DEBUG(pat);
+                        DEBUG("_Match: " << pat);
                         vu = ::std::max( vu, this->get_usage_for_pattern(node.span(), pat, val_ty) );
                     }
                 }
@@ -540,13 +573,13 @@ namespace {
             // TODO: Different usage based on trait.
             ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Borrow;
 
-            if( const auto* closure = node.m_value->m_res_type.data().opt_Closure() ) {
-                assert(closure->node);
-                if( closure->node->m_class == ::HIR::ExprNode_Closure::Class::Unknown ) {
+            if( const auto* node_pp = TU_OPT1(node.m_value->m_res_type.data(), NodeType, .opt_Closure()) ) {
+                assert(*node_pp);
+                if( (*node_pp)->m_class == ::HIR::ExprNode_Closure::Class::Unknown ) {
                     auto _ = push_usage( ::HIR::ValueUsage::Move );
                     this->visit_node_ptr(node.m_value);
                 }
-                switch(closure->node->m_class)
+                switch((*node_pp)->m_class)
                 {
                 case ::HIR::ExprNode_Closure::Class::Unknown:
                     BUG(node.span(), "CallValue with unknown closure class - " << node.m_value->m_res_type);
@@ -670,19 +703,19 @@ namespace {
 
                 ::std::vector<bool> provided_mask( fields.size() );
                 for( const auto& fld : node.m_values ) {
-                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == fld.first; }) - fields.begin();
+                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const HIR::StructField& x){ return x.name == fld.first; }) - fields.begin();
                     provided_mask[idx] = true;
                 }
 
                 const auto monomorph_cb = MonomorphStatePtr(nullptr, &ty_path.m_params, nullptr);
                 for( unsigned int i = 0; i < fields.size(); i ++ ) {
                     if( ! provided_mask[i] ) {
-                        const auto& ty_o = fields[i].second.ent;
+                        const auto& ty_o = fields[i].ty;
                         ::HIR::TypeRef  tmp;
                         const auto& ty_m = monomorphise_type_with_opt(node.span(), tmp, ty_o, monomorph_cb);
                         bool is_copy = m_resolve.type_is_copy(node.span(), ty_m);
                         if( !is_copy ) {
-                            DEBUG("- Field " << i << " " << fields[i].first << ": " << ty_m << " moved");
+                            DEBUG("- Field " << i << " " << fields[i].name << ": " << ty_m << " moved");
                             is_moved = true;
                         }
                     }
@@ -829,95 +862,38 @@ namespace {
         }
         void visit(::HIR::ExprNode_Generator& node) override
         {
-            m_closure_stack.push_back(GeneratorScope(node));
-
-            //for(const auto& arg : node.m_args)
-            //    add_defs_from_pattern(node.span(), arg.first);
+            m_closure_stack.push_back(CoroutineScope(node));
 
             {
                 auto _ = push_usage( ::HIR::ValueUsage::Move );
                 this->visit_node_ptr(node.m_code);
             }
 
-            auto ent = std::move(m_closure_stack.back().as_Generator());
+            auto ent = std::move(m_closure_stack.back().as_Coroutine());
             m_closure_stack.pop_back();
 
-            // - If this closure is a move closure, mutate `captured_vars` such that all captures are tagged with ValueUsage::Move
-            if( node.m_is_move )
-            {
-                for(auto& cap : ent.used_variables)
-                {
-                    if(cap.second.defined_stack.empty())
-                    {
-                        cap.second.usage = ::HIR::ValueUsage::Move;
-                    }
-                }
-            }
-            else
-            {
-                for(auto& cap : ent.used_variables)
-                {
-                    if( cap.second.usage == ::HIR::ValueUsage::Borrow ) {
-                        ::HIR::TypeRef  tmp_ty;
-                        const auto* cap_ty_p = &m_variable_types.at(cap.first);
-                        //for(const auto& n : cap.fields) {
-                        //    tmp_ty = m_resolve.get_field_type(node.span(), *cap_ty_p, n);
-                        //    m_resolve.expand_associated_types(node.span(), tmp_ty);
-                        //    cap_ty_p = &tmp_ty;
-                        //}
-                        if( cap_ty_p->data().is_Borrow() && cap_ty_p->data().as_Borrow().type == ::HIR::BorrowType::Shared ) {
-                            DEBUG("> Upgrade capture #" << cap.first<< " to Move, as it's a shared borrow");
-                            cap.second.usage = ::HIR::ValueUsage::Move;
-                        }
-                    }
-                }
-            }
-
-            // - Apply into the parent stack
-            if( m_closure_stack.size() > 0 )
-            {
-                DEBUG("> Apply to parent");
-                for(const auto& cap : ent.used_variables)
-                {
-                    // Only apply already-defined variables (ones without a set `defined_stack`)
-                    if(cap.second.defined_stack.empty())
-                    {
-                        mark_used_variable(node.span(), cap.first, {}, cap.second.usage);
-                    }
-                }
-            }
-
-
-            size_t n_caps = 0;
-            size_t n_locals = 0;
-            for(const auto& cap : ent.used_variables)
-            {
-                if( cap.second.defined_stack.empty() )
-                {
-                    n_caps += 1;
-                }
-                else
-                {
-                    n_locals += 1;
-                }
-            }
-            node.m_avu_cache.captured_vars.reserve(n_caps);
-            node.m_avu_cache.local_vars.reserve(n_locals);
-            for(const auto& cap : ent.used_variables)
-            {
-                if( cap.second.defined_stack.empty() )
-                {
-                    node.m_avu_cache.captured_vars.push_back(std::make_pair(cap.first, cap.second.usage));
-                }
-                else
-                {
-                    node.m_avu_cache.local_vars.push_back(cap.first);
-                }
-            }
+            apply_coroutine(node.span(), node.m_is_move, node.m_avu_cache, ent.used_variables);
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override
         {
             BUG(node.span(), "");
+        }
+
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            // NOTE: This is a near-clone of `ExprNode_Generator` (they're very similar, and at one point
+            // futures/async were directly implemented as syntax sugar around generators)
+            m_closure_stack.push_back(CoroutineScope(node));
+
+            {
+                auto _ = push_usage( ::HIR::ValueUsage::Move );
+                this->visit_node_ptr(node.m_code);
+            }
+
+            auto scope = std::move(m_closure_stack.back().as_Coroutine());
+            m_closure_stack.pop_back();
+
+            apply_coroutine(node.span(), node.m_is_move, node.m_avu_cache, scope.used_variables);
         }
 
     private:
@@ -928,7 +904,7 @@ namespace {
                 e.local_vars.insert(it, slot);
             }
         }
-        void add_var_def_generator(const Span& sp, GeneratorScope& scope, unsigned int slot)
+        void add_var_def_generator(const Span& sp, CoroutineScope& scope, unsigned int slot)
         {
             auto& e = scope.used_variables[slot];
             DEBUG("_Variable: #" << slot << " '?' stack=[" << scope.yield_stack << "]");
@@ -944,7 +920,7 @@ namespace {
             TU_ARMA(Closure, e) {
                 add_var_def_closure(sp, e, slot);
                 }
-            TU_ARMA(Generator, e) {
+            TU_ARMA(Coroutine, e) {
                 add_var_def_generator(sp, e, slot);
                 }
             }
@@ -1114,12 +1090,12 @@ namespace {
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < pe.leading.size(); i ++)
                 {
-                    auto sty = monomorph_state.monomorph_type(sp, flds[i].ent);
+                    auto sty = m_resolve.monomorph_expand(sp, flds[i].ent, monomorph_state);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.leading[i], sty));
                 }
                 for(unsigned int i = 0; i < pe.trailing.size(); i ++)
                 {
-                    auto sty = monomorph_state.monomorph_type(sp, flds[flds.size() - pe.trailing.size() + i].ent);
+                    auto sty = m_resolve.monomorph_expand(sp, flds[flds.size() - pe.trailing.size() + i].ent, monomorph_state);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.trailing[i], sty));
                 }
                 return rv;
@@ -1138,10 +1114,10 @@ namespace {
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& fld_pat : pe.sub_patterns)
                 {
-                    auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
+                    auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const HIR::StructField& x){return x.name == fld_pat.first;});
                     ASSERT_BUG(sp, fld_it != flds.end(), "Unable to find field " << fld_pat.first);
 
-                    auto sty = monomorph_state.monomorph_type(sp, fld_it->second.ent);
+                    auto sty = m_resolve.monomorph_expand(sp, fld_it->ty, monomorph_state);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
                 }
                 return rv;
@@ -1302,18 +1278,20 @@ namespace {
                 closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Mut);
                 break;
             case ::HIR::ValueUsage::Move:
-                //if( m_resolve.type_is_copy( sp, m_variable_types.at(slot) ) ) {
-                //    closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
-                //}
-                //else {
+                // TODO: Why is this disabled? Maybe for efficiency? as copies are marked as ValueUsage::Borrow anyway
+                if( m_resolve.type_is_copy( sp, m_variable_types.at(slot) ) ) {
+                    cap_type_name = "Borrow (copy)";
+                    closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Shared);
+                }
+                else {
                     cap_type_name = "Move";
                     closure.m_class = ::std::max(closure.m_class, ::HIR::ExprNode_Closure::Class::Once);
-                //}
+                }
                 break;
             }
             DEBUG("Captured " << slot << " - " << m_variable_types.at(slot) << " :: " << cap_type_name);
         }
-        void mark_used_variable_generator(const Span& sp, GeneratorScope& scope, unsigned int slot, std::vector<RcString> fields, ::HIR::ValueUsage usage)
+        void mark_used_variable_generator(const Span& sp, CoroutineScope& scope, unsigned int slot, std::vector<RcString> fields, ::HIR::ValueUsage usage)
         {
             auto& e = scope.used_variables[slot];
             e.last_used_stack = scope.yield_stack;
@@ -1329,13 +1307,87 @@ namespace {
             TU_ARMA(Closure, e) {
                 mark_used_variable_closure(sp, e, slot, fields, usage);
                 }
-            TU_ARMA(Generator, e) {
+            TU_ARMA(Coroutine, e) {
                 mark_used_variable_generator(sp, e, slot, fields, usage);
                 }
             }
         }
+
+        void apply_coroutine(const Span& sp, bool is_move, ::HIR::ExprNode_Generator::AvuCache& avu_cache, std::map<unsigned, CoroutineScope::Var>& used_variables)
+        {
+            // If this closure is a move closure, mutate `captured_vars` such that all captures are tagged with ValueUsage::Move
+            if( is_move )
+            {
+                for(auto& cap : used_variables)
+                {
+                    if(cap.second.defined_stack.empty())
+                    {
+                        cap.second.usage = ::HIR::ValueUsage::Move;
+                    }
+                }
+            }
+            else
+            {
+                for(auto& cap : used_variables)
+                {
+                    if( cap.second.usage == ::HIR::ValueUsage::Borrow ) {
+                        ::HIR::TypeRef  tmp_ty;
+                        const auto* cap_ty_p = &m_variable_types.at(cap.first);
+                        //for(const auto& n : cap.fields) {
+                        //    tmp_ty = m_resolve.get_field_type(node.span(), *cap_ty_p, n);
+                        //    m_resolve.expand_associated_types(node.span(), tmp_ty);
+                        //    cap_ty_p = &tmp_ty;
+                        //}
+                        if( cap_ty_p->data().is_Borrow() && cap_ty_p->data().as_Borrow().type == ::HIR::BorrowType::Shared ) {
+                            DEBUG("> Upgrade capture #" << cap.first<< " to Move, as it's a shared borrow");
+                            cap.second.usage = ::HIR::ValueUsage::Move;
+                        }
+                    }
+                }
+            }
+
+            // - Apply into the parent stack
+            if( m_closure_stack.size() > 0 )
+            {
+                DEBUG("> Apply to parent");
+                for(const auto& cap : used_variables)
+                {
+                    // Only apply already-defined variables (ones without a set `defined_stack`)
+                    if(cap.second.defined_stack.empty())
+                    {
+                        mark_used_variable(sp, cap.first, {}, cap.second.usage);
+                    }
+                }
+            }
+
+            // Optimisation: Pre-reserve the space required
+            {
+                size_t n_caps = 0;
+                size_t n_locals = 0;
+                for(const auto& cap : used_variables)
+                {
+                    if( cap.second.defined_stack.empty() ) {
+                        n_caps += 1;
+                    }
+                    else {
+                        n_locals += 1;
+                    }
+                }
+                avu_cache.captured_vars.reserve(n_caps);
+                avu_cache.local_vars.reserve(n_locals);
+            }
+            for(const auto& cap : used_variables)
+            {
+                if( cap.second.defined_stack.empty() ) {
+                    avu_cache.captured_vars.push_back(std::make_pair(cap.first, cap.second.usage));
+                }
+                else {
+                    avu_cache.local_vars.push_back(cap.first);
+                }
+            }
+        }
     };
-    const unsigned ExprVisitor_Mark::GeneratorScope::STACK_MARKER_LOOP = ~0u;
+    const unsigned ExprVisitor_Mark::CoroutineScope::STACK_MARKER_LOOP = ~0u;
 
 
     class OuterVisitor:

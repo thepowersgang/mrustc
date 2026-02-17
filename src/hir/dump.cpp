@@ -193,7 +193,11 @@ namespace {
                 inc_indent();
                 for(const auto& fld : flds)
                 {
-                    m_os << indent() << fld.second.publicity << " " << fld.first << ": " << fld.second.ent << ",\n";
+                    m_os << indent() << fld.vis << " " << fld.name << ": " << fld.ty;
+                    if( fld.default_value ) {
+                        m_os << " = " << *fld.default_value;
+                    }
+                    m_os << ",\n";
                 }
                 dec_indent();
                 m_os << indent() << "}\n";
@@ -406,6 +410,12 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
         }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            m_os << "(";
+            this->visit_node_ptr(node.m_value);
+            m_os << ").await";
+        }
         void visit(::HIR::ExprNode_Let& node) override
         {
             m_os << "let " << node.m_pattern << ": " << node.m_type;
@@ -452,7 +462,7 @@ namespace {
                     m_os << " if ";
                     for(auto& c : arm.m_guards)
                     {
-                        if( &c == &arm.m_guards.front() )
+                        if( &c != &arm.m_guards.front() )
                             m_os << " && ";
                         m_os << "let " << c.pat << " = ";
                         this->visit_node_ptr(c.val);
@@ -653,8 +663,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_Literal& node) override
         {
-            TU_MATCHA( (node.m_data), (e),
-            (Integer,
+            TU_MATCH_HDRA( (node.m_data), {)
+            TU_ARMA(Integer, e) {
                 switch(e.m_type)
                 {
                 case ::HIR::CoreType::U8:   m_os << e.m_value << "_u8" ;    break;
@@ -678,22 +688,25 @@ namespace {
                     } break;
                 default: m_os << e.m_value << "_unk";    break;
                 }
-                ),
-            (Float,
+                }
+            TU_ARMA(Float, e) {
                 switch(e.m_type)
                 {
                 case ::HIR::CoreType::F32:  m_os << e.m_value << "_f32";    break;
                 case ::HIR::CoreType::F64:  m_os << e.m_value << "_f64";    break;
                 default: m_os << e.m_value << "_unk";    break;
                 }
-                ),
-            (Boolean,
+                }
+            TU_ARMA(Boolean, e) {
                 m_os << (e ? "true" : "false");
-                ),
-            (String,
+                }
+            TU_ARMA(String, e) {
                 m_os << "\"" << FmtEscaped(e) << "\"";
-                ),
-            (ByteString,
+                }
+            TU_ARMA(CString, e) {
+                m_os << "c\"" << FmtEscaped(e.v) << "\"";
+                }
+            TU_ARMA(ByteString, e) {
                 m_os << "b\"";
                 for(auto b : e)
                 {
@@ -713,8 +726,8 @@ namespace {
                     }
                 }
                 m_os << "\"";
-                )
-            )
+                }
+            }
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {
@@ -827,6 +840,15 @@ namespace {
             //    m_os << arg.first << ": " << arg.second << ", ";
             m_os << "| -> " << node.m_return << " ";
             this->visit_node_ptr( node.m_code );
+        }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            if( node.m_is_move ) {
+                m_os << "move ";
+            }
+            m_os << "async {";
+            this->visit_node_ptr(node.m_code);
+            m_os << "}";
         }
 
     private:

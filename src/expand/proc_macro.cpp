@@ -38,7 +38,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -81,7 +81,7 @@ class Decorator_ProcMacroAttribute:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -98,7 +98,7 @@ class Decorator_ProcMacro:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -517,9 +517,11 @@ namespace {
             case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
             case TOK_STRING:        m_pmi.send_string(tok.str());       break;
             case TOK_BYTESTRING:    m_pmi.send_bytestring(tok.str());   break;
+            case TOK_CSTRING:
+                TODO(sp, "TOK_CSTRING");
 
             case TOK_HASH:      m_pmi.send_symbol("#"); break;
-            case TOK_UNDERSCORE:m_pmi.send_symbol("_"); break;
+            case TOK_UNDERSCORE:m_pmi.send_rword("_"); break;
 
             // Symbols
             case TOK_PAREN_OPEN:    m_pmi.send_symbol("("); break;
@@ -685,7 +687,7 @@ namespace {
             default:
                 TODO(sp, "visit_pattern " << pat.data().tag_str() << " - " << pat);
             TU_ARMA(Any, e) {
-                m_pmi.send_symbol("_");
+                m_pmi.send_rword("_");
                 }
             TU_ARMA(MaybeBind, e) {
                 if( e.name == "self" ) {
@@ -756,7 +758,7 @@ namespace {
                 BUG(sp, ty);
                 ),
             (Any,
-                m_pmi.send_symbol("_");
+                m_pmi.send_rword("_");
                 ),
             (Bang,
                 m_pmi.send_symbol("!");
@@ -796,7 +798,9 @@ namespace {
                 this->visit_lifetime(te.lifetime);
                 if( te.is_mut )
                     m_pmi.send_rword("mut");
+                m_pmi.send_symbol("(");
                 this->visit_type(*te.inner);
+                m_pmi.send_symbol(")");
                 ),
             (Pointer,
                 m_pmi.send_symbol("*");
@@ -804,7 +808,9 @@ namespace {
                     m_pmi.send_rword("mut");
                 else
                     m_pmi.send_rword("const");
+                m_pmi.send_symbol("(");
                 this->visit_type(*te.inner);
+                m_pmi.send_symbol(")");
                 ),
             (Array,
                 m_pmi.send_symbol("[");
@@ -814,7 +820,7 @@ namespace {
                     this->visit_node(*te.size);
                 }
                 else {
-                    m_pmi.send_symbol("_");
+                    m_pmi.send_rword("_");
                 }
                 m_pmi.send_symbol("]");
                 ),
@@ -853,18 +859,29 @@ namespace {
             (ErasedType,
                 m_pmi.send_rword("impl");
                 bool needs_plus = false;
-                for(const auto& t : te.traits)
+                for(const auto& t : te->traits)
                 {
                     if(needs_plus)  m_pmi.send_symbol("+");
                     needs_plus = true;
                     this->visit_hrbs(t.hrbs);
                     this->visit_path(*t.path);
                 }
-                for(const auto& lft : te.lifetimes) {
+                for(const auto& t : te->maybe_traits)
+                {
+                    if(needs_plus)  m_pmi.send_symbol("+");
+                    needs_plus = true;
+                    m_pmi.send_symbol("?");
+                    this->visit_hrbs(t.hrbs);
+                    this->visit_path(*t.path);
+                }
+                for(const auto& lft : te->lifetimes) {
                     if(needs_plus)  m_pmi.send_symbol("+");
                     needs_plus = true;
                     m_pmi.send_symbol("+");
                     this->visit_lifetime(lft);
+                }
+                if( te->use ) {
+                    TODO(Span(), "`use`");
                 }
                 )
             )
@@ -884,45 +901,112 @@ namespace {
             }
         }
 
+        void visit_path_node(const AST::PathNode& e, bool is_expr)
+        {
+            m_pmi.send_ident(e.name().c_str());
+            if( ! e.args().is_empty() )
+            {
+                if( e.args().m_is_paren ) {
+                    auto& t = e.args().m_entries.at(0).as_Type();
+                    this->visit_type(t);    // Should be a tuple
+                    auto& rv = e.args().m_entries.at(1).as_AssociatedTyEqual();
+                    m_pmi.send_symbol("->");
+                    this->visit_type(rv.second);
+                    return ;
+                }
+
+                if( is_expr )
+                    m_pmi.send_symbol("::");
+                m_pmi.send_symbol("<");
+                for(const auto& ent : e.args().m_entries)
+                {
+                    TU_MATCH_HDRA( (ent), {)
+                    TU_ARMA(Null, _) {}
+                    TU_ARMA(Lifetime, l) {
+                        m_pmi.send_lifetime(l.name().name.c_str());
+                        m_pmi.send_symbol(",");
+                        }
+                    TU_ARMA(Type, t) {
+                        this->visit_type(t);
+                        m_pmi.send_symbol(",");
+                        }
+                    TU_ARMA(Value, n) {
+                        m_pmi.send_symbol("{");
+                        this->visit_node(*n);
+                        m_pmi.send_symbol("}");
+                        m_pmi.send_symbol(",");
+                        }
+                    TU_ARMA(AssociatedTyEqual, a) {
+                        visit_path_node(a.first, false);
+                        m_pmi.send_symbol("=");
+                        this->visit_type(a.second);
+                        m_pmi.send_symbol(",");
+                        }
+                    TU_ARMA(AssociatedTyBound, a) {
+                        visit_path_node(a.first, false);
+                        m_pmi.send_symbol(":");
+                        for(const auto& p : a.second) {
+                            if( &p != a.second.data() )
+                                m_pmi.send_symbol("+");
+                            this->visit_path(p);
+                        }
+                        m_pmi.send_symbol(",");
+                        }
+                    }
+                }
+                m_pmi.send_symbol(">");
+            }
+        }
+
         void visit_path(const AST::Path& path, bool is_expr=false)
         {
             const ::std::vector<AST::PathNode>*  nodes = nullptr;
-            TU_MATCHA( (path.m_class), (pe),
-            (Invalid,
+            TU_MATCH_HDRA( (path.m_class), {)
+            TU_ARMA(Invalid, pe) {
                 BUG(sp, "Invalid path");
-                ),
-            (Local,
+                }
+            TU_ARMA(Local, pe) {
                 m_pmi.send_ident(pe.name.c_str());
-                ),
-            (Relative,
+                }
+            TU_ARMA(Relative, pe) {
                 // TODO: Send hygiene information
                 nodes = &pe.nodes;
-                ),
-            (Self,
+                }
+            TU_ARMA(Self, pe) {
                 m_pmi.send_rword("self");
-                m_pmi.send_symbol("::");
-                nodes = &pe.nodes;
-                ),
-            (Super,
-                for(unsigned i = 0; i < pe.count; i ++)
-                {
-                    m_pmi.send_rword("super");
+                if( !pe.nodes.empty() ) {
                     m_pmi.send_symbol("::");
                 }
                 nodes = &pe.nodes;
-                ),
-            (Absolute,
+                }
+            TU_ARMA(Super, pe) {
+                assert(pe.count > 0);
+                for(unsigned i = 0; i < pe.count; i ++)
+                {
+                    if( i > 0 ) {
+                        m_pmi.send_symbol("::");
+                    }
+                    m_pmi.send_rword("super");
+                }
+                if( !pe.nodes.empty() ) {
+                    m_pmi.send_symbol("::");
+                }
+                nodes = &pe.nodes;
+                }
+            TU_ARMA(Absolute, pe) {
                 if( pe.crate == "" ) {
                     m_pmi.send_rword("crate");
                 }
                 else {
                     m_pmi.send_symbol("::");
-                    m_pmi.send_string(pe.crate.c_str());
+                    //m_pmi.send_string(pe.crate.c_str());
+                    assert(pe.crate.c_str()[0] == '=');
+                    m_pmi.send_ident(pe.crate.c_str() + 1);
                 }
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
-                ),
-            (UFCS,
+                }
+            TU_ARMA(UFCS, pe) {
                 m_pmi.send_symbol("<");
                 this->visit_type(*pe.type);
                 if( pe.trait )
@@ -933,63 +1017,15 @@ namespace {
                 m_pmi.send_symbol(">");
                 m_pmi.send_symbol("::");
                 nodes = &pe.nodes;
-                )
-            )
+                }
+            }
             bool first = true;
             for(const auto& e : *nodes)
             {
                 if(!first)
                     m_pmi.send_symbol("::");
                 first = false;
-                m_pmi.send_ident(e.name().c_str());
-                if( ! e.args().is_empty() )
-                {
-                    if( e.args().m_is_paren ) {
-                        auto& t = e.args().m_entries.at(0).as_Type();
-                        this->visit_type(t);    // Should be a tuple
-                        auto& rv = e.args().m_entries.at(1).as_AssociatedTyEqual();
-                        m_pmi.send_symbol("->");
-                        this->visit_type(rv.second);
-                        continue ;
-                    }
-
-                    if( is_expr )
-                        m_pmi.send_symbol("::");
-                    m_pmi.send_symbol("<");
-                    for(const auto& ent : e.args().m_entries)
-                    {
-                        TU_MATCH_HDRA( (ent), {)
-                        TU_ARMA(Null, _) {}
-                        TU_ARMA(Lifetime, l) {
-                            m_pmi.send_lifetime(l.name().name.c_str());
-                            m_pmi.send_symbol(",");
-                            }
-                        TU_ARMA(Type, t) {
-                            this->visit_type(t);
-                            m_pmi.send_symbol(",");
-                            }
-                        TU_ARMA(Value, n) {
-                            m_pmi.send_symbol("{");
-                            this->visit_node(*n);
-                            m_pmi.send_symbol("}");
-                            m_pmi.send_symbol(",");
-                            }
-                        TU_ARMA(AssociatedTyEqual, a) {
-                            m_pmi.send_ident(a.first.c_str());
-                            m_pmi.send_symbol("=");
-                            this->visit_type(a.second);
-                            m_pmi.send_symbol(",");
-                            }
-                        TU_ARMA(AssociatedTyBound, a) {
-                            m_pmi.send_ident(a.first.c_str());
-                            m_pmi.send_symbol(":");
-                            this->visit_path(a.second);
-                            m_pmi.send_symbol(",");
-                            }
-                        }
-                    }
-                    m_pmi.send_symbol(">");
-                }
+                visit_path_node(e, is_expr);
             }
         }
         void visit_params(const AST::GenericParams& params)
@@ -1196,13 +1232,18 @@ namespace {
             m_pmi.send_symbol("{");
             for(const auto& n : node.m_nodes)
             {
-                this->visit_node(*n);
-                if( node.m_yields_final_value && &n == &node.m_nodes.back() ) {
-                    break;
+                this->visit_node(*n.node);
+                if( n.has_semicolon ) {
+                    m_pmi.send_symbol(";");
                 }
-                m_pmi.send_symbol(";");
             }
             m_pmi.send_symbol("}");
+        }
+        void visit(::AST::ExprNode_AsyncBlock& node) {
+            TODO(sp, "ExprNode_AsyncBlock");
+        }
+        void visit(::AST::ExprNode_GeneratorBlock& node) {
+            TODO(sp, "ExprNode_GeneratorBlock");
         }
         void visit(::AST::ExprNode_Try& node) {
             TODO(sp, "ExprNode_Try");
@@ -1251,7 +1292,7 @@ namespace {
         }
 
         void visit(::AST::ExprNode_WildcardPattern& node) {
-            m_pmi.send_symbol("_");
+            m_pmi.send_rword("_");
         }
         void visit(::AST::ExprNode_Integer& node) {
             m_pmi.send_int(node.m_datatype, node.m_value);
@@ -1267,6 +1308,9 @@ namespace {
         }
         void visit(::AST::ExprNode_ByteString& node) {
             TODO(sp, "ExprNode_ByteString");
+        }
+        void visit(::AST::ExprNode_CString& node) {
+            TODO(sp, "ExprNode_CString");
         }
         void visit(::AST::ExprNode_Closure& node) {
             TODO(sp, "ExprNode_Closure");
@@ -1331,8 +1375,12 @@ namespace {
                     this->visit_attr(na);
                 }
             }
-            if( this->emit_all_attrs || (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial())) )
+            auto is_local = (a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial()));
+            if( this->emit_all_attrs || is_local )
             {
+                if( is_local ) {
+                    a.mark_inert();
+                }
                 DEBUG("Send " << a);
                 m_pmi.send_symbol("#");
                 m_pmi.send_symbol("[");
@@ -1345,6 +1393,9 @@ namespace {
         }
         void visit_meta_item(const ::AST::Attribute& i)
         {
+            if( i.name().has_leading ) {
+                m_pmi.send_symbol("::");
+            }
             for(const auto& e : i.name().elems)
             {
                 if( &e != &i.name().elems.front() )
@@ -1394,18 +1445,18 @@ namespace {
             }
         }
 
-        void visit_struct(const ::std::string& name, const AST::Visibility& vis, const ::AST::Struct& str)
+        void visit_struct(const RcString& name, const AST::Visibility& vis, const ::AST::Struct& str)
         {
             this->visit_vis(vis);
             m_pmi.send_rword("struct");
             m_pmi.send_ident(name.c_str());
             this->visit_params(str.params());
-            TU_MATCH(AST::StructData, (str.m_data), (se),
-            (Unit,
+            TU_MATCH_HDRA((str.m_data), {)
+            TU_ARMA(Unit, se) {
                 this->visit_bounds(str.params());
                 m_pmi.send_symbol(";");
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, se) {
                 m_pmi.send_symbol("(");
                 for( const auto& si : se.ents )
                 {
@@ -1417,8 +1468,8 @@ namespace {
                 m_pmi.send_symbol(")");
                 this->visit_bounds(str.params());
                 m_pmi.send_symbol(";");
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, se) {
                 this->visit_bounds(str.params());
                 m_pmi.send_symbol("{");
 
@@ -1429,13 +1480,17 @@ namespace {
                     m_pmi.send_ident(si.m_name.c_str());
                     m_pmi.send_symbol(":");
                     this->visit_type(si.m_type);
+                    if( si.m_default ) {
+                        m_pmi.send_symbol("=");
+                        this->visit_nodes(si.m_default);
+                    }
                     m_pmi.send_symbol(",");
                 }
                 m_pmi.send_symbol("}");
-                )
-            )
+                }
+            }
         }
-        void visit_enum(const ::std::string& name, const AST::Visibility& vis, const ::AST::Enum& enm)
+        void visit_enum(const RcString& name, const AST::Visibility& vis, const ::AST::Enum& enm)
         {
             this->visit_vis(vis);
 
@@ -1449,12 +1504,7 @@ namespace {
                 this->visit_attrs(v.m_attrs);
                 m_pmi.send_ident(v.m_name.c_str());
                 TU_MATCH_HDRA( (v.m_data), { )
-                TU_ARMA(Value, e) {
-                    if( e.m_value )
-                    {
-                        m_pmi.send_symbol("=");
-                        this->visit_nodes(e.m_value);
-                    }
+                TU_ARMA(Unit, e) {
                     }
                 TU_ARMA(Tuple, e) {
                     m_pmi.send_symbol("(");
@@ -1479,16 +1529,21 @@ namespace {
                     m_pmi.send_symbol("}");
                     }
                 }
+                if( v.m_discriminant_value)
+                {
+                    m_pmi.send_symbol("=");
+                    this->visit_nodes(v.m_discriminant_value);
+                }
                 m_pmi.send_symbol(",");
             }
             m_pmi.send_symbol("}");
         }
-        void visit_union(const ::std::string& name, const AST::Visibility& vis, const ::AST::Union& unn)
+        void visit_union(const RcString& name, const AST::Visibility& vis, const ::AST::Union& unn)
         {
             TODO(sp, "visit_union");
         }
 
-        void visit_function(const ::std::string& name, const AST::Visibility& vis, const ::AST::Function& fcn)
+        void visit_function(const RcString& name, const AST::Visibility& vis, const ::AST::Function& fcn)
         {
             this->visit_vis(vis);
 
@@ -1527,8 +1582,36 @@ namespace {
             this->visit_bounds(fcn.params());
             this->visit_nodes(fcn.code());
         }
+        void visit_static(const RcString& name, const AST::Visibility& vis, const ::AST::Static& i)
+        {
+            this->visit_vis(vis);
+            switch(i.s_class())
+            {
+            case ::AST::Static::CONST:
+                m_pmi.send_rword("const");
+                break;
+            case ::AST::Static::MUT:
+                m_pmi.send_rword("static");
+                m_pmi.send_rword("mut");
+                break;
+            case ::AST::Static::STATIC:
+                m_pmi.send_rword("static");
+                break;
+            }
+            m_pmi.send_ident(name.c_str());
+            //this->visit_params(i.params());
+            m_pmi.send_symbol(":");
+            this->visit_type(i.type());
 
-        void visit_use(const ::std::string& name, const AST::Visibility& vis, const ::AST::UseItem& item)
+            if( i.value() ) {
+                m_pmi.send_symbol("=");
+                this->visit_node(i.value().node());
+            }
+            //this->visit_bounds(i.params());
+            m_pmi.send_symbol(";");
+        }
+
+        void visit_use(const RcString& /*name*/, const AST::Visibility& vis, const ::AST::UseItem& item)
         {
             this->visit_vis(vis);
             m_pmi.send_rword("use");
@@ -1552,12 +1635,50 @@ namespace {
             m_pmi.send_symbol(";");
         }
 
-        void visit_item(const ::std::string& name, const AST::Visibility& vis, const ::AST::Item& item)
+        void visit_impl_hdr(const ::AST::ImplDef& impl)
+        {
+            m_pmi.send_rword("impl");
+            visit_params(impl.params());
+
+            if( impl.trait().ent.is_valid() ) {
+                visit_path(impl.trait().ent);
+                m_pmi.send_rword("for");
+            }
+            visit_type(impl.type());
+            visit_bounds(impl.params());
+        }
+        void visit_impl(const ::AST::Impl& impl)
+        {
+            visit_impl_hdr(impl.def());
+            m_pmi.send_symbol("{");
+            for(const auto& i : impl.items())
+            {
+                const auto& sp = i.sp;
+                const auto& item = *i.data;
+                TU_MATCH_HDRA((item), {)
+                default:
+                    TODO(sp, "Item " << item.tag_str());
+                    break;
+                TU_ARMA(Function, e) {
+                    visit_function(i.name.c_str(), i.vis, e);
+                    }
+                TU_ARMA(Static, e) {
+                    visit_static(i.name.c_str(), i.vis, e);
+                    }
+                }
+            }
+            m_pmi.send_symbol("}");
+        }
+
+        void visit_item(const RcString& name, const AST::Visibility& vis, const ::AST::Item& item)
         {
             TU_MATCH_HDRA((item), {)
             default:
                 TODO(sp, "visit_item - " << item.tag_str());
                 break;
+            TU_ARMA(Impl, e) {
+                visit_impl(e);
+                }
             TU_ARMA(Use, e) {
                 visit_use(name, vis, e);
                 }
@@ -1610,7 +1731,7 @@ namespace {
     return box$(pmi);
 }
 // --- Derive inputs
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Struct& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const RcString& item_name, const ::AST::Struct& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on struct");
@@ -1618,7 +1739,7 @@ namespace {
         v.visit_struct(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Enum& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const RcString& item_name, const ::AST::Enum& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on enum");
@@ -1626,7 +1747,7 @@ namespace {
         v.visit_enum(item_name, vis, i);
         });
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Union& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const AST::Visibility& vis, const RcString& item_name, const ::AST::Union& i)
 {
     return ProcMacro_Invoke(sp, crate, mac_path, nullptr, [&](Visitor& v){
         DEBUG("derive on union");
@@ -1637,7 +1758,7 @@ namespace {
 // --- attribute
 ::std::unique_ptr<TokenStream> ProcMacro_Invoke(
     const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt,
-    slice<const AST::Attribute> attrs, const AST::Visibility& vis, const ::std::string& item_name, const ::AST::Item& i
+    slice<const AST::Attribute> attrs, const AST::Visibility& vis, const RcString& item_name, const ::AST::Item& i
     )
 {
     return ProcMacro_Invoke(sp, crate, mac_path, &tt, [&](Visitor& v) {
@@ -1980,13 +2101,13 @@ U128 ProcMacroInv::recv_v128u_u128()
 }
 
 Position ProcMacroInv::getPosition() const {
-    DEBUG("" << m_this_span);
+    //DEBUG("" << m_this_span);
     //return Position(m_this_span);
     return Position(m_parent_span);
 }
 Token ProcMacroInv::realGetToken() {
     auto rv = this->realGetToken_();
-    DEBUG(rv);
+    DEBUG("ProcMacroInv: " << rv);
     return rv;
 }
 Token ProcMacroInv::realGetToken_() {
@@ -2015,6 +2136,9 @@ Token ProcMacroInv::realGetToken_() {
         }
     case TokenClass::Ident: {
         auto val = this->recv_bytes();
+        if( val == "_" || val == "r#_" ) {
+            return TOK_UNDERSCORE;
+        }
         auto t = Lex_FindReservedWord(val, m_edition);
         if( t != TOK_NULL )
             return t;

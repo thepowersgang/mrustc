@@ -13,6 +13,7 @@
 #include <memory>
 #include <functional>
 #include <path.h>
+#include "cfg.hpp"
 
 #ifdef __OpenBSD__
 // major() and minor() are defined as macros in <sys/types.h> on OpenBSD
@@ -64,6 +65,7 @@ struct PackageVersion
             return PackageVersion { major + 1, 0 };
         }
     }
+    /// Get the baseline patch version of this version (i.e. turns 1.2.124 into 1.2.0)
     PackageVersion prev_compat() const {
         if(major == 0) {
             // Before 1.0, there's no patch levels
@@ -140,6 +142,8 @@ struct PackageVersionSpec
     /// Check if this spec accepts the passed version
     bool accepts(const PackageVersion& v) const;
 
+    bool operator==(const PackageVersion& v) const;
+
     friend ::std::ostream& operator<<(::std::ostream& os, const PackageVersionSpec& v) {
         bool first = true;
         for(const auto& b : v.m_bounds) {
@@ -210,10 +214,26 @@ public:
         return *m_manifest;
     }
 
-    std::shared_ptr<PackageManifest> load_manifest_raw(Repository& repo, const ::helpers::path& base_path);
+    void set_package(std::shared_ptr<PackageManifest> manifest) {
+        if(!m_manifest) {
+            m_manifest = std::move(manifest);
+        }
+        else if( m_manifest.get() == manifest.get() ) {
+            // Same package re-loaded
+        }
+        else {
+            throw ::std::runtime_error("Manifest already loaded for package " + m_name);
+        }
+    }
+    std::shared_ptr<PackageManifest> load_manifest_raw(Repository& repo, const ::helpers::path& base_path, std::function<bool(const PackageVersion&)> filter_cb);
     void load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps);
 
     friend std::ostream& operator<<(std::ostream& os, const PackageRef& pr);
+};
+struct Dependencies {
+    ::std::vector<PackageRef>   main;
+    ::std::vector<PackageRef>   build;
+    ::std::vector<PackageRef>   dev;
 };
 
 enum class Edition
@@ -222,6 +242,7 @@ enum class Edition
     Rust2015,
     Rust2018,
     Rust2021,
+    Rust2024,
 };
 struct PackageTarget
 {
@@ -333,11 +354,6 @@ class PackageManifest
 
     ::std::string   m_build_script;
 
-    struct Dependencies {
-        ::std::vector<PackageRef>   main;
-        ::std::vector<PackageRef>   build;
-        ::std::vector<PackageRef>   dev;
-    };
     Dependencies    m_dependencies;
     std::map<std::string,Dependencies>  m_target_dependencies;
 
@@ -348,6 +364,11 @@ class PackageManifest
     ::std::map<::std::string, ::std::vector<::std::string>>    m_features;
     ::std::vector<::std::string>    m_default_features;
     ::std::vector<::std::string>    m_active_features;
+    AllowedCfg  m_lint_check_cfg;
+
+    bool m_create_auto_lib = true;
+    bool m_create_auto_bins = true;
+
     // Set once `load_dependencies` runs, clears when a new feature is activated (as that may activate features in deps)
     bool m_dependencies_loaded = false;
 

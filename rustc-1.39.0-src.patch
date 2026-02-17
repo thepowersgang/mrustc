@@ -94,3 +94,23 @@
  use self::generic as arch;
  
  pub use self::arch::{vec128_storage, vec256_storage, vec512_storage};
+
+# HACK: With newer versions of mrustc, this .cast() call doesn't resolve properly (it becomes `F::Int` instead of `u32`)
+--- vendor/compiler_builtins/src/float/div.rs
++++ vendor/compiler_builtins/src/float/div.rs
+@@ -120,3 +120,3 @@
+     // is accurate to about 3.5 binary digits.
+-    let q31b = CastInto::<u32>::cast(b_significand << 8.cast());
++    let q31b = CastInto::<u32>::cast(b_significand << 8);
+     let mut reciprocal = (0x7504f333u32).wrapping_sub(q31b);
+@@ -330,3 +330,3 @@
+     // is accurate to about 3.5 binary digits.
+-    let q31b = CastInto::<u32>::cast(b_significand >> 21.cast());
++    let q31b = CastInto::<u32>::cast(b_significand >> 21);
+     let mut recip32 = (0x7504f333u32).wrapping_sub(q31b);
+@@ -356,3 +356,3 @@
+     // The last iteration needs to happen with extra precision.
+-    let q63blo = CastInto::<u32>::cast(b_significand << 11.cast());
++    let q63blo = CastInto::<u32>::cast(b_significand << 11);
+     let correction: u64;
+

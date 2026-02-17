@@ -111,6 +111,12 @@ namespace {
                             m_os << "! df$" << e.other;
                         m_os << ";\n";
                         }
+                    TU_ARMA(SaveDropFlag, e) {
+                        m_os << "SaveDropFlag(" << FMT_M(e.slot) << " BIT " << e.bit_index << " = df$" << e.idx << ")";
+                        }
+                    TU_ARMA(LoadDropFlag, e) {
+                        m_os << "LoadDropFlag(df$" << e.idx << " = " << FMT_M(e.slot) << " BIT " << e.bit_index << ")";
+                        }
                     TU_ARMA(Drop, e) {
                         //DEBUG("- DROP " << e.slot);
                         m_os << "drop(" << FMT_M(e.slot);

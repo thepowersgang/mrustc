@@ -64,6 +64,7 @@ TAGGED_UNION(AttributeData, None,
 
 struct AttributeName
 {
+    bool has_leading = false;
     ::std::vector<RcString>   elems;
 
     bool is_trivial() const { return elems.size() == 1; }
@@ -89,14 +90,15 @@ class Attribute
     Span    m_span;
     AttributeName   m_name;
     TokenTree   m_data;
-    mutable bool    m_is_used;
+    /// @brief Indicates that this attribute has been used by a derive, and shouldn't be otherwise resolved
+    mutable bool    m_is_inert;
     // TODO: Parse as a TT then expand?
 public:
     Attribute(Span sp, AttributeName name, TokenTree data):
         m_span(::std::move(sp)),
         m_name(::std::move(name)),
         m_data(::std::move(data)),
-        m_is_used(false)
+        m_is_inert(false)
     {
     }
 
@@ -107,8 +109,8 @@ public:
     Attribute clone() const;
 
     void fmt(std::ostream& os) const;
-    void mark_used() const { m_is_used = true; }
-    bool is_used() const { return m_is_used; }
+    void mark_inert() const { m_is_inert = true; }
+    bool is_inert() const { return m_is_inert; }
 
     const Span& span() const { return m_span; }
     const AttributeName& name() const { return m_name; }

@@ -60,24 +60,69 @@ struct ExprNode_Block:
         Const,
     };
     Type m_block_type;
-    bool m_yields_final_value;
     Ident   m_label;
     ::std::shared_ptr<AST::Module> m_local_mod;
-    ::std::vector<ExprNodeP>    m_nodes;
+    struct Line {
+        bool has_semicolon;
+        ExprNodeP   node;
+    };
+    ::std::vector<Line>    m_nodes;
 
-    ExprNode_Block(::std::vector<ExprNodeP> nodes={}):
+    ExprNode_Block(::std::vector<Line> nodes={}):
         m_block_type(Type::Bare),
-        m_yields_final_value(true),
         m_label(""),
         m_local_mod(),
         m_nodes( ::std::move(nodes) )
     {}
-    ExprNode_Block(Type type, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::shared_ptr<AST::Module> local_mod):
+    /// Shortcut for a block that returns a contained node
+    ExprNode_Block(ExprNodeP value)
+        : ExprNode_Block()
+    {
+        set_span(value->span());
+        m_nodes.push_back({false, std::move(value)});
+    }
+    ExprNode_Block(Type type, ::std::vector<Line> nodes, ::std::shared_ptr<AST::Module> local_mod):
         m_block_type(type),
-        m_yields_final_value(yields_final_value),
         m_label(""),
         m_local_mod( ::std::move(local_mod) ),
         m_nodes( ::std::move(nodes) )
+    {
+    }
+
+    void push_stmt(AST::ExprNodeP node) {
+        m_nodes.push_back({ true, std::move(node) });
+    }
+    void push_tail_expr(AST::ExprNodeP node) {
+        m_nodes.push_back({ false, std::move(node) });
+    }
+
+    NODE_METHODS();
+};
+
+struct ExprNode_AsyncBlock:
+    public ExprNode
+{
+    ExprNodeP   m_inner;
+    bool m_is_move;
+
+    ExprNode_AsyncBlock(ExprNodeP inner, bool is_move)
+        : m_inner(std::move(inner))
+        , m_is_move(is_move)
+    {
+    }
+
+    NODE_METHODS();
+};
+
+struct ExprNode_GeneratorBlock:
+    public ExprNode
+{
+    ExprNodeP   m_inner;
+    bool m_is_move;
+
+    ExprNode_GeneratorBlock(ExprNodeP inner, bool is_move)
+        : m_inner(std::move(inner))
+        , m_is_move(is_move)
     {
     }
 
@@ -493,6 +538,18 @@ struct ExprNode_ByteString:
 
     NODE_METHODS();
 };
+// Literal C string
+struct ExprNode_CString:
+    public ExprNode
+{
+    ::std::string   m_value;
+
+    ExprNode_CString(::std::string value):
+        m_value( ::std::move(value) )
+    {}
+
+    NODE_METHODS();
+};
 
 // Closure / Lambda
 struct ExprNode_Closure:
@@ -758,6 +815,8 @@ public:
         virtual void visit(nt& node) = 0/*; \
         virtual void visit(const nt& node) = 0*/
     NT(ExprNode_Block);
+    NT(ExprNode_AsyncBlock);
+    NT(ExprNode_GeneratorBlock);
     NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
@@ -780,6 +839,7 @@ public:
     NT(ExprNode_Bool);
     NT(ExprNode_String);
     NT(ExprNode_ByteString);
+    NT(ExprNode_CString);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
     NT(ExprNode_StructLiteralPattern);
@@ -810,6 +870,8 @@ public:
         virtual void visit(nt& node) override;/* \
         virtual void visit(const nt& node) override*/
     NT(ExprNode_Block);
+    NT(ExprNode_AsyncBlock);
+    NT(ExprNode_GeneratorBlock);
     NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
@@ -832,6 +894,7 @@ public:
     NT(ExprNode_Bool);
     NT(ExprNode_String);
     NT(ExprNode_ByteString);
+    NT(ExprNode_CString);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
     NT(ExprNode_StructLiteralPattern);

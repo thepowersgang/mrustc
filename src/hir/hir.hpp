@@ -209,6 +209,7 @@ public:
     struct Markings {
         std::vector<unsigned> rustc_legacy_const_generics;
         bool track_caller = false;
+        bool is_naked = false;
         enum Inline {
             Auto,   // no annotation
             Never,  // #[inline(never)]
@@ -248,7 +249,14 @@ struct TraitAlias
 };
 
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
-typedef ::std::vector< ::std::pair< RcString, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
+struct StructField {
+    RcString    name;
+    Publicity   vis;
+    HIR::TypeRef    ty;
+    /// @brief Default value for this field
+    ::std::unique_ptr<HIR::GenericPath> default_value;
+};
+typedef ::std::vector<StructField>   t_struct_fields;
 
 extern HIR::TypeRef fn_ptr_tuple_constructor(const Span& sp, const Monomorphiser& ms, HIR::TypeRef ret_ty, const t_tuple_fields& types);
 
@@ -326,6 +334,11 @@ public:
         RcString   name;
         bool is_struct; // Indicates that the variant does not show up in the value namespace
         ::HIR::TypeRef  type;
+
+        /// Optional explicit descriminant value, only valid when repr isn't Repr::Auto
+        ::HIR::ExprPtr  discriminant_expr;
+        // Constant-evaluated descriminant value
+        uint64_t discriminant_value;
     };
     enum class Repr
     {
@@ -343,8 +356,6 @@ public:
         (Data, ::std::vector<DataVariant>),
         (Value, struct {
             ::std::vector<ValueVariant> variants;
-            // Flag indicating that constant evaluation has completed
-            bool    evaluated;
             })
         );
 
@@ -352,6 +363,9 @@ public:
     bool    m_is_c_repr;
     Repr    m_tag_repr;
     Class   m_data;
+
+    // Flag indicating that constant evaluation has completed
+    bool    discriminants_evaluated;
 
     TraitMarkings   m_markings;
 
@@ -366,7 +380,7 @@ public:
     uint32_t get_value(size_t variant) const;
 
     /// Get a type for the given repr value
-    static ::HIR::TypeRef   get_repr_type(Repr r);
+    static ::HIR::CoreType   get_repr_type(Repr r);
 };
 class Struct
 {
@@ -383,6 +397,18 @@ public:
         (Tuple, t_tuple_fields),
         (Named, t_struct_fields)
         );
+    struct FieldDefault
+    {
+        size_t index;
+        HIR::ExprPtr    expr;
+        EncodedLiteral  value_res;
+        Constant::ValueState state = Constant::ValueState::Unknown;
+
+        FieldDefault(size_t index, HIR::ExprPtr v)
+            : index(index)
+            , expr(std::move(v))
+        {}
+    };
 
     Struct(GenericParams params, Repr repr, Data data)
         :m_params(mv$(params))
@@ -479,6 +505,7 @@ public:
     ::HIR::TypeRef get_vtable_type(const Span& sp, const ::HIR::Crate& crate, const ::HIR::TypeData::Data_TraitObject& te) const;
     unsigned get_vtable_value_index(const HIR::GenericPath& trait_path, const RcString& name) const;
     unsigned get_vtable_parent_index(const Span& sp, const HIR::PathParams& this_params, const HIR::GenericPath& trait_path) const;
+    ::std::pair<const ::HIR::AssociatedType*,const ::HIR::PathParams*> get_aty_def(const RcString& name) const;
 };
 
 class ProcMacro

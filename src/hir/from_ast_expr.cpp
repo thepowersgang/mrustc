@@ -40,10 +40,11 @@ struct LowerHIR_ExprNode_Visitor:
         auto rv = new ::HIR::ExprNode_Block(v.span());
         for(auto& n : v.m_nodes)
         {
-            ASSERT_BUG(v.span(), n, "NULL node encountered in block");
-            rv->m_nodes.push_back( lower( n ) );
+            ASSERT_BUG(v.span(), n.node, "NULL node encountered in block");
+            rv->m_nodes.push_back( lower( n.node ) );
         }
-        if( v.m_yields_final_value && ! rv->m_nodes.empty() )
+        // If the final node wasn't a statement (there wasn't a semicolon on it), then make that the value
+        if( ! rv->m_nodes.empty() && !v.m_nodes.back().has_semicolon )
         {
             rv->m_value_node = mv$(rv->m_nodes.back());
             rv->m_nodes.pop_back();
@@ -94,6 +95,15 @@ struct LowerHIR_ExprNode_Visitor:
             m_rv.reset( new ::HIR::ExprNode_ConstBlock(v.span(), std::move(m_rv)) );
             break;
         }
+    }
+    virtual void visit(::AST::ExprNode_AsyncBlock& v) override {
+        m_rv.reset( new ::HIR::ExprNode_AsyncBlock(v.span(), lower(v.m_inner), v.m_is_move) );
+    }
+    virtual void visit(::AST::ExprNode_GeneratorBlock& v) override {
+        // TODO: Wrap with something that provides an impl of Iterator
+        // - `::core::iter::from_coroutine`
+        m_rv.reset( new ::HIR::ExprNode_Generator(v.span(), HIR::TypeRef(), lower(v.m_inner), v.m_is_move, false) );
+        m_rv.reset( new ::HIR::ExprNode_CallPath(v.span(), HIR::SimplePath(g_core_crate, {"iter", "sources", "from_coroutine", "from_coroutine"}), make_vec1(mv$(m_rv))));
     }
     virtual void visit(::AST::ExprNode_Try& v) override {
         TODO(v.span(), "Handle _Try");
@@ -372,7 +382,7 @@ struct LowerHIR_ExprNode_Visitor:
             break;
 
         case ::AST::ExprNode_UniOp::AWait:
-            TODO(v.span(), "Convert AWait operator");
+            m_rv.reset(new ::HIR::ExprNode_AWait(v.span(), lower( v.m_value ) ));
             break;
 
         case ::AST::ExprNode_UniOp::INVERT: op = ::HIR::ExprNode_UniOp::Op::Invert; if(0)
@@ -419,8 +429,16 @@ struct LowerHIR_ExprNode_Visitor:
                     mv$( args )
                     ) );
             TU_ARMA(Static, e) {
+                bool is_const = e.static_
+                    ? e.static_->s_class() == ::AST::Static::Class::CONST
+                    : (e.hir ? false : true)    // If HIR Pointer is null, this is a HIR::Const
+                    ;
                 m_rv.reset( new ::HIR::ExprNode_CallValue( v.span(),
-                    ::HIR::ExprNodeP(new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path, FromAST_PathClass::Value), ::HIR::ExprNode_PathValue::STATIC )),
+                    ::HIR::ExprNodeP(new ::HIR::ExprNode_PathValue(
+                        v.span(),
+                        LowerHIR_Path(v.span(), v.m_path, FromAST_PathClass::Value),
+                        is_const ? ::HIR::ExprNode_PathValue::CONSTANT : ::HIR::ExprNode_PathValue::STATIC
+                        )),
                     mv$(args)
                     ) );
                 }
@@ -542,82 +560,7 @@ struct LowerHIR_ExprNode_Visitor:
         }
     }
     virtual void visit(::AST::ExprNode_WhileLet& v) override {
-
-#if 0
-        {
-            ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-
-            // - Matches pattern - Run inner code
-            arms.push_back(::HIR::ExprNode_Match::Arm {
-                ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
-                ::HIR::ExprNodeP(),
-                lower(v.m_code)
-                });
-            // - Matches anything else - break
-            arms.push_back(::HIR::ExprNode_Match::Arm {
-                ::make_vec1( ::HIR::Pattern() ),
-                ::HIR::ExprNodeP(),
-                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl( v.span(), v.m_label.name, false) )
-                });
-
-            m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
-                v.m_label.name,
-                ::HIR::ExprNodeP(new ::HIR::ExprNode_Match( v.span(),
-                    lower(v.m_cond),
-                    mv$(arms)
-                ))
-            ) );
-        }
-#else
-        TODO(v.span(), "while let (chained)");
-#endif
-
-        // Iterate the constructed loop and determine if there are any `break` statements pointing to it
-        {
-            struct LoopVisitor:
-                public ::HIR::ExprVisitorDef
-            {
-                const RcString& top_label;
-                bool    top_is_broken;
-                ::std::vector< const RcString*>   name_stack;
-
-                LoopVisitor(const RcString& top_label):
-                    top_label(top_label),
-                    top_is_broken(false),
-                    name_stack()
-                {}
-
-                void visit(::HIR::ExprNode_Loop& node) override {
-                    bool push = !node.m_require_label;  // Ignore any loops that require a targeted break
-                    if( push ) {
-                        this->name_stack.push_back( &node.m_label );
-                    }
-                    ::HIR::ExprVisitorDef::visit(node);
-                    if( push ) {
-                        this->name_stack.pop_back( );
-                    }
-                }
-                void visit(::HIR::ExprNode_LoopControl& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-
-                    if( node.m_continue ) {
-                    }
-                    else {
-                        for( auto it = this->name_stack.rbegin(); it != this->name_stack.rend(); ++ it )
-                        {
-                            if( node.m_label == "" || node.m_label == **it )
-                                return ;
-                        }
-                        if( node.m_label == "" || node.m_label == this->top_label ) {
-                            this->top_is_broken = true;
-                        }
-                        else {
-                            // break is for a higher loop
-                        }
-                    }
-                }
-            };
-        }
+        TODO(v.span(), "`while let` left sugared");
     }
     virtual void visit(::AST::ExprNode_Match& v) override {
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
@@ -662,32 +605,8 @@ struct LowerHIR_ExprNode_Visitor:
             ));
     }
     virtual void visit(::AST::ExprNode_IfLet& v) override {
-#if 0
-        ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-
-        std::vector<HIR::Pattern>   patterns;
-        patterns.reserve(v.m_patterns.size());
-        for(const auto& pat : v.m_patterns)
-            patterns.push_back( LowerHIR_Pattern(pat) );
-        // - Matches pattern - Take true branch
-        arms.push_back(::HIR::ExprNode_Match::Arm {
-            mv$(patterns),
-            ::HIR::ExprNodeP(),
-            lower(v.m_true)
-            });
-        // - Matches anything else - take false branch
-        arms.push_back(::HIR::ExprNode_Match::Arm {
-            ::make_vec1( ::HIR::Pattern() ),
-            ::HIR::ExprNodeP(),
-            v.m_false ? lower(v.m_false) : ::HIR::ExprNodeP(new ::HIR::ExprNode_Tuple(v.span(), {}))
-            });
-        m_rv.reset( new ::HIR::ExprNode_Match( v.span(),
-            lower(v.m_value),
-            mv$(arms)
-            ));
-#else
-TODO(v.span(), "while let (chained)");
-#endif
+        // TODO: Do the desugar here, so irrefutable patterns can be handled nicely
+        TODO(v.span(), "`if let` left sugared");
     }
 
     virtual void visit(::AST::ExprNode_WildcardPattern& v) override {
@@ -744,8 +663,10 @@ TODO(v.span(), "while let (chained)");
         switch(v.m_datatype)
         {
         case CORETYPE_ANY:  ct = ::HIR::CoreType::Str;  break;
+        case CORETYPE_F16:  ct = ::HIR::CoreType::F16;  break;
         case CORETYPE_F32:  ct = ::HIR::CoreType::F32;  break;
         case CORETYPE_F64:  ct = ::HIR::CoreType::F64;  break;
+        case CORETYPE_F128: ct = ::HIR::CoreType::F128; break;
         default:
             BUG(v.span(), "Unknown type for float literal - " << coretype_name(v.m_datatype));
         }
@@ -762,6 +683,9 @@ TODO(v.span(), "while let (chained)");
     virtual void visit(::AST::ExprNode_ByteString& v) override {
         ::std::vector<char> dat { v.m_value.begin(), v.m_value.end() };
         m_rv.reset( new ::HIR::ExprNode_Literal( v.span(), ::HIR::ExprNode_Literal::Data::make_ByteString( mv$(dat) ) ) );
+    }
+    virtual void visit(::AST::ExprNode_CString& v) override {
+        m_rv.reset( new ::HIR::ExprNode_Literal( v.span(), ::HIR::ExprNode_Literal::Data::make_CString({ v.m_value }) ) );
     }
     virtual void visit(::AST::ExprNode_Closure& v) override {
         ::HIR::ExprNode_Closure::args_t args;
@@ -798,9 +722,9 @@ TODO(v.span(), "while let (chained)");
                 ERROR(v.span(), E0000, "Invalid use of `static` on non-yielding closure");
             }
             m_rv.reset( new ::HIR::ExprNode_Closure( v.span(),
-                mv$(args),
+                std::move(args),
                 LowerHIR_Type(v.m_return),
-                mv$(inner),
+                std::move(inner),
                 v.m_is_move
                 ) );
         }
@@ -833,7 +757,29 @@ TODO(v.span(), "while let (chained)");
             ) );
     }
     virtual void visit(::AST::ExprNode_StructLiteralPattern& v) override {
-        ERROR(v.span(), E0000, "struct literal with an empty `..`");
+        if( v.m_path.m_bindings.type.binding.is_Union() )
+        {
+            if( v.m_values.size() != 1 )
+                ERROR(v.span(), E0000, "Union constructors can only specify a single field");
+        }
+
+        ::HIR::ExprNode_StructLiteral::t_values values;
+        for(auto& val : v.m_values)
+            values.push_back( ::std::make_pair(val.name, lower(val.value)) );
+        auto ty = LowerHIR_Type( ::TypeRef(v.span(), v.m_path) );
+        if( v.m_path.m_bindings.type.binding.is_EnumVar() )
+        {
+            ASSERT_BUG(v.span(), TU_TEST1(ty.data(), Path, .path.m_data.is_Generic()), "Enum variant path not GenericPath: " << ty );
+            auto& gp = ty.get_unique().as_Path().path.m_data.as_Generic();
+            auto var_name = gp.m_path.pop_component();
+            ty = ::HIR::TypeRef::new_path( ::HIR::Path(mv$(ty), mv$(var_name)), {} );
+        }
+        m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
+            mv$(ty),
+            ! v.m_path.m_bindings.type.binding.is_EnumVar(),
+            true,
+            mv$(values)
+            ) );
     }
     virtual void visit(::AST::ExprNode_Array& v) override {
         if( v.m_size )

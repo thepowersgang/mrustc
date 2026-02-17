@@ -56,11 +56,11 @@ TAGGED_UNION_EX(VarState, (), Invalid, (
     // Partially valid (Map of field states)
     (Partial, struct {
         ::std::vector<VarState> inner_states;
-        unsigned int outer_flag;   // If ~0u there's no condition on the outer
+        //unsigned int outer_flag;   // If ~0u there's no condition on the outer
         }),
     (MovedOut, struct {
         ::std::unique_ptr<VarState>   inner_state;
-        unsigned int outer_flag;
+        unsigned int outer_flag;    // If ~0u, the outer is always valid. If set, then the outer may have been moved (but inner state still maybe valid)
         }),
     // Optionally valid (integer indicates the drop flag index)
     (Optional, unsigned int),
@@ -72,6 +72,8 @@ TAGGED_UNION_EX(VarState, (), Invalid, (
         VarState clone() const;
         bool operator==(const VarState& x) const;
         bool operator!=(const VarState& x) const { return !(*this == x); }
+        /// Returns `true` if any drop flags were present (i.e. this is possibly optional)
+        bool get_used_drop_flags(std::set<unsigned>* out) const;
         )
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const VarState& x);
@@ -117,17 +119,17 @@ TAGGED_UNION(ScopeType, Owning,
         })
     );
 
-#define FIELD_DEREF 255
-#define FIELD_INDEX_MAX 128
+#define FIELD_DEREF 0xFFFF
+#define FIELD_INDEX_MAX 0x8000  // Above this is a negative field offset
 
 struct field_path_t
 {
-    ::std::vector<uint8_t>  data;
+    ::std::vector<uint16_t>  data;
 
     size_t size() const { return data.size(); }
-    void push_back(uint8_t v) { data.push_back(v); }
+    void push_back(uint16_t v) { data.push_back(v); }
     void pop_back() { data.pop_back(); }
-    uint8_t& back() { return data.back(); }
+    uint16_t& back() { return data.back(); }
 
     bool operator==(const field_path_t& x) const { return data == x.data; }
     Ordering ord(const field_path_t& x) const { return ::ord(data, x.data); }
@@ -205,7 +207,11 @@ class MirBuilder
     ::std::vector<VarState>   m_slot_states;
     size_t  m_first_temp_idx;
 
+    /// Mapping between variable slots and MIR arguments (for when the argument is not destructuring)
     ::std::map<unsigned,unsigned>   m_var_arg_mappings;
+
+    /// Re-mapped dropped flags (all flags in the vector are to be set when the key flag is set)
+    ::std::map<unsigned, std::vector<unsigned>> m_drop_flag_aliases;
 
     struct ScopeDef
     {
@@ -336,6 +342,8 @@ public:
     unsigned int new_drop_flag(bool default_state);
     unsigned int new_drop_flag_and_set(const Span& sp, bool set_state);
     bool get_drop_flag_default(const Span& sp, unsigned int index);
+    /// Add a drop flag to be set when another is also set (used to rewrite drop flags after the fact)
+    void drop_flag_alias(unsigned int old_idx, unsigned int new_idx);
 
     // --- Scopes ---
     ScopeHandle new_scope_var(const Span& sp);
@@ -356,6 +364,12 @@ public:
     void end_split_arm_early(const Span& sp);
     /// Terminates the current split condition clause (used for the conditional portion of a match arm)
     void end_split_condition(const Span& sp, const ScopeHandle&);
+
+    void uncomplete_scope(const ScopeHandle& scope) {
+        auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
+        auto& s = m_scopes.at(*it);
+        s.complete = false;
+    }
 
     const ScopeHandle& fcn_scope() const {
         return m_fcn_scope;
@@ -394,12 +408,34 @@ public:
         VarState    state;
         SavedActiveLocal(VarState vs): state(mv$(vs)) {}
     public:
+        const VarState& get_state() const { return state; }
     };
-    std::map<unsigned, SavedActiveLocal> get_active_locals() const;
+    std::map<unsigned, SavedActiveLocal> get_active_locals(const Span& sp, std::set<unsigned>& saved_drop_flags) const;
 
     // Calls `drop_value_from_state` on the value
     void drop_actve_local(const Span& sp, ::MIR::LValue lv, const SavedActiveLocal& loc);
 };
+
+
+template<typename T>
+struct SaveAndEditVal {
+    T&  m_dst;
+    T   m_saved;
+    SaveAndEditVal(T& dst, T newval):
+        m_dst(dst),
+        m_saved(dst)
+    {
+        m_dst = mv$(newval);
+    }
+    ~SaveAndEditVal()
+    {
+        this->m_dst = this->m_saved;
+    }
+};
+template<typename T>
+SaveAndEditVal<T> save_and_edit(T& dst, typename ::std::remove_reference<T&>::type newval) {
+    return SaveAndEditVal<T> { dst, mv$(newval) };
+}
 
 /// Wrapper interfae
 class MirConverter:
@@ -411,6 +447,8 @@ public:
 
     virtual void destructure_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
     virtual void destructure_aliases_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
+
+    virtual SaveAndEditVal<const ScopeHandle*> disable_borrow_extension() = 0;
 };
 
 extern void MIR_LowerHIR_Match(MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val);

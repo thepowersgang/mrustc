@@ -138,6 +138,36 @@ namespace typecheck
         fix_param_count_(sp, context, self_ty, use_defaults, path, param_defs, params);
     }
 
+    void apply_bounds_as_rules_trait(Context& context, const Span& sp, const ::HIR::TypeRef& real_type, const ::HIR::TraitPath& trait_path, const MonomorphHrlsOnly& ms_hrl)
+    {
+        // If there's no type bounds, emit a trait bound
+        // - Otherwise, the assocated type bounds will serve the same purpose
+        if( trait_path.m_type_bounds.size() == 0 )
+        {
+            context.add_trait_bound(sp, real_type, trait_path.m_path.m_path, ms_hrl.monomorph_path_params(sp, trait_path.m_path.m_params, true));
+        }
+
+        // Associated type equalities
+        for(const auto& assoc : trait_path.m_type_bounds) {
+            context.equate_types_assoc(sp,
+                ms_hrl.monomorph_type(sp, assoc.second.type, true),
+                assoc.second.source_trait.m_path, ms_hrl.monomorph_path_params(sp, assoc.second.source_trait.m_params, true),
+                real_type, assoc.first.c_str(),
+                ms_hrl.monomorph_path_params(sp, assoc.second.aty_params, true),
+                false
+                );
+        }
+        // Associated type trait bounds:
+        for(const auto& assoc : trait_path.m_trait_bounds) {
+            auto aty_ty = ::HIR::TypeRef::new_path(
+                ::HIR::Path(real_type.clone(), assoc.second.source_trait.clone(), assoc.first, assoc.second.aty_params.clone()),
+                {}
+            );
+            for(const auto& tr : assoc.second.traits) {
+                apply_bounds_as_rules_trait(context, sp, aty_ty, tr, ms_hrl);
+            }
+        }
+    }
     void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, const Monomorphiser& ms, bool is_impl_level)
     {
         TRACE_FUNCTION;
@@ -163,24 +193,7 @@ namespace typecheck
                 auto pp_hrl = (real_trait.m_hrtbs && !real_trait.m_hrtbs->is_empty()) ? real_trait.m_hrtbs->make_empty_params(true) : outer_hrtb.make_empty_params(true);
                 DEBUG("outer_hrb = " << outer_hrtb.fmt_args() << ", pp_hrl = " << pp_hrl);
                 auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
-                const auto& trait_path = real_trait.m_path.m_path;
-                const auto& trait_params = real_trait.m_path.m_params;
-
-                // If there's no type bounds, emit a trait bound
-                // - Otherwise, the assocated type bounds will serve the same purpose
-                if( be.trait.m_type_bounds.size() == 0 )
-                {
-                    context.add_trait_bound(sp, real_type, trait_path, ms_hrl.monomorph_path_params(sp, trait_params, true));
-                }
-
-                for(auto& assoc : real_trait.m_type_bounds) {
-                    context.equate_types_assoc(sp,
-                        ms_hrl.monomorph_type(sp, assoc.second.type, true),
-                        assoc.second.source_trait.m_path, ms_hrl.monomorph_path_params(sp, assoc.second.source_trait.m_params, true),
-                        real_type, assoc.first.c_str(),
-                        false
-                        );
-                }
+                apply_bounds_as_rules_trait(context, sp, real_type, real_trait, ms_hrl);
                 }
             TU_ARMA(TypeEquality, be) {
                 auto real_type_left = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, be.type));
@@ -209,6 +222,8 @@ namespace typecheck
         assert(cache.m_arg_types.size() == 0);
 
         const ::HIR::Function*  fcn_ptr = nullptr;
+
+        MonomorphHrlsOnly(HIR::PathParams()).monomorph_path(sp, path);
 
         struct Monomorph:
             public Monomorphiser
@@ -313,6 +328,7 @@ namespace typecheck
             }
         };
 
+        cache.m_top_params = nullptr;
         TU_MATCH_HDRA( (path.m_data), {)
         TU_ARMA(Generic, e) {
             const auto& fcn = context.m_crate.get_function_by_path(sp, e.m_path);
@@ -374,6 +390,9 @@ namespace typecheck
         }
 
         // --- Apply bounds by adding them to the associated type ruleset
+        if( cache.m_top_params ) {
+            apply_bounds_as_rules(context, sp, *cache.m_top_params, monomorph, /*is_impl_level=*/true);
+        }
         apply_bounds_as_rules(context, sp, *cache.m_fcn_params, monomorph, /*is_impl_level=*/false);
 
         return true;
@@ -790,6 +809,14 @@ namespace typecheck
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
         }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            TRACE_FUNCTION_F(&node << "(...).await");
+            this->context.add_ivars( node.m_value->m_res_type );
+            node.m_value->visit( *this );
+            // Require that `return = <[node.value] as `future_trait`>::Output`
+            this->context.equate_types_assoc(node.span(), node.m_res_type, context.m_resolve.m_lang_Future, {}, node.m_value->m_res_type, "Output", {});
+        }
 
         void visit(::HIR::ExprNode_Loop& node) override
         {
@@ -838,7 +865,7 @@ namespace typecheck
                         }
                     }
                     if( !loop_node_ptr ) {
-                        ERROR(node.span(), E0000, "Break statement with no acive loop");
+                        ERROR(node.span(), E0000, "Break statement with no active loop");
                     }
                 }
                 node.m_target_node = loop_node_ptr;
@@ -868,7 +895,7 @@ namespace typecheck
             TRACE_FUNCTION_F(&node << " let " << node.m_pattern << ": " << node.m_type);
 
             this->context.add_ivars( node.m_type );
-            this->context.handle_pattern(node.span(), node.m_pattern, node.m_type);
+            this->context.handle_pattern(node.span(), node.m_pattern, node.m_type, true);
 
             if( node.m_value )
             {
@@ -1002,7 +1029,7 @@ namespace typecheck
 
                 auto ty = this->context.m_ivars.new_ivar_tr();
                 this->context.equate_types_coerce(node.span(), ty, node.m_value);
-                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(), trait_path, HIR::PathParams(mv$(ty)),  node.m_slot->m_res_type.clone(), "");
+                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(), trait_path, HIR::PathParams(mv$(ty)),  node.m_slot->m_res_type.clone(), "", {});
             }
 
             node.m_slot->visit( *this );
@@ -1051,7 +1078,7 @@ namespace typecheck
                 assert(item_name);
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
 
-                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(),  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "");
+                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(),  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "", {});
                 break; }
 
             case ::HIR::ExprNode_BinOp::Op::BoolAnd:
@@ -1090,7 +1117,7 @@ namespace typecheck
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
 
                 // NOTE: `true` marks the association as coming from a binary operation, which changes integer handling
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "Output", true);
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "Output", {}, true);
                 break; }
             }
             node.m_left ->visit( *this );
@@ -1115,7 +1142,7 @@ namespace typecheck
             }
             assert(item_name);
             const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
-            this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::HIR::PathParams {}, node.m_value->m_res_type.clone(), "Output", true);
+            this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::HIR::PathParams {}, node.m_value->m_res_type.clone(), "Output", {}, true);
             node.m_value->visit( *this );
         }
         void visit(::HIR::ExprNode_Borrow& node) override
@@ -1437,9 +1464,9 @@ namespace typecheck
             for( auto& val : node.m_values)
             {
                 const auto& name = val.first;
-                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
+                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const HIR::StructField& v)->bool{ return v.name == name; });
                 ASSERT_BUG(node.span(), it != fields.end(), "Field '" << name << "' not found in struct " << ty_path);
-                const auto& des_ty_r = it->second.ent;
+                const auto& des_ty_r = it->ty;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
 
@@ -1755,12 +1782,18 @@ namespace typecheck
             TU_ARMA(String, e) {
                 // TODO: &'static
                 DEBUG("_Literal (&str)");
-                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) );
+                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str), ::HIR::LifetimeRef::new_static() );
                 }
             TU_ARMA(ByteString, e) {
                 // TODO: &'static
                 DEBUG("_Literal (&[u8])");
-                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()) );
+                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()), ::HIR::LifetimeRef::new_static() );
+                }
+            TU_ARMA(CString, e) {
+                DEBUG("_Literal (&CStr)");
+                auto p = context.m_crate.get_lang_item_path(node.span(), "CStr");
+                ty = ::HIR::TypeRef::new_path(p, &context.m_crate.get_struct_by_path(node.span(), p));
+                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, std::move(ty), ::HIR::LifetimeRef::new_static() );
                 }
             }
             this->context.add_ivars(ty);
@@ -1794,7 +1827,7 @@ namespace typecheck
                     } break;
                 case ::HIR::ExprNode_PathValue::STRUCT_CONSTR: {
                     const auto& s = this->context.m_crate.get_struct_by_path(sp, e.m_path);
-                    const auto& se = s.m_data.as_Tuple();
+                    //const auto& se = s.m_data.as_Tuple();
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, s.m_params, e.m_params);
 
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
@@ -1811,9 +1844,9 @@ namespace typecheck
                     size_t idx = enm.find_variant(var_name);
                     ASSERT_BUG(sp, idx != SIZE_MAX, "Missing variant - " << e.m_path);
                     ASSERT_BUG(sp, enm.m_data.is_Data(), "Enum " << enum_path << " isn't a data-holding enum");
-                    const auto& var_ty = enm.m_data.as_Data()[idx].type;
-                    const auto& str = *var_ty.data().as_Path().binding.as_Struct();
-                    const auto& var_data = str.m_data.as_Tuple();
+                    //const auto& var_ty = enm.m_data.as_Data()[idx].type;
+                    //const auto& str = *var_ty.data().as_Path().binding.as_Struct();
+                    //const auto& var_data = str.m_data.as_Tuple();
 
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
                     //apply_bounds_as_rules(this->context, sp, enm.m_params, monomorph_cb, /*is_impl_level=*/true);
@@ -2051,6 +2084,20 @@ namespace typecheck
         {
             BUG(node.span(), "ExprNode_GeneratorWrapper unexpected at this time");
         }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            TRACE_FUNCTION_F(&node << " async { ... }");
+            ASSERT_BUG(node.span(), node.m_code, "empty async?");
+            this->context.add_ivars(node.m_code->m_res_type);
+
+            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_async(&node) );
+            
+            // TODO: Save/clear/restore loop labels
+            auto _ = this->push_inner_coerce_scoped(true);
+            this->closure_ret_types.push_back(RetTarget(node.m_code->m_res_type));
+            node.m_code->visit( *this );
+            this->closure_ret_types.pop_back();
+        }
 
     private:
         void push_traits(const ::HIR::t_trait_list& list) {
@@ -2204,7 +2251,7 @@ void Typecheck_Code_CS__EnumerateRules(
                         this->hrls = &pp_hrl;
                         if( trait.m_type_bounds.size() == 0 )
                         {
-                            context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer), rv, "", false);
+                            context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer), rv, "", {}, false);
                         }
                         else
                         {
@@ -2212,7 +2259,7 @@ void Typecheck_Code_CS__EnumerateRules(
                             {
                                 auto aty_cloned = this->monomorph_type(sp, aty.second.type);
                                 auto params = this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer);
-                                context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), false);
+                                context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), aty.second.aty_params, false);
                             }
                         }
                         this->hrls = nullptr;

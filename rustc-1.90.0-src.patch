@@ -1,0 +1,46 @@
+# Disable various struct size checks, as mrustc isn't as good at niche optimisations
+--- compiler/rustc_hir/src/hir.rs
++++ compiler/rustc_hir/src/hir.rs
+@@ -4938,4 +4938,5 @@
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
++#[cfg(not(rust_compiler="mrustc"))]
+ #[cfg(target_pointer_width = "64")]
+ mod size_asserts {
+     use rustc_data_structures::static_assert_size;
+--- compiler/rustc_errors/src/lib.rs
++++ compiler/rustc_errors/src/lib.rs
+@@ -102,5 +102,6 @@
+ // `PResult` is used a lot. Make sure it doesn't unintentionally get bigger.
+ #[cfg(target_pointer_width = "64")]
+ rustc_data_structures::static_assert_size!(PResult<'_, ()>, 24);
++#[cfg(not(rust_compiler="mrustc"))]
+ #[cfg(target_pointer_width = "64")]
+ rustc_data_structures::static_assert_size!(PResult<'_, bool>, 24);
+--- compiler/rustc_parse/src/parser/mod.rs
++++ compiler/rustc_parse/src/parser/mod.rs
+@@ -229,3 +229,4 @@
+ // though, because `TokenTypeSet(u128)` alignment varies on others, changing the total size.
++#[cfg(not(rust_compiler="mrustc"))]
+ #[cfg(all(target_pointer_width = "64", any(target_arch = "aarch64", target_arch = "x86_64")))]
+ rustc_data_structures::static_assert_size!(Parser<'_>, 288);
+
+# Workaround for some strange cases of method lookups
+--- compiler/rustc_middle/src/ty/sty.rs
++++ compiler/rustc_middle/src/ty/sty.rs
+@@ -2026,4 +2026,4 @@
+ impl<'tcx> rustc_type_ir::inherent::Tys<TyCtxt<'tcx>> for &'tcx ty::List<Ty<'tcx>> {
+     fn inputs(self) -> &'tcx [Ty<'tcx>] {
+-        self.split_last().unwrap().1
++        (**self).split_last().unwrap().1
+     }
+--- compiler/rustc_middle/src/ty/generic_args.rs
++++ compiler/rustc_middle/src/ty/generic_args.rs
+@@ -703,7 +703,7 @@
+ impl<'tcx, T: TypeVisitable<TyCtxt<'tcx>>> TypeVisitable<TyCtxt<'tcx>> for &'tcx ty::List<T> {
+     #[inline]
+     fn visit_with<V: TypeVisitor<TyCtxt<'tcx>>>(&self, visitor: &mut V) -> V::Result {
+-        walk_visitable_list!(visitor, self.iter());
++        walk_visitable_list!(visitor, (***self).iter());
+         V::Result::output()
+     }
+ }

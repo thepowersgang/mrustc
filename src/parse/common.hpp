@@ -60,6 +60,7 @@ extern AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex);
 extern void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::AttributeList meta_items);
 extern ::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::AbsolutePath& mod_path, AST::AttributeList meta_items);
 extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod);
+extern ::AST::Named<::AST::Item> Parse_ExternBlock_Item(TokenStream& lex, const std::string& abi);
 
 
 extern AST::Expr   Parse_Expr(TokenStream& lex);

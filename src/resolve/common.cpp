@@ -105,6 +105,18 @@ namespace {
                 }
                 if(e.nodes.size() == 1 && ignore_last )
                 {
+                    // HACK: If the target path is a crate name, then return `ImplicitPrelude` instead of the current module
+                    if( crate.m_edition >= AST::Edition::Rust2018 )
+                    {
+                        const auto& name = e.nodes.back().name();
+                        DEBUG("Trying implicit externs for " << name);
+                        DEBUG(FmtLambda([&](std::ostream& os) { for(const auto& v : AST::g_implicit_crates) os << " " << v.first;}));
+                        auto ec_it = AST::g_implicit_crates.find(name);
+                        if(ec_it != AST::g_implicit_crates.end()) {
+                            return ResolveModuleRef::make_ImplicitPrelude({});
+                        }
+                    }
+
                     DEBUG("Ignore last");
                     return ResolveModuleRef(&this->get_mod_by_true_path(base_nodes, base_nodes.size()));
                 }
@@ -139,6 +151,12 @@ namespace {
                             return get_module_ast(m, path, 1, ignore_last, out_path);
                             }
                         }
+                        }
+                    TU_ARMA(AstRoot, m) {
+                        if(out_path) {
+                            *out_path = AST::AbsolutePath("",{});
+                        }
+                        return get_module_ast(*m, path, 1, ignore_last, out_path);
                         }
                     TU_ARMA(HirRoot, hir_crate) {
                         return get_module_hir(hir_crate->m_root_module, path, 1, ignore_last, out_path);
@@ -268,6 +286,7 @@ namespace {
         {
             TRACE_FUNCTION_F("start_offset=" << start_offset << ", ignore_last=" << ignore_last);
             const AST::Module* mod = &start_mod;
+            ASSERT_BUG(Span(), path.nodes().size() >= (ignore_last ? 1 : 0), "" << path);
 
             for(size_t idx = start_offset; idx < path.nodes().size() - (ignore_last ? 1 : 0); idx ++)
             {
@@ -307,6 +326,9 @@ namespace {
                         return ResolveModuleRef();
                     }
                     }
+                TU_ARMA(AstRoot, e) {
+                    mod = e;
+                    }
                 TU_ARMA(Hir, e) {
                     if( const auto* i = e->opt_Module() ) {
                         return get_module_hir(*i, path, idx+1, ignore_last, out_path);
@@ -335,6 +357,7 @@ namespace {
         {
             TRACE_FUNCTION_F("path=" << path << ", start_offset=" << start_offset << ", ignore_last=" << ignore_last);
             const HIR::Module* mod = &start_mod;
+            ASSERT_BUG(Span(), path.nodes().size() >= (ignore_last ? 1 : 0), "" << path);
             for(size_t i = start_offset; i < path.nodes().size() - (ignore_last ? 1 : 0); i ++)
             {
                 const auto& name = path.nodes()[i].name();
@@ -518,9 +541,20 @@ namespace {
             for(const auto& i : mod.m_items)
             {
                 //DEBUG(i.name << " " << i.data.tag_str());
-                // What about `cfg()`?
-                if( !check_cfg_attrs(i->attrs) ) {
-                    continue ;
+                
+                // Note: Cache the result of `cfg()` resolution, as it doesn't change
+                // - Do the caching here (on the item level) instead of in `cfg.cpp` as that avoids needing to check
+                //   the attribute list multiple times.
+                switch(i->cached_cfg)
+                {
+                case AST::CachedCfg::Unknown:
+                    i->cached_cfg = check_cfg_attrs(i->attrs) ? AST::CachedCfg::Yes : AST::CachedCfg::No;
+                case AST::CachedCfg::Yes:
+                case AST::CachedCfg::No:
+                    if( i->cached_cfg == AST::CachedCfg::No ) {
+                        continue ;
+                    }
+                    break;
                 }
                 if( matching_namespace(i->data, ns) && i->name == name )
                 {
@@ -561,7 +595,7 @@ namespace {
                     {
                         if( e.name == name )
                         {
-                            DEBUG("Use " << e.path);
+                            DEBUG("Use " << e.name << " := " << e.path);
 
                             if( e.path.m_class.is_Absolute() && e.path.m_class.as_Absolute().crate == CRATE_BUILTINS ) {
                                 const auto& pe = e.path.m_class.as_Absolute();
@@ -572,6 +606,29 @@ namespace {
                                     }
                                     return ResolveItemRef_Macro(Expand_FindProcMacro(pe.nodes.front().name()));
                                 }
+                            }
+                            if( e.path.m_class.is_Absolute() && e.path.m_class.as_Absolute().nodes.empty() ) {
+                                if( ns == ResolveNamespace::Namespace )
+                                {
+                                    AST::AbsolutePath   tmp;
+                                    auto tgt_mod = this->get_module(mod.path(), e.path, false, &tmp);
+                                    TU_MATCH_HDRA( (tgt_mod), {)
+                                    TU_ARMA(Ast, mod_ptr) {
+                                        if(out_path)    *out_path = tmp;
+                                        return ResolveItemRef_Type::make_AstRoot(mod_ptr);
+                                        }
+                                    TU_ARMA(Hir, mod_ptr) {
+                                        if(out_path)    *out_path = tmp;
+                                        return ResolveItemRef_Type::make_HirRoot(&*crate.m_extern_crates.at(tmp.crate).m_hir);
+                                        }
+                                    TU_ARMA(ImplicitPrelude, _e) {
+                                        TODO(sp, "ImplicitPrelude?");
+                                        }
+                                    TU_ARMA(None, _e) {
+                                        }
+                                    }
+                                }
+                                continue;
                             }
 
                             const auto& item_name = e.path.nodes().back().name();
@@ -599,7 +656,18 @@ namespace {
                                 }
                                 }
                             TU_ARMA(ImplicitPrelude, _e) {
-                                TODO(sp, "ImplicitPrelude?");
+                                if( ns == ResolveNamespace::Namespace )
+                                {
+                                    auto ec_it = AST::g_implicit_crates.find(item_name);
+                                    if(ec_it != AST::g_implicit_crates.end()) {
+                                        if(out_path) {
+                                            out_path->crate = ec_it->second;
+                                            out_path->nodes.clear();
+                                        }
+                                        return ResolveItemRef_Type(&*crate.m_extern_crates.at(ec_it->second).m_hir);
+                                    }
+                                    TODO(sp, "ImplicitPrelude?");
+                                }
                                 }
                             TU_ARMA(None, _e) {
                                 //BUG(sp, "Unable to find " << e.path << " (starting from " << mod.path() << ")");
@@ -680,8 +748,9 @@ namespace {
         }
 
         /// Locate the named item in HIR (resolving `Import` references too)
-        ResolveItemRef find_item_hir(const HIR::Module& mod, const RcString& item_name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr)
+        ResolveItemRef find_item_hir(const HIR::Module& mod, const RcString& item_name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr, const ::HIR::SimplePath* vis_path_p=nullptr)
         {
+            const auto& vis_path = vis_path_p ? *vis_path_p : ::HIR::SimplePath();
             TRACE_FUNCTION_F(item_name);
             if( out_path ) {
                 ASSERT_BUG(sp, out_path->crate != "", "Crate not filled");
@@ -701,7 +770,7 @@ namespace {
             {
             case ResolveNamespace::Namespace: {
                 auto it = mod.m_mod_items.find(item_name);
-                if( it != mod.m_mod_items.end() && it->second->publicity.is_global() ) {
+                if( it != mod.m_mod_items.end() && it->second->publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR namespace");
                     const HIR::TypeItem*    ti;
                     if(const auto* p = it->second->ent.opt_Import()) {
@@ -725,7 +794,7 @@ namespace {
                 } break;
             case ResolveNamespace::Value: {
                 auto it = mod.m_value_items.find(item_name);
-                if( it != mod.m_value_items.end() && it->second->publicity.is_global() ) {
+                if( it != mod.m_value_items.end() && it->second->publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR value");
                     const HIR::ValueItem*    vi;
                     if(const auto* p = it->second->ent.opt_Import()) {
@@ -748,7 +817,7 @@ namespace {
                 if( it == mod.m_macro_items.end() ) {
                     DEBUG("Did not find `" << item_name << "` in HIR macro");
                 }
-                else if( !it->second->publicity.is_global() ) {
+                else if( !it->second->publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR macro - but not public, ignoring");
                 }
                 else {
@@ -758,24 +827,36 @@ namespace {
                         if(out_path) {
                             *out_path = sp_to_ap(p->path);
                         }
+                        struct H2 {
+                            static ResolveItemRef_Macro get_builtin(const Span& sp, const RcString& name) {
+                                // TODO: What if it's a derive? Or it's an attribute
+                                if( auto* pm = Expand_FindProcMacro(name) ) {
+                                    return ResolveItemRef_Macro(pm);
+                                }
+                                //if( /*auto* pm =*/ Expand_FindDecorator(name) ) {
+                                //    TODO(sp, "Resolve HIR import to decorator");
+                                //    //return ResolveItemRef_Macro(pm);
+                                //}
+                                DEBUG("Import of builtins: Not found");
+                                return {};
+                            }
+                        };
                         if( p->path.crate_name() == CRATE_BUILTINS ) {
-                            auto* pm = Expand_FindProcMacro(p->path.components().back());
-                            // TODO: What if it's a derive?
-                            if( !pm )
+                            auto v = H2::get_builtin(sp, p->path.components().back());
+                            if( v.is_None() ) {
                                 break;
-                            ASSERT_BUG(sp, pm, "Unable to find builtin macro " << p->path);
-                            return ResolveItemRef_Macro(pm);
+                            }
+                            return v;
                         }
                         mi = &H::get_crate(sp, crate, p->path).get_macroitem_by_path(sp, p->path, true);
                         if(const auto* p = mi->opt_Import())
                         {
                             if( p->path.crate_name() == CRATE_BUILTINS ) {
-                                auto* pm = Expand_FindProcMacro(p->path.components().back());
-                                // TODO: What if it's a derive?
-                                if( !pm )
+                                auto v = H2::get_builtin(sp, p->path.components().back());
+                                if( v.is_None() ) {
                                     break;
-                                ASSERT_BUG(sp, pm, "Unable to find builtin macro " << p->path);
-                                return ResolveItemRef_Macro(pm);
+                                }
+                                return v;
                             }
                             // Fall throught to fail
                         }
@@ -823,6 +904,10 @@ ResolveItemRef_Macro Resolve_Lookup_Macro(const Span& span, const AST::Crate& cr
 
     const auto& item_name = path.nodes().back().name();
     auto mod = rs.get_module(base_path, path, true, out_path);
+    if( mod.is_ImplicitPrelude() ) {
+        const auto& base_nodes = base_path.nodes();
+        mod = ResolveModuleRef(&rs.get_mod_by_true_path(base_nodes, base_nodes.size()));
+    }
     TU_MATCH_HDRA( (mod), {)
     TU_ARMA(Ast, mod_ptr) {
         auto rv = rs.find_item(*mod_ptr, item_name, ResolveNamespace::Macro, out_path);
@@ -832,14 +917,24 @@ ResolveItemRef_Macro Resolve_Lookup_Macro(const Span& span, const AST::Crate& cr
         return std::move( rv.as_Macro() );
         }
     TU_ARMA(Hir, mod_ptr) {
-        auto rv = rs.find_item_hir(*mod_ptr, item_name, ResolveNamespace::Macro, out_path);
+        const ::HIR::SimplePath* vis_path = nullptr;
+        ::HIR::SimplePath   tmp_p;
+        if( path.m_class.is_Relative() && path.m_class.as_Relative().hygiene.has_mod_path() ) {
+            const auto& in_p = path.m_class.as_Relative().hygiene.mod_path();
+            tmp_p = HIR::SimplePath(in_p.crate, in_p.ents);
+            DEBUG("vis_path=" << tmp_p);
+            vis_path = &tmp_p;
+        }
+        auto rv = rs.find_item_hir(*mod_ptr, item_name, ResolveNamespace::Macro, out_path, vis_path);
         if( rv.is_None() )
             return ResolveItemRef_Macro::make_None({});
         ASSERT_BUG(span, rv.is_Macro(), rv.tag_str());
         return std::move( rv.as_Macro() );
         }
-    TU_ARMA(ImplicitPrelude, _e)
-        BUG(span, "Parent module of a macro is the implicit prelude?");
+    TU_ARMA(ImplicitPrelude, _e) {
+        // This isn't a macro, so return `None`
+        return ResolveItemRef_Macro::make_None({});
+        }
     TU_ARMA(None, e) {
         return ResolveItemRef_Macro::make_None({});
         }

@@ -71,6 +71,7 @@ namespace static_borrow_constants {
         void visit_node_ptr(::HIR::ExprPtr& root) {
             const auto& node_ref = *root;
             const char* node_ty = typeid(node_ref).name();
+            assert(&root == &m_expr_ptr);
             TRACE_FUNCTION_FR(&*root << " " << node_ty << " : " << root->m_res_type, node_ty);
 
             m_all_constant = true;
@@ -134,14 +135,21 @@ namespace static_borrow_constants {
                     break;
                 }
                 // If the inner value is already a static or it's a constant, then treat as a valid static
-                auto& value_ptr = *value_ptr_ptr;
-                if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(value_ptr_ptr->get()))
+                // - Seek through field accesses
                 {
-                    (void)inner_node;
-                    m_all_constant = saved_all_constant;
-                    m_is_constant = true;
-                    return ;
+                    auto vpp = value_ptr_ptr;
+                    while(auto* inner_node = dynamic_cast<::HIR::ExprNode_Field*>(vpp->get())) {
+                        vpp = &inner_node->m_value;
+                    }
+                    if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(vpp->get()))
+                    {
+                        (void)inner_node;
+                        m_all_constant = saved_all_constant;
+                        m_is_constant = true;
+                        return ;
+                    }
                 }
+                auto& value_ptr = *value_ptr_ptr;
                 //auto usage = value_ptr->m_usage;
 
                 bool is_unsized = false;
@@ -158,8 +166,9 @@ namespace static_borrow_constants {
                     return v == 0;
                     })();
 
-                // Not generic (can't check for interior mutability)
-                if( !is_zst && monomorphise_type_needed(value_ptr->m_res_type) )
+                // TODO: Check for interior mutability (or contained generic types in the VALUE)
+                // - Use a different visitor to check for imut or generics within composites
+                if( false && !is_zst && monomorphise_type_needed(value_ptr->m_res_type) )
                 {
                     DEBUG("-- " << value_ptr->m_res_type << " is generic");
                 }
@@ -187,7 +196,7 @@ namespace static_borrow_constants {
                 // TODO: It would be nice if this could see through indexing/fields, but indexing needs a constant index
                 if( dynamic_cast<::HIR::ExprNode_PathValue*>(node.m_value.get()) && node.m_value->m_usage == HIR::ValueUsage::Borrow )
                 {
-                    m_is_constant =  true;
+                    m_is_constant = true;
                 }
             }
 
@@ -426,15 +435,25 @@ namespace static_borrow_constants {
             ::HIR::ExprVisitorDef::visit(node);
             m_all_constant = saved_all_constant;
 
+            // If this is a non-capcuring closure
             if( node.m_avu_cache.captured_vars.empty() ) {
                 m_is_constant = true;
 
-                // Don't allow if any local is generic.
-                for(auto idx : node.m_avu_cache.local_vars ) {
-                    if( monomorphise_type_needed(m_expr_ptr.m_bindings[idx]) ) {
-                        m_is_constant = false;
-                        break;
+                if( node.m_code ) {
+                    // Don't allow if any local is generic.
+                    for(auto idx : node.m_avu_cache.local_vars ) {
+                        ASSERT_BUG(node.span(), idx < m_expr_ptr.m_bindings.size(),
+                            "Local variable #" << idx << " out of range: " << m_expr_ptr.m_bindings.size());
+                        if( monomorphise_type_needed(m_expr_ptr.m_bindings.at(idx)) ) {
+                            m_is_constant = false;
+                            break;
+                        }
                     }
+                }
+                else {
+                    // Allowed? It's already been converted.
+                    // - Should this check the path for generics?
+                    //node.m_obj_path;
                 }
             }
         }
@@ -626,6 +645,9 @@ namespace static_borrow_constants {
             }
         }
         void visit_node_ptr(::HIR::ExprPtr& root) {
+            root->visit(*this);
+        }
+        void visit_node_ptr(::std::unique_ptr<::HIR::ExprNode>& root) override {
             root->visit(*this);
         }
 
@@ -875,6 +897,16 @@ namespace static_borrow_constants {
                     node.m_binding = monomorph.get_value(node.span(), HIR::GenericRef("", node.m_binding)).as_Generic().binding;
                     is_generic = true;
                 }
+                void visit(HIR::ExprNode_ArraySized& node) override {
+                    if( auto* n = node.m_size.opt_Unevaluated() )
+                    {
+                        if( auto* g = n->opt_Generic() )
+                        {
+                            *g = monomorph.get_value(node.span(), *g).as_Generic();
+                            is_generic = true;
+                        }
+                    }
+                }
             } v(resolve, monomorph);
             node->visit(v);
             v.visit_type(node->m_res_type);
@@ -887,6 +919,7 @@ namespace static_borrow_constants {
                 DEBUG("Generic static");
             }
 
+            ASSERT_BUG(node->span(), m_expr_ptr.m_state, "");
             auto val_expr = HIR::ExprPtr(mv$(node));
             val_expr.m_state = m_expr_ptr.m_state.clone();
             val_expr.m_state->stage = ::HIR::ExprState::Stage::Sbc;
@@ -909,7 +942,7 @@ namespace static_borrow_constants {
                 return HIR::LifetimeRef(g.binding);
             }
             HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
-                if( lft == HIR::LifetimeRef() ) {
+                if( !lft.is_param() ) {
                     return  HIR::LifetimeRef::new_static();
                 }
                 else {
@@ -1001,10 +1034,11 @@ namespace static_borrow_constants {
                 // - (Currently) there shouldn't be any generics, need to solve that later on?
                 auto static_ty = MonomorphLifetimesStatic().monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
                 resolve.expand_associated_types(sp, static_ty);
+                DEBUG("ConstBlock: static_ty = " << static_ty);
 
                 auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
                 auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
-                DEBUG("new_res_ty = " << new_res_ty);
+                DEBUG("ConstBlock: new_res_ty = " << new_res_ty);
 
                 auto path = m_new_static_cb(sp, mv$(static_ty), mv$(val_expr), mv$(params_def), true);
                 DEBUG("> " << path << constr_params);
@@ -1124,6 +1158,7 @@ namespace static_borrow_constants {
 
                     if( !new_static.m_params.is_generic() )
                     {
+                        new_static.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
                         new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( new_static_pair.path, new_static.m_value, new_static.m_type.clone());
                         new_static.m_value_generated = true;
                     }
@@ -1355,6 +1390,9 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
                 }) ));
 
                 auto& s = crate.m_new_values.back().second->ent.as_Static();
+                ASSERT_BUG(Span(), !s.m_value.m_state, "ExprState set already");
+                s.m_value.m_state = ::HIR::ExprStatePtr(::HIR::ExprState(crate.m_root_module, ::HIR::SimplePath(crate.m_crate_name)));
+                s.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
                 s.m_value.m_state->m_impl_generics = nullptr;
                 s.m_value.m_state->m_item_generics = &s.m_params;
                 return path;
@@ -1363,6 +1401,7 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
 
         if( !new_static.m_params.is_generic() )
         {
+            new_static.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
             new_static.m_value_res = ::HIR::Evaluator(sp, crate, nvs).evaluate_constant( path, new_static.m_value, new_static.m_type.clone());
             new_static.m_value_generated = true;
         }
@@ -1375,9 +1414,13 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), std::move(vi) } ));
         crate.m_new_values.push_back( ::std::make_pair(name, mv$(boxed)) );
         {
-            auto& s = crate.m_new_values.back().second->ent.as_Static();
-            s.m_value.m_state->m_impl_generics = nullptr;
-            s.m_value.m_state->m_item_generics = &s.m_params;
+            auto& e = crate.m_new_values.back().second->ent;
+            ASSERT_BUG(sp, e.is_Static() || e.is_Constant(), "");
+            auto& p = e.is_Static() ? e.as_Static().m_params : e.as_Constant().m_params;
+            auto& v = e.is_Static() ? e.as_Static().m_value : e.as_Constant().m_value;
+            ASSERT_BUG(Span(), v.m_state, "");
+            v.m_state->m_impl_generics = nullptr;
+            v.m_state->m_item_generics = &p;
         }
         return path;
         }, exp);

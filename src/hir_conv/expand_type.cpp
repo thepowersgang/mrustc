@@ -43,7 +43,7 @@ namespace {
         }
 
         pp.m_values.reserve( params_def.m_values.size() );
-        while( pp.m_values.size() < params_def.m_values.size() && params_def.m_values[pp.m_values.size()].m_default ) {
+        while( pp.m_values.size() < params_def.m_values.size() && !params_def.m_values[pp.m_values.size()].m_default.is_Infer() ) {
             //pp.m_values.push_back( ms_o.monomorph_va(sp, params_def.m_values[pp.m_values.size()].m_default) );
             TODO(sp, "Populate default value params");
         }
@@ -60,11 +60,7 @@ namespace {
     if(const auto* ep = ti.opt_TypeAlias() )
     {
         const auto& ta = *ep;
-        DEBUG(path << " " << ta.m_type);
-        if( ta.m_type.data().is_ErasedType() ) {
-            ASSERT_BUG(sp, !ta.m_params.is_generic(), "Generic type alias ErasedType?");
-            return ta.m_type.clone();
-        }
+        DEBUG(path << " -> type " << ta.m_params.fmt_args() << " = " << ta.m_type);
         auto pp = get_path_params(sp, ta.m_params, path, is_expr);
         // Monomorphise the exapnded type using the created params
         auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
@@ -109,7 +105,7 @@ std::vector<HIR::TraitPath> ConvertHIR_ExpandAliases_GetTraitExpansion_GP(const 
         {
             rv.push_back(ms.monomorph_traitpath(sp, exp, false));
         }
-        DEBUG(path << " -> " << path.m_path << pp << " -> {" << rv << "}");
+        DEBUG(path << "\n -> " << path.m_path << pp << "\n -> {" << rv << "}");
         return rv;
     }
     else
@@ -117,14 +113,55 @@ std::vector<HIR::TraitPath> ConvertHIR_ExpandAliases_GetTraitExpansion_GP(const 
         return std::vector<HIR::TraitPath>();
     }
 }
-std::vector<HIR::TraitPath> ConvertHIR_ExpandAliases_GetTraitExpansion(const Span& sp, const ::HIR::Crate& crate, const HIR::TraitPath& path, bool is_expr)
+std::vector<HIR::TraitPath> ConvertHIR_ExpandAliases_GetTraitExpansion(const Span& sp, const ::HIR::Crate& crate, /*const*/ HIR::TraitPath& path, bool is_expr)
 {
     auto rv = ConvertHIR_ExpandAliases_GetTraitExpansion_GP(sp, crate, path.m_path, is_expr);
     if( !rv.empty() )
     {
         if( !path.m_trait_bounds.empty() || !path.m_type_bounds.empty() )
         {
-            TODO(sp, "Re-assign ATYs - " << path);
+            struct H {
+                static bool contains_trait(const Span& sp, const HIR::Crate& crate, const HIR::GenericPath& path, const HIR::GenericPath& des_path)
+                {
+                    if( path.m_path == des_path.m_path ) {
+                        return true;
+                    }
+                    const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
+                    if( const auto* t = ti.opt_Trait() ) {
+                        for(const auto& pt : t->m_parent_traits) {
+                            if( contains_trait(sp, crate, pt.m_path, des_path) )
+                                return true;
+                        }
+                    }
+                    else if( const auto* t = ti.opt_TraitAlias() ) {
+                        for(const auto& pt : t->m_traits) {
+                            if( contains_trait(sp, crate, pt.m_path, des_path) )
+                                return true;
+                        }
+                    }
+                    else {
+                        BUG(sp, "Not a trait path " << path << ": " << ti.tag_str());
+                    }
+                    return false;
+                }
+                static HIR::TraitPath& find_entry(const Span& sp, const HIR::Crate& crate, const HIR::GenericPath& des_path, ::std::vector<::HIR::TraitPath>& rv)
+                {
+                    for(auto& p : rv) {
+                        if( contains_trait(sp, crate, p.m_path, des_path) ) {
+                            return p;
+                        }
+                    }
+                    BUG(sp, "Unable to find a trait in expansion list for " << des_path);
+                }
+            };
+            for(auto& tb : path.m_trait_bounds) {
+                auto& e = H::find_entry(sp, crate, tb.second.source_trait, rv);
+                e.m_trait_bounds.insert(std::make_pair(tb.first, std::move(tb.second)));
+            }
+            for(auto& tb : path.m_type_bounds) {
+                auto& e = H::find_entry(sp, crate, tb.second.source_trait, rv);
+                e.m_type_bounds.insert(std::make_pair(tb.first, std::move(tb.second)));
+            }
         }
     }
     return rv;
@@ -142,9 +179,39 @@ public:
         m_crate(crate)
     {}
 
+    void expand_trait_list(const Span& sp, ::std::vector<HIR::TraitPath>& list)
+    {
+        for(auto it = list.begin(); it != list.end(); ++it)
+        {
+            auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, *it, m_in_expr);
+            if(!n.empty())
+            {
+                it = list.erase(it);
+                it = list.insert(it, std::make_move_iterator(n.begin()), std::make_move_iterator(n.end()));
+                --it;
+            }
+        }
+    }
+
     void visit_type(::HIR::TypeRef& ty) override
     {
         static Span sp;
+
+        if( auto* e = ty.data_mut().opt_ErasedType() )
+        {
+            expand_trait_list(sp, e->m_traits);
+        }
+        else if(auto* e = ty.data_mut().opt_TraitObject() )
+        {
+            if( e->m_trait.m_path != HIR::SimplePath() )
+            {
+                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, e->m_trait, m_in_expr);
+                if( n.size() > 0 )
+                {
+                    TODO(sp, "Expand trait alias in TraitObject? (markers only) - " << e->m_trait);
+                }
+            }
+        }
 
         ::HIR::Visitor::visit_type(ty);
 
@@ -182,20 +249,12 @@ public:
     {
         static Span sp;
         // 1. Make sure that the trait path isn't pointing at an alias (should have been handled by the caller, which can expand to multiple items)
-        ASSERT_BUG(sp, m_crate.get_typeitem_by_path(sp, tp.m_path.m_path).is_Trait(), "Bad trait path - " << tp.m_path);
+        ASSERT_BUG(sp, m_crate.get_typeitem_by_path(sp, tp.m_path.m_path).is_Trait(),
+            "Bad trait path - " << tp.m_path << " : " << m_crate.get_typeitem_by_path(sp, tp.m_path.m_path).tag_str());
         // 2. Handle AtyBounds
         for(auto& tb : tp.m_trait_bounds)
         {
-            for(auto it = tb.second.traits.begin(); it != tb.second.traits.end(); ++it)
-            {
-                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, *it, m_in_expr);
-                if(!n.empty())
-                {
-                    it = tb.second.traits.erase(it);
-                    it = tb.second.traits.insert(it, std::make_move_iterator(n.begin()), std::make_move_iterator(n.end()));
-                    --it;
-                }
-            }
+            expand_trait_list(sp, tb.second.traits);
         }
 
         // Finally. Recurse
@@ -436,6 +495,25 @@ public:
 
             m_in_expr = old;
         }
+    }
+
+    void visit_trait_alias(::HIR::ItemPath p, ::HIR::TraitAlias& item) override
+    {
+        //Span    sp(p);
+        expand_trait_list(Span(), item.m_traits);
+        ::HIR::Visitor::visit_trait_alias(p, item);
+    }
+    void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
+    {
+        //Span    sp(p);
+        expand_trait_list(Span(), item.m_parent_traits);
+        ::HIR::Visitor::visit_trait(p, item);
+    }
+    void visit_associatedtype(::HIR::ItemPath p, ::HIR::AssociatedType& item) override
+    {
+        //Span    sp(p);
+        expand_trait_list(Span(), item.m_trait_bounds);
+        ::HIR::Visitor::visit_associatedtype(p, item);
     }
 
 

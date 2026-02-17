@@ -672,9 +672,16 @@ namespace
                         case LookupMode::Constant:
                         case LookupMode::Variable:
                             // TODO: Ensure validity? (I.e. that `Self` is a unit or tuple struct
-                            if( e->m_data.is_Path() )
+                            if( const auto* p = e->m_data.opt_Path() )
                             {
-                                return *e->m_data.as_Path();
+                                // HACK! If `Self` points to a `type`, look through it
+                                // - rustc-1.90.0-src/compiler/rustc_codegen_llvm/src/context.rs:675
+                                if( const auto* pbe = (**p).m_bindings.type.binding.opt_TypeAlias() ) {
+                                    assert(pbe->alias_);
+                                    assert(pbe->alias_->m_type.is_path());
+                                    return *pbe->alias_->m_type.m_data.as_Path();
+                                }
+                                return **p;
                             }
                         default:
                             break;
@@ -915,10 +922,13 @@ void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::A
             Resolve_Absolute_ExprNode(context, *n);
             }
         TU_ARMA(AssociatedTyEqual, a) {
+            Resolve_Absolute_PathParams(context, sp, a.first.args());
             Resolve_Absolute_Type(context, a.second);
             }
         TU_ARMA(AssociatedTyBound, a) {
-            Resolve_Absolute_Path(context, sp, Context::LookupMode::Type, a.second);
+            Resolve_Absolute_PathParams(context, sp, a.first.args());
+            for(auto& p : a.second)
+                Resolve_Absolute_Path(context, sp, Context::LookupMode::Type, p);
             }
         }
     }
@@ -1538,6 +1548,12 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
         return ;
     }
 
+    if( path_abs.nodes.empty() ) {
+        path.m_bindings.type.set(AST::AbsolutePath(path_abs.crate,  {}), AST::PathBinding_Type::make_Module({
+            &context.m_crate.m_root_module
+        }));
+        return ;
+    }
 
     const ::AST::Module*    mod = &context.m_crate.m_root_module;
     for(unsigned int i = 0; i < path_abs.nodes.size() - 1; i ++ )
@@ -2223,18 +2239,22 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             Resolve_Absolute_Lifetime(context, type.span(), lft);
         }
     TU_ARMA(ErasedType, e) {
-        for(auto& trait : e.traits) {
+        for(auto& trait : e->traits) {
             context.push( trait.hrbs );
             Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, *trait.path);
             context.pop(trait.hrbs);
         }
-        for(auto& trait : e.maybe_traits) {
+        for(auto& trait : e->maybe_traits) {
             context.push( trait.hrbs );
             Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, *trait.path);
             context.pop(trait.hrbs);
         }
-        for(auto& lft : e.lifetimes)
+        for(auto& lft : e->lifetimes) {
             Resolve_Absolute_Lifetime(context, type.span(), lft);
+        }
+        if(e->use) {
+            Resolve_Absolute_PathParams(context, type.span(), *e->use);
+        }
         }
     }
 }
@@ -2370,6 +2390,11 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
             DEBUG("ExprNode_StructLiteral");
+            Resolve_Absolute_Path(this->context, node.span(), Context::LookupMode::Type, node.m_path);
+            AST::NodeVisitorDef::visit(node);
+        }
+        void visit(AST::ExprNode_StructLiteralPattern& node) override {
+            DEBUG("ExprNode_StructLiteralPattern");
             Resolve_Absolute_Path(this->context, node.span(), Context::LookupMode::Type, node.m_path);
             AST::NodeVisitorDef::visit(node);
         }
@@ -2736,6 +2761,7 @@ void Resolve_Absolute_Struct(Context& item_context, ::AST::Struct& e)
     (Struct,
         for(auto& field : s.ents) {
             Resolve_Absolute_Type(item_context,  field.m_type);
+            Resolve_Absolute_Expr(item_context,  field.m_default);
         }
         )
     )
@@ -2785,9 +2811,7 @@ void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
     for(auto& variant : e.variants())
     {
         TU_MATCH(::AST::EnumVariantData, (variant.m_data), (s),
-        (Value,
-            auto _h = item_context.enter_rootblock();
-            Resolve_Absolute_Expr(item_context,  s.m_value);
+        (Unit,
             ),
         (Tuple,
             for(auto& field : s.m_items) {
@@ -2797,9 +2821,12 @@ void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
         (Struct,
             for(auto& field : s.m_fields) {
                 Resolve_Absolute_Type(item_context,  field.m_type);
+                Resolve_Absolute_Expr(item_context,  field.m_default);
             }
             )
         )
+        auto _h = item_context.enter_rootblock();
+        Resolve_Absolute_Expr(item_context,  variant.m_discriminant_value);
     }
 
     item_context.pop( e.params() );

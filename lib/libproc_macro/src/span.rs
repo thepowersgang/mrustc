@@ -64,6 +64,15 @@ impl Span
         _ => panic!("Undefined span #{}", self.0),
         }
     }
+
+    // 1.88
+    pub fn local_file(&self) -> Option<::std::path::PathBuf> {
+        match unsafe { assert!(SPANS_COMPLETE); SPANS.get(self.0) } {
+        Some(&Some(ref v)) => Some(v.file.path()),
+        Some(&None) => None,
+        _ => panic!("Undefined span #{}", self.0),
+        }
+    }
 }
 
 /// The inner definition of a span

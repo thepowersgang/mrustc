@@ -22,6 +22,9 @@ public:
         else if( name == "dylib" || name == "rdylib" ) {
             crate.m_crate_type = AST::Crate::Type::RustDylib;
         }
+        else if( name == "cdylib" ) {
+            crate.m_crate_type = AST::Crate::Type::CDylib;
+        }
         else {
             ERROR(sp, E0000, "Unknown crate type '" << name << "'");
         }
@@ -63,7 +66,7 @@ public:
         crate.m_lang_items.insert(::std::make_pair( "mrustc-allocator", AST::AbsolutePath() ));
     }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[allocator] can only be put on functions and the crate - found on " << i.tag_str());
         }

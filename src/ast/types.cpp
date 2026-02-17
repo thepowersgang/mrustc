@@ -17,10 +17,12 @@ static const struct {
     const char* name;
     enum eCoreType  type;
 } CORETYPES[] = {
-    // NOTE: Sorted
+    // NOTE: Lexographically sorted (hence why 128 comes first)
     {"_", CORETYPE_ANY},
     {"bool", CORETYPE_BOOL},
     {"char", CORETYPE_CHAR},
+    {"f128", CORETYPE_F128},
+    {"f16", CORETYPE_F16},
     {"f32", CORETYPE_F32},
     {"f64", CORETYPE_F64},
     {"i128", CORETYPE_I128},
@@ -57,7 +59,7 @@ const char* coretype_name(const eCoreType ct ) {
     switch(ct)
     {
     case CORETYPE_INVAL:return "INVAL";
-    case CORETYPE_ANY:  return "_";
+    case CORETYPE_ANY:  return "_/*CORETYPE_ANY*/";
     case CORETYPE_CHAR: return "char";
     case CORETYPE_STR:  return "str";
     case CORETYPE_BOOL: return "bool";
@@ -73,8 +75,10 @@ const char* coretype_name(const eCoreType ct ) {
     case CORETYPE_I64:  return "i64";
     case CORETYPE_U128: return "u128";
     case CORETYPE_I128: return "i128";
+    case CORETYPE_F16:  return "f16";
     case CORETYPE_F32:  return "f32";
     case CORETYPE_F64:  return "f64";
+    case CORETYPE_F128: return "f128";
     }
     DEBUG("Unknown core type?! " << ct);
     return "NFI";
@@ -153,7 +157,11 @@ TypeRef TypeRef::clone() const
     _COPY(Generic)
     _CLONE(Path, std::make_unique<AST::Path>(*old))
     _COPY(TraitObject)
-    _COPY(ErasedType)
+    _CLONE(ErasedType, std::make_unique<Type_ErasedType>(Type_ErasedType {
+        old->traits, old->maybe_traits, old->lifetimes,
+        old->use ? box$(*old->use) : ::std::unique_ptr<AST::PathParams>(),
+        old->is_edition_2024_or_later
+    }))
     #undef _COPY
     #undef _CLONE
     }
@@ -234,9 +242,14 @@ Ordering TypeRef::ord(const TypeRef& x) const
         return ::ord(ent.traits, x_ent.traits);
         ),
     (ErasedType,
-        ORD(ent.traits, ent.traits);
-        ORD(ent.maybe_traits, ent.maybe_traits);
-        ORD(ent.lifetimes, ent.lifetimes);
+        ORD(ent->traits, x_ent->traits);
+        ORD(ent->maybe_traits, x_ent->maybe_traits);
+        ORD(ent->lifetimes, x_ent->lifetimes);
+        ORD(ent->use != 0, x_ent->use != 0);
+        if( ent->use ) {
+            ORD(*ent->use, *x_ent->use);
+        }
+        ORD(ent->is_edition_2024_or_later, x_ent->is_edition_2024_or_later);
         return OrdEqual;
         )
     )
@@ -256,7 +269,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
     {
     case TypeData::TAGDEAD: throw "";
     _(None,
-        os << "!!";
+        os << "!/*none*/!";
         )
     _(Any,
         os << "_";
@@ -347,31 +360,36 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
             it.path->print_pretty(os, true, is_debug);
         }
         for( const auto& it : ent.lifetimes ) {
-            if(needs_plus)  os << "+";
-            needs_plus = true;
-            os << it;
+            if( it.binding() != AST::LifetimeRef::BINDING_UNSPECIFIED ) {
+                if(needs_plus)  os << "+";
+                needs_plus = true;
+                os << it;
+            }
         }
         os << ")";
         )
     _(ErasedType,
         os << "impl ";
         bool needs_plus = false;
-        for( const auto& it : ent.traits ) {
+        for( const auto& it : ent->traits ) {
             if(needs_plus)  os << "+";
             needs_plus = true;
             os << it.hrbs;
             it.path->print_pretty(os, true, is_debug);
         }
-        for( const auto& it : ent.maybe_traits ) {
+        for( const auto& it : ent->maybe_traits ) {
             if(needs_plus)  os << "+";
             needs_plus = true;
             os << it.hrbs;
             it.path->print_pretty(os, true, is_debug);
         }
-        for( const auto& it : ent.lifetimes ) {
+        for( const auto& it : ent->lifetimes ) {
             if(needs_plus)  os << "+";
             needs_plus = true;
             os << it;
+        }
+        if( ent->use ) {
+            os << "use" << *ent->use;
         }
         os << "";
         )
@@ -396,6 +414,9 @@ namespace AST {
         }
         else if( x.m_binding == LifetimeRef::BINDING_INFER ) {
             os << "'_";
+        }
+        else if( x.m_binding == LifetimeRef::BINDING_UNSPECIFIED ) {
+            os << "/*'UNSPEC*/";
         }
         else {
             os << "'" << x.m_name.name;

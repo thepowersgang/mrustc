@@ -122,10 +122,9 @@ namespace resolve_ufcs {
         }
         void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override {
             // NOTE: Disabled, because generics in type aliases are never checked
-#if 0
+            // Re-enabled to resolve a UFCS properly (1.90.0 libcore)
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_type_alias(p, item);
-#endif
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
             //TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type << " (mod=" << impl.m_src_module << ")");
@@ -282,6 +281,24 @@ namespace resolve_ufcs {
                             }
                         }
                     }
+
+                    // If this is pointing at a constant/static/associated constant, change to CallValue
+                    MonomorphState  discard;
+                    auto v = upper_visitor.m_resolve.get_value(node.span(), node.m_path, discard, true);
+                    if( v.is_Constant() || v.is_Static() ) {
+                        m_replacement.reset(new ::HIR::ExprNode_CallValue(sp,
+                            ::std::make_unique<HIR::ExprNode_PathValue>(
+                                sp,
+                                std::move(node.m_path),
+                                v.is_Constant() ? ::HIR::ExprNode_PathValue::Target::CONSTANT
+                                : v.is_Static() ? ::HIR::ExprNode_PathValue::Target::STATIC
+                                : ::HIR::ExprNode_PathValue::Target::UNKNOWN
+                                ),
+                                mv$(node.m_args)
+                            ));
+                        DEBUG(&node << ": Replacing with CallValue " << m_replacement.get());
+                        return ;
+                    }
                 }
                 // Custom visitor for enum/struct constructors
                 void visit(::HIR::ExprNode_PathValue& node) override
@@ -376,20 +393,20 @@ namespace resolve_ufcs {
             //const auto& name = pd.as_UfcsUnknown().item;
             for(const auto& b : params.m_bounds)
             {
-                TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                    DEBUG("- " << e.type << " : " << e.trait.m_path);
-                    if( e.type == tr ) {
+                if(const auto* e = b.opt_TraitBound() ) {
+                    DEBUG("- " << e->type << " : " << e->trait.m_path);
+                    if( e->type == tr ) {
                         DEBUG(" - Match");
-                        if( locate_in_trait_and_set(pc, e.trait.m_path, m_crate.get_trait_by_path(sp, e.trait.m_path.m_path),  pd) ) {
+                        if( locate_in_trait_and_set(pc, e->trait.m_path, m_crate.get_trait_by_path(sp, e->trait.m_path.m_path),  pd) ) {
                             return true;
                         }
                     }
-                );
+                }
                 // -
             }
             return false;
         }
-        static ::HIR::Path::Data get_ufcs_known(::HIR::Visitor::PathContext pc, ::HIR::Path::Data::Data_UfcsUnknown e,  ::HIR::GenericPath trait_path_real, const ::HIR::Trait& trait)
+        ::HIR::Path::Data get_ufcs_known(::HIR::Visitor::PathContext pc, ::HIR::Path::Data::Data_UfcsUnknown e,  ::HIR::GenericPath trait_path_real, const ::HIR::Trait& trait) const
         {
             struct MonomorphEraseHrls: public Monomorphiser {
                 ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
@@ -417,9 +434,13 @@ namespace resolve_ufcs {
                     e.params.m_lifetimes.resize( aty.m_generics.m_lifetimes.size() );
                 }
             }
-            //auto s = trait_path.m_params.m_types.size();
-            //trait_path.m_params.m_types.clear();
-            //trait_path.m_params.m_types.resize(s);
+            // TODO: Only do this when there's multiple options?
+            if( m_in_expr )
+            {
+                auto s = trait_path.m_params.m_types.size();
+                trait_path.m_params.m_types.resize(0);
+                trait_path.m_params.m_types.resize(s);
+            }
             return ::HIR::Path::Data::make_UfcsKnown({ mv$(e.type), mv$(trait_path), mv$(e.item), mv$(e.params)} );
         }
         static bool locate_item_in_trait(::HIR::Visitor::PathContext pc, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
@@ -445,6 +466,7 @@ namespace resolve_ufcs {
         }
         // Locate the item in `pd` and set `pd` to UfcsResolved if found
         // TODO: This code may end up generating paths without the type information they should contain
+        // OR, generate paths with too much type information
         bool locate_in_trait_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
             TRACE_FUNCTION_F(trait_path);
             // TODO: Get the span from caller
@@ -463,8 +485,7 @@ namespace resolve_ufcs {
                 if( def == HIR::TypeRef() ) {
                     ERROR(sp, E0000, "");
                 }
-                if( def == ::HIR::TypeRef::new_self() )
-                {
+                if( def == ::HIR::TypeRef::new_self() ) {
                     // TODO: This has to be the _exact_ same type, including future ivars.
                     pp.m_types.push_back( pd.as_UfcsUnknown().type.clone() );
                     continue ;
@@ -477,7 +498,7 @@ namespace resolve_ufcs {
             auto monomorph_gp_if_needed = [&](const ::HIR::GenericPath& tpl)->const ::HIR::GenericPath& {
                 // NOTE: This doesn't monomorph if the parameter set is the same
                 if( monomorphise_genericpath_needed(tpl) /*&& tpl.m_params != trait_path.m_params*/ ) {
-                    DEBUG("- Monomorph " << tpl);
+                    DEBUG("[monomorph_gp_if_needed] Monomorph tpl=" << tpl);
                     return par_trait_path_tmp = monomorph_cb.monomorph_genericpath(sp, tpl, false /*no infer*/);
                 }
                 else {
@@ -486,8 +507,10 @@ namespace resolve_ufcs {
                 };
 
             // Search supertraits (recursively)
+            static HIR::GenericParams  empty_gp;
             for(const auto& pt : trait.m_parent_traits)
             {
+                auto _ = monomorph_cb.push_hrb(pt.m_hrtbs ? *pt.m_hrtbs : empty_gp);
                 const auto& par_trait_path = monomorph_gp_if_needed(pt.m_path);
                 DEBUG("- Check " << par_trait_path);
                 if( locate_in_trait_and_set(pc, par_trait_path, *pt.m_trait_ptr,  pd) ) {
@@ -496,6 +519,7 @@ namespace resolve_ufcs {
             }
             for(const auto& pt : trait.m_all_parent_traits)
             {
+                auto _ = monomorph_cb.push_hrb(pt.m_hrtbs ? *pt.m_hrtbs : empty_gp);
                 const auto& par_trait_path = monomorph_gp_if_needed(pt.m_path);
                 DEBUG("- Check (all) " << par_trait_path);
                 if( locate_item_in_trait(pc, *pt.m_trait_ptr,  pd) ) {
@@ -825,9 +849,7 @@ namespace resolve_ufcs {
                     else
                     {
                         trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
-                        for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
-                            trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
-                        }
+                        trait_path.m_params = m_current_trait->m_params.make_nop_params(0);
                     }
 
                     if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {

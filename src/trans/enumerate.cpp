@@ -134,7 +134,7 @@ namespace MIR {
 
         void apply(EnumState& state, const Trans_Params& pp) const
         {
-            TRACE_FUNCTION_F("");
+            TRACE_FUNCTION_F(" w/ impl=" << pp.pp_impl << " method=" << pp.pp_method);
             for(const auto* ty_p : this->typeids)
             {
                 DEBUG("TypeID " << *ty_p);
@@ -423,7 +423,15 @@ namespace {
                             auto b_tp_mono = cb_monomorph.monomorph_traitpath(sp, be.trait, false);
                             resolve.expand_associated_types_tp(sp, b_tp_mono);
 
-                            rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
+                            DEBUG("Check " << b_ty_mono << ": " << b_tp_mono);
+                            rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const ImplRef& impl, bool) {
+                                for(const auto& ty_b : b_tp_mono.m_type_bounds) {
+                                    const auto& ty = impl.get_type(ty_b.first.c_str(), ty_b.second.aty_params);
+                                    DEBUG("ATY " << ty_b.first << " " << ty << " ?= exp " << ty_b.second.type);
+                                    if( ty != ty_b.second.type ) {
+                                        return false;
+                                    }
+                                }
                                 return true;
                                 });
                             if( !rv )
@@ -856,7 +864,7 @@ namespace
                 ),
             (Named,
                 for(const auto& fld : e)
-                    visit_type( monomorph(fld.second.ent) );
+                    visit_type( monomorph(fld.ty) );
                 )
             )
         }
@@ -867,7 +875,7 @@ namespace
             auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
             for(const auto& variant : item.m_variants)
             {
-                visit_type( monomorph(variant.second.ent) );
+                visit_type( monomorph(variant.ty) );
             }
         }
         void visit_enum(const ::HIR::GenericPath& path, const ::HIR::Enum& item) {
@@ -970,11 +978,8 @@ namespace
                 TU_ARMA(ErasedType, te) {
                     //BUG(sp, "ErasedType hit in enumeration - " << ty);
                     }
-                TU_ARMA(Closure, te) {
-                    BUG(sp, "Closure type hit in enumeration - " << ty);
-                    }
-                TU_ARMA(Generator, te) {
-                    BUG(sp, "Generator type hit in enumeration - " << ty);
+                TU_ARMA(NodeType, te) {
+                    BUG(sp, "NodeType type hit in enumeration - " << ty);
                     }
                 // Nothing to do
                 TU_ARMA(Diverge, te) {
@@ -1448,6 +1453,10 @@ namespace {
         TRACE_FUNCTION_F(path);
         StaticTraitResolve  resolve { crate };
 
+        if( path.m_data.is_UfcsInherent() && path.m_data.as_UfcsInherent().item == "#type_id") {
+            return EntPtr::make_AutoGenerate( {} );
+        }
+
         MonomorphState  ms;
         impl_def = nullptr;
         auto ent = resolve.get_value(sp, path, ms, /*signature_only=*/false, &impl_def);
@@ -1586,6 +1595,11 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
             // Leave generation of struct/enum constructors to codgen
             // TODO: Add to a list of required constructors
             state.rv.m_constructors.insert( mv$(path_mono.m_data.as_Generic()) );
+        }
+        // - <T>::#type_id
+        else if( path_mono.m_data.is_UfcsInherent() && path_mono.m_data.as_UfcsInherent().item == "#type_id" )
+        {
+            state.rv.m_typeids.insert(path_mono.m_data.as_UfcsInherent().type);
         }
         // - <T as U>::#vtable
         else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().item == "vtable#" )
@@ -1850,6 +1864,12 @@ void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& 
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second);
                 }
             TU_ARMA(SetDropFlag, se) {
+                }
+            TU_ARMA(SaveDropFlag, se) {
+                Trans_Enumerate_FillFrom_MIR_LValue(state, se.slot);
+                }
+            TU_ARMA(LoadDropFlag, se) {
+                Trans_Enumerate_FillFrom_MIR_LValue(state, se.slot);
                 }
             TU_ARMA(ScopeEnd, se) {
                 }

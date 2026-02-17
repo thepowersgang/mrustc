@@ -76,7 +76,7 @@ void Crate::load_externs()
                         // Leave for now
                     }
                     else {
-                        c->name = load_extern_crate( it->span, c->name.c_str() );
+                        c->name = load_extern_crate( it->span, c->name );
                     }
                 }
             }
@@ -130,8 +130,9 @@ void Crate::load_externs()
         DEBUG("Load from --crate");
         for(const auto& c : g_crate_overrides)
         {
-            auto real_name = this->load_extern_crate(Span(), c.first.c_str());
-            g_implicit_crates.insert( std::make_pair(RcString::new_interned(c.first), real_name) );
+            auto n = RcString::new_interned(c.first);
+            auto real_name = this->load_extern_crate(Span(), n);
+            g_implicit_crates.insert( std::make_pair(n, real_name) );
         }
         // 
         if(this->m_ext_cratename_core != "")
@@ -190,9 +191,9 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
 # define EXESUF ""
 #endif
 #define PLUGIN_SUFFIX "-plugin" EXESUF
-        auto direct_filename = FMT("lib" << name.c_str() << RLIB_SUFFIX);
-        auto direct_filename_so = FMT("lib" << name.c_str() << RDYLIB_SUFFIX);
-        auto name_prefix = FMT("lib" << name.c_str() << "-");
+        auto direct_filename = FMT("lib" << name << RLIB_SUFFIX);
+        auto direct_filename_so = FMT("lib" << name << RDYLIB_SUFFIX);
+        auto name_prefix = FMT("lib" << name << "-");
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
@@ -342,7 +343,7 @@ ExternCrate::ExternCrate(const RcString& name, const ::std::string& path):
     m_name = m_hir->m_crate_name;
     if(const auto* e = strchr(m_name.c_str(), '-'))
     {
-        m_short_name = RcString(m_name.c_str(), e - m_name.c_str());
+        m_short_name = RcString::new_interned(m_name.c_str(), e - m_name.c_str());
     }
     else
     {

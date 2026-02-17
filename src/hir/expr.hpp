@@ -176,12 +176,27 @@ struct ExprNode_Return:
 
     NODE_METHODS();
 };
+/// @brief `foo = yield bar` generator yield statement
 struct ExprNode_Yield:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
 
     ExprNode_Yield(Span sp, ::HIR::ExprNodeP value):
+        ExprNode(mv$(sp)),
+        m_value( mv$(value) )
+    {
+    }
+
+    NODE_METHODS();
+};
+/// @brief Async Wait (the `.await` postfix operator)
+struct ExprNode_AWait:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_value;
+
+    ExprNode_AWait(Span sp, ::HIR::ExprNodeP value):
         ExprNode(mv$(sp)),
         m_value( mv$(value) )
     {
@@ -273,7 +288,8 @@ struct ExprNode_Match:
 
     NODE_METHODS();
 };
-
+// TODO: Refactor this such that if-else if-else is represented in a flat manner, instead of being recursive
+// - `if let` is a challenge with that form
 struct ExprNode_If:
     public ExprNode
 {
@@ -627,12 +643,17 @@ struct ExprNode_CallValue:
 
     NODE_METHODS();
 };
+// TODO: Refactor to support efficient method chaining
 struct ExprNode_CallMethod:
     public ExprNode
 {
+    /// @brief Method reciever value
     ::HIR::ExprNodeP    m_value;
+    /// @brief Method name
     RcString   m_method;
+    /// @brief Generic parameters to the method
     ::HIR::PathParams  m_params;
+    /// @brief Argument values
     ::std::vector< ::HIR::ExprNodeP>    m_args;
 
     // - Set during typeck to the real path to the method
@@ -687,6 +708,7 @@ struct ExprNode_Literal:
         }),
     (Boolean, bool),
     (String, ::std::string),
+    (CString, struct { ::std::string v; }),
     (ByteString, ::std::vector<char>)
     );
 
@@ -773,6 +795,9 @@ struct ExprNode_StructLiteral:
 
     ::HIR::TypeRef  m_type;
     bool    m_is_struct;
+    /// Alternative to `m_base_value`, indicates that the struct's field defaults are to be used
+    bool    m_use_defaults;
+    /// Base value (`..foo`)
     ::HIR::ExprNodeP    m_base_value;
     t_values    m_values;
 
@@ -786,6 +811,14 @@ struct ExprNode_StructLiteral:
         m_type( mv$(ty) ),
         m_is_struct( is_struct ),
         m_base_value( mv$(base_value) ),
+        m_values( mv$(values) )
+    {
+    }
+    ExprNode_StructLiteral(Span sp, ::HIR::TypeRef ty, bool is_struct, bool , t_values values):
+        ExprNode( mv$(sp) ),
+        m_type( mv$(ty) ),
+        m_is_struct( is_struct ),
+        m_use_defaults(true),
         m_values( mv$(values) )
     {
     }
@@ -895,7 +928,8 @@ struct ExprNode_Generator:
     bool    m_is_move;
     bool    m_is_pinned;
 
-    struct {
+    // AnnotateValueUsage cache/information
+    struct AvuCache {
         ::std::vector<unsigned int> local_vars;
         ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> > captured_vars;
     } m_avu_cache;
@@ -903,6 +937,8 @@ struct ExprNode_Generator:
     // Generated type information
     const ::HIR::Struct*    m_obj_ptr = nullptr;
     ::HIR::GenericPath  m_obj_path;
+    // Lifetime for captured borrows, filled by lifetime infer pass
+    ::HIR::LifetimeRef  m_capture_lifetime;
     // Captured variables (used for emitting the constructor)
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
     // State data type (needed for initialising)
@@ -927,6 +963,7 @@ struct ExprNode_GeneratorWrapper:
     public ExprNode
 {
     //ExprNode_Closure::args_t    m_args;
+    bool m_is_future;
     ::HIR::TypeRef  m_return;
     ::HIR::TypeRef  m_yield_ty;
     ::HIR::ExprNodeP    m_code;
@@ -942,13 +979,40 @@ struct ExprNode_GeneratorWrapper:
 
     ::std::vector<HIR::ValueUsage> m_capture_usages;
 
-    ExprNode_GeneratorWrapper(Span sp, /*ExprNode_Closure::args_t args,*/ ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move, bool is_pinned):
+    ExprNode_GeneratorWrapper(Span sp, /*ExprNode_Closure::args_t args,*/ ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move, bool is_pinned, bool is_future):
         ExprNode(mv$(sp)),
+        m_is_future(is_future),
         //m_args( ::std::move(args) ),
         m_return( ::std::move(rv) ),
         m_code( ::std::move(code) )
     {}
 
+    NODE_METHODS();
+};
+
+struct ExprNode_AsyncBlock
+    : public ExprNode
+{
+    ::HIR::ExprNodeP    m_code;
+    bool    m_is_move;
+
+    ExprNode_Generator::AvuCache m_avu_cache;
+
+    // Generated type information
+    const ::HIR::Struct*    m_obj_ptr = nullptr;
+    ::HIR::GenericPath  m_obj_path;
+    // Lifetime for captured borrows, filled by lifetime infer pass
+    ::HIR::LifetimeRef  m_capture_lifetime;
+    // Captured variables (used for emitting the constructor)
+    ::std::vector< ::HIR::ExprNodeP>    m_captures;
+    // State data type (needed for initialising)
+    ::HIR::TypeRef  m_state_data_type;
+
+    ExprNode_AsyncBlock(Span sp, ::HIR::ExprNodeP code, bool is_move)
+        : ExprNode(mv$(sp))
+        , m_code(std::move(code))
+        , m_is_move(is_move)
+    {}
     NODE_METHODS();
 };
 
@@ -964,11 +1028,11 @@ public:
 
     NV(ExprNode_Block)
     NV(ExprNode_ConstBlock)
-    //NV(ExprNode_AsyncBlock)
     NV(ExprNode_Asm)
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)
     NV(ExprNode_Yield)
+    NV(ExprNode_AWait)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
@@ -1006,6 +1070,7 @@ public:
     NV(ExprNode_Closure);
     NV(ExprNode_Generator);
     NV(ExprNode_GeneratorWrapper);
+    NV(ExprNode_AsyncBlock);
     #undef NV
 };
 
@@ -1024,6 +1089,7 @@ public:
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)
     NV(ExprNode_Yield)
+    NV(ExprNode_AWait)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
@@ -1061,6 +1127,7 @@ public:
     NV(ExprNode_Closure);
     NV(ExprNode_Generator);
     NV(ExprNode_GeneratorWrapper);
+    NV(ExprNode_AsyncBlock);
     #undef NV
 
     virtual void visit_pattern(const Span& sp, ::HIR::Pattern& pat);

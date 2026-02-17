@@ -93,12 +93,12 @@ namespace {
 
             // - If the called value is a local closure, figure out how it's being used.
             // TODO: You can call via &-ptrs, but that currently isn't handled in typeck
-            if(const auto* e = node.m_value->m_res_type.data().opt_Closure() )
+            if(const auto* node_pp = TU_OPT1(node.m_value->m_res_type.data(), NodeType, .opt_Closure()) )
             {
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
                     // NOTE: Closure node still exists, and will do until MIR construction deletes the HIR
-                    switch(e->node->m_class)
+                    switch( (*node_pp)->m_class)
                     {
                     case ::HIR::ExprNode_Closure::Class::Unknown:
                         BUG(sp, "References an ::Unknown closure");
@@ -540,7 +540,8 @@ namespace {
             arg_types.push_back( m_replacement->m_res_type.clone() );
         }
 
-
+        // NOTE: These are now in MIR generation, to handle temporary raising
+#if 0
         void visit(::HIR::ExprNode_Index& node) override
         {
             const auto& sp = node.span();
@@ -621,6 +622,7 @@ namespace {
             // - Dereference the result (which is an &-ptr)
             m_replacement = NEWNODE( mv$(node.m_res_type), Deref, sp,  mv$(m_replacement) );
         }
+#endif
 
 #if 0
         void visit(::HIR::ExprNode_Deref& node) override

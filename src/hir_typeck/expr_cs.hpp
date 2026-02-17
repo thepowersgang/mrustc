@@ -54,6 +54,7 @@ struct Context
         ::HIR::PathParams   params;
         ::HIR::TypeRef  impl_ty;
         RcString    name;   // if "", no type is used (and left is ignored) - Just does trait selection
+        ::HIR::PathParams   aty_pp;
 
                             // HACK: operators are special - the result when both types are primitives is ALWAYS the lefthand side
         bool    is_operator;
@@ -64,7 +65,7 @@ struct Context
                 os << "req ty " << v.impl_ty << " impl " << v.trait << v.params;
             }
             else {
-                os << v.left_ty << " = " << "< `" << v.impl_ty << "` as `" << v.trait << v.params << "` >::" << v.name;
+                os << v.left_ty << " = " << "< `" << v.impl_ty << "` as `" << v.trait << v.params << "` >::" << v.name << v.aty_pp;
             }
             if( v.is_operator )
                 os << " - op";
@@ -208,7 +209,7 @@ struct Context
     // - Equate two types, allowing inferrence
     void equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR::ExprNodeP& node_ptr);
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
-    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams params, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op=false);
+    void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams params, const ::HIR::TypeRef& impl_ty, const char *name, const ::HIR::PathParams& aty_pp, bool is_op=false);
 
     // Equate const generics (values)
     void equate_values(const Span& sp, const ::HIR::ConstGeneric& rl, const ::HIR::ConstGeneric& rr);
@@ -218,7 +219,7 @@ struct Context
 
     // - Add a trait bound (gets encoded as an associated type bound)
     void add_trait_bound(const Span& sp, const ::HIR::TypeRef& impl_ty, const ::HIR::SimplePath& trait, ::HIR::PathParams params) {
-        equate_types_assoc(sp, ::HIR::TypeRef(), trait, mv$(params), impl_ty, "", false);
+        equate_types_assoc(sp, ::HIR::TypeRef(), trait, mv$(params), impl_ty, "", {}, false);
     }
 
     /// Get the `possible_ivar_vals` entry for the given ivar index
@@ -265,7 +266,7 @@ struct Context
     // ----
 
     // - Add a pattern binding (forcing the type to match)
-    void handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
+    void handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type, bool is_irrefutable=false);
     void handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
     void add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb, ::HIR::TypeRef type);
 

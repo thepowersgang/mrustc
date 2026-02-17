@@ -20,12 +20,17 @@
 class MacroExpander;
 class SimplePatEnt;
 
+TAGGED_UNION(MacroExpansionConcatEnt, Named,
+    (Named, unsigned int),
+    (Ident, Ident)
+    );
 TAGGED_UNION(MacroExpansionEnt, Token,
     // TODO: have a "raw" stream instead of just tokens
     (Token, Token),
     // TODO: Have a flag on `NamedValue` that indicates that it is the only/last usage of this particular value (at this level)
     // NOTE: This is a 2:30 bitfield - with the high range indicating $crate
     (NamedValue, unsigned int),
+    (Concat, std::vector<MacroExpansionConcatEnt>),
     (Loop, struct {
         /// Contained entries
         ::std::vector< MacroExpansionEnt>   entries;

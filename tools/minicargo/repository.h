@@ -22,10 +22,6 @@ class Repository
         PackageVersion  version;
         /// (Cached) loaded manifest
         ::std::shared_ptr<PackageManifest>  loaded_manifest;
-        /// Indicates that the package shouldn't be considered by `find`
-        bool blacklisted;
-
-        Entry(): blacklisted(false) {}
     };
 
     ::std::multimap<::std::string, Entry>    m_cache;
@@ -39,9 +35,10 @@ public:
     void set_workspace(const WorkspaceManifest& wm) { m_workspace_manifest = &wm; }
 
     void add_patch_path(const std::string& package_name, ::helpers::path path);
-    /// Mark a dependency to be excluded from calls to `find`
-    void blacklist_dependency(const PackageManifest* dep_ptr);
 
     ::std::shared_ptr<PackageManifest> from_path(::helpers::path path);
-    ::std::shared_ptr<PackageManifest> find(const ::std::string& name, const PackageVersionSpec& version);
+    ::std::shared_ptr<PackageManifest> find(const ::std::string& name, const PackageVersionSpec& version, std::function<bool(const PackageVersion&)> filter_cb);
+    
+    ::std::shared_ptr<PackageManifest> get_package(const ::std::string& name, const PackageVersion& version);
+    ::std::vector<PackageVersion> enum_matching_versions(const ::std::string& name, const PackageVersionSpec& version) const;
 };

@@ -164,9 +164,9 @@ struct CfgChecker
     std::unordered_multimap<std::string, std::string>    values;
 
     static CfgChecker for_target(const helpers::path& compiler_path, const char* target_spec);
-    bool check_cfg(const char* str, const std::vector<std::string>& features={}) const;
+    bool check_cfg(const char* str, const std::vector<std::string>& features={}, const AllowedCfg& allowed_cfg=AllowedCfg()) const;
 private:
-    bool check_cfg(CfgParseLexer& p, const std::vector<std::string>& features) const;
+    bool check_cfg(CfgParseLexer& p, const std::vector<std::string>& features, const AllowedCfg& allowed_cfg) const;
 };
 
 CfgChecker  gCfgChecker;
@@ -175,9 +175,9 @@ void Cfg_SetTarget(const char* target_name)
 {
     gCfgChecker = CfgChecker::for_target(os_support::get_mrustc_path(), target_name);
 }
-bool Cfg_Check(const char* cfg_string, const std::vector<std::string>& features)
+bool Cfg_Check(const char* cfg_string, const std::vector<std::string>& features, const AllowedCfg& allowed_cfg)
 {
-    return gCfgChecker.check_cfg(cfg_string, features);
+    return gCfgChecker.check_cfg(cfg_string, features, allowed_cfg);
 }
 /// Dump configuration as CARGO_CFG_<name>
 void Cfg_ToEnvironment(StringListKV& out)
@@ -293,18 +293,18 @@ void Cfg_ToEnvironment(StringListKV& out)
     return rv;
 }
 
-bool CfgChecker::check_cfg(const char* cfg_string, const std::vector<std::string>& features) const
+bool CfgChecker::check_cfg(const char* cfg_string, const std::vector<std::string>& features, const AllowedCfg& allowed_cfg) const
 {
     CfgParseLexer p { cfg_string + 4 };
 
-    bool success = this->check_cfg(p, features);
+    bool success = this->check_cfg(p, features, allowed_cfg);
     if( !p.consume_if(")") )
         throw ::std::runtime_error(format("Expected ')' after cfg condition - got", p.cur().to_string()));
 
     return success;
 }
 
-bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& features) const
+bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& features, const AllowedCfg& allowed_cfg) const
 {
     auto name_tok = p.consume();
     if( name_tok.ty() != CfgParseLexer::Tok::Ident )
@@ -316,13 +316,13 @@ bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& fea
         if( false ) {
         }
         else if( name == "not" ) {
-            rv = !check_cfg(p, features);
+            rv = !check_cfg(p, features, allowed_cfg);
         }
         else if( name == "all" ) {
             rv = true;
             if( p.cur() != ')' ) {
                 do {
-                    rv &= check_cfg(p, features);
+                    rv &= check_cfg(p, features, allowed_cfg);
                 } while(p.consume_if(','));
             }
         }
@@ -330,7 +330,7 @@ bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& fea
             rv = false;
             if( p.cur() != ')' ) {
                 do {
-                    rv |= check_cfg(p, features);
+                    rv |= check_cfg(p, features, allowed_cfg);
                 } while(p.consume_if(','));
             }
         }
@@ -355,6 +355,9 @@ bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& fea
         if( its.first != its.second ) {
             return std::any_of(its.first, its.second, [&](const auto& v){ return v.second == val; });
         }
+        else if( std::find(allowed_cfg.values.begin(), allowed_cfg.values.end(), name) == allowed_cfg.values.end() ) {
+            return false;
+        }
         else {
             throw std::runtime_error(format("Unknown cfg value `", name, "` (=\"", val, "\")"));
         }
@@ -364,5 +367,78 @@ bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& fea
         return this->flags.count(name) > 0;
     }
     throw ::std::runtime_error("Hit end of check_cfg");
+}
+
+void AllowedCfg::add_from_string(const char* s)
+{
+    CfgParseLexer   p { s };
+    auto cfg_tok = p.consume();
+    if( cfg_tok.ty() != CfgParseLexer::Tok::Ident || cfg_tok != "cfg" )
+        throw ::std::runtime_error(format("Must start with `cfg`, got ", cfg_tok.to_string()));
+    if( !p.consume_if('(') ) {
+        throw ::std::runtime_error("Expected '(' after `cfg`");
+    }
+    auto name_tok = p.consume();
+    if( name_tok.ty() != CfgParseLexer::Tok::Ident ) {
+        throw ::std::runtime_error("Name must be an identifier");
+    }
+    if( !p.consume_if(',') ) {
+        // Add as a flag
+        this->flags.push_back(name_tok.str());
+    }
+    else if( p.cur() != "values" ) {
+        while( true ) {
+            if( p.cur() == ')' ) {
+                break;
+            }
+            name_tok = p.consume();
+            if( name_tok.ty() != CfgParseLexer::Tok::Ident ) {
+                throw ::std::runtime_error("Name must be an identifier");
+            }
+            this->flags.push_back(name_tok.str());
+            if( !p.consume_if(',') ) {
+                break;
+            }
+        }
+    }
+    else {
+        p.consume();
+        if( !p.consume_if('(') ) {
+            throw ::std::runtime_error(format("Expected '(' after `values`, got `", p.cur().to_string(), "`"));
+        }
+        if( p.cur() == "any" ) {
+            p.consume();
+            if( !p.consume_if('(') ) {
+                throw ::std::runtime_error(format("Expected '(' after `any`, got `", p.cur().to_string(), "`"));
+            }
+            if( !p.consume_if(')') ) {
+                throw ::std::runtime_error(format("Expected ')' after `any`, got `", p.cur().to_string(), "`"));
+            }
+        }
+        while(true) {
+            if( p.cur() == ')' ) {
+                break;
+            }
+            auto val_tok = p.consume();
+            if( val_tok.ty() != CfgParseLexer::Tok::String ) {
+                // TODO: error message
+                throw ::std::runtime_error(format("`values(...)` should contain a list of strings, got `", val_tok.to_string(), "`"));
+            }
+            if( !p.consume_if(',') ) {
+                break;
+            }
+        }
+        if( !p.consume_if(')') ) {
+            throw ::std::runtime_error(format("Expected ')' after `values` list, got `", p.cur().to_string(), "`"));
+        }
+        // Add as a value
+        this->values.push_back(name_tok.str());
+    }
+    if( !p.consume_if(')') ) {
+        throw ::std::runtime_error(format("Expected ')' after content, got `", p.cur().to_string(), "`"));
+    }
+    if( p.consume().ty() != CfgParseLexer::Tok::EndOfStream ) {
+        throw ::std::runtime_error("Extra tokens after closing ')'");
+    }
 }
 

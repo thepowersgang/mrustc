@@ -13,6 +13,7 @@ namespace HIR {
     class ItemPath;
     class ExprPtr;
     class Enum;
+    class Constant;
     class TypeRef;
     struct SimplePath;
     class GenericParams;
@@ -34,6 +35,7 @@ extern void ConvertHIR_ConstantEvaluate(::HIR::Crate& hir_crate);
 extern void ConvertHIR_ResolveUFCS_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& expr_ptr);
 extern void ConvertHIR_ConstantEvaluate_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& exp);
 extern void ConvertHIR_ConstantEvaluate_Enum(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, const ::HIR::Enum& enm);
+extern void ConvertHIR_ConstantEvaluate_Constant(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Constant& e);
 extern void ConvertHIR_ConstantEvaluate_MethodParams(
     const Span& sp,
     const ::HIR::Crate& crate, const HIR::SimplePath& mod_path, const ::HIR::GenericParams* impl_generics, const ::HIR::GenericParams* item_generics,

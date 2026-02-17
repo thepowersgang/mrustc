@@ -254,8 +254,7 @@ public:
         case ::HIR::TypeData::TAG_Infer:
         case ::HIR::TypeData::TAG_Generic:
         case ::HIR::TypeData::TAG_ErasedType:
-        case ::HIR::TypeData::TAG_Closure:
-        case ::HIR::TypeData::TAG_Generator:
+        case ::HIR::TypeData::TAG_NodeType:
             BUG(Span(), "Non-encodable type " << ty);
         TU_ARMA(Tuple, e) {
             m_os << "T" << e.size();
@@ -339,8 +338,10 @@ public:
             case ::HIR::CoreType::I64 : m_os << 'C' << 'h'; break;
             case ::HIR::CoreType::U128: m_os << 'C' << 'i'; break;
             case ::HIR::CoreType::I128: m_os << 'C' << 'j'; break;
+            case ::HIR::CoreType::F16 : m_os << 'C' << 'm'; break;
             case ::HIR::CoreType::F32 : m_os << 'C' << 'n'; break;
             case ::HIR::CoreType::F64 : m_os << 'C' << 'o'; break;
+            case ::HIR::CoreType::F128: m_os << 'C' << 'p'; break;
             case ::HIR::CoreType::Usize: m_os << 'C' << 'u'; break;
             case ::HIR::CoreType::Isize: m_os << 'C' << 'v'; break;
             case ::HIR::CoreType::Bool: m_os << 'C' << 'w'; break;

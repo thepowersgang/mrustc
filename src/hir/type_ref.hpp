@@ -20,10 +20,12 @@ struct LifetimeRef;
 struct SimplePath;
 class Path;
 class ConstGeneric;
+class GenericParams;
 
 class ExprPtr;
 struct ExprNode_Closure;
 struct ExprNode_Generator;
+struct ExprNode_AsyncBlock;
 
 enum Compare {
     Equal,
@@ -43,7 +45,39 @@ class ResolvePlaceholdersNop: public ResolvePlaceholders {
 //typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
 typedef const ResolvePlaceholders& t_cb_resolve_type;
 
-class MatchGenerics
+class TrackHrbStack
+{
+    mutable std::vector<const HIR::GenericParams*>  m_hrb_stack;
+
+public:
+    class PopOnDrop {
+        friend class TrackHrbStack;
+        std::vector<const HIR::GenericParams*>* v;
+        PopOnDrop(): v(nullptr) {}
+        PopOnDrop(std::vector<const HIR::GenericParams*>& v): v(&v) {
+        }
+    public:
+        ~PopOnDrop() {
+            if(v) {
+                assert(!v->empty());
+                v->pop_back();
+            }
+        }
+        PopOnDrop(const PopOnDrop&) = delete;
+        PopOnDrop(PopOnDrop&& x): v(x.v) { x.v = nullptr; }
+    };
+    PopOnDrop push_hrb(const std::unique_ptr<HIR::GenericParams>& params) const;
+    PopOnDrop push_hrb(const HIR::GenericParams& params) const {
+        m_hrb_stack.push_back(&params);
+        return PopOnDrop(m_hrb_stack);
+    }
+    const HIR::GenericParams* has_hrb() const {
+        return !m_hrb_stack.empty() ? m_hrb_stack.back() : nullptr;
+    }
+};
+
+class MatchGenerics:
+    virtual public TrackHrbStack
 {
 public:
     ::HIR::Compare cmp_path(const Span& sp, const ::HIR::Path& ty_l, const ::HIR::Path& ty_r, t_cb_resolve_type resolve_cb);
@@ -52,6 +86,7 @@ public:
     virtual ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) = 0;
     virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) = 0;
     virtual ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& sz) { return HIR::Compare::Equal; }
+
 };
 
 
@@ -116,6 +151,7 @@ public:
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding);
     static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr);
     static TypeRef new_generator(::HIR::ExprNode_Generator* node_ptr);
+    static TypeRef new_async(::HIR::ExprNode_AsyncBlock* node_ptr);
 
     /// Create a new instance by incrementing refcount
     TypeRef clone() const;

@@ -330,3 +330,21 @@
 +#[cfg(all(target_pointer_width = "64", not(rust_compiler = "mrustc")))]
  from_hex_array_impl! {
 
+# Work around old inference in compiler-builtins
+--- vendor/compiler_builtins/src/float/div.rs
++++ vendor/compiler_builtins/src/float/div.rs
+@@ -124,3 +124,3 @@
+     // is accurate to about 3.5 binary digits.
+-    let q31b = CastInto::<u32>::cast(b_significand << 8.cast());
++    let q31b = CastInto::<u32>::cast(b_significand << 8);
+     let mut reciprocal = (0x7504f333u32).wrapping_sub(q31b);
+@@ -334,3 +334,3 @@
+     // is accurate to about 3.5 binary digits.
+-    let q31b = CastInto::<u32>::cast(b_significand >> 21.cast());
++    let q31b = CastInto::<u32>::cast(b_significand >> 21);
+     let mut recip32 = (0x7504f333u32).wrapping_sub(q31b);
+@@ -360,3 +360,3 @@
+     // The last iteration needs to happen with extra precision.
+-    let q63blo = CastInto::<u32>::cast(b_significand << 11.cast());
++    let q63blo = CastInto::<u32>::cast(b_significand << 11);
+     let correction: u64;

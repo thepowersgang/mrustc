@@ -176,6 +176,7 @@ void init_debug_list()
         "Trans Auto Impls",
         "Trans Monomorph",
         "MIR Optimise Inline",
+        "MIR Cleanup 2",
         "MIR Optimise Inline PostSave",
         "Trans Enumerate Cleanup",
         "Trans Codegen"
@@ -871,6 +872,12 @@ int main(int argc, char *argv[])
         // - Do post-monomorph inlining
         CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items, false); });
 
+        // - Expand constants in HIR (using ones that were monomorphised above)
+        CompilePhaseV("MIR Cleanup 2", [&]() {
+            MIR_Cleanup_SetPostMonomorph();
+            MIR_CleanupCrate(*hir_crate);
+            });
+
         memory_dump("Trans");
 
         std::string hir_file;
@@ -905,20 +912,20 @@ int main(int argc, char *argv[])
             throw "";
         case ::AST::Crate::Type::RustLib:
             // Generate a linkable .o
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::StaticLibrary, trans_opt, *hir_crate, std::move(items), hir_file); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::StaticLibrary, trans_opt, std::move(hir_crate), std::move(items), hir_file); });
             break;
         case ::AST::Crate::Type::RustDylib:
         case ::AST::Crate::Type::CDylib:
             // Generate a .so/.dll
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::DynamicLibrary, trans_opt, *hir_crate, std::move(items), hir_file); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::DynamicLibrary, trans_opt, std::move(hir_crate), std::move(items), hir_file); });
             break;
         case ::AST::Crate::Type::ProcMacro: {
             // Needs: An executable (the actual macro handler), metadata (for `extern crate foo;`)
             // - Metadata was done before enumerate
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, *hir_crate, std::move(items), hir_file); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, std::move(hir_crate), std::move(items), hir_file); });
             break; }
         case ::AST::Crate::Type::Executable:
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, *hir_crate, std::move(items), ""); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, std::move(hir_crate), std::move(items), ""); });
             break;
         }
     }
@@ -951,6 +958,7 @@ namespace {
         case TargetVersion::Rustc1_39:  return "1.39";
         case TargetVersion::Rustc1_54:  return "1.54";
         case TargetVersion::Rustc1_74:  return "1.74";
+        case TargetVersion::Rustc1_90:  return "1.90";
         }
         return "?";
     }
@@ -975,8 +983,16 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         else if( strcmp(a, "1.74") == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_74;
         }
-        else {
+        else if( strcmp(a, "1.90") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_90;
         }
+        else {
+            ::std::cerr << "$MRUSTC_TARGET_VER set to an unknown value\n";
+            exit(1);
+        }
+    }
+    else {
+        ::std::cerr << "WARNING: $MRUSTC_TARGET_VER not set, defaulting to 1.29 mode (likely not intended)\n";
     }
 
     if( const auto* a = getenv("MRUSTC_LIBDIR") )
@@ -1357,6 +1373,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 else if( strcmp(edition_str, "2021") == 0 ) {
                     this->edition = AST::Edition::Rust2021;
+                }
+                else if( strcmp(edition_str, "2024") == 0 ) {
+                    this->edition = AST::Edition::Rust2024;
                 }
                 else {
                     ::std::cerr << "Unknown value for " << arg << " - '" << edition_str << "'" << ::std::endl;

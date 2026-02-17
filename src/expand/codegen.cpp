@@ -20,7 +20,7 @@ namespace {
 
         AttrStage   stage() const override { return AttrStage::Pre; }
 
-        void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
             if( i.is_None() ) {
             }
             else if( i.is_Function() ) {
@@ -122,7 +122,7 @@ class CHandler_Repr:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         if(i.is_None())
         {
         }
@@ -308,7 +308,7 @@ class CHandler_RustcNonnullOptimizationGuaranteed:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: Types only
         if( i.is_Struct() ) {
         }
@@ -324,7 +324,7 @@ class CHandler_RustcLayoutScalarValidRangeStart:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: Types only
         if( auto* s = i.opt_Struct() ) {
             TTStream    lex(sp, ParseState(), mi.data());
@@ -350,7 +350,7 @@ class CHandler_RustcLayoutScalarValidRangeEnd:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: Types only
         if( auto* s = i.opt_Struct() ) {
             TTStream    lex(sp, ParseState(), mi.data());
@@ -376,7 +376,7 @@ class CHandler_LinkName:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         auto link_name = mi.parse_equals_string(crate, mod);
         ASSERT_BUG(sp, link_name != "", "Empty #[link_name] attribute");
 
@@ -404,7 +404,7 @@ class CHandler_LinkSection:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         auto link_section = mi.parse_equals_string(crate, mod);
         ASSERT_BUG(sp, link_section != "", "Empty #[link_section] attribute");
 
@@ -432,7 +432,7 @@ class CHandler_Link:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         if(i.is_None()) {
         }
         else if( auto* b = i.opt_ExternBlock() )
@@ -497,7 +497,7 @@ class CHandler_Linkage:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         TTStream    lex(sp, ParseState(), mi.data());
         lex.getTokenCheck(TOK_EQUAL);
         auto tok = lex.getTokenCheck(TOK_STRING);
@@ -553,8 +553,143 @@ class CHandler_TargetFeature:
 {
     AttrStage   stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: Only valid on functions?
     }
 };
 STATIC_DECORATOR("target_feature", CHandler_TargetFeature);
+
+
+class CHandler_RustcIntrinsic:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Post; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        if(auto* e = i.opt_Function()) {
+            if( e->abi() != ABI_RUST ) {
+                ERROR(sp, E0000, "#[rustc_intrinsic] on function with ABI already set (`" << e->abi() << "`)");
+            }
+            // Only add if there's no body
+            if( !e->code() ) {
+                e->set_abi( "rust-intrinsic" );
+            }
+        }
+        else {
+            ERROR(sp, E0000, "#[rustc_intrinsic] on non-function");
+        }
+    }
+};
+STATIC_DECORATOR("rustc_intrinsic", CHandler_RustcIntrinsic);
+
+class CHandler_TrackCaller:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Post; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        if(/*auto* e =*/ i.opt_Function()) {
+            // Handled by HIR lower
+        }
+        else {
+            ERROR(sp, E0000, "#[track_caller] on non-function");
+        }
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        if(/*auto* e =*/ i.opt_Function()) {
+            // Handled by HIR lower
+        }
+        else {
+            ERROR(sp, E0000, "#[track_caller] on non-function");
+        }
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Trait& trait, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        if(/*auto* e =*/ i.opt_Function()) {
+            // Handled by HIR lower
+        }
+        else {
+            ERROR(sp, E0000, "#[track_caller] on non-function");
+        }
+    }
+
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNodeP& expr) const override {
+        if( auto* n = dynamic_cast<AST::ExprNode_Closure*>(expr.get()) ) {
+            //n->m_track_caller = true;
+            (void)n;
+        }
+        else {
+            ERROR(sp, E0000, "#[track_caller] on non-function");
+        }
+    }
+};
+STATIC_DECORATOR("track_caller", CHandler_TrackCaller);
+
+/// @brief Various unsafe attributes, addded around 1.90
+class CHandler_Unsafe:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Post; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
+        TTStream    lex(mi.span(), ParseState(), mi.data());
+        lex.getTokenCheck(TOK_PAREN_OPEN);
+        while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
+            auto ident = lex.getTokenCheck(TOK_IDENT).ident().name;
+            
+            if( ident == "no_mangle" ) {
+                DEBUG("#[unsafe(no_mangle)] " << path << " = " << path.nodes.back().c_str());
+                if(auto* e = i.opt_Function()) {
+                    e->m_markings.link_name = path.nodes.back().c_str();
+                }
+                else if(auto* e = i.opt_Static()) {
+                    e->m_markings.link_name = path.nodes.back().c_str();
+                }
+                else {
+                    ERROR(sp, E0000, "#[unsafe(" << ident << ")] on bad item: " << i.tag_str());
+                }
+            }
+            else if( ident == "link_section" ) {
+                lex.getTokenCheck(TOK_EQUAL);
+                auto s = lex.getTokenCheck(TOK_STRING).str();
+                
+                DEBUG("#[unsafe(link_section)] " << path << " in `" << s);
+                if(auto* e = i.opt_Function()) {
+                    e->m_markings.link_section = s;
+                }
+                else if(auto* e = i.opt_Static()) {
+                    e->m_markings.link_section = s;
+                }
+                else {
+                    ERROR(sp, E0000, "#[unsafe(" << ident << ")] on bad item: " << i.tag_str());
+                }
+            }
+            else if( ident == "ffi_const" ) {
+                if(/*auto* e =*/i.opt_Function()) {
+                    // A hint to the optimiser that a FFI function always returns the same value
+                    // - Don't care here
+                }
+                else {
+                    ERROR(sp, E0000, "#[unsafe(" << ident << ")] on non-function");
+                }
+            }
+            else if( ident == "naked" ) {
+                if(auto* e =i.opt_Function()) {
+                    // Flag this function as being a bare symbol (no prologue/epilogue)
+                    e->m_markings.is_naked = true;
+                }
+                else {
+                    ERROR(sp, E0000, "#[unsafe(" << ident << ")] on non-function");
+                }
+            }
+            else {
+                ERROR(sp, E0000, "Unknown #[unsafe(" << ident << ")]");
+            }
+
+            if(lex.lookahead(0) != TOK_COMMA)
+                break;
+            lex.getTokenCheck(TOK_COMMA);
+        }
+        lex.getTokenCheck(TOK_PAREN_CLOSE);
+    }
+};
+STATIC_DECORATOR("unsafe", CHandler_Unsafe);

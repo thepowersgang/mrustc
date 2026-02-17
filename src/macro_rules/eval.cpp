@@ -550,6 +550,10 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     case MacroPatEnt::PAT_STMT:
         return InterpolatedFragment( InterpolatedFragment::STMT, Parse_Stmt(lex).release() );
     case MacroPatEnt::PAT_PATH:
+        // HACK for `rustc-1.90.0-src/vendor/icu_locid_transform_data-1.5.0/data/macros.rs::23`
+        if( lex.lookahead(0) == TOK_INTERPOLATED_TYPE ) {
+            return InterpolatedFragment( std::move(lex.getToken().frag_type()) );
+        }
         return InterpolatedFragment( Parse_Path(lex, PATH_GENERIC_TYPE) );    // non-expr mode
     case MacroPatEnt::PAT_BLOCK:
         return InterpolatedFragment( InterpolatedFragment::BLOCK, Parse_ExprBlockNode(lex).release() );
@@ -870,6 +874,7 @@ namespace
         switch(lex.next())
         {
         case TOK_INTERPOLATED_PATH:
+        case TOK_INTERPOLATED_TYPE: // HACK!
             lex.consume();
             return true;
         case TOK_RWORD_SELF:
@@ -954,6 +959,17 @@ namespace
         }
         return true;
     }
+    bool consume_type_TraitList(TokenStreamRO& lex)
+    {
+        do {
+            if( lex.consume_if(TOK_LIFETIME) ) {
+                continue ;
+            }
+            if( !consume_path(lex, true) )
+                return false;
+        } while( lex.consume_if(TOK_PLUS) );
+        return true;
+    }
     bool consume_type(TokenStreamRO& lex)
     {
         TRACE_FUNCTION;
@@ -968,20 +984,25 @@ namespace
         case TOK_PAREN_OPEN:
         case TOK_SQUARE_OPEN:
             return consume_tt(lex);
-        case TOK_IDENT:
-            if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" )
-                lex.consume();
-            if(0)
         case TOK_RWORD_IMPL:
         case TOK_RWORD_DYN:
             lex.consume();
+            return consume_type_TraitList(lex);
+        case TOK_IDENT:
+            if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" ) {
+                lex.consume();
+                return consume_type_TraitList(lex);
+            }
         case TOK_RWORD_CRATE:
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:
         case TOK_DOUBLE_COLON:
         case TOK_INTERPOLATED_PATH:
+        case TOK_LT:
+        case TOK_DOUBLE_LT:
             if( !consume_path(lex, true) )
                 return false;
+            // Macro invocation?
             if( lex.consume_if(TOK_EXCLAM) )
             {
                 if( lex.next() != TOK_PAREN_OPEN && lex.next() != TOK_SQUARE_OPEN && lex.next() != TOK_BRACE_OPEN )
@@ -1269,6 +1290,7 @@ namespace
                 break;
 
             case TOK_INTERPOLATED_EXPR:
+            case TOK_INTERPOLATED_BLOCK:
                 lex.consume();
                 break;
             case TOK_INTEGER:
@@ -2012,8 +2034,10 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
             DEBUG("Arm " << i << " @" << pos << " " << pat);
             if(pat.is_End())
             {
-                if( lex.next() != TOK_EOF )
+                if( lex.next() != TOK_EOF ) {
+                    DEBUG("Expeced EOF, got " << lex.next_tok());
                     fail = true;
+                }
                 break;
             }
             else if( const auto* e = pat.opt_If() )
@@ -2168,17 +2192,41 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
     while(const auto* ent_ptr = state.next_ent())
     {
         DEBUG(*ent_ptr);
-        if(const auto* e = ent_ptr->opt_NamedValue()) {
-            switch(*e & ~NAMEDVALUE_VALMASK)
+        TU_MATCH_HDRA( (*ent_ptr), { )
+        TU_ARMA(Token, e) {}
+        TU_ARMA(Loop, e) {}
+        TU_ARMA(NamedValue, e) {
+            switch(e & ~NAMEDVALUE_VALMASK)
             {
             case 0:
             case NAMEDVALUE_TY_IGNORE:
                 // Increment a counter in `bound_tts`
-                bound_tts.inc_count(Span(), state.iterations(), *e & NAMEDVALUE_VALMASK);
+                bound_tts.inc_count(Span(), state.iterations(), e & NAMEDVALUE_VALMASK);
                 break;
             case NAMEDVALUE_TY_MAGIC:
             default:
                 break;
+            }
+            }
+        TU_ARMA(Concat, cc_ents) {
+            for(const auto& cc_ent : cc_ents) {
+                TU_MATCH_HDRA((cc_ent), {)
+                TU_ARMA(Ident, e) {}
+                TU_ARMA(Named, e) {
+                    switch(e & ~NAMEDVALUE_VALMASK)
+                    {
+                    case 0:
+                    case NAMEDVALUE_TY_IGNORE:
+                        // Increment a counter in `bound_tts`
+                        bound_tts.inc_count(Span(), state.iterations(), e & NAMEDVALUE_VALMASK);
+                        break;
+                    case NAMEDVALUE_TY_MAGIC:
+                    default:
+                        break;
+                    }
+                    }
+                }
+            }
             }
         }
     }
@@ -2333,6 +2381,37 @@ Token MacroExpander::realGetToken()
                 } break;
             }
             }
+        TU_ARMA(Concat, e) {
+            std::string new_ident;
+            for(const auto& ent : e) {
+                TU_MATCH_HDRA( (ent), { )
+                TU_ARMA(Named, v) {
+                    bool can_steal = ( m_mappings.dec_count(this->point_span(), m_state.iterations(), v) == false );
+                    auto* frag = m_mappings.get(this->point_span(), m_state.iterations(), v);
+                    ASSERT_BUG(this->point_span(), frag, "Cannot find '" << v << "' for " << m_state.iterations());
+                    Token   tok;
+                    if( frag->m_type == InterpolatedFragment::TT )
+                    {
+                        auto res_tt = can_steal ? mv$(frag->as_tt()) : frag->as_tt().clone();
+                        TTStreamO   tts(this->outerSpan(), ParseState(), std::move(res_tt));
+                        tok = tts.getToken();
+                        tts.getTokenCheck(TOK_EOF);
+                    }
+                    else {
+                        tok = can_steal ? Token(Token::TagTakeIP(), mv$(*frag) ) : Token(*frag);
+                    }
+                    if( tok != TOK_IDENT ) {
+                        ERROR(this->point_span(), E0000, "concat with non-ident: " << tok);
+                    }
+                    new_ident += tok.ident().name.c_str();
+                    }
+                TU_ARMA(Ident, v) {
+                    new_ident += v.name.c_str();
+                    }
+                }
+            }
+            return Token(TOK_IDENT, Ident(realGetHygiene(), RcString::new_interned(new_ident)));
+            }
         TU_ARMA(Loop, e) {
             //assert( e.joiner.tok() != TOK_NULL );
             DEBUG("[" << m_log_index << "] Loop joiner " << e.joiner);
@@ -2368,6 +2447,9 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
                 return &ent;
                 }
             TU_ARMA(NamedValue, e) {
+                return &ent;
+                }
+            TU_ARMA(Concat, e) {
                 return &ent;
                 }
             TU_ARMA(Loop, e) {

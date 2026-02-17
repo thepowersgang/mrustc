@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+export RUSTC_VERSION=1.90.0 MRUSTC_TARGET_VER=1.90 OUTDIR_SUF=-1.90.0
+# Enables use of ccache in mrustc if it's available (i.e. ccache is on PATH)
+command -v ccache >/dev/null && export MRUSTC_CCACHE=1
+make
+make RUSTCSRC
+make -f minicargo.mk LIBS $@
+make test $@
+make local_tests $@
+
+OUTDIR=output-1.90.0
+if [[ "x$MRUSTC_TARGET" != "x" ]]; then
+	OUTDIR=$OUTDIR-$MRUSTC_TARGET
+fi
+
+RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk $OUTDIR/rustc $@
+set -x
+./$OUTDIR/rustc --version
+./$OUTDIR/rustc samples/no_core-1_90.rs
+set +x
+
+LIBGIT2_SYS_USE_PKG_CONFIG=1 make -f minicargo.mk -j ${PARLEVEL:-1} $OUTDIR/cargo $@
+set -x
+./$OUTDIR/cargo --version

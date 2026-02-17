@@ -99,15 +99,25 @@ namespace {
 NODE(ExprNode_Block, {
     os << "{";
     for(const auto& n : m_nodes)
-        os << *n << ";";
+        os << *n.node << (n.has_semicolon ? ";" : "");
     os << "}";
 },{
-    ::std::vector<ExprNodeP>    nodes;
+    ::std::vector<Line>    nodes;
     for(const auto& n : m_nodes)
-        nodes.push_back( n->clone() );
-    return NEWNODE(ExprNode_Block, m_block_type, m_yields_final_value, mv$(nodes), m_local_mod);
+        nodes.push_back({ n.has_semicolon, n.node->clone() });
+    return NEWNODE(ExprNode_Block, m_block_type, mv$(nodes), m_local_mod);
 })
 
+NODE(ExprNode_AsyncBlock, {
+    os << "async " << (m_is_move ? "move " : "") << *m_inner;
+},{
+    return NEWNODE(ExprNode_AsyncBlock, m_inner->clone(), m_is_move);
+})
+NODE(ExprNode_GeneratorBlock, {
+    os << "gen " << (m_is_move ? "move " : "") << *m_inner;
+},{
+    return NEWNODE(ExprNode_GeneratorBlock, m_inner->clone(), m_is_move);
+})
 NODE(ExprNode_Try, {
     os << "try " << *m_inner;
 },{
@@ -444,6 +454,11 @@ NODE(ExprNode_ByteString, {
 },{
     return NEWNODE(ExprNode_ByteString, m_value);
 })
+NODE(ExprNode_CString, {
+    os << "c\"" << m_value << "\"";
+},{
+    return NEWNODE(ExprNode_CString, m_value);
+})
 
 NODE(ExprNode_Closure, {
     if( m_is_pinned )
@@ -652,8 +667,14 @@ NODE(ExprNode_UniOp, {
 NV(ExprNode_Block, {
     //INDENT();
     for( auto& child : node.m_nodes )
-        visit(child);
+        visit(child.node);
     //UNINDENT();
+})
+NV(ExprNode_AsyncBlock, {
+    visit(node.m_inner);
+})
+NV(ExprNode_GeneratorBlock, {
+    visit(node.m_inner);
 })
 NV(ExprNode_Try, {
     visit(node.m_inner);
@@ -784,6 +805,7 @@ NV(ExprNode_Float, {(void)node;})
 NV(ExprNode_Bool, {(void)node;})
 NV(ExprNode_String, {(void)node;})
 NV(ExprNode_ByteString, {(void)node;})
+NV(ExprNode_CString, {(void)node;})
 
 NV(ExprNode_Closure,
 {

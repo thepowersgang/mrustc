@@ -85,6 +85,57 @@ void MirBuilder::final_cleanup()
         terminate_scope(sp, ScopeHandle(*this, 1), /*emit_cleanup=*/false);
         terminate_scope(sp, mv$(m_fcn_scope), /*emit_cleanup=*/false);
     }
+
+    // Rewrite drop flags
+    // - Expand recursive lookups
+    for(;;)
+    {
+        bool added = false;
+        for(auto& a : m_drop_flag_aliases)
+        {
+            auto& mapped_flags = a.second;
+            // Iterate every "destination" flag
+            for(size_t i = 0; i < mapped_flags.size(); i ++)
+            {
+                auto it2 = m_drop_flag_aliases.find(mapped_flags[i]);
+                if( it2 != m_drop_flag_aliases.end() )
+                {
+                    for(unsigned other_flag : it2->second) {
+                        // If this flag is not in the current list, add it and mark that something changed
+                        if( std::find(mapped_flags.begin(), mapped_flags.end(), other_flag) == mapped_flags.end() ) {
+                            mapped_flags.push_back(other_flag);
+                            added = true;
+                        }
+                    }
+                }
+            }
+        }
+        if(!added) {
+            break ;
+        }
+    }
+
+    for(auto& b : m_output.blocks) {
+        for(auto it = b.statements.begin(); it != b.statements.end(); ++it)
+        {
+            // NOTE: Only need to worry about SetDropFlag, as the other ways of setting a flag are not generated yet.
+            if( auto* p = it->opt_SetDropFlag() ) {
+                // Take a copy, which will be mutated to create the copies
+                auto v = *p;
+                auto df_it = m_drop_flag_aliases.find(v.idx);
+                if( df_it != m_drop_flag_aliases.end() )
+                {
+                    // For each entry in `df_it->second`, add a copy of this SetDropFlag _before_ `it` (so it doesn't get re-visited)
+                    for(unsigned other_idx : df_it->second)
+                    {
+                        v.idx = other_idx;
+                        // Ensure that `it` always points to the original
+                        it = b.statements.insert(it, ::MIR::Statement(v)) + 1;
+                    }
+                }
+            }
+        }
+    }
 }
 
 const ::HIR::TypeRef* MirBuilder::is_type_owned_box(const ::HIR::TypeRef& ty) const
@@ -716,6 +767,10 @@ bool MirBuilder::get_drop_flag_default(const Span& sp, unsigned int idx)
 {
     return m_output.drop_flags.at(idx);
 }
+void MirBuilder::drop_flag_alias(unsigned int old_idx, unsigned int new_idx)
+{
+    m_drop_flag_aliases[old_idx].push_back(new_idx);
+}
 
 ScopeHandle MirBuilder::new_scope_var(const Span& sp)
 {
@@ -840,6 +895,7 @@ void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle
     for( ; it != m_scope_stack.rend() && *it != target.idx; ++it)
     {
         auto& scope_def = m_scopes.at(*it);
+        DEBUG("Through S" << *it << ": " << scope_def.data.tag_str());
 
         if(auto* sd_loop = scope_def.data.opt_Loop())
         {
@@ -896,6 +952,7 @@ void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle
         BUG(sp, "Moving values to a scope not on the stack - scope " << target.idx);
     }
     auto& tgt_scope_def = m_scopes.at(target.idx);
+    DEBUG("To S" << target.idx << ": " << tgt_scope_def.data.tag_str());
     ASSERT_BUG(sp, tgt_scope_def.data.is_Owning(), "Rasising scopes can only be done on temporaries (target)");
     ASSERT_BUG(sp, tgt_scope_def.data.as_Owning().is_temporary, "Rasising scopes can only be done on temporaries (target)");
 
@@ -1213,6 +1270,7 @@ namespace
                         assert( !builder.is_type_owned_box(ty) );
                         is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                         });
+                
                 // Create a Partial filled with copies of the Optional
                 // TODO: This can lead to contradictions when one field is moved and another not.
                 // - Need to allocate a new drop flag and handle the case where old_state is the state before the
@@ -1226,7 +1284,7 @@ namespace
                     for(size_t i = 0; i < nse.inner_states.size(); i ++)
                     {
                         auto new_flag = builder.new_drop_flag(builder.get_drop_flag_default(sp, old_state.as_Optional()));
-                        builder.push_stmt_set_dropflag_other(sp, new_flag,  old_state.as_Optional());
+                        builder.drop_flag_alias(old_state.as_Optional(), new_flag);
                         inner.push_back(VarState::make_Optional( new_flag ));
                     }
                     old_state = VarState::make_Partial({ mv$(inner) });
@@ -1754,8 +1812,8 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     (Named,
                         ASSERT_BUG(sp, field_index < se.size(),
                             "Field index out of range in struct " << ty << " - " << field_index << " > " << se.size());
-                        const auto& fld = se[field_index].second;
-                        ty_p = &maybe_monomorph(str.m_params, te.path, fld.ent);
+                        const auto& fld = se[field_index];
+                        ty_p = &maybe_monomorph(str.m_params, te.path, fld.ty);
                         )
                     )
                 }
@@ -1828,9 +1886,8 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     const auto& unm = **pbe;
                     ASSERT_BUG(sp, variant_index < unm.m_variants.size(), "Variant index out of range");
                     const auto& variant = unm.m_variants.at(variant_index);
-                    const auto& fld = variant.second;
 
-                    ty_p = &maybe_monomorph(unm.m_params, te.path, fld.ent);
+                    ty_p = &maybe_monomorph(unm.m_params, te.path, variant.ty);
                 }
                 else
                 {
@@ -2296,13 +2353,17 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
     return lv.clone_unwrapped(count+1);
 }
 
-std::map<unsigned, MirBuilder::SavedActiveLocal> MirBuilder::get_active_locals() const
+std::map<unsigned, MirBuilder::SavedActiveLocal> MirBuilder::get_active_locals(const Span& sp, std::set<unsigned>& saved_drop_flags) const
 {
     std::map<unsigned, MirBuilder::SavedActiveLocal>    rv;
     for(size_t i = 0; i < m_slot_states.size(); i ++)
     {
         TU_MATCH_HDRA( (m_slot_states[i]), { )
         default:
+            // TODO: Handle optionals, requires some way to get the value of a drop flag
+            // - OR: Rewriting of drop flags into a bitset down the line
+            m_slot_states[i].get_used_drop_flags(&saved_drop_flags);
+            //ASSERT_BUG(Span(), !m_slot_states[i].contains_optional(), "Save state with optional (save drop flag): " << m_slot_states[i]);
             rv.insert( std::make_pair( static_cast<unsigned>(i), SavedActiveLocal(m_slot_states[i].clone()) ));
             break;
         TU_ARMA(Invalid, e) {}
@@ -2404,7 +2465,7 @@ bool VarState::operator==(const VarState& x) const
         os << "Valid";
         ),
     (Optional,
-        os << "Optional(" << e << ")";
+        os << "Optional(df" << e << ")";
         ),
     (MovedOut,
         os << "MovedOut(";
@@ -2416,8 +2477,39 @@ bool VarState::operator==(const VarState& x) const
         ),
     (Partial,
         os << "Partial(";
+        //if( e.outer_flag == ~0u )
+        //    os << "-";
+        //else
+        //    os << "df" << e.outer_flag;
         os << ", [" << e.inner_states << "])";
         )
     )
     return os;
+}
+bool VarState::get_used_drop_flags(std::set<unsigned>* out) const
+{
+    bool rv = false;
+    TU_MATCH_HDRA((*this), {)
+    TU_ARMA(Optional, ve) {
+        if(out) out->insert(ve);
+        rv = true;
+        }
+    TU_ARMA(Invalid, ve) {}
+    TU_ARMA(Valid, ve) {}
+    TU_ARMA(Partial, ve) {
+        //if( ve.outer_flag != ~0u )
+        //    return true;
+        for(const auto& vs : ve.inner_states) {
+            rv |= vs.get_used_drop_flags(out);
+        }
+        }
+    TU_ARMA(MovedOut, ve) {
+        if( ve.outer_flag != ~0u ) {
+            if(out) out->insert(ve.outer_flag);
+            rv = true;
+        }
+        rv |= ve.inner_state->get_used_drop_flags(out);
+        }
+    }
+    return rv;
 }

@@ -28,6 +28,7 @@ public:
         TypecheckRequest,
         Typecheck,
         PostTypecheck,
+        Lifetimes,
         SbcRequest,
         Sbc,
         ExpandRequest,

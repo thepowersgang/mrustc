@@ -16,18 +16,18 @@
 #include "codegen.hpp"
 #include "monomorphise.hpp"
 
-void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const TransOptions& opt, const ::HIR::Crate& crate, TransList list, const ::std::string& hir_file)
+void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const TransOptions& opt, ::HIR::CratePtr crate_ptr, TransList list, const ::std::string& hir_file)
 {
     static Span sp;
 
     ::std::unique_ptr<CodeGenerator>    codegen;
     if( opt.mode == "monomir" )
     {
-        codegen = Trans_Codegen_GetGenerator_MonoMir(crate, outfile);
+        codegen = Trans_Codegen_GetGenerator_MonoMir(*crate_ptr, outfile);
     }
     else if( opt.mode == "c" )
     {
-        codegen = Trans_Codegen_GetGeneratorC(crate, outfile);
+        codegen = Trans_Codegen_GetGeneratorC(*crate_ptr, outfile);
     }
     else
     {
@@ -82,7 +82,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         const ::HIR::Module* mod_ptr = nullptr;
         if(path.m_path.components().size() > 1)
         {
-            const auto& nse = crate.get_typeitem_by_path(sp, path.m_path, false, true);
+            const auto& nse = crate_ptr->get_typeitem_by_path(sp, path.m_path, false, true);
             if(const auto* e = nse.opt_Enum())
             {
                 auto var_idx = e->find_variant(path.m_path.components().back());
@@ -93,7 +93,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         }
         else
         {
-            mod_ptr = &crate.get_mod_by_path(sp, path.m_path, true);
+            mod_ptr = &crate_ptr->get_mod_by_path(sp, path.m_path, true);
         }
 
         // Not an enum, currently must be a struct
@@ -200,7 +200,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
     }
     list.m_functions.clear();
 
-    for(const auto& a : crate.m_global_asm)
+    for(const auto& a : crate_ptr->m_global_asm)
     {
         codegen->emit_global_asm(a);
     }
@@ -208,6 +208,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
     // NOTE: Completely reinitialise the `TransList` to free all monomorphised memory before calling the backend compilation tool
     // - This can save several GB of working set
     list = TransList();
+    // Would drop the entire crate, but finalise tends to need it
     codegen->finalise(opt, out_ty, hir_file);
 }
 

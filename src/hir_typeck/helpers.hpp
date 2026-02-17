@@ -194,6 +194,7 @@ private:
     const ::HIR::GenericPath*   m_current_trait_path;
     const ::HIR::Trait* m_current_trait_ptr;
 
+    mutable ::std::map<std::string, HIR::TypeRef>  m_eat_cache;
     mutable ::std::vector<std::unique_ptr<::HIR::TypeRef>>  m_eat_active_stack;
 public:
     TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& vis_path,  const ::HIR::GenericPath* current_trait):
@@ -262,6 +263,8 @@ public:
     bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams* params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
     /// Check for magic (automatically determined) trait implementations
     bool find_trait_impls_magic(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
+    /// Check for trait implementations on magical types (closures, generators, fn pointers, ...)
+    bool find_trait_impls_types(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
 
     struct RecursionDetected {};
 

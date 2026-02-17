@@ -387,7 +387,11 @@ struct ContentLoopVariableUse
                 auto ident = lex.getTokenCheck(TOK_IDENT).ident().name;
                 if( ident == "ignore" ) {
                     lex.getTokenCheck(TOK_PAREN_OPEN);
+                    lex.getTokenIf(TOK_DOLLAR); // 1.90 (2024 edition?) requires a $
                     GET_TOK(tok, lex);
+                    if( !(tok.type() == TOK_IDENT || Token::type_is_rword(tok.type())) ) {
+                        CHECK_TOK(tok, TOK_IDENT);
+                    }
                     auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
                     lex.getTokenCheck(TOK_PAREN_CLOSE);
                     const auto* ns = state.find_name(name);
@@ -409,7 +413,11 @@ struct ContentLoopVariableUse
                 }
                 else if( ident == "count" ) {
                     lex.getTokenCheck(TOK_PAREN_OPEN);
+                    lex.getTokenIf(TOK_DOLLAR); // 1.90 (2024 edition?) requires a $
                     GET_TOK(tok, lex);
+                    if( !(tok.type() == TOK_IDENT || Token::type_is_rword(tok.type())) ) {
+                        CHECK_TOK(tok, TOK_IDENT);
+                    }
                     auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
                     lex.getTokenCheck(TOK_PAREN_CLOSE);
                     const auto* ns = state.find_name(name);
@@ -434,6 +442,51 @@ struct ContentLoopVariableUse
                     lex.getTokenCheck(TOK_PAREN_OPEN);
                     lex.getTokenCheck(TOK_PAREN_CLOSE);
                     ret.push_back( MacroExpansionEnt(NAMEDVALUE_MAGIC_INDEX) );
+                }
+                else if( ident == "concat" ) {
+                    ::std::vector<MacroExpansionConcatEnt>  ents;
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    // A list of identifiers (which could be expansion entries)
+                    while(true) {
+                        if( lex.getTokenIf(TOK_DOLLAR) ) {
+                            if( lex.getTokenIf(TOK_RWORD_CRATE) ) {
+                                ents.push_back(MacroExpansionConcatEnt(NAMEDVALUE_MAGIC_CRATE));
+                            }
+                            else {
+                                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                                auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                                const auto* ns = state.find_name(name);
+                                if( !ns ) {
+                                    TODO(lex.point_span(), "concat - unmapped name");
+                                }
+                                else {
+                                    DEBUG("CONCAT $" << name << " #" << ns->idx << " [" << ns->loops << "]");
+
+                                    // If the current loop depth is smaller than the stack for this variable, then error
+                                    if( loop_depth < ns->loops.size() ) {
+                                        ERROR(lex.point_span(), E0000, "Variable $" << name << " is still repeating at this depth (" << loop_depth << " < " << ns->loops.size() << ")");
+                                    }
+
+                                    if( var_usage_ptr ) {
+                                        var_usage_ptr->insert( ::std::make_pair(ns->idx, ContentLoopVariableUse(ns->loops)) );
+                                    }
+                                    ents.push_back( MacroExpansionConcatEnt(ns->idx) );
+                                }
+                            }
+                        }
+                        else {
+                            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                            ents.push_back(MacroExpansionConcatEnt(tok.ident()));
+                        }
+                        if( !lex.getTokenIf(TOK_COMMA) ) {
+                            break;
+                        }
+                        if( lex.lookahead(0) == TOK_PAREN_CLOSE ) {
+                            break;
+                        }
+                    }
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    ret.push_back(MacroExpansionEnt(std::move(ents)));
                 }
                 else {
                     TODO(lex.point_span(), "Handle ${" << ident << "...}");
@@ -634,6 +687,7 @@ namespace {
         ExpTok(MacroPatEnt::Type ty, const Token* tok): ty(ty), tok(tok) {}
         bool operator==(const ExpTok& t) const { return this->ty == t.ty && *this->tok == *t.tok; }
         bool operator!=(const ExpTok& t) const { return !(*this == t); }
+        bool operator==(eTokenType tt) const { return this->ty == MacroPatEnt::PAT_TOKEN && *this->tok == tt; }
     };
     ::std::ostream& operator<<(::std::ostream& os, const ExpTok& t) {
         os << "ExpTok(" << t.ty << " " << *t.tok << ")";
@@ -661,6 +715,7 @@ namespace {
         const std::vector<ExpTok>& indirect_path, size_t indirect_ofs
         )
     {
+        TRACE_FUNCTION_F(&pattern << " #" << direct_pos << " [" << indirect_path << "]+" << indirect_ofs);
         for(size_t idx = direct_pos; idx < pattern.size(); idx ++)
         {
             const auto& ent = pattern[idx];
@@ -766,7 +821,8 @@ namespace {
         // If the pattern set isn't closed (hit something unconditional), then add `EOF` to it
         if( macro_pattern_get_head_set_inner(rv, pattern, direct_pos, indirect_path, 0) != PatternHeadRv::Closed )
         {
-            if(rv.empty())
+            //if(rv.empty())
+            if( !::std::any_of(rv.begin(), rv.end(), [](const ExpTok& e){ return e.ty == MacroPatEnt::PAT_TOKEN && *e.tok == TOK_EOF; }) )
             {
                 static Token    tok_eof = TOK_EOF;
                 rv.push_back(ExpTok(MacroPatEnt::PAT_TOKEN, &tok_eof));
@@ -798,6 +854,15 @@ namespace {
                 ASSERT_BUG(ent.sp, entry_pats1.size() > 0, "No entry conditions extracted from sub-pattern [" << ent.subpats << "]");
                 auto skip_pats1 = macro_pattern_get_head_set(pattern, idx+1, {});
                 DEBUG("Skip = [" << skip_pats1 << "]");
+
+                // TODO: If EOF is in both entry and skip, then remove from entry
+                bool body_skippable = false;
+                if( ::std::find(entry_pats1.begin(), entry_pats1.end(), TOK_EOF) != entry_pats1.end() ) {
+                    if( ::std::find(skip_pats1.begin(), skip_pats1.end(), TOK_EOF) != entry_pats1.end() ) {
+                        entry_pats1.erase( ::std::find(entry_pats1.begin(), entry_pats1.end(), TOK_EOF) );
+                        body_skippable = true;
+                    }
+                }
 
                 std::vector<std::vector<SimplePatIfCheck>>   entry_conds;
                 std::vector<std::vector<SimplePatIfCheck>>   skip_conds;
@@ -831,6 +896,11 @@ namespace {
                             }
                             auto entry_pats2 = macro_pattern_get_head_set(ent.subpats, 0, path);
                             assert(entry_pats2.size() > 0);
+                            // Replace `TOK_EOF` in entry patterns with the first skip pattern
+                            if( ::std::find(entry_pats2.begin(), entry_pats2.end(), TOK_EOF) != entry_pats2.end() ) {
+                                entry_pats2.erase( ::std::find(entry_pats2.begin(), entry_pats2.end(), TOK_EOF) );
+                                entry_pats2.insert(entry_pats2.end(), skip_pats1.begin(), skip_pats1.end());
+                            }
                             auto skip_pats2 = macro_pattern_get_head_set(pattern, idx+1, path);
                             assert(skip_pats2.size() > 0);
                             DEBUG("entry_pats2 = [" << entry_pats2 << "]");
@@ -889,7 +959,22 @@ namespace {
                         v.insert(v.end(), p.begin(), p.end());
                         repeat_conds.push_back(mv$(v));
                     }
+                    // TODO: If entry indicates that it's optional (it had TOK_EOF in it) then push the skip too
+                    if(body_skippable)
+                    {
+                        for(const auto& p : skip_conds)
+                        {
+                            auto v = ::make_vec1<SimplePatIfCheck>( { MacroPatEnt::PAT_TOKEN, ent.tok} );
+                            v.insert(v.end(), p.begin(), p.end());
+                            repeat_conds.push_back(mv$(v));
+                        }
+                    }
                 }
+                DEBUG("Repeat = [");
+                for(const auto& e : repeat_conds) {
+                    DEBUG(" [" << e << "]");
+                }
+                DEBUG("]");
 
                 // TODO: Combine the two cases below into one?
 
@@ -904,7 +989,8 @@ namespace {
                     if( ent.tok != TOK_NULL )
                     {
                         if(repeat_conds.size() > 1) {
-                            size_t expect_and_jump_pos = rv.size() + entry_conds.size() + 1;
+                            DEBUG("Loop+ Multi-option repeat");
+                            size_t expect_and_jump_pos = rv.size() + repeat_conds.size() + 1;
                             for(const auto& ee : repeat_conds) {
                                 push_ifv(true, ee, expect_and_jump_pos);
                             }
@@ -912,6 +998,7 @@ namespace {
                             push( SimplePatEnt::make_Jump({ ~0u }) );
                         }
                         else {
+                            DEBUG("Loop+ Single-option repeat");
                             push_ifv( false, repeat_conds.front(), ~0u );
                         }
                         push( SimplePatEnt::make_ExpectTok(ent.tok) );
@@ -982,6 +1069,7 @@ namespace {
                         {
                             if( repeat_conds.size() == 1 )
                             {
+                                DEBUG("Loop* - Single-option repeat");
                                 // If not a repeat, jump out
                                 for(const auto& ee : repeat_conds) {
                                     push_ifv(/*is_equal*/false, ee, ~0u);
@@ -990,6 +1078,7 @@ namespace {
                             }
                             else
                             {
+                                DEBUG("Loop* - Multi-option repeat");
                                 // Multiple repeat conditions
                                 // - If any repeat condition matches, then jump to a consume
                                 auto check_pos = rv.size() + repeat_conds.size() + 1;

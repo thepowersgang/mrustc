@@ -22,6 +22,7 @@ namespace AST {
     TU_MATCHA( (x), (i),
     (Unbound, os << "_";   ),
     (Crate ,  os << "Crate";    ),
+    (Primitive, os << "Primitive"; ),
     (Module,  os << "Module";    ),
     (Trait,     os << "Trait";   ),
     (TraitAlias, os << "TraitAlias"; ),
@@ -38,6 +39,7 @@ PathBinding_Type PathBinding_Type::clone() const
 {
     TU_MATCHA( (*this), (e),
     (Unbound  , return PathBinding_Type::make_Unbound({}); ),
+    (Primitive, return e; ),
     (Module   , return PathBinding_Type::make_Module(e);   ),
     (Crate    , return PathBinding_Type(e); ),
     (Trait    , return PathBinding_Type(e); ),
@@ -189,7 +191,11 @@ Ordering PathParamEnt::ord(const PathParamEnt& x) const
         return ::ord(v1, v2);
         }
     TU_ARMA(AssociatedTyBound, v1, v2) {
-        return ::ord(v1, v2);
+        ORD(v1.first, v2.first);
+        ORD(v1.second.size(), v2.second.size());
+        for(size_t i = 0; i < v1.second.size(); i++)
+            ORD(v1.second[i], v2.second[i]);
+        return ::OrdEqual;
         }
     }
     throw "";

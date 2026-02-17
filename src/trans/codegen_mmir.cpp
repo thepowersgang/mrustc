@@ -110,8 +110,7 @@ namespace
                 os << fmt(t) << ", ";
             os << ") -> " << fmt(e.m_rettype);
             } break;
-        case ::HIR::TypeData::TAG_Closure:
-        case ::HIR::TypeData::TAG_Generator:
+        case ::HIR::TypeData::TAG_NodeType:
             BUG(Span(), "Unexpected type in trans: " << x.e);
             break;
         }
@@ -384,7 +383,7 @@ namespace
                         TU_MATCHA( (str.m_data), (se),
                         (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
                         (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
-                        (Named, return metadata_type( monomorph(se.back().second.ent) ); )
+                        (Named, return metadata_type( monomorph(se.back().ty ) ); )
                         )
                         //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
                         return MetadataType::None;
@@ -928,6 +927,12 @@ namespace
                             m_of << (se.new_val ? "" : "!") << "df" << se.other;
                         }
                         } break;
+                    TU_ARM(stmt, LoadDropFlag, se) {
+                        m_of << "LOADFLAG df" << se.idx << " = " << fmt(se.slot) << " BIT " << se.bit_index;
+                        } break;
+                    TU_ARM(stmt, SaveDropFlag, se) {
+                        m_of << "SAVEFLAG " << fmt(se.slot) << " BIT " << se.bit_index << " = df" << se.idx;
+                        } break;
                     TU_ARM(stmt, Asm, se) {
                         m_of << "ASM (";
                         for(const auto& v : se.outputs)
@@ -1081,6 +1086,14 @@ namespace
                     m_of << " }\n";
                     } break;
                 TU_ARM(term, Call, e) {
+                    if( const auto* f_p = e.fcn.opt_Intrinsic() ) {
+                        if( f_p->name == "offset_of" ) {
+                            size_t val = mir_res.intrinsic_offset_of(f_p->params.m_types.at(0), e.args);
+                            m_of << fmt(e.ret_val) << " = " << val << " usize;\n";
+                            m_of << "\t\tGOTO " << e.ret_block;
+                            break;
+                        }
+                    }
                     m_of << "CALL " << fmt(e.ret_val) << " = ";
                     switch(e.fcn.tag())
                     {

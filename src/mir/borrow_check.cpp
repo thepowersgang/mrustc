@@ -341,8 +341,7 @@ namespace {
                 type_assign_pp(de.m_trait.m_path.m_params, se.m_trait.m_path.m_params);
                 // TODO: Markers
                 }
-            TU_ARMA(Closure, de, se) MIR_BUG(state, "Unexpected Closure");
-            TU_ARMA(Generator, de, se) MIR_BUG(state, "Unexpected Generator");
+            TU_ARMA(NodeType, de, se) MIR_BUG(state, "Unexpected NodeType");
             TU_ARMA(ErasedType, de, se) MIR_BUG(state, "Unexpected ErasedType");
             TU_ARMA(Path, de, se) {
                 MIR_ASSERT(state, de.binding == se.binding, dst_ty << " != " << src_ty);
@@ -619,7 +618,7 @@ void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
                                 }
                             TU_ARMA(Named, se) {
                                 MIR_ASSERT(state, field_index < se.size(), "Field index out of range in struct " << rse.path);
-                                return maybe_monomorph(se[field_index].second.ent);
+                                return maybe_monomorph(se[field_index].ty);
                                 }
                             }
                             throw "";
@@ -662,7 +661,7 @@ void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
                                 MIR_ASSERT(state, se.size() == rse.vals.size(), "Field index out of range in named enum variant " << rse.path);
                                 for(size_t i = 0; i < rse.vals.size(); i ++)
                                 {
-                                    borrow_state.handle_param(maybe_monomorph(se[i].second.ent), rse.vals[i], i);
+                                    borrow_state.handle_param(maybe_monomorph(se[i].ty), rse.vals[i], i);
                                 }
                                 }
                             }
@@ -719,6 +718,8 @@ void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
                     }
                     }
                 TU_ARMA(SetDropFlag, se) {}
+                TU_ARMA(LoadDropFlag, se) {}
+                TU_ARMA(SaveDropFlag, se) {}
                 TU_ARMA(ScopeEnd, se) { /* todo */ }
                 TU_ARMA(Drop, se) { /* todo */ }
                 TU_ARMA(Asm, se) {}

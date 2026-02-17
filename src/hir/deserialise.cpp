@@ -26,6 +26,7 @@ namespace {
         }
         return enabled > 1;
     }
+    ::HIR::Publicity g_vis_private = ::HIR::Publicity::new_none();
 }
 
 //namespace {
@@ -209,7 +210,7 @@ namespace {
 
         ::HIR::Publicity deserialise_pub()
         {
-            return (m_in.read_bool() ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none());
+            return (m_in.read_bool() ? ::HIR::Publicity::new_global() : g_vis_private);
         }
         template<typename T>
         ::HIR::VisEnt<T> deserialise_visent()
@@ -483,8 +484,26 @@ namespace {
                     mv$(entries), mv$(joiner), mv$(controllers)
                     });
                 }
+            case 3: {
+                auto entries = deserialise_vec_c< ::MacroExpansionConcatEnt>( [&](){ return deserialise_macroexpansionconcatent(); } );
+                return ::MacroExpansionEnt( std::move(entries) );
+                }
             default:
                 BUG(Span(), "Bad tag for MacroExpansionEnt - " << tag);
+            }
+        }
+        ::MacroExpansionConcatEnt deserialise_macroexpansionconcatent() {
+            switch(auto tag = m_in.read_tag())
+            {
+            case ::MacroExpansionConcatEnt::TAG_Ident: {
+                auto h = deserialise_hygine();
+                auto n = m_in.read_istring();
+                return ::MacroExpansionConcatEnt::make_Ident({ h, n });
+                }
+            case ::MacroExpansionConcatEnt::TAG_Named:
+                return ::MacroExpansionConcatEnt::make_Named( m_in.read_count() );
+            default:
+                BUG(Span(), "Bad tag for MacroExpansionConcatEnt - " << tag);
             }
         }
 
@@ -593,6 +612,7 @@ namespace {
                 })
             _(Borrow, {
                 static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
+                m_in.read_bool(),
                 deserialise_mir_lvalue()
                 })
             _(Cast, {
@@ -912,6 +932,7 @@ namespace {
         ::HIR::Enum::ValueVariant deserialise_enumvaluevariant();
 
         ::HIR::Struct deserialise_struct();
+        ::HIR::StructField deserialise_struct_field();
         ::HIR::Union deserialise_union();
         ::HIR::Trait deserialise_trait();
 
@@ -988,6 +1009,7 @@ namespace {
 
     template<> DEF_D( ::HIR::Enum::ValueVariant, return d.deserialise_enumvaluevariant(); )
     template<> DEF_D( ::HIR::Enum::DataVariant, return d.deserialise_enumdatavariant(); )
+    template<> DEF_D( ::HIR::StructField, return d.deserialise_struct_field(); )
     //template<> DEF_D( ::HIR::Literal, return d.deserialise_literal(); )
     template<> DEF_D( ::HIR::ConstGeneric, return d.deserialise_constgeneric(); )
 
@@ -1007,6 +1029,7 @@ namespace {
         auto src = d.deserialise_genericpath();
         return ::HIR::TraitPath::AtyEqual {
             mv$(src),
+            d.deserialise_pathparams(),
             d.deserialise_type()
         };
     )
@@ -1014,6 +1037,7 @@ namespace {
         auto src = d.deserialise_genericpath();
         return ::HIR::TraitPath::AtyBound {
             mv$(src),
+            d.deserialise_pathparams(),
             d.deserialise_vec<HIR::TraitPath>()
         };
     );
@@ -1208,13 +1232,20 @@ namespace {
                 deserialise_pathparams()
                 } );
         case 2:
+        case 3: {
+            std::unique_ptr<HIR::GenericParams> hrtbs;
+            if( tag == 3 ) {
+                hrtbs = std::make_unique<HIR::GenericParams>(deserialise_genericparams());
+            }
             DEBUG("Known");
             return ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown {
                 deserialise_type(),
                 deserialise_genericpath(),
                 m_in.read_istring(),
-                deserialise_pathparams()
+                deserialise_pathparams(),
+                std::move(hrtbs)
                 } );
+            }
         default:
             BUG(Span(), "Bad tag for HIR::Path - " << tag);
         }
@@ -1247,7 +1278,8 @@ namespace {
             m_in.read_istring(),
             deserialise_type()
             };
-        DEBUG("::HIR::ValueParamDef { " << rv.m_name << ", " << rv.m_type << "}");
+        rv.m_default = deserialise_constgeneric();
+        DEBUG("::HIR::ValueParamDef { " << rv.m_name << ": " << rv.m_type << " = " << rv.m_default << "}");
         return rv;
     }
     ::HIR::GenericBound HirDeserialiser::deserialise_genericbound()
@@ -1287,7 +1319,6 @@ namespace {
                 case ::HIR::Enum::Class::TAG_Value:
                     return ::HIR::Enum::Class::make_Value({
                         des.deserialise_vec<::HIR::Enum::ValueVariant>(),
-                        true
                         });
                 default:
                     BUG(Span(), "Bad tag for HIR::Enum::Class - " << tag);
@@ -1299,6 +1330,7 @@ namespace {
             m_in.read_bool(),
             static_cast< ::HIR::Enum::Repr>(m_in.read_tag()),
             H::deserialise_enumclass(*this),
+            true,
             deserialise_markings()
             };
     }
@@ -1309,7 +1341,9 @@ namespace {
         return ::HIR::Enum::DataVariant {
             mv$(name),
             m_in.read_bool(),
-            deserialise_type()
+            deserialise_type(),
+            ::HIR::ExprPtr {},
+            m_in.read_u64()
             };
     }
     ::HIR::Enum::ValueVariant HirDeserialiser::deserialise_enumvaluevariant()
@@ -1327,7 +1361,7 @@ namespace {
         TRACE_FUNCTION;
         auto params = deserialise_genericparams();
         auto repr = static_cast< ::HIR::Union::Repr>( m_in.read_tag() );
-        auto variants = deserialise_vec< ::std::pair< RcString, ::HIR::VisEnt< ::HIR::TypeRef> > >();
+        auto variants = deserialise_vec<HIR::StructField>();
         auto markings = deserialise_markings();
 
         return ::HIR::Union {
@@ -1355,7 +1389,7 @@ namespace {
             break;
         case ::HIR::Struct::Data::TAG_Named:
             DEBUG("Named");
-            data = ::HIR::Struct::Data( deserialise_vec< ::std::pair< RcString, ::HIR::VisEnt< ::HIR::TypeRef> > >() );
+            data = ::HIR::Struct::Data( deserialise_vec<HIR::StructField>() );
             break;
         default:
             BUG(Span(), "Bad tag for HIR::Struct::Data - " << tag);
@@ -1371,6 +1405,15 @@ namespace {
             };
         rv.m_max_field_alignment = max_field_alignment;
         return rv;
+    }
+    ::HIR::StructField HirDeserialiser::deserialise_struct_field()
+    {
+        return HIR::StructField {
+            m_in.read_istring(),
+            deserialise_pub(),
+            deserialise_type(),
+            m_in.read_bool() ? ::std::make_unique<HIR::GenericPath>(deserialise_genericpath()) : nullptr
+        };
     }
     ::HIR::Trait HirDeserialiser::deserialise_trait()
     {
@@ -1686,6 +1729,7 @@ namespace {
         // NOTE: This MUST be the first item
         this->m_crate_name = m_in.read_istring();
         assert(this->m_crate_name != "" && "Empty crate name loaded from metadata");
+        g_vis_private = ::HIR::Publicity::new_priv(::HIR::SimplePath(this->m_crate_name));
         rv.m_crate_name = this->m_crate_name;
         rv.m_edition = static_cast<AST::Edition>(m_in.read_tag());
         rv.m_root_module = deserialise_module();

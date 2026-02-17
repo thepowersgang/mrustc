@@ -97,6 +97,7 @@ namespace {
         bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr
         )
     {
+        TRACE_FUNCTION_FR(param_defs.fmt_args() << " -> " << params << " (fill_infer=" << fill_infer << ")", params);
         if( params.m_lifetimes.size() != param_defs.m_lifetimes.size() )
         {
             if( params.m_lifetimes.size() == 0 && fill_infer ) {
@@ -131,14 +132,20 @@ namespace {
         if( params.m_values.size() != param_defs.m_values.size() )
         {
             if( params.m_values.size() == 0 && fill_infer ) {
-                params.m_values.reserve(param_defs.m_values.size());
-                for(const auto& val : param_defs.m_values) {
-                    if( val.m_default ) {
-                        // NOTE: Can't just copy, as Unevaluated may not have had its params set yet
-                        TODO(sp, "Value generic defaults");
+                params.m_values.resize(param_defs.m_values.size());
+            }
+            else if( params.m_values.size() > param_defs.m_values.size() ) {
+                ERROR(sp, E0000, "Too many value parameters passed to " << path);
+            }
+            else {
+                while( params.m_values.size() < param_defs.m_values.size() ) {
+                    const auto& val = param_defs.m_values[params.m_values.size()];
+                    if( val.m_default.is_Infer() ) {
+                        ERROR(sp, E0000, "Omitted value parameter with no default in " << path);
                     }
                     else {
-                        params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
+                        // TODO: Anything to be worried about with Unevaluated?, it may not have had its params set yet
+                        params.m_values.push_back(val.m_default.clone());
                     }
                 }
             }
@@ -158,6 +165,10 @@ namespace {
         } m_cur_module;
 
         unsigned m_in_expr;
+
+        ::HIR::ItemPath* m_fcn_path = nullptr;
+        ::HIR::Function* m_fcn_ptr = nullptr;
+        unsigned int m_fcn_erased_count = 0;
 
     public:
         Visitor(const ::HIR::Crate& crate):
@@ -447,6 +458,94 @@ namespace {
                     const auto& trait = m_crate.get_trait_by_path(sp, t.m_path.m_path);
                     fix_param_count(sp, t.m_path, trait.m_params, t.m_path.m_params, /*fill_infer=*/m_in_expr, &ty_eself);
                 }
+
+                if( auto* ee = te->m_inner.opt_Fcn() )
+                {
+                    DEBUG("Set origin of ErasedType - " << ty);
+                    DEBUG("&ty.data() = " << &ty.data());
+                    // If not, figure out what to do with it
+
+                    // If the function path is set, we're processing the return type of a function
+                    // - Add this to the list of erased types associated with the function
+                    if( ee->m_origin != HIR::SimplePath() )
+                    {
+                        // Already set, somehow (maybe we're visiting the function after expansion)
+                    }
+                    else if( m_fcn_path )
+                    {
+                        assert(m_fcn_ptr);
+                        DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
+
+                        ::HIR::PathParams    params = m_fcn_ptr->m_params.make_nop_params(1);
+                        // Populate with function path
+                        ee->m_origin = m_fcn_path->get_full_path();
+                        TU_MATCH_HDRA( (ee->m_origin.m_data), {)
+                        TU_ARMA(Generic, e2) {
+                            e2.m_params = mv$(params);
+                            }
+                        TU_ARMA(UfcsInherent, e2) {
+                            e2.params = mv$(params);
+                            // Impl params, just directly references the parameters.
+                            // - Downstream monomorph will fix that
+                            e2.impl_params = m_ms.m_impl_generics->make_nop_params(0);
+                            }
+                        TU_ARMA(UfcsKnown, e2) {
+                            e2.params = mv$(params);
+                            }
+                        TU_ARMA(UfcsUnknown, e2) {
+                            throw "";
+                            }
+                        }
+                        ee->m_index = m_fcn_erased_count++;
+                    }
+                    // If the function _pointer_ is set (but not the path), then we're in the function arguments
+                    // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
+                    else if( m_fcn_ptr )
+                    {
+                        // Visit inner first, to handle nested
+                        ::HIR::Visitor::visit_type(ty);
+
+                        size_t idx = m_fcn_ptr->m_params.m_types.size();
+                        auto name = RcString::new_interned(FMT("erased$" << idx));
+                        DEBUG("-> " << name);
+                        auto new_ty = ::HIR::TypeRef( name, 256 + idx );
+                        m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), te->m_is_sized });
+                        for( auto& trait : te->m_traits )
+                        {
+                            struct M: MonomorphiserNop {
+                                const HIR::TypeRef& new_ty;
+                                M(const HIR::TypeRef& ty): new_ty(ty) {}
+                                ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
+                                    if( ty.binding == GENERIC_ErasedSelf ) {
+                                        return new_ty.clone();
+                                    }
+                                    return HIR::TypeRef(ty);
+                                }
+                            } m { new_ty };
+                            // TODO: Monomorph the trait to replace `Self` with this generic?
+                            // - Except, that should it be?
+                            m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                                nullptr,
+                                new_ty.clone(),
+                                m.monomorph_traitpath(sp, trait, false)
+                                }));
+                        }
+                        for(const auto& lft : te->m_lifetime_bounds)
+                        {
+                            m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
+                                new_ty.clone(),
+                                lft
+                                }));
+                        }
+                        ty = ::std::move(new_ty);
+                    }
+                    else
+                    {
+                        // TODO: If we're in a top-level `type`, then it must be used as the return type of a function.
+                        // https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html#type-alias
+                        ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
+                    }
+                }
             }
             else if( auto* te = ty.data_mut().opt_TraitObject() )
             {
@@ -542,6 +641,30 @@ namespace {
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override
         {
             auto _ = this->m_ms.set_item_generics(item.m_params);
+            m_fcn_ptr = &item;
+
+            // Visit arguments
+            // - Used to convert `impl Trait` in argument position into generics
+            // - Done first so the path in return-position `impl Trait` is valid
+            //m_cur_params = &item.m_params;
+            //m_cur_params_level = 1;
+            for(auto& arg : item.m_args)
+            {
+                TRACE_FUNCTION_F("ARG " << arg);
+                visit_type(arg.second);
+            }
+            //m_cur_params = nullptr;
+
+            // Visit return type (populates path for `impl Trait` in return position
+            m_fcn_path = &p;
+            m_fcn_erased_count = 0;
+            {
+                TRACE_FUNCTION_F("RET " << item.m_return);
+                visit_type(item.m_return);
+            }
+            m_fcn_path = nullptr;
+            m_fcn_ptr = nullptr;
+
             ::HIR::Visitor::visit_function(p, item);
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
@@ -828,7 +951,22 @@ namespace {
                     out_path.m_trait_ptr = &tr;
                     fill_type_aliases(out_path);
                     // TODO: HRLs?
-                    supertraits.push_back( mv$(out_path) );
+                    supertraits.push_back( std::move(out_path) );
+                    // Fill aliases from this path too
+                    for(auto& st : supertraits) {
+                        for(auto& tb : path.m_type_bounds) {
+                            if( tb.second.source_trait == st.m_path ) {
+                                DEBUG("Add TypeBound: " << tb.first << " = " << tb.second.type);
+                                st.m_type_bounds.insert(std::make_pair(tb.first, std::move(tb.second)));
+                            }
+                        }
+                        for(auto& tb : path.m_trait_bounds) {
+                            if( tb.second.source_trait == st.m_path ) {
+                                DEBUG("Add TraitBound: " << tb.first << ": " << tb.second.traits);
+                                st.m_trait_bounds.insert(std::make_pair(tb.first, std::move(tb.second)));
+                            }
+                        }
+                    }
                     tp_stack.pop_back();
                 }
 
@@ -856,7 +994,7 @@ namespace {
 
                             if( v != ::HIR::TypeRef() )
                             {
-                                out_path.m_type_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyEqual { out_path.m_path.clone(), mv$(v) }) );
+                                out_path.m_type_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyEqual { out_path.m_path.clone(), {}, mv$(v) }) );
                             }
                         }
 
@@ -876,7 +1014,7 @@ namespace {
                             DEBUG(ty.first << ": " << traits);
                             if( !traits.empty() )
                             {
-                                out_path.m_trait_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyBound { out_path.m_path.clone(), mv$(traits) }) );
+                                out_path.m_trait_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyBound { out_path.m_path.clone(), {}, mv$(traits) }) );
                             }
                         }
                     }
@@ -920,23 +1058,24 @@ namespace {
                 {
                     if( prev->m_path == it->m_path )
                     {
-                        if( *prev == *it ) {
-                        }
-                        else if( prev->m_type_bounds.size() == 0 ) {
-                            ::std::swap(*prev, *it);
-                        }
-                        else if( it->m_type_bounds.size() == 0 ) {
-                        }
-                        else {
-                            for(auto& e : it->m_type_bounds ) {
-                                if( prev->m_type_bounds.count(e.first) ) {
-                                    ASSERT_BUG(sp, prev->m_type_bounds[e.first].type == e.second.type,
-                                        "TODO: Handle mismatched type bounds in merging supertrait ATY bounds: " << e.first << " =\n " <<
-                                        prev->m_type_bounds[e.first] << "\n " << e.second.type);
-                                }
-                                prev->m_type_bounds.insert(std::move(e));
+                        DEBUG("MERGE:");
+                        DEBUG("- " << *prev);
+                        DEBUG("- " << *it);
+                        for(auto& e : it->m_type_bounds ) {
+                            if( prev->m_type_bounds.count(e.first) ) {
+                                ASSERT_BUG(sp, prev->m_type_bounds[e.first].type == e.second.type,
+                                    "TODO: Handle mismatched type bounds in merging supertrait ATY bounds: " << e.first << " =\n " <<
+                                    prev->m_type_bounds[e.first] << "\n " << e.second.type);
                             }
+                            prev->m_type_bounds.insert(std::move(e));
                         }
+                        for(auto& e : it->m_trait_bounds ) {
+                            if( prev->m_trait_bounds.count(e.first) ) {
+                                TODO(sp, "Merge trait bounds (and make sure to check the source trait)");
+                            }
+                            prev->m_trait_bounds.insert(std::move(e));
+                        }
+                        DEBUG("= " << *prev);
                         it = e.supertraits.erase(it);
                         dedeup_done = true;
                     }
@@ -950,7 +1089,7 @@ namespace {
                     DEBUG("supertraits dd = " << e.supertraits);
                 }
             }
-            tr.m_all_parent_traits = mv$(e.supertraits);
+            tr.m_all_parent_traits = std::move(e.supertraits);
         }
     };
 

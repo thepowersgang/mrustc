@@ -71,7 +71,7 @@ namespace {
             ::MIR::BasicBlock   bb;
             bb.statements.push_back(::MIR::Statement::make_Assign({
                     borrow_lv.clone(),
-                    ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
+                    ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, mv$(fld_lvalue) })
                     }));
             ::HIR::PathParams   pp;
             pp.m_lifetimes.push_back(HIR::LifetimeRef(1*256+0)); // 'M:0
@@ -268,7 +268,7 @@ namespace {
         void push_CallDrop(const HIR::TypeRef& ty) {
             // Get a `&mut *self`
             auto borrow_lv = this->add_local( HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, ty.clone()) );
-            this->push_stmt_assign( borrow_lv.clone(), MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, ::MIR::LValue::new_Deref(this->self.clone()) }) );
+            this->push_stmt_assign( borrow_lv.clone(), MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, false, ::MIR::LValue::new_Deref(this->self.clone()) }) );
 
             this->terminate_Call(
                 MIR::LValue::new_Return(), ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, rcstring_drop), make_vec1<MIR::Param>(mv$(borrow_lv)),
@@ -325,7 +325,7 @@ namespace {
                 for(unsigned int i = 0; i < se.size(); i ++ ) {
                     auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
                     if( i == str.m_struct_markings.coerce_unsized_index ) {
-                        vals.push_back( get_unit_ptr(sp, mutator, monomorph(se[i].second.ent), mv$(val), out_inner_ptr ) );
+                        vals.push_back( get_unit_ptr(sp, mutator, monomorph(se[i].ty), mv$(val), out_inner_ptr ) );
                     }
                     else {
                         vals.push_back( mv$(val) );
@@ -971,10 +971,8 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     TODO(sp, "Drop glue for TraitObject? " << ty);
                 TU_ARMA(Slice, _te)
                     TODO(sp, "Drop glue for Slice? " << ty);
-                TU_ARMA(Closure, _te)
-                    TODO(sp, "Drop glue for Closure? " << ty);  // Should this be dead already?
-                TU_ARMA(Generator, _te)
-                    TODO(sp, "Drop glue for Generator? " << ty);  // Should this be dead already?
+                TU_ARMA(NodeType, _te)
+                    TODO(sp, "Drop glue for NodeType? " << ty);  // Should have been converted to a named structure by this point
                 TU_ARMA(Diverge, te) {
                     // Exists for reasons...
                     builder.terminate_block( MIR::Terminator::make_Diverge({}) );

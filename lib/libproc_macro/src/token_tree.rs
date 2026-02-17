@@ -249,13 +249,25 @@ impl ::std::fmt::Display for Literal
             }
             f.write_str("\"")?;
             },
+        LiteralValue::CString(ref v) => {
+            f.write_str("c\"")?;
+            for &b in v {
+                if b != b'"' && b >= b' ' && b <= b'z' {
+                    (b as char).fmt(f)?;
+                }
+                else {
+                    write!(f, "\\x{:02x}", b)?;
+                }
+            }
+            f.write_str("\"")?;
+            },
         LiteralValue::CharLit(v) => match v
             {
             '\'' => f.write_str("'\\''")?,
             '\0' => f.write_str("'\\0'")?,
             '\n' => f.write_str("'\\n'")?,
             ' ' ... 'z' => write!(f, "'{}'", v)?,
-            _ => write!(f, "'\\u{:x}'", v as u32)?,
+            _ => write!(f, "'\\u{{{:x}}}'", v as u32)?,
             },
         LiteralValue::UnsignedInt(v,sz) => {
             v.fmt(f)?;
@@ -299,6 +311,7 @@ impl ::std::fmt::Display for Literal
 pub(crate) enum LiteralValue {
     String(String),
     ByteString(Vec<u8>),
+    CString(Vec<u8>),
     CharLit(char),
     UnsignedInt(u128, u8),    // Value, size (0=?,8,16,32,64,128)
     SignedInt(i128, u8),    // Value, size (0=?,8,16,32,64,128)
@@ -434,6 +447,18 @@ impl Literal {
         Literal {
             span: Span::call_site(),
             val: LiteralValue::ByteString(bytes.to_owned()),
+        }
+    }
+    pub fn byte_character(ch: u8) -> Literal {
+        Literal {
+            span: Span::call_site(),
+            val: LiteralValue::UnsignedInt(ch as _, 8),
+        }
+    }
+    pub fn c_string(bytes: &::std::ffi::CStr) -> Literal {
+        Literal {
+            span: Span::call_site(),
+            val: LiteralValue::CString(bytes.to_bytes().to_owned()),
         }
     }
 

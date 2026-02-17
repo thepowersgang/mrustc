@@ -11,6 +11,7 @@
 #include <hir/type.hpp>
 #include <mir/mir.hpp>
 #include <algorithm>    // ::std::find
+#include <trans/target.hpp>
 
 void ::MIR::TypeResolve::fmt_pos(::std::ostream& os, bool include_path/*=false*/) const
 {
@@ -52,24 +53,22 @@ const ::MIR::BasicBlock& ::MIR::TypeResolve::get_block(::MIR::BasicBlockId id) c
 
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_static_type(::HIR::TypeRef& tmp, const ::HIR::Path& path) const
 {
-    TU_MATCH_HDRA( (path.m_data), {)
-    TU_ARMA(Generic, pe) {
-        const auto& s = m_crate.get_static_by_path(sp, pe.m_path);
-        tmp = MonomorphStatePtr(nullptr, nullptr, &pe.m_params).monomorph_type(sp, s.m_type);
+    if( path.m_data.is_UfcsInherent() && path.m_data.as_UfcsInherent().item == "#type_id") {
+        static ::HIR::TypeRef   ty_unit = ::HIR::TypeRef::new_unit();
+        return ty_unit;
+    }
+    MonomorphState  ms;
+    auto v = m_resolve.get_value(this->sp, path, ms, /*signature_only*/true);
+    MIR_ASSERT(*this, v.is_Static(), "LValue::Static not a static - " << path << " : " << v.tag_str() );
+    MIR_ASSERT(*this, v.as_Static(), "LValue::Static is null? - " << path << " : " << v.tag_str() );
+    if( ms.has_types() ) {
+        tmp = ms.monomorph_type(sp, v.as_Static()->m_type);
         m_resolve.expand_associated_types(this->sp, tmp);
         return tmp;
-        }
-    TU_ARMA(UfcsKnown, pe) {
-        MIR_TODO(*this, "LValue::Static - UfcsKnown - " << path);
-        }
-    TU_ARMA(UfcsUnknown, pe) {
-        MIR_BUG(*this, "Encountered UfcsUnknown in LValue::Static - " << path);
-        }
-    TU_ARMA(UfcsInherent, pe) {
-        MIR_TODO(*this, "LValue::Static - UfcsInherent - " << path);
-        }
     }
-    throw "";
+    else {
+        return v.as_Static()->m_type;
+    }
 }
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val, unsigned wrapper_skip_count/*=0*/) const
 {
@@ -143,7 +142,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                     ),
                 (Named,
                     MIR_ASSERT(*this, field_index < se.size(), "Field index out of range in struct " << te.path);
-                    return maybe_monomorph(se[field_index].second.ent);
+                    return maybe_monomorph(se[field_index].ty);
                     )
                 )
             }
@@ -154,7 +153,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                     return m_resolve.monomorph_expand_opt(sp, tmp, t, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
                     };
                 MIR_ASSERT(*this, field_index < unm.m_variants.size(), "Field index out of range for union");
-                return maybe_monomorph(unm.m_variants.at(field_index).second.ent);
+                return maybe_monomorph(unm.m_variants.at(field_index).ty);
             }
             else
             {
@@ -218,7 +217,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                 const auto& unm = *te.binding.as_Union();
                 MIR_ASSERT(*this, variant_index < unm.m_variants.size(), "Variant index out of range");
                 const auto& variant = unm.m_variants[variant_index];
-                const auto& var_ty = variant.second.ent;
+                const auto& var_ty = variant.ty;
 
                 return m_resolve.monomorph_expand_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
             }
@@ -230,12 +229,19 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
 }
 const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, const ::MIR::Param& val) const
 {
-    if (const auto* p = val.opt_LValue()) {
-        return get_lvalue_type(tmp, *p);
+    TU_MATCH_HDRA((val), {)
+    TU_ARMA(LValue, e) {
+        return get_lvalue_type(tmp, e);
+        }
+    TU_ARMA(Constant, e) {
+        return tmp = get_const_type(e);
+        }
+    TU_ARMA(Borrow, e) {
+        ::HIR::TypeRef  tmp2;
+        return tmp = ::HIR::TypeRef::new_borrow(e.type, get_lvalue_type(tmp2, e.val).clone());
+        }
     }
-    else {
-        return tmp = get_const_type(val.as_Constant());
-    }
+    throw "";
 }
 
 ::HIR::TypeRef MIR::TypeResolve::get_const_type(const ::MIR::Constant& c) const
@@ -310,6 +316,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
         }
     TU_ARMA(ItemAddr, e) {
         MonomorphState  p;
+        ASSERT_BUG(sp, e, "get_const_type - " << c);
         auto v = m_resolve.get_value(this->sp, *e, p, /*signature_only=*/true);
         TU_MATCH_HDRA( (v), {)
         TU_ARMA(NotFound, ve) {
@@ -385,6 +392,72 @@ bool ::MIR::TypeResolve::lvalue_is_copy(const ::MIR::LValue& val) const
 const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef& ty) const
 {
     return m_resolve.is_type_owned_box(ty);
+}
+
+size_t MIR::TypeResolve::intrinsic_offset_of(const ::HIR::TypeRef& ty, const ::std::vector<MIR::Param>& values) const
+{
+    const auto* cur_ty = &ty;
+    size_t base_ofs = 0;
+    for(size_t i = 0; i < values.size(); i ++)
+    {
+        MIR_ASSERT(*this, values[i].is_Constant(), "Arguments to `offset_of` must be constants");
+        size_t idx = 0;
+        TU_MATCH_HDRA( (values[i].as_Constant()), { )
+        default:
+            MIR_TODO(*this, "offset_of: field " << values[i]);
+        TU_ARMA(StaticString, field_name) {
+            if( false ) {
+            }
+            else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Struct() ) {
+                const auto& str = **bep;
+                TU_MATCH_HDRA((str.m_data), {)
+                TU_ARMA(Named, fields) {
+                    idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
+                    }
+                TU_ARMA(Tuple, fields) {
+                    char* end = nullptr;
+                    idx = ::std::strtoul(field_name.c_str(), &end, 10);
+                    MIR_ASSERT(*this, *end == '\0', "Failed to parse: " << field_name << " as an integer for " << *cur_ty);
+                    }
+                TU_ARMA(Unit, _) {
+                    MIR_BUG(*this, "Empty struct: " << *cur_ty << " ." << field_name);
+                    }
+                }
+            }
+            else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Union() ) {
+                const auto& unm = **bep;
+                const auto& fields = unm.m_variants;
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
+            }
+            else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Enum() ) {
+                const auto& enm = **bep;
+                MIR_ASSERT(*this, enm.m_data.is_Data(), "Non-Data enum: " << *cur_ty << " ." << field_name);
+                const auto& fields = enm.m_data.as_Data();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == field_name; } ) - fields.begin();
+            }
+            else {
+                MIR_TODO(*this, "offset_of: named field/variant - " << field_name);
+            }
+            }
+        }
+        auto* repr = Target_GetTypeRepr(this->sp, m_resolve, *cur_ty);
+        if(!repr) {
+            MIR_BUG(*this, "Calling `offset_of!` on type with non-defined repr: " << *cur_ty);
+        }
+        cur_ty = &repr->fields[idx].ty;
+        base_ofs += repr->fields[idx].offset;
+    }
+    return base_ofs;
+}
+
+std::string MIR::TypeResolve::intrinsic_type_name(const ::HIR::TypeRef& ty) const
+{
+    if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() ) {
+        auto p = ty.data().as_Path().path.m_data.as_Generic().clone();
+        p.m_params.m_lifetimes.resize(0);
+        return FMT(p);
+    }
+    return FMT(ty);
 }
 
 using namespace MIR::visit;
@@ -953,6 +1026,12 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                     }
                     }
                 TU_ARMA(SetDropFlag, se) {
+                    // Ignore
+                    }
+                TU_ARMA(SaveDropFlag, se) {
+                    // Ignore
+                    }
+                TU_ARMA(LoadDropFlag, se) {
                     // Ignore
                     }
                 TU_ARMA(ScopeEnd, se) {

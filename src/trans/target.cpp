@@ -795,6 +795,10 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             out_size = g_target.m_arch.m_pointer_bits / 8;
             out_align = g_target.m_arch.m_alignments.ptr;
             return true;
+        case ::HIR::CoreType::F16:
+            out_size = 2;
+            out_align = 2;//g_target.m_arch.m_alignments.f32; //f16;
+            return true;
         case ::HIR::CoreType::F32:
             out_size = 4;
             out_align = g_target.m_arch.m_alignments.f32;
@@ -802,6 +806,10 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         case ::HIR::CoreType::F64:
             out_size = 8;
             out_align = g_target.m_arch.m_alignments.f64;
+            return true;
+        case ::HIR::CoreType::F128:
+            out_size = 16;
+            out_align = g_target.m_arch.m_alignments.f64; //f128;
             return true;
         case ::HIR::CoreType::Str:
             DEBUG("sizeof on a `str` - unsized");
@@ -934,24 +942,8 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         out_align = g_target.m_arch.m_pointer_bits / 8;
         return true;
         }
-    TU_ARMA(Closure, te) {
-#if 1
-        //BUG(sp, "Encountered closure type at trans stage - " << ty);
-        return false;
-#else
-        const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
-        if( !repr )
-        {
-            DEBUG("Cannot get type repr for " << ty);
-            return false;
-        }
-        out_size  = repr->size;
-        out_align = repr->align;
-        return true;
-#endif
-        }
-    TU_ARMA(Generator, te) {
-        //BUG(sp, "Encountered generator type at trans stage - " << ty);
+    TU_ARMA(NodeType, te) {
+        //BUG(sp, "Encountered NodeType type at trans stage - " << ty);
         return false;
         }
     }
@@ -1019,14 +1011,14 @@ namespace {
             unsigned int idx = 0;
             for(const auto& e : se)
             {
-                auto ty = monomorph(e.second.ent);
+                auto ty = monomorph(e.ty);
                 size_t  size, align;
                 if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
                 {
                     DEBUG("Can't get size/align of " << ty);
                     return false;
                 }
-                DEBUG("#" << idx << " " << e.first << ": s=" << size << ",a=" << align << " " << ty);
+                DEBUG("#" << idx << " " << e.name << ": s=" << size << ",a=" << align << " " << ty);
                 ents.push_back(Ent { idx++, size, align, mv$(ty) });
             }
             }
@@ -1116,6 +1108,7 @@ namespace {
                 fields[e.field].offset = cur_ofs;
                 fields[e.field].ty = e.ty.clone();
             }
+            DEBUG("#" << e.field << " @" << cur_ofs << "+" << e.size << " : " << e.ty);
             if( e.size == SIZE_MAX )
             {
                 // Ensure that this is the last item
@@ -1235,9 +1228,10 @@ namespace {
                         return true;
                     }
                 }
-                // TODO: 1.39 marks these with #[rustc_nonnull_optimization_guaranteed] instead
+                // 1.39 marks these with #[rustc_nonnull_optimization_guaranteed] instead
                 if(str->m_struct_markings.is_nonzero)
                 {
+                    DEBUG(ty << " tagged NonZero");
                     out_path.sub_fields.push_back(0);
                     out_path.size = r->size;
                     return true;
@@ -1248,6 +1242,7 @@ namespace {
                     // Handle the NonZero lang item (Note: Checks just the simplepath part)
                     if( te.path.m_data.as_Generic().m_path == resolve.m_crate.get_lang_item_path(sp, "non_zero") )
                     {
+                        DEBUG(ty << " is NonZero lang item");
                         out_path.sub_fields.push_back(0);
                         out_path.size = r->size;
                         return true;
@@ -1481,6 +1476,11 @@ namespace {
             return resolve.monomorph_expand(sp, tpl, monomorph_cb);
         };
 
+        if(!enm.discriminants_evaluated) {
+            ConvertHIR_ConstantEvaluate_Enum(resolve.m_crate, te.path.m_data.as_Generic().m_path, enm);
+            assert(enm.discriminants_evaluated);
+        }
+
         TypeRepr  rv;
         switch(enm.m_data.tag())
         {
@@ -1508,6 +1508,8 @@ namespace {
                     max_size  = ::std::max(max_size , size);
                     max_align = ::std::max(max_align, align);
                     rv.fields.push_back(TypeRepr::Field { 0, mv$(t) });
+
+                    ASSERT_BUG(sp, !var.discriminant_expr, "TODO: Handle explicit discriminants with repr(C) data");
                 }
                 DEBUG("max_size = " << max_size << ", max_align = " << max_align);
 
@@ -1537,6 +1539,10 @@ namespace {
                 {
                     auto t = monomorph(e[0].type);
                     const auto* inner_repr = Target_GetTypeRepr(sp, resolve, t);
+                    if( !inner_repr ) {
+                        DEBUG("Generic type in enum - " << t);
+                        return nullptr;
+                    }
                     rv.fields.push_back(TypeRepr::Field { 0, mv$(t) });
                     rv.size = inner_repr->size;
                     rv.align = inner_repr->align;
@@ -1556,10 +1562,16 @@ namespace {
                     ::HIR::TypeRef  type;
                     ::std::vector<Ent>  ents;
                 };
+                /// Is there an explicitly specified discriminant value provided?
+                bool has_explcit_value = false;
                 std::vector< Variant>    variants;
                 variants.reserve( e.size() );
                 for(const auto& var : e)
                 {
+                    if( var.discriminant_expr ) {
+                        has_explcit_value = true;
+                    }
+
                     variants.push_back({ monomorph(var.type), {} });
                     TRACE_FUNCTION_F("Variant #" << (&var - e.data()));
                     if( var.type == ::HIR::TypeRef::new_unit() ) {
@@ -1574,6 +1586,7 @@ namespace {
 
                 if( enm.m_tag_repr == ::HIR::Enum::Repr::Auto )
                 {
+                    ASSERT_BUG(sp, !has_explcit_value, "Explicit tag without a repr");
                     // Non-zero optimisation
                     if( rv.variants.is_None() && variants.size() == 2 )
                     {
@@ -1940,6 +1953,7 @@ namespace {
                     }
                     else
                     {
+                        ASSERT_BUG(sp, !has_explcit_value, "Explicit tag without a repr");
                         if( e.size() <= 1 ) {
                             // Unreachable
                             BUG(sp, "Reached auto tag type logic with zero/one-sized enum");
@@ -1999,16 +2013,22 @@ namespace {
                         rv.size ++;
                     rv.align = max_align;
 
-                    rv.variants = TypeRepr::VariantMode::make_Linear({ { e.size(), tag_size, {} }, 0, e.size() });
+                    if( has_explcit_value ) {
+                        ::std::vector<uint64_t> vals;
+                        for(const auto& v : e) {
+                            vals.push_back(v.discriminant_value);
+                        }
+                        DEBUG("vals = " << vals);
+                        rv.variants = TypeRepr::VariantMode::make_Values({ { e.size(), tag_size, {} }, ::std::move(vals) });
+                    }
+                    else {
+                        rv.variants = TypeRepr::VariantMode::make_Linear({ { e.size(), tag_size, {} }, 0, e.size() });
+                    }
                 }
             }
             } break;
         TU_ARM(enm.m_data, Value, e) {
             // TODO: If the values aren't yet populated, force const evaluation
-            if(!e.evaluated) {
-                ConvertHIR_ConstantEvaluate_Enum(resolve.m_crate, te.path.m_data.as_Generic().m_path, enm);
-                assert(e.evaluated);
-            }
             switch(enm.m_tag_repr)
             {
             case ::HIR::Enum::Repr::Auto:
@@ -2117,7 +2137,7 @@ namespace {
         TypeRepr  rv;
         for(const auto& var : unn.m_variants)
         {
-            rv.fields.push_back({ 0, monomorph(var.second.ent) });
+            rv.fields.push_back({ 0, monomorph(var.ty) });
             size_t size, align;
             if( !Target_GetSizeAndAlignOf(sp, resolve, rv.fields.back().ty, size, align) )
             {

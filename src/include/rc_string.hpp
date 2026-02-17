@@ -112,12 +112,13 @@ public:
     bool operator==(const RcString& s) const {
         if(s.size() != this->size())
             return false;
+        // If both are interned, then just compare pointers
+        if( is_interned() && s.is_interned() )
+            return m_ptr == s.m_ptr;
         return this->ord(s) == OrdEqual;
     }
     bool operator!=(const RcString& s) const {
-        if(s.size() != this->size())
-            return true;
-        return this->ord(s) != OrdEqual;
+        return !(*this == s);
     }
     bool operator<(const RcString& s) const { return this->ord(s) == OrdLess; }
     bool operator>(const RcString& s) const { return this->ord(s) == OrdGreater; }

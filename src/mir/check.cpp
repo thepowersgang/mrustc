@@ -32,11 +32,10 @@ namespace {
 
                 auto vtable_ty = trait.get_vtable_type(state.sp, state.m_resolve.m_crate, *tep);
 
-                // TODO: This should be a pointer
-                return vtable_ty;
+                return ::HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, std::move(vtable_ty));
             }
         }
-        else if( unsized_ty.data().is_Slice() )
+        else if( unsized_ty.data().is_Slice() || (unsized_ty.data().is_Primitive() && unsized_ty.data().as_Primitive() == HIR::CoreType::Str) )
         {
             return ::HIR::CoreType::Usize;
         }
@@ -59,7 +58,7 @@ namespace {
                     TU_MATCHA( (str.m_data), (se),
                     (Unit,  MIR_BUG(state, "Unit-like struct with DstType::Possible - " << unsized_ty ); ),
                     (Tuple, return get_metadata_type( state, monomorph(se.back().ent) ); ),
-                    (Named, return get_metadata_type( state, monomorph(se.back().second.ent) ); )
+                    (Named, return get_metadata_type( state, monomorph(se.back().ty) ); )
                     )
                     throw ""; }
                 case ::HIR::StructMarkings::DstType::Slice:
@@ -69,6 +68,13 @@ namespace {
                 }
             }
             return ::HIR::TypeRef();
+        }
+        else if( TARGETVER_LEAST_1_90 && unsized_ty.data().is_Generic() )
+        {
+            ::HIR::Path p { unsized_ty.clone(), state.m_resolve.m_lang_Pointee, "Metadata" };
+            auto rv = ::HIR::TypeRef::new_path(std::move(p), {});
+            state.m_resolve.expand_associated_types(sp, rv);
+            return rv;
         }
         else
         {
@@ -427,6 +433,12 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 throw "";
             case ::MIR::Statement::TAG_SetDropFlag:
                 break;
+            case ::MIR::Statement::TAG_LoadDropFlag:
+                val_state.ensure_valid(state, stmt.as_LoadDropFlag().slot);
+                break;
+            case ::MIR::Statement::TAG_SaveDropFlag:
+                val_state.ensure_valid(state, stmt.as_SaveDropFlag().slot);
+                break;
             case ::MIR::Statement::TAG_Drop:
                 // Invalidate the slot
                 if( stmt.as_Drop().flag_idx == ~0u )
@@ -561,6 +573,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 else
                 {
                     // TODO: Error, becuase this has just been leaked
+                    // Can't error, as this doesn't know if the value has been partially moved out of (as this code doesn't track that detailed)
+                    //MIR_BUG(state, "Value _" << i << ": " << fcn.locals[i] << " still valid?");
                 }
             }
             }
@@ -618,12 +632,14 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
     // Validation rules:
 
-    if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
+    if( debug_enabled() ) {
+        MIR_Dump_Fcn(::std::cout, fcn, 0);
+    }
 
     {
         HIR::TypeRef ty_Self = ::HIR::TypeRef::new_self();
         HIR::PathParams empty_params_i = resolve.m_impl_generics ? resolve.m_impl_generics->make_nop_params(0) : HIR::PathParams();
-        HIR::PathParams empty_params_m = resolve.m_item_generics ? resolve.m_item_generics->make_nop_params(0) : HIR::PathParams();
+        HIR::PathParams empty_params_m = resolve.m_item_generics ? resolve.m_item_generics->make_nop_params(1) : HIR::PathParams();
         MonomorphStatePtr   m(&ty_Self, resolve.m_impl_generics ? &empty_params_i : nullptr, resolve.m_item_generics ? &empty_params_m : nullptr);
         for(const auto& ty : fcn.locals)
         {
@@ -671,7 +687,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 } while(0)
             TU_MATCH(::MIR::Terminator, (fcn.blocks[block].terminator), (e),
             (Incomplete,
-                MIR_BUG(state,  "Encounterd `Incomplete` block in control flow");
+                MIR_BUG(state,  "Encounterd `Incomplete` block in control flow - BB" << block);
                 ),
             (Return,
                 returns = true;
@@ -731,6 +747,20 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 case ::MIR::Statement::TAGDEAD:
                     throw "";
                 case ::MIR::Statement::TAG_SetDropFlag:
+                    break;
+                case ::MIR::Statement::TAG_SaveDropFlag:
+                case ::MIR::Statement::TAG_LoadDropFlag:
+                    {
+                        const auto& slot = stmt.is_SaveDropFlag() ? stmt.as_SaveDropFlag().slot : stmt.as_LoadDropFlag().slot;
+                        const auto bit = stmt.is_SaveDropFlag() ? stmt.as_SaveDropFlag().bit_index : stmt.as_LoadDropFlag().bit_index;
+                        ::HIR::TypeRef  slot_tmp;
+                        const auto& slot_ty = state.get_lvalue_type(slot_tmp, slot);
+                        MIR_ASSERT(state, slot_ty.data().is_Array(), "Save/Load Drop flag, slot not array: " << slot_ty);
+                        const auto& slot_ty_i = slot_ty.data().as_Array();
+                        MIR_ASSERT(state, slot_ty_i.inner == HIR::CoreType::U8, "Save/Load Drop flag, slot not u8 array: " << slot_ty);
+                        auto bytes = slot_ty_i.size.as_Known();
+                        MIR_ASSERT(state, bit < bytes * 8, "Save/Load drop flag, bit index out of range " << bit << " >= " << bytes*8);
+                    }
                     break;
                 case ::MIR::Statement::TAG_Assign: {
                     const auto& a = stmt.as_Assign();
@@ -805,8 +835,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             bool good = false;
                             if( dst_ty.data().is_Primitive() ) {
                                 switch( dst_ty.data().as_Primitive() ) {
+                                case ::HIR::CoreType::F16:
                                 case ::HIR::CoreType::F32:
                                 case ::HIR::CoreType::F64:
+                                case ::HIR::CoreType::F128:
                                     good = true;
                                     break;
                                 default:
@@ -841,7 +873,11 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             ::HIR::TypeRef  tmp;
                             TU_MATCH_HDRA( (v), {)
                             TU_ARMA(NotFound, ve)
-                                MIR_BUG(state, "Unable to find item: " << *c);
+                                if( c->m_data.is_UfcsInherent() && c->m_data.as_UfcsInherent().item == "#type_id") {
+                                }
+                                else {
+                                    MIR_BUG(state, "Unable to find item: " << *c);
+                                }
                             TU_ARMA(NotYetKnown, ve)
                                 MIR_BUG(state, "NotYetKnown returned with sig_only=true? for " << *c);
                             TU_ARMA(Constant, ve)
@@ -853,7 +889,13 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             TU_ARMA(Static, ve) {
                                 tmp = ms.monomorph_type(state.sp, ve->m_type);
                                 resolve.expand_associated_types(state.sp, tmp);
-                                check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(tmp)) );
+                                // TODO: Have a raw pointer flag
+                                if(const auto* te = dst_ty.data().opt_Pointer()) {
+                                    check_types( te->inner, tmp );
+                                }
+                                else {
+                                    check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(tmp)) );
+                                }
                                 }
                             TU_ARMA(Function, ve) {
                                 MIR_ASSERT(state, dst_ty.data().is_Function(), dst_ty);
@@ -886,7 +928,12 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         }
                     TU_ARMA(Borrow, e) {
                         ::HIR::TypeRef  tmp;
-                        check_types( dst_ty, ::HIR::TypeRef::new_borrow(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
+                        if( e.is_raw ) {
+                            check_types( dst_ty, ::HIR::TypeRef::new_pointer(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
+                        }
+                        else {
+                            check_types( dst_ty, ::HIR::TypeRef::new_borrow(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
+                        }
                         }
                     TU_ARMA(Cast, e) {
                         // Check return type
@@ -967,7 +1014,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 {
                                     auto d_meta = state.m_resolve.metadata_type(state.sp, d_e.inner);
                                     if(d_meta != MetadataType::None && d_meta != MetadataType::Zero ) {
-                                        MIR_ASSERT(state, d_meta == s_meta, "Casting has mismatched metadata: " << dst_ty << " from " << src_ty);
+                                        if( d_meta != MetadataType::Unknown && s_meta != MetadataType::Unknown ) {
+                                            MIR_ASSERT(state, d_meta == s_meta, "Casting has mismatched metadata: " << dst_ty << " from " << src_ty
+                                                << " (" << d_meta << " from " << s_meta << ")");
+                                        }
                                     }
                                 }
                                 }
@@ -1043,7 +1093,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         }
                         else
                         {
-                            MIR_BUG(state, "DstMeta on invalid type - " << ity);
+                            if( TARGETVER_MOST_1_74 ) {
+                                MIR_BUG(state, "DstMeta on invalid type - " << ity);
+                            }
                         }
                         // TODO: Check return type
                         }
@@ -1098,9 +1150,18 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         auto meta = get_metadata_type(state, *ity_p);
                         if( meta == ::HIR::TypeRef() )
                         {
-                            MIR_BUG(state, "MakeDst requires a pointer to an unsized type as output, got " << dst_ty);
+                            if( TARGETVER_MOST_1_74 ) {
+                                MIR_BUG(state, "MakeDst requires a pointer to an unsized type as output, got " << dst_ty);
+                            }
+                            // In 1.90, this gets used for thin pointers too
+                            meta = ::HIR::TypeRef::new_unit();
                         }
-                        // TODO: Check metadata type?
+                        // TODO: Check metadata type? 
+                        // > Borrows vs pointers are fun
+                        #if 0
+                        HIR::TypeRef    tmp;
+                        check_types( meta, state.get_param_type(tmp, e.meta_val) );
+                        #endif
 
                         // NOTE: Output type checked above.
                         }
@@ -1134,9 +1195,19 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 case ::MIR::Statement::TAG_Asm2:
                     // TODO: Ensure that values are all thin pointers or integers?
                     break;
-                case ::MIR::Statement::TAG_Drop:
+                case ::MIR::Statement::TAG_Drop: {
+                    const auto& se = stmt.as_Drop();
                     // TODO: Anything need checking here?
-                    break;
+                    // - Check the path to see if this has mutable/owned access
+                    if( se.slot.is_Deref() ) {
+                        HIR::TypeRef    tmp;
+                        const auto& ty = state.get_lvalue_type(tmp, se.slot, 1);
+                        if( ty.data().is_Borrow() ) {
+                            // Note: Dropping through `&mut` happens when assigning
+                            MIR_ASSERT(state, ty.data().as_Borrow().type != HIR::BorrowType::Shared, "Droping though non-owned pointer: " << ty);
+                        }
+                    }
+                    } break;
                 case ::MIR::Statement::TAG_ScopeEnd:
                     // TODO: Mark listed values as descoped
                     break;

@@ -23,27 +23,6 @@
 #include "helpers.hpp"
 
 namespace {
-
-    template<typename T>
-    struct SaveAndEditVal {
-        T&  m_dst;
-        T   m_saved;
-        SaveAndEditVal(T& dst, T newval):
-            m_dst(dst),
-            m_saved(dst)
-        {
-            m_dst = mv$(newval);
-        }
-        ~SaveAndEditVal()
-        {
-            this->m_dst = this->m_saved;
-        }
-    };
-    template<typename T>
-    SaveAndEditVal<T> save_and_edit(T& dst, typename ::std::remove_reference<T&>::type newval) {
-        return SaveAndEditVal<T> { dst, mv$(newval) };
-    }
-
     class ExprVisitor_Conv:
         public MirConverter
     {
@@ -83,7 +62,16 @@ namespace {
             /// Yield points/states
             std::vector<State>  states;
 
+            // Set of drop flags that are stored in the output state
+            // These are stored in a bit-set at the end of the state structure, and remapped after lower (with sets being writes,
+            // and then re-read before use)
+            std::set<unsigned>  saved_drop_flags;
+
+            /// Path to the enum used for the state index field (used to generate enum variant construction)
             ::HIR::SimplePath   state_idx_enm_path;
+
+            /// Is this coroutine a future? (as opposed to a generator)
+            bool is_future = false;
         } m_generator_state;
 
     public:
@@ -92,13 +80,19 @@ namespace {
             m_variable_types(var_types),
             m_is_generator(is_generator != nullptr)
         {
-            if(m_is_generator)
+            if( m_is_generator )
             {
+                m_generator_state.is_future = is_generator->m_is_future;
                 m_generator_state.state_idx_enm_path = is_generator->m_state_idx_enum;
                 m_generator_state.bb_open = builder.pause_cur_block();
                 m_generator_state.states.push_back(GeneratorState::State(builder.new_bb_unlinked()));
                 builder.set_cur_block(m_generator_state.states.back().entrypoint);
             }
+        }
+
+        SaveAndEditVal<const ScopeHandle*> disable_borrow_extension() override
+        {
+            return save_and_edit(m_borrow_raise_target, nullptr);
         }
 
         // Get a LValue pointing at the state index
@@ -113,6 +107,9 @@ namespace {
             rv = ::MIR::LValue::new_Field(mv$(rv), 0);   // .value (From ManuallyDrop)
             rv = ::MIR::LValue::new_Field(mv$(rv), 0);   // .idx
             return rv;
+        }
+        const std::set<unsigned>& generator_drop_flags() const {
+            return m_generator_state.saved_drop_flags;
         }
         std::set<unsigned> generator_finalise(const Span& sp, ::HIR::Enum& state_enm)
         {
@@ -145,7 +142,7 @@ namespace {
             enum_variants.push_back(HIR::Enum::ValueVariant {
                 RcString::new_interned("END"), ::HIR::ExprPtr(), arm_targets.size()-1
                 });
-            state_enm.m_data = ::HIR::Enum::Class::make_Value({ mv$(enum_variants), true });
+            state_enm.m_data = ::HIR::Enum::Class::make_Value({ mv$(enum_variants) });
 
             m_builder.set_cur_block(m_generator_state.bb_open);
 
@@ -154,18 +151,37 @@ namespace {
 
             return used_vars;
         }
-        void generator_make_drop(const Span& sp, MirBuilder& out_builder, size_t n_captures, const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper>>& mappings) const
+        void generator_make_drop(
+            const Span& sp, MirBuilder& out_builder,
+            size_t n_captures, const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper>>& mappings,
+            unsigned drop_state_field_idx,
+            const std::map<unsigned, unsigned>& drop_flag_mapping
+            ) const
         {
             ::MIR::LValue   self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
-            auto get_lv = [&sp,&self,&mappings](unsigned idx)->::MIR::LValue {
-                ::MIR::LValue rv = self.clone();
-                ASSERT_BUG(sp, mappings.count(idx), "No LValue for index " << idx);
-                rv.m_wrappers.insert(rv.m_wrappers.end(), mappings.at(idx).begin(), mappings.at(idx).end());
-                return rv;
-                };
 
             assert(m_generator_state.states.size() > 0);
             std::vector<::MIR::BasicBlockId>    arms; arms.reserve(m_generator_state.states.size()+1);
+
+            // Set all drop flags from input
+            if( !drop_flag_mapping.empty() )
+            {
+                auto slot = ::MIR::LValue::new_Argument(0);
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());    // Deref `&mut Self`
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // Get state field
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast(1));   // .value (From MaybeUninit)
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));   // .value (From ManuallyDrop)
+                slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(drop_state_field_idx));    // drop flag bitset
+                for(const auto& flag_mapping : drop_flag_mapping) {
+                    auto i = out_builder.new_drop_flag(false);
+                    assert(i == flag_mapping.second);   // Should hold, as the map was created in-order
+                    out_builder.push_stmt(sp, ::MIR::Statement::make_LoadDropFlag({
+                        flag_mapping.first,
+                        slot.clone(),
+                        flag_mapping.second,
+                    }));
+                }
+            }
 
             auto entry_block = out_builder.pause_cur_block();
             // if state is 0, then drop captures (this is the pre-run state)
@@ -174,9 +190,20 @@ namespace {
             size_t arg_count = 1 + (TARGETVER_LEAST_1_74 ? 1 : 0);
             for(size_t i = 0; i < n_captures; i ++)
             {
-                out_builder.push_stmt_drop(sp, get_lv(arg_count+i));
+                // TODO: State tracking on captures, what if a by-value capture is moved?
+                if( mappings.count(arg_count+i) == 0 ) {
+                    out_builder.push_stmt_drop(sp, ::MIR::LValue::new_Field(self.clone(), 1+i));
+                }
             }
             out_builder.end_block(::MIR::Terminator::make_Return({}));
+
+            auto get_lv = [&sp,&self,&mappings](unsigned idx)->::MIR::LValue {
+                ::MIR::LValue rv = self.clone();
+                ASSERT_BUG(sp, mappings.count(idx), "No LValue for index " << idx);
+                rv.m_wrappers.insert(rv.m_wrappers.end(), mappings.at(idx).begin(), mappings.at(idx).end());
+                DEBUG("get_lv: " << rv);
+                return rv;
+                };
 
             // Else, drop yield saves (Note: final state has no saves, so acts as the "completed" state)
             for(size_t i = 0; i < m_generator_state.states.size(); i ++)
@@ -189,6 +216,8 @@ namespace {
                     if( v.first == 0 ) {
                         continue ;
                     }
+                    // Note: Conditional drop handled by drop flags above
+                    // HACK: The caller re-maps drop flags
                     out_builder.drop_actve_local(sp, get_lv(v.first), v.second);
                 }
                 out_builder.end_block(::MIR::Terminator::make_Return({}));
@@ -324,7 +353,7 @@ namespace {
                         ::HIR::BorrowType   bt = H::get_borrow_type(sp, *b.binding);
                         ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
                             ::HIR::TypeRef::new_borrow( bt, std::move(inner_type) ),
-                            ::MIR::RValue::make_Borrow({ bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
+                            ::MIR::RValue::make_Borrow({ bt, false, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
                         );
 
                         // 3. Create a slice pointer
@@ -348,8 +377,8 @@ namespace {
                     // - Should add a MIR op for `BorrowRaw`
                     ::HIR::BorrowType   bt = H::get_borrow_type(sp, *b.binding);
                     ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
-                        ::HIR::TypeRef::new_borrow( bt, std::move(inner_type) ),
-                        ::MIR::RValue::make_Borrow({ bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
+                        ::HIR::TypeRef::new_pointer( bt, std::move(inner_type) ),
+                        ::MIR::RValue::make_Borrow({ bt, true, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
                     );
 
                     // 3. Create a slice pointer
@@ -388,7 +417,7 @@ namespace {
                         m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
 
-                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(lval) });
+                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, mv$(lval) });
                     break;
                 case ::HIR::PatternBinding::Type::MutRef:
                     if(m_borrow_raise_target)
@@ -396,7 +425,7 @@ namespace {
                         DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
                         m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
-                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, mv$(lval) });
+                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, mv$(lval) });
                     break;
                 }
                 m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv) );
@@ -409,6 +438,12 @@ namespace {
                 auto val = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
                 m_builder.add_variable_alias(sp, b.binding->m_slot, b.binding->m_type, mv$(val));
             }
+        }
+
+        void emit_unwind(const Span& sp)
+        {
+            // TODO: Emit the drop calls
+            m_builder.end_block(::MIR::Terminator::make_Diverge({}));
         }
 
         // -- ExprVisitor
@@ -430,7 +465,7 @@ namespace {
 
             for(unsigned int i = 0; i < node.m_nodes.size(); i ++)
             {
-                auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+                auto _ = this->disable_borrow_extension();
                 auto& subnode = node.m_nodes[i];
                 const Span& sp = subnode->span();
 
@@ -651,6 +686,32 @@ namespace {
                 m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             }
         }
+        // Common code used by both `ExprNode_Return` and the final return of a GeneratorWrapper
+        void coroutine_return(const Span& sp, const ::HIR::TypeRef& value_ty)
+        {
+            static RcString rcstring_Complete = RcString::new_interned("Complete");
+            static RcString rcstring_Ready = RcString::new_interned("Ready");   // TODO: This is a lang item
+            const auto& variant_name = m_generator_state.is_future ? rcstring_Ready : rcstring_Complete;
+            // TODO: Handle difference between generators and futures (different return/yield types)
+            ::HIR::GenericPath enm_path;
+            size_t variant_index = SIZE_MAX;
+            m_builder.with_val_type(sp, ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
+                const auto& te = ty.data().as_Path();
+                enm_path = te.path.m_data.as_Generic().clone();
+                variant_index = te.binding.as_Enum()->find_variant(variant_name);
+                });
+            ASSERT_BUG(sp, enm_path.m_path != HIR::SimplePath(), "Failed to get path from return type?");
+            ASSERT_BUG(sp, variant_index != SIZE_MAX, "Unable to find variant " << variant_name << " in " << enm_path << " for coroutine return");
+
+            ::std::vector< ::MIR::Param>   values;
+            values.push_back( m_builder.get_result_in_param(sp, value_ty) );
+            auto res = ::MIR::RValue::make_EnumVariant({
+                std::move(enm_path),
+                static_cast<unsigned>(variant_index),
+                std::move(values)
+                });
+            m_builder.push_stmt_assign( sp, ::MIR::LValue::new_Return(), std::move(res) );
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F("_Return");
@@ -662,21 +723,7 @@ namespace {
 
             if( m_is_generator )
             {
-                ::HIR::GenericPath enm_path;
-                m_builder.with_val_type(node.span(), ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
-                    const auto& te = ty.data().as_Path();
-                    enm_path = te.path.m_data.as_Generic().clone();
-                    ASSERT_BUG(node.span(), te.binding.as_Enum()->find_variant("Complete") == 1, "");
-                    });
-
-                ::std::vector< ::MIR::Param>   values;
-                values.push_back( m_builder.get_result_in_param(node.span(), node.m_value->m_res_type) );
-                auto res = ::MIR::RValue::make_EnumVariant({
-                    mv$(enm_path),
-                    1,  // Complete is the second variant
-                    mv$(values)
-                    });
-                m_builder.push_stmt_assign( node.span(), ::MIR::LValue::new_Return(), mv$(res) );
+                coroutine_return(node.span(), node.m_value->m_res_type);
             }
             else
             {
@@ -690,6 +737,8 @@ namespace {
             TRACE_FUNCTION_F("_Yield");
             if( m_is_generator )
             {
+                ASSERT_BUG(node.span(), !m_generator_state.is_future, "");
+
                 ::HIR::GenericPath enm_path;
                 m_builder.with_val_type(node.span(), ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
                     const auto& te = ty.data().as_Path();
@@ -715,7 +764,7 @@ namespace {
                 // NOTE: No scope terminate
                 m_builder.end_block( ::MIR::Terminator::make_Return({}) );
 
-                m_generator_state.states.back().saved = m_builder.get_active_locals();
+                m_generator_state.states.back().saved = m_builder.get_active_locals(node.span(), m_generator_state.saved_drop_flags);
                 m_generator_state.states.push_back( m_builder.new_bb_unlinked() );
                 m_builder.set_cur_block( m_generator_state.states.back().entrypoint );
 
@@ -725,6 +774,105 @@ namespace {
             {
                 BUG(node.span(), "Unexpected ExprNode_Yield (should have been re-written)");
             }
+        }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            const Span& sp = node.span();
+            TRACE_FUNCTION_F("_AWait");
+            ASSERT_BUG(node.span(), m_is_generator && m_generator_state.is_future, "`.await` not in an async block/function");
+            const auto& ty_inner = node.m_value->m_res_type;
+
+            this->visit_node_ptr(node.m_value);
+            auto lv_res = m_builder.get_result_in_lvalue(sp, ty_inner);
+
+            auto state_value = static_cast<unsigned>(m_generator_state.states.size());
+            m_generator_state.states.back().saved = m_builder.get_active_locals(node.span(), m_generator_state.saved_drop_flags);
+            m_generator_state.states.push_back( m_builder.new_bb_unlinked() );
+            m_builder.end_block(m_generator_state.states.back().entrypoint);
+            m_builder.set_cur_block( m_generator_state.states.back().entrypoint );
+
+            // Create `Pin<&mut >` as the reciever, using `Pin::new_unchecked`
+            const auto& lang_Pin = m_builder.resolve().m_crate.get_lang_item_path(sp, "pin");
+            auto type_mut = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, ty_inner.clone());
+            auto pin_path = ::HIR::GenericPath(lang_Pin, ::HIR::PathParams(type_mut.clone()));
+            auto type_pin = ::HIR::TypeRef::new_path(std::move(pin_path), &m_builder.resolve().m_crate.get_struct_by_path(sp, lang_Pin));
+
+            auto lv_mut = m_builder.lvalue_or_temp(sp, type_mut, ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, std::move(lv_res) }));
+            auto lv_pin = m_builder.new_temporary(type_pin);
+            {
+                auto bb_ret = m_builder.new_bb_unlinked();
+                auto bb_panic = m_builder.new_bb_unlinked();
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    bb_ret, bb_panic,
+                    lv_pin.clone(),
+                    ::HIR::Path( type_pin.clone(), "new_unchecked" ),
+                    make_vec1(::MIR::Param(lv_mut.clone()))
+                }));
+                m_builder.moved_lvalue(node.span(), std::move(lv_mut));
+                m_builder.set_cur_block(bb_panic);
+                emit_unwind(sp);
+                m_builder.set_cur_block(bb_ret);
+            }
+            // Call `Future::poll`
+            const auto& lang_Poll = m_builder.resolve().m_crate.get_lang_item_path(sp, "Poll");
+            auto type_poll = ::HIR::TypeRef::new_path(
+                ::HIR::GenericPath(lang_Poll, ::HIR::PathParams(node.m_res_type.clone())),
+                &m_builder.resolve().m_crate.get_enum_by_path(sp, lang_Poll)
+            );
+            auto lv_poll = m_builder.new_temporary(type_poll);
+            {
+                auto bb_ret = m_builder.new_bb_unlinked();
+                auto bb_panic = m_builder.new_bb_unlinked();
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    bb_ret, bb_panic,
+                    lv_poll.clone(),
+                    ::HIR::Path(ty_inner.clone(), m_builder.resolve().m_lang_Future, "poll" ),
+                    make_vec2(
+                        ::MIR::Param(lv_pin.clone()),
+                        ::MIR::Param::make_Borrow({
+                            ::HIR::BorrowType::Unique,
+                            ::MIR::LValue::new_Deref(::MIR::LValue::new_Argument(1))    // Context is the second argument (first is `self`)
+                        })
+                    )
+                }));
+                m_builder.moved_lvalue(node.span(), std::move(lv_pin));
+                m_builder.set_cur_block(bb_panic);
+                emit_unwind(sp);
+                m_builder.set_cur_block(bb_ret);
+            }
+            // Check return
+            const auto variant_Ready = 0;
+            {
+                auto bb_pending = m_builder.new_bb_unlinked();
+                auto bb_ready = m_builder.new_bb_unlinked();
+                ASSERT_BUG(node.span(), type_poll.data().as_Path().binding.as_Enum()->find_variant("Ready") == variant_Ready, "");
+                ASSERT_BUG(node.span(), type_poll.data().as_Path().binding.as_Enum()->find_variant("Pending") == 1, "");
+                m_builder.end_block(::MIR::Terminator::make_Switch({
+                    lv_poll.clone(),
+                    make_vec2(bb_ready, bb_pending)
+                }));
+                m_builder.set_cur_block(bb_pending);
+
+                // `retval = ::core::task::Poll::Pending; RETURN`
+                HIR::GenericPath    path_local_Poll;
+                m_builder.with_val_type(sp, ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
+                    path_local_Poll = ty.data().as_Path().path.m_data.as_Generic().clone();
+                    });
+                m_builder.push_stmt_assign(node.span(), ::MIR::LValue::new_Return(), ::MIR::RValue::make_EnumVariant({
+                    std::move(path_local_Poll),
+                    1, {}
+                }));
+                m_builder.push_stmt_assign( node.span(), generator_state_lv(), ::MIR::RValue::make_EnumVariant({
+                    m_generator_state.state_idx_enm_path.clone(),
+                    state_value,
+                    {}
+                    }) );
+                m_builder.end_block(::MIR::Terminator::make_Return({}));
+
+                m_builder.set_cur_block(bb_ready);
+            }
+            // lv_poll.#0.0 to get the field of the first variant
+            m_builder.set_result(node.span(), ::MIR::LValue::new_Field(::MIR::LValue::new_Downcast(std::move(lv_poll), variant_Ready), 0));
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
@@ -887,9 +1035,11 @@ namespace {
         void visit(::HIR::ExprNode_Match& node) override
         {
             TRACE_FUNCTION_FR("_Match", "_Match");
-            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
-            //auto stmt_scope = m_builder.new_scope_temp(node.span());
-            this->visit_node_ptr(node.m_value);
+            {
+                auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+                //auto stmt_scope = m_builder.new_scope_temp(node.span());
+                this->visit_node_ptr(node.m_value);
+            }
             auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
 
             if( node.m_arms.size() == 0 ) {
@@ -946,27 +1096,44 @@ namespace {
             {
                 switch( cond_bin->m_op )
                 {
-                case ::HIR::ExprNode_BinOp::Op::BoolAnd: {
-                    DEBUG("- Short-circuit BoolAnd");
-                    // TODO: Generate a SplitScope
-
-                    // IF left false: go to false immediately
-                    auto inner_true_branch = m_builder.new_bb_unlinked();
-                    emit_if(cond_bin->m_left, inner_true_branch, false_branch);
-                    // ELSE use right
-                    m_builder.set_cur_block(inner_true_branch);
-                    emit_if(cond_bin->m_right, true_branch, false_branch);
-                    } return;
+                case ::HIR::ExprNode_BinOp::Op::BoolAnd:
                 case ::HIR::ExprNode_BinOp::Op::BoolOr: {
-                    DEBUG("- Short-circuit BoolOr");
                     // TODO: Generate a SplitScope
+                    if(cond_bin->m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd)
+                    {
+                        DEBUG("- Short-circuit BoolAnd");
 
-                    // IF left true: got to true
-                    auto inner_false_branch = m_builder.new_bb_unlinked();
-                    emit_if(cond_bin->m_left, true_branch, inner_false_branch);
-                    // ELSE use right
-                    m_builder.set_cur_block(inner_false_branch);
-                    emit_if(cond_bin->m_right, true_branch, false_branch);
+                        // IF left false: go to false immediately
+                        auto inner_true_branch = m_builder.new_bb_unlinked();
+                        emit_if(cond_bin->m_left, inner_true_branch, false_branch);
+                        // ELSE use right
+                        m_builder.set_cur_block(inner_true_branch);
+                    }
+                    else
+                    {
+                        DEBUG("- Short-circuit BoolOr");
+
+                        // IF left true: got to true
+                        auto inner_false_branch = m_builder.new_bb_unlinked();
+                        emit_if(cond_bin->m_left, true_branch, inner_false_branch);
+                        // ELSE use right
+                        m_builder.set_cur_block(inner_false_branch);
+                    }
+
+                    auto split_scope = m_builder.new_scope_split(cond_bin->span());
+                    m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true);
+                    auto final_true_branch = m_builder.new_bb_unlinked();
+                    auto final_false_branch = m_builder.new_bb_unlinked();
+                    emit_if(cond_bin->m_right, final_true_branch, final_false_branch);
+
+                    m_builder.set_cur_block(final_false_branch);
+                    m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true, true);
+                    m_builder.end_block(MIR::Terminator::make_Goto(false_branch));
+                    
+                    m_builder.set_cur_block(final_true_branch);
+                    m_builder.end_split_arm(cond_bin->span(), split_scope, /*reachable=*/true);
+                    m_builder.terminate_scope(cond_bin->span(), std::move(split_scope));
+                    m_builder.end_block(MIR::Terminator::make_Goto(true_branch));
                     } return;
                 default:
                     break;
@@ -1156,6 +1323,7 @@ namespace {
         {
             TRACE_FUNCTION_F("_Assign");
             const auto& sp = node.span();
+            auto _ = disable_borrow_extension();    // A bit of a hack
 
             this->visit_node_ptr(node.m_value);
             ::MIR::RValue val = m_builder.get_result(sp);
@@ -1403,7 +1571,7 @@ namespace {
                 m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
             }
 
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, mv$(val) }) );
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, false, mv$(val) }) );
         }
         void visit(::HIR::ExprNode_RawBorrow& node) override
         {
@@ -1421,14 +1589,7 @@ namespace {
                 m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
             }
 
-            // TODO: MIR op too?
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, mv$(val) }) );
-
-            // HACK: Insert a cast
-            {
-                auto val = m_builder.get_result_in_lvalue(node.span(), ::HIR::TypeRef::new_borrow(node.m_type, ty_val.clone()));
-                m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(val), node.m_res_type.clone() }));
-            }
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, true, mv$(val) }) );
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
@@ -1491,9 +1652,18 @@ namespace {
                     }
                     // Valid
                 }
-                else if( ty_in.data().is_Pointer() )
+                else if( const auto* se = ty_in.data().opt_Pointer() )
                 {
                     // Valid
+                    if( se->inner == de.inner ) {
+                    }
+                    // - If making a fat pointer from thin, convert to _Unsize
+                    else if( m_builder.resolve().can_unsize(node.span(), de.inner, se->inner) )
+                    {
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(val), ::MIR::Constant::make_ItemAddr({}) }) );
+                        auto tmp_ty = ::HIR::TypeRef::new_pointer(se->type, de.inner.clone());
+                        val = m_builder.get_result_in_lvalue(node.m_value->span(), tmp_ty);
+                    }
                 }
                 else {
                     BUG(node.span(), "Cannot cast to pointer from " << ty_in);
@@ -1663,6 +1833,72 @@ namespace {
                 m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), ::MIR::Constant::make_ItemAddr({}) }) );
             }
         }
+        void visit_index_operator(::HIR::ExprNode_Index& node, const ::HIR::TypeRef& ty_val, MIR::LValue value, const ::HIR::TypeRef& ty_idx, MIR::LValue index)
+        {
+            DEBUG("");
+            const Span& sp = node.span();
+
+            // NOTE: Do operator replacement here after handling scope-raising for _Borrow
+            if( m_borrow_raise_target && m_in_borrow )
+            {
+                DEBUG("- Raising deref in borrow to scope " << *m_borrow_raise_target);
+                m_builder.raise_temporaries(sp, value, *m_borrow_raise_target);
+            }
+
+            const char* langitem = nullptr;
+            const char* method = nullptr;
+            ::HIR::BorrowType   bt;
+            switch( node.m_value->m_usage )
+            {
+            case ::HIR::ValueUsage::Unknown:
+                BUG(sp, "Usage of index reciever is still `Unknown`");
+                break;
+            case ::HIR::ValueUsage::Borrow:
+                bt = ::HIR::BorrowType::Shared;
+                langitem = method = "index";
+                break;
+            case ::HIR::ValueUsage::Mutate:
+                bt = ::HIR::BorrowType::Unique;
+                langitem = method = "index_mut";
+                break;
+            case ::HIR::ValueUsage::Move:
+                TODO(sp, "Support moving out of indexed values");
+                break;
+            }
+            // Needs replacement, continue
+            assert(langitem);
+            assert(method);
+
+            // - Construct trait path - Index*<IdxTy>
+            ::HIR::PathParams   pp_trait;
+            pp_trait.m_types.push_back( ty_idx.clone() );
+            ::HIR::GenericPath  trait { m_builder.resolve().m_crate.get_lang_item_path(node.span(), langitem), std::move(pp_trait) };
+
+            ::HIR::PathParams   pp_method;
+            pp_method.m_lifetimes.push_back(HIR::LifetimeRef());
+            auto method_path = ::HIR::Path(ty_val.clone(), std::move(trait), RcString::new_interned(method), std::move(pp_method));
+
+            // Store a borrow of the input value
+            ::std::vector<::MIR::Param>    args;
+            args.push_back( m_builder.lvalue_or_temp(sp,
+                        ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone()),
+                        ::MIR::RValue::make_Borrow({ bt, false, std::move(value) })
+                        ) );
+            args.push_back( std::move(index) );
+            m_builder.moved_lvalue(node.span(), args[0].as_LValue());
+            m_builder.moved_lvalue(node.span(), args[1].as_LValue());
+            auto res_val = m_builder.new_temporary(::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()));
+            // Call the above trait method
+            // Store result of that call in `val` (which will be derefed below)
+            auto ok_block = m_builder.new_bb_unlinked();
+            auto panic_block = m_builder.new_bb_unlinked();
+            m_builder.end_block(::MIR::Terminator::make_Call({ ok_block, panic_block, res_val.clone(), std::move(method_path), std::move(args) }));
+            m_builder.set_cur_block(panic_block);
+            emit_unwind(sp);
+
+            m_builder.set_cur_block(ok_block);
+            m_builder.set_result( node.span(), ::MIR::LValue::new_Deref( std::move(res_val) ) );
+        }
         void visit(::HIR::ExprNode_Index& node) override
         {
             TRACE_FUNCTION_F("_Index");
@@ -1676,10 +1912,19 @@ namespace {
             this->visit_node_ptr(node.m_value);
             auto value = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
 
+            if( ty_idx != ::HIR::CoreType::Usize )
+            {
+                DEBUG("non-usize index");
+                visit_index_operator(node, ty_val, std::move(value), ty_idx, std::move(index));
+                return ;
+            }
+
             ::MIR::RValue   limit_val;
             TU_MATCH_HDRA( (ty_val.data()), {)
             default:
-                BUG(node.span(), "Indexing unsupported type " << ty_val);
+                DEBUG("non-builtin type");
+                visit_index_operator(node, ty_val, std::move(value), ty_idx, std::move(index));
+                return ;
             TU_ARMA(Array, e) {
                 TU_MATCH_HDRA( (e.size), {)
                 TU_ARMA(Unevaluated, se) {
@@ -1697,11 +1942,6 @@ namespace {
             TU_ARMA(Slice, e) {
                 limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value) });
                 }
-            }
-
-            if( ty_idx != ::HIR::CoreType::Usize )
-            {
-                BUG(node.span(), "Indexing using unsupported index type " << ty_idx);
             }
 
             // Range checking (DISABLED)
@@ -1749,13 +1989,12 @@ namespace {
                 }
                 else
                 {
-                    // TODO: Do operator replacement here after handling scope-raising for _Borrow
+                    // NOTE: Do operator replacement here after handling scope-raising for _Borrow
                     if( m_borrow_raise_target && m_in_borrow )
                     {
                         DEBUG("- Raising deref in borrow to scope " << *m_borrow_raise_target);
                         m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
                     }
-
 
                     const char* langitem = nullptr;
                     const char* method = nullptr;
@@ -1789,7 +2028,7 @@ namespace {
                     ::std::vector<::MIR::Param>    args;
                     args.push_back( m_builder.lvalue_or_temp(sp,
                                 ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone()),
-                                ::MIR::RValue::make_Borrow({ bt, mv$(val) })
+                                ::MIR::RValue::make_Borrow({ bt, false, mv$(val) })
                                 ) );
                     m_builder.moved_lvalue(node.span(), args[0].as_LValue());
                     val = m_builder.new_temporary(::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()));
@@ -1799,7 +2038,7 @@ namespace {
                     auto panic_block = m_builder.new_bb_unlinked();
                     m_builder.end_block(::MIR::Terminator::make_Call({ ok_block, panic_block, val.clone(), mv$(method_path), mv$(args) }));
                     m_builder.set_cur_block(panic_block);
-                    m_builder.end_block(::MIR::Terminator::make_Diverge({}));
+                    emit_unwind(sp);
 
                     m_builder.set_cur_block(ok_block);
                 }
@@ -1818,8 +2057,18 @@ namespace {
         void visit(::HIR::ExprNode_Emplace& node) override
         {
             if(TARGETVER_MOST_1_19)
+            {
                 return visit_emplace_119(node);
-            return visit_emplace_129(node);
+            }
+            else {
+                assert( node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer );
+                const auto& data_ty = node.m_value->m_res_type;
+
+                node.m_value->visit(*this);
+                auto val = m_builder.get_result(node.span());
+
+                return box_new(node, data_ty, std::move(val));
+            }
         }
         void visit_emplace_119(::HIR::ExprNode_Emplace& node)
         {
@@ -1882,11 +2131,8 @@ namespace {
                 break; }
             }
 
-            // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(place__panic);
-            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
-            // TODO: Drop `place`
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            emit_unwind(node.span());
             m_builder.set_cur_block(place__ok);
 
             // 2. Get `place_raw`
@@ -1896,7 +2142,7 @@ namespace {
             auto place_raw__ok = m_builder.new_bb_unlinked();
             {
                 auto place_refmut__type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, place_type.clone());
-                auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, place.clone() }));
+                auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, place.clone() }));
                 // <typeof(place) as ops::Place<T>>::pointer (T = inner)
                 auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer", ::HIR::PathParams(HIR::LifetimeRef()));
                 m_builder.moved_lvalue(node.span(), place_refmut);
@@ -1909,9 +2155,8 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(place_raw__panic);
-            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
-            // TODO: Drop `place`
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            // TODO: Drop `place` (as it's a raw pointer)
+            emit_unwind(node.span());
             m_builder.set_cur_block(place_raw__ok);
 
 
@@ -1946,23 +2191,14 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(res__panic);
-            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
-            // TODO: Should this drop the value written to the rawptr?
-            // - No, becuase it's likely invalid now. Goodbye!
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            emit_unwind(node.span());
             m_builder.set_cur_block(res__ok);
 
             m_builder.mark_value_assigned(node.span(), res);
             m_builder.set_result( node.span(), mv$(res) );
         }
-        void visit_emplace_129(::HIR::ExprNode_Emplace& node)
+        void box_new(::HIR::ExprNode& node, const ::HIR::TypeRef& data_ty, ::MIR::RValue val)
         {
-            assert( node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer );
-            const auto& data_ty = node.m_value->m_res_type;
-
-            node.m_value->visit(*this);
-            auto val = m_builder.get_result(node.span());
-
             const auto& lang_exchange_malloc = m_builder.crate().get_lang_item_path(node.span(), "exchange_malloc");
             //const auto& lang_owned_box = m_builder.crate().get_lang_item_path(node.span(), "owned_box");
 
@@ -1986,7 +2222,8 @@ namespace {
                     size_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "size_of", trait_params_data.clone() }),
                     {}
                     }));
-                m_builder.set_cur_block(size__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(size__panic);
+                emit_unwind(node.span());
                 m_builder.set_cur_block(size__ok);
                 auto align_slot = m_builder.new_temporary( ::HIR::CoreType::Usize );
                 auto align__panic = m_builder.new_bb_unlinked();
@@ -1996,7 +2233,8 @@ namespace {
                     align_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "align_of", trait_params_data.clone() }),
                     {}
                     }));
-                m_builder.set_cur_block(align__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(align__panic);
+                emit_unwind(node.span());
                 m_builder.set_cur_block(align__ok);
 
                 size_param = ::std::move(size_slot);
@@ -2015,7 +2253,8 @@ namespace {
                 place_raw.clone(), ::HIR::Path(lang_exchange_malloc),
                 make_vec2<::MIR::Param>( ::std::move(size_param), ::std::move(align_param) )
                 }));
-            m_builder.set_cur_block(place__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+            m_builder.set_cur_block(place__panic);
+            emit_unwind(node.span());
             m_builder.set_cur_block(place__ok);
 
             auto place_type = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Unique, data_ty.clone());
@@ -2036,7 +2275,8 @@ namespace {
                 res.clone(), ::MIR::CallTarget::make_Intrinsic({ "transmute", mv$(transmute_params) }),
                 make_vec1( ::MIR::Param( mv$(place) ) )
                 }));
-            m_builder.set_cur_block(cast__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+            m_builder.set_cur_block(cast__panic);
+            emit_unwind(node.span());
             m_builder.set_cur_block(cast__ok);
 
             m_builder.set_result(node.span(), mv$(res));
@@ -2136,8 +2376,30 @@ namespace {
         void visit(::HIR::ExprNode_CallPath& node) override
         {
             TRACE_FUNCTION_F("_CallPath " << node.m_path);
-            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
-            auto values = get_args(node.m_args);
+            // TODO: if this is a `<foo as Index[Mut]>::index[_mut]` call then allow the borrow raise to go through to the receiver
+            ::std::vector<MIR::Param>   values;
+            bool is_operator = false;
+            if( const auto* pe = node.m_path.m_data.opt_UfcsKnown() ) {
+                if( pe->trait.m_path == m_builder.resolve().m_crate.get_lang_item_path_opt("index") ) {
+                    is_operator = true;
+                }
+                else if( pe->trait.m_path == m_builder.resolve().m_crate.get_lang_item_path_opt("index_mut") ) {
+                    is_operator = true;
+                }
+                else if( pe->trait.m_path == m_builder.resolve().m_crate.get_lang_item_path_opt("deref") ) {
+                    is_operator = true;
+                }
+                else if( pe->trait.m_path == m_builder.resolve().m_crate.get_lang_item_path_opt("deref_mut") ) {
+                    is_operator = true;
+                }
+            }
+            if(is_operator) {
+                values = get_args(node.m_args);
+            }
+            else {
+                auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+                values = get_args(node.m_args);
+            }
 
             auto panic_block = m_builder.new_bb_unlinked();
             auto next_block = m_builder.new_bb_unlinked();
@@ -2154,53 +2416,115 @@ namespace {
                 {
                     const auto& name = gpath.m_path.components().back();
                     if( name == "offset_of" ) {
-                        const auto& ty = gpath.m_params.m_types.at(0);
-                        const auto* cur_ty = &ty;
-                        size_t base_ofs = 0;
-                        for(size_t i = 0; i < values.size(); i ++)
-                        {
-                            ASSERT_BUG(node.span(), values[i].is_Constant(), "Arguments to `offset_of` must be constants");
-                            size_t idx = 0;
-                            TU_MATCH_HDRA( (values[i].as_Constant()), { )
-                            default:
-                                TODO(node.span(), "offset_of: field " << values[i]);
-                            TU_ARMA(StaticString, field_name) {
-                                if( false ) {
-                                }
-                                else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Struct() ) {
-                                    const auto& str = **bep;
-                                    const auto& fields = str.m_data.as_Named();
-                                    idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == field_name; } ) - fields.begin();
-                                }
-                                else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Union() ) {
-                                    const auto& unm = **bep;
-                                    const auto& fields = unm.m_variants;
-                                    idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == field_name; } ) - fields.begin();
-                                }
-                                else {
-                                    TODO(node.span(), "offset_of: named field/variant - " << field_name);
-                                }
-                                }
-                            }
-                            auto* repr = Target_GetTypeRepr(node.span(), m_builder.resolve(), *cur_ty);
-                            if(!repr) {
-                                ERROR(node.span(), E0000, "Calling `offset_of!` on type with non-defined repr");
-                            }
-                            cur_ty = &repr->fields[idx].ty;
-                            base_ofs += repr->fields[idx].offset;
-                        }
-                        m_builder.set_result(node.span(), ::MIR::Constant::make_Uint({ U128(base_ofs), HIR::CoreType::Usize }));
+                        m_builder.end_block(::MIR::Terminator::make_Call({
+                            next_block, panic_block,
+                            res.clone(), ::MIR::CallTarget::make_Intrinsic({ name, gpath.m_params.clone() }),
+                            mv$(values)
+                            }));
                     }
                     else {
                         ERROR(node.span(), E0000, "Unknown builtin - " << gpath.m_path);
                     }
-                    return;
                 }
                 else if( fcn.m_abi == "rust-intrinsic" )
                 {
+                    auto name = gpath.m_path.components().back();
+                    if( name == "ptr_metadata" ) {
+                        auto& v = values.front();
+                        m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue::make_DstMeta({ std::move(v.as_LValue()) }));
+                        m_builder.set_result(node.span(), std::move(res));
+                        return ;
+                    }
+                    // aggregate_raw_ptr: Lowers to mrustc's MakeDst (rustc's `Aggregate` with `AggregateKind::RawPtr`)
+                    if( name == "aggregate_raw_ptr" ) {
+                        auto& v_ptr = values.at(0);
+                        auto& v_meta = values.at(1);
+                        m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue::make_MakeDst({ std::move(v_ptr), std::move(v_meta) }));
+                        m_builder.set_result(node.span(), std::move(res));
+                        return ;
+                    }
+                    if( name == "ub_checks" ) {
+                        m_builder.set_result(node.span(), ::MIR::Constant::make_Bool({true}));
+                        return ;
+                    }
+                    // `slice_get_unchecked`: Acts like `&mut foo[idx]`, but handles all inner types
+                    if( name == "slice_get_unchecked" ) {
+                        ::MIR::LValue   slot;
+                        TU_MATCH_HDRA((values[0]), {)
+                        TU_ARMA(LValue, lv) {
+                            slot = ::MIR::LValue::new_Deref(std::move(lv));
+                            }
+                        TU_ARMA(Constant, c) TODO(node.span(), "");
+                        TU_ARMA(Borrow, v) {
+                            slot = std::move(v.val);
+                            }
+                        }
+                        ::MIR::LValue   index_lv = m_builder.new_temporary(HIR::CoreType::Usize);
+                        TU_MATCH_HDRA((values[1]), {)
+                        TU_ARMA(LValue, lv) {
+                            m_builder.push_stmt_assign(node.span(), index_lv.clone(), std::move(lv));
+                            }
+                        TU_ARMA(Constant, c) {
+                            m_builder.push_stmt_assign(node.span(), index_lv.clone(), std::move(c));
+                            }
+                        TU_ARMA(Borrow, v)
+                            TODO(node.span(), "Borrow index?");
+                        }
+                        const auto& ptr_ty = gpath.m_params.m_types.at(0);
+                        ASSERT_BUG(node.span(), ptr_ty.data().is_Borrow() || ptr_ty.data().is_Pointer(), "" << ptr_ty);
+                        bool is_raw = ptr_ty.data().is_Pointer();
+                        auto borrow_ty = is_raw ? ptr_ty.data().as_Pointer().type : ptr_ty.data().as_Borrow().type;
+                        m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue::make_Borrow({
+                            borrow_ty,
+                            is_raw,
+                            ::MIR::LValue::new_Index(std::move(slot), std::move(index_lv.as_Local()))
+                            }));
+                        m_builder.set_result(node.span(), std::move(res));
+                        return ;
+                    }
+
+                    // Floating point operations that can be algebraically optimised
+                    // Lazy: Just conver to base operations
+                    if( name == "fadd_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::ADD, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "fsub_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::SUB, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "fmul_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::MUL, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "fdiv_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::DIV, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "frem_algebraic" ) {
+                        m_builder.set_result(node.span(), ::MIR::RValue::make_BinOp({ std::move(values[0]), ::MIR::eBinOp::MOD, std::move(values[1]) }));
+                        return ;
+                    }
+                    if( name == "box_new" ) {
+                        // Call "exchange_malloc" and move the argument into that returned pointer (same as 1.29 emplace)
+                        const auto& data_ty = gpath.m_params.m_types.at(0);
+                        ::MIR::RValue   val;
+                        TU_MATCH_HDRA((values[0]), {)
+                        TU_ARMA(LValue, lv) {
+                            val = std::move(lv);
+                            }
+                        TU_ARMA(Constant, c) {
+                            val = std::move(c);
+                            }
+                        TU_ARMA(Borrow, v)
+                            TODO(node.span(), "box_new with a borrow input?");
+                        }
+                        box_new(node, data_ty, std::move(val));
+                        return ;
+                    }
                     m_builder.end_block(::MIR::Terminator::make_Call({
                         next_block, panic_block,
-                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ gpath.m_path.components().back(), gpath.m_params.clone() }),
+                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ name, gpath.m_params.clone() }),
                         mv$(values)
                         }));
                 }
@@ -2246,8 +2570,7 @@ namespace {
             }
 
             m_builder.set_cur_block(panic_block);
-            // TODO: Proper panic handling, including scope destruction
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            emit_unwind(node.span());
 
             m_builder.set_cur_block( next_block );
 
@@ -2291,8 +2614,7 @@ namespace {
                 }));
 
             m_builder.set_cur_block(panic_block);
-            // TODO: Proper panic handling
-            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            emit_unwind(node.span());
 
             m_builder.set_cur_block( next_block );
             // TODO: Support diverging value calls
@@ -2320,13 +2642,13 @@ namespace {
             else if( const auto* bep = val_ty.data().as_Path().binding.opt_Struct() ) {
                 const auto& str = **bep;
                 const auto& fields = str.m_data.as_Named();
-                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == node.m_field; } ) - fields.begin();
                 m_builder.set_result( node.span(), ::MIR::LValue::new_Field( mv$(val), idx ) );
             }
             else if( const auto* bep = val_ty.data().as_Path().binding.opt_Union() ) {
                 const auto& unm = **bep;
                 const auto& fields = unm.m_variants;
-                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
+                idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.name == node.m_field; } ) - fields.begin();
 
                 m_builder.set_result( node.span(), ::MIR::LValue::new_Downcast( mv$(val), idx ) );
             }
@@ -2376,6 +2698,29 @@ namespace {
                 }
             TU_ARMA(String, e) {
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e) ));
+                }
+            TU_ARMA(CString, e) {
+                auto s = e.v;
+                s.push_back('\0');
+
+                // Emit as `transmute<&Cstr,&str>`
+                auto res = m_builder.new_temporary(node.m_res_type);
+
+                auto cast__panic = m_builder.new_bb_unlinked();
+                auto cast__ok = m_builder.new_bb_unlinked();
+                ::HIR::PathParams   transmute_params;
+                transmute_params.m_types.push_back( node.m_res_type.clone() );
+                transmute_params.m_types.push_back( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str) );
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    cast__ok, cast__panic,
+                    res.clone(), ::MIR::CallTarget::make_Intrinsic({ "transmute", mv$(transmute_params) }),
+                    make_vec1( ::MIR::Param( ::MIR::Constant(std::move(s)) ) )
+                    }));
+                m_builder.set_cur_block(cast__panic);
+                emit_unwind(node.span());
+                m_builder.set_cur_block(cast__ok);
+
+                m_builder.set_result(node.span(), mv$(res));
                 }
             TU_ARMA(ByteString, e) {
                 auto v = mv$( *reinterpret_cast< ::std::vector<uint8_t>*>( &e) );
@@ -2442,7 +2787,8 @@ namespace {
                     BUG(sp, "All references via imports should be replaced");
                     }
                 TU_ARMA(Constant, e) {
-                    auto tmp = m_builder.new_temporary( e.m_type );
+                    auto ty = MonomorphStatePtr(nullptr, nullptr, &pe.m_params).monomorph_type(sp, e.m_type);
+                    auto tmp = m_builder.new_temporary( ty );
                     m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_Const({box$(node.m_path.clone())}) );
                     m_builder.set_result( node.span(), mv$(tmp) );
                     }
@@ -2528,10 +2874,10 @@ namespace {
                     m_builder.set_result( node.span(), a->second.clone() );
                     break;
                 case ::HIR::PatternBinding::Type::Ref:
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, a->second.clone() }) );
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, a->second.clone() }) );
                     break;
                 case ::HIR::PatternBinding::Type::MutRef:
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, a->second.clone() }) );
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, a->second.clone() }) );
                     break;
                 }
                 return ;
@@ -2560,7 +2906,7 @@ namespace {
             for(auto& ent : node.m_values)
             {
                 auto& valnode = ent.second;
-                auto idx = ::std::find_if(fields.begin(), fields.end(), [&](const auto&x){ return x.first == ent.first; }) - fields.begin();
+                auto idx = ::std::find_if(fields.begin(), fields.end(), [&](const auto&x){ return x.name == ent.first; }) - fields.begin();
                 assert( !values_set[idx] );
                 values_set[idx] = true;
                 DEBUG("_StructLiteral - fld '" << ent.first << "' (idx " << idx << ")");
@@ -2590,10 +2936,20 @@ namespace {
             for(unsigned int i = 0; i < values.size(); i ++)
             {
                 if( !values_set[i] ) {
-                    if( !node.m_base_value) {
-                        ERROR(node.span(), E0000, "Field '" << fields[i].first << "' not specified");
+                    if( node.m_base_value ) {
+                        values[i] = ::MIR::LValue::new_Field( base_val.clone(), i );
                     }
-                    values[i] = ::MIR::LValue::new_Field( base_val.clone(), i );
+                    else if( fields[i].default_value ) {
+                        const auto& v = *fields[i].default_value;
+                        auto ms = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+                        values[i] = m_builder.lvalue_or_temp(sp,
+                            ms.monomorph_type(sp, fields[i].ty),
+                            MIR::Constant::make_Const({::std::make_unique<HIR::Path>(ms.monomorph_genericpath(sp, v))})
+                            );
+                    }
+                    else {
+                        ERROR(node.span(), E0000, "Field '" << fields[i].name << "' not specified");
+                    }
                 }
                 else {
                     // Partial move support will handle dropping the rest?
@@ -2649,7 +3005,7 @@ namespace {
                 auto val = m_builder.get_result_in_lvalue(value_node->span(), value_node->m_res_type);
 
                 const auto& unm = *e;
-                auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const auto&v)->auto{ return v.first == variant_name; });
+                auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const HIR::StructField&v)->auto{ return v.name == variant_name; });
                 assert(it != unm.m_variants.end());
                 unsigned int idx = it - unm.m_variants.begin();
 
@@ -2728,21 +3084,17 @@ namespace {
                 mv$(vals)
                 }) );
         }
-        void visit(::HIR::ExprNode_Generator& node) override
+        void visit_common_cr(const Span& sp, const HIR::GenericPath& obj_path, const HIR::TypeRef& state_type, ::std::vector<::HIR::ExprNodeP>& captures)
         {
-            TRACE_FUNCTION_F("_Generator - " << node.m_obj_path);
-            ASSERT_BUG(node.span(), node.m_obj_ptr, "Generator not created");
-            ASSERT_BUG(node.span(), !node.m_code, "Encountered outer generator wrapper");
             auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
             ::std::vector< ::MIR::Param>   vals;
-            vals.reserve( 1 + node.m_captures.size() );
+            vals.reserve( 1 + captures.size() );
 
             // Zero the state index
             {
-                const ::HIR::TypeRef& state_type = node.m_state_data_type;
-                const auto& lang_MaybeUninit = m_builder.resolve().m_crate.get_lang_item_path(node.span(), "maybe_uninit");
-                const auto& unm_MaybeUninit = m_builder.resolve().m_crate.get_union_by_path(node.span(), lang_MaybeUninit);
+                const auto& lang_MaybeUninit = m_builder.resolve().m_crate.get_lang_item_path(sp, "maybe_uninit");
+                const auto& unm_MaybeUninit = m_builder.resolve().m_crate.get_union_by_path(sp, lang_MaybeUninit);
                 auto slot_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_MaybeUninit, ::HIR::PathParams(state_type.clone())), &unm_MaybeUninit );
 
                 auto res_slot = m_builder.new_temporary( slot_type.clone() );
@@ -2753,25 +3105,42 @@ namespace {
                     res_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "init", ::HIR::PathParams(mv$(slot_type)) }), // I.e. `mem::zeroed`
                     {}
                     }));
-                m_builder.set_cur_block(size__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(size__panic);
+                emit_unwind(sp);
                 m_builder.set_cur_block(size__ok);
                 vals.push_back( std::move(res_slot) );
             }
             // Populate the rest
-            for(auto& arg : node.m_captures)
+            for(auto& arg : captures)
             {
                 this->visit_node_ptr(arg);
                 vals.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
             }
 
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                node.m_obj_path.clone(),
+            m_builder.set_result( sp, ::MIR::RValue::make_Struct({
+                obj_path.clone(),
                 mv$(vals)
                 }) );
+        }
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            TRACE_FUNCTION_F("_Generator - " << node.m_obj_path);
+            ASSERT_BUG(node.span(), node.m_obj_ptr, "Generator not created");
+            ASSERT_BUG(node.span(), !node.m_code, "Encountered outer generator wrapper");
+
+            visit_common_cr(node.span(), node.m_obj_path, node.m_state_data_type, node.m_captures);
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override
         {
             BUG(node.span(), "Unexpected");
+        }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            TRACE_FUNCTION_F("_AsyncBlock - " << node.m_obj_path);
+            ASSERT_BUG(node.span(), node.m_obj_ptr, "Future not created");
+            ASSERT_BUG(node.span(), !node.m_code, "Encountered code inside post-expand async block");
+
+            visit_common_cr(node.span(), node.m_obj_path, node.m_state_data_type, node.m_captures);
         }
     };
 }
@@ -2822,17 +3191,22 @@ namespace {
             {
                 unsigned idx = args.size() + i;
                 builder.define_variable(idx);
-                builder.mark_value_assigned(root_node.span(), ::MIR::LValue::new_Local(idx));
-                // self.IDX
-                mappings.insert(std::make_pair( idx, ::make_vec1(::MIR::LValue::Wrapper::new_Field(1+i)) ));
                 switch(gen_node->m_capture_usages[i])
                 {
                 case ::HIR::ValueUsage::Borrow:
-                case ::HIR::ValueUsage::Mutate:
-                    mappings[idx].push_back(::MIR::LValue::Wrapper::new_Deref());
-                    break;
+                case ::HIR::ValueUsage::Mutate: {
+                // TODO: Use `m_variable_aliases` for by-borrow captures, to avoid them being dropped
+                    auto lv = ::MIR::LValue::new_Argument(0);
+                    lv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
+                    lv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
+                    lv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(1+i));
+                    lv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());
+                    builder.add_variable_alias(root_node.span(), idx, ::HIR::PatternBinding::Type::Move, std::move(lv));
+                    } break;
                 case ::HIR::ValueUsage::Move:
                 case ::HIR::ValueUsage::Unknown:
+                    builder.mark_value_assigned(root_node.span(), ::MIR::LValue::new_Local(idx));
+                    mappings.insert(std::make_pair( idx, ::make_vec1(::MIR::LValue::Wrapper::new_Field(1+i)) ));
                     break;
                 }
             }
@@ -2842,21 +3216,7 @@ namespace {
             gen_node->m_code->visit(ev);
             if( builder.block_active() && builder.has_result() )
             {
-                ::std::vector< ::MIR::Param>   values;
-                values.push_back( builder.get_result_in_param(sp, gen_node->m_code->m_res_type) );
-
-                ::HIR::GenericPath enm_path;
-                builder.with_val_type(sp, ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
-                    const auto& te = ty.data().as_Path();
-                    enm_path = te.path.m_data.as_Generic().clone();
-                    ASSERT_BUG(sp, te.binding.as_Enum()->find_variant("Complete") == 1, "");
-                    });
-
-                builder.set_result(sp, ::MIR::RValue::make_EnumVariant({
-                    mv$(enm_path),
-                    1,  // Complete is the second variant
-                    mv$(values)
-                    }) );
+                ev.coroutine_return(sp, gen_node->m_code->m_res_type);
             }
             builder.final_cleanup();
 
@@ -2868,7 +3228,7 @@ namespace {
             auto& state_ty = const_cast<HIR::Struct&>(*gen_node->m_state_data_type.data().as_Path().binding.as_Struct());
             unsigned value_var_idx; {
                 const auto& unm_MaybeUninit = resolve.m_crate.get_union_by_path(sp, resolve.m_crate.get_lang_item_path(gen_node->span(), "maybe_uninit"));
-                value_var_idx = std::find_if(unm_MaybeUninit.m_variants.begin(), unm_MaybeUninit.m_variants.end(), [&](const auto& e){ return e.first == "value";}) - unm_MaybeUninit.m_variants.begin();
+                value_var_idx = std::find_if(unm_MaybeUninit.m_variants.begin(), unm_MaybeUninit.m_variants.end(), [&](const auto& e){ return e.name == "value";}) - unm_MaybeUninit.m_variants.begin();
             }
             ASSERT_BUG(sp, value_var_idx == 1, "Assumption on MaybeUninit.value's variant index failed");
             // - Any variables that are saved twice need to have a static address, others can share?
@@ -2891,18 +3251,46 @@ namespace {
                         } ));
                 }
             }
-
-            DEBUG("mappings={" << mappings << "}");
+            for(const auto& m : mappings) {
+                DEBUG("Mapping _" << m.first << " = " << m.second);
+            }
+            ::std::map<unsigned,unsigned>   drop_flag_mapping;
+            for(auto idx : ev.generator_drop_flags()) {
+                drop_flag_mapping[idx] = drop_flag_mapping.size();
+                DEBUG("df$" << idx << " = BIT" << drop_flag_mapping[idx]);
+            }
+            // Add drop flags to the end
+            auto drop_flags_field_idx = fields.size();
+            fields.push_back(::HIR::VisEnt<HIR::TypeRef> {
+                HIR::Publicity::new_none(),
+                ::HIR::TypeRef::new_array( ::HIR::CoreType::U8, (drop_flag_mapping.size() + 7) / 8 )
+                });
 
             // 3. Rewrite usage of saved values
             // - Note: Need to allocate new temporaries if indexing by an updated lvalue
             class Rewriter: public ::MIR::visit::VisitorMut
             {
-                ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& m_mappings;
+                /// Remapped locals (indexes into coroutine struct, not just into the state)
+                ///
+                /// From `Pin<&mut self>`, these are appended to `self.pin.*`
+                const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& m_mappings;
+                /// Mapping from drop flag indexes to bit sin the drop flag list
+                const ::std::map<unsigned,unsigned>& m_drop_flag_mapping;
+                /// Index of the drop flags bitset (array of u8) in the state (field 0 of top structure)
+                unsigned    m_drop_flags_field;
+                
                 ::std::vector< ::MIR::Statement>    m_new_statements;
+                unsigned bb_idx = 0;
+                unsigned stmt_idx = 0;
             public:
-                Rewriter(::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& mappings)
+                Rewriter(
+                    const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& mappings,
+                    const ::std::map<unsigned,unsigned>& drop_flag_mapping,
+                    unsigned drop_flags_field
+                )
                     :m_mappings(mappings)
+                    ,m_drop_flag_mapping(drop_flag_mapping)
+                    ,m_drop_flags_field(drop_flags_field)
                 {
                 }
 
@@ -2916,6 +3304,9 @@ namespace {
                             dit = lv.m_wrappers.insert(dit, ::MIR::LValue::Wrapper::new_Field(0)) + 1;  // Pin.ptr
                             dit = lv.m_wrappers.insert(dit, ::MIR::LValue::Wrapper::new_Deref()) + 1;   // *
                             dit = lv.m_wrappers.insert(dit, it->second.begin(), it->second.end()) + 1;
+                            DEBUG(
+                                "BB" << bb_idx << "/" << FMT_CB(os, if(stmt_idx == ~0u) { os << "TERM"; } else { os << stmt_idx; })
+                                << " > " << lv);
                         }
                     }
                     for(auto& w : lv.m_wrappers)
@@ -2933,6 +3324,45 @@ namespace {
                     return true;
                 }
 
+                bool visit_stmt(::MIR::Statement& stmt) override
+                {
+                    if( auto* s = stmt.opt_Drop() ) {
+                        if( m_drop_flag_mapping.count(s->flag_idx) != 0 ) {
+                            // TODO: Need to emit a different `SetDropFlag` to load from bitset
+                            // `LoadDropFlag(df$N, src_lv, bit_num)`, where `src_lv` is an array of `u8`
+                            TODO(Span(), "Rewrite drop flag usage df$" << s->flag_idx);
+                        }
+                    }
+                    else if(auto* s = stmt.opt_SetDropFlag() ) {
+                        if( m_drop_flag_mapping.count(s->other) != 0 ) {
+                            TODO(Span(), "Rewrite drop flag usage df$" << s->other);
+                        }
+                        if( m_drop_flag_mapping.count(s->idx) != 0 ) {
+                            // Copy this statement to the output queue, and then rewrite to be:
+                            m_new_statements.push_back(*s);
+                            // `SaveDropFlag(dst_lv, bit_num, df$N)`
+                            ::MIR::LValue   slot = ::MIR::LValue::new_Argument(0);
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // .0
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast(1));   // .value (From MaybeUninit)
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));   // .value (From ManuallyDrop)
+                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(m_drop_flags_field));   // .drop_flags
+                            unsigned bit_num = m_drop_flag_mapping.at(s->idx);
+                            stmt = ::MIR::Statement::make_SaveDropFlag({
+                                std::move(slot),
+                                bit_num,
+                                s->idx
+                            });
+                            // TODO: Replace with no-op? (or let it be cleaned up later as dead code)
+                        }
+                    }
+                    else {
+                        // Doesn't use drop flags, no changes/rewrites needed
+                    }
+                    return ::MIR::visit::VisitorMut::visit_stmt(stmt);
+                }
+
                 void push_statements(::MIR::BasicBlock& bb, size_t& ofs)
                 {
                     for(auto& e : m_new_statements)
@@ -2947,18 +3377,21 @@ namespace {
                 {
                     for(auto& bb : f.blocks)
                     {
+                        this->bb_idx = &bb - f.blocks.data();
                         for(size_t stmt_idx = 0; stmt_idx < bb.statements.size(); stmt_idx ++)
                         {
+                            this->stmt_idx = stmt_idx;
                             this->visit_stmt(bb.statements[stmt_idx]);
                             this->push_statements(bb, stmt_idx);
                         }
+                        this->stmt_idx = ~0u;
                         this->visit_terminator(bb.terminator);
                         size_t stmt_idx = bb.statements.size();
                         this->push_statements(bb, stmt_idx);
                     }
                 }
             };
-            Rewriter(mappings).rewrite_fcn(fcn);
+            Rewriter(mappings, drop_flag_mapping, drop_flags_field_idx).rewrite_fcn(fcn);
 
             // 4. Generate drop glue for the generator type and save for later
             // - Make a builder
@@ -2968,8 +3401,17 @@ namespace {
             {
                 TRACE_FUNCTION_F("Generating drop impl");
                 MirBuilder  drop_builder(sp, resolve, HIR::TypeRef::new_unit(), gen_node->m_drop_fcn_ptr->m_args, *drop_impl_body);
-                ev.generator_make_drop(sp, drop_builder, gen_node->m_capture_usages.size(), mappings);
+                ev.generator_make_drop(sp, drop_builder, gen_node->m_capture_usages.size(), mappings, drop_flags_field_idx, drop_flag_mapping);
                 drop_builder.final_cleanup();
+            }
+            for(auto& bb : drop_impl_body->blocks) {
+                for(auto& stmt : bb.statements) {
+                    if( auto* d = stmt.opt_Drop() ) {
+                        if( d->flag_idx != ~0u ) {
+                            d->flag_idx = drop_flag_mapping.at(d->flag_idx);
+                        }
+                    }
+                }
             }
             gen_node->m_drop_fcn_ptr->m_code.m_mir = std::move(drop_impl_body);
         }

@@ -20,8 +20,10 @@ enum eCoreType
     CORETYPE_U32, CORETYPE_I32,
     CORETYPE_U64, CORETYPE_I64,
     CORETYPE_U128, CORETYPE_I128,
+    CORETYPE_F16,
     CORETYPE_F32,
     CORETYPE_F64,
+    CORETYPE_F128,
 };
 
 extern enum eCoreType coretype_fromstring(const char* name);

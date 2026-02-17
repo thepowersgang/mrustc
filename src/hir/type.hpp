@@ -17,9 +17,12 @@
 #include "literal.hpp"
 #include "generic_ref.hpp"
 #include "generic_params.hpp"
+#include <memory>
 
 constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
 constexpr const char* GENERATOR_PATH_PREFIX = "generator#";
+constexpr const char* PATH_PREFIX_FUTURE = "future#";
+constexpr const char* ATY_PREFIX_ERASED = "erased#";
 
 namespace HIR {
 
@@ -44,7 +47,7 @@ enum class CoreType
     U64, I64,
     U128, I128,
 
-    F32, F64,
+    F16, F32, F64, F128,
 
     Bool,
     Char, Str,
@@ -67,8 +70,10 @@ static inline bool is_integer(const CoreType& v) {
 static inline bool is_float(const CoreType& v) {
     switch(v)
     {
+    case CoreType::F16:
     case CoreType::F32:
     case CoreType::F64:
+    case CoreType::F128:
         return true;
     default:
         return false;
@@ -138,6 +143,12 @@ struct TypeData_Path
             && path.m_data.as_Generic().m_path.components().back().compare(0,strlen(GENERATOR_PATH_PREFIX), GENERATOR_PATH_PREFIX) == 0
             ;
     }
+    bool is_future() const {
+        return path.m_data.is_Generic()
+            && path.m_data.as_Generic().m_path.components().back().size() > 8
+            && path.m_data.as_Generic().m_path.components().back().compare(0,strlen(PATH_PREFIX_FUTURE), PATH_PREFIX_FUTURE) == 0
+            ;
+    }
 };
 
 struct TypeData_TraitObject
@@ -177,8 +188,19 @@ struct TypeData_ErasedType
 {
     bool m_is_sized;
     ::std::vector< ::HIR::TraitPath>    m_traits;
-    ::std::vector< ::HIR::LifetimeRef>  m_lifetimes;
+    ::std::vector< ::HIR::LifetimeRef>  m_lifetime_bounds;
     TypeData_ErasedType_Inner   m_inner;
+    /// Contents of the `use<...>` annotation/bound
+    ::HIR::PathParams  m_use;
+    /// Indicates if `use<...>` was present (and what edition)
+    enum class Use {
+        /// @brief Omitted, but pre-2024 edition: Uses types/lifetimes present in bounds
+        OmittedOld,
+        /// @brief Omitted, 2024 edition and later: Uses all in-scope types/lifetimes
+        Omitted2024,
+        /// @brief `use<...>` was present
+        Present,
+    } m_use_present;
 };
 struct TypeData_FunctionPointer
 {
@@ -195,6 +217,19 @@ TAGGED_UNION_EX(TypeData_NamedFunction_Ty, (), Function, (
     (StructConstructor, const ::HIR::Struct*)
     ), (), (), (
         TypeData_NamedFunction_Ty clone() const;
+    )
+);
+/// "magic structs": Any type generated from a node
+TAGGED_UNION_EX(TypeData_NodeType, (), Closure, (
+    (Closure, const ::HIR::ExprNode_Closure*),
+    (Generator, const ::HIR::ExprNode_Generator*),  // Aka a coroutine
+    (Async, const ::HIR::ExprNode_AsyncBlock*)
+    ), (), (), (
+        bool operator==(const TypeData_NodeType& x) const;
+        bool operator!=(const TypeData_NodeType& x) const { return !(*this == x); }
+        Ordering ord(const ::HIR::TypeData_NodeType& x) const;
+        TypeData_NodeType clone() const;
+        void fmt(::std::ostream& os) const;
     )
 );
 
@@ -246,12 +281,7 @@ TAGGED_UNION(TypeData, Diverge,
         TypeData_FunctionPointer decay(const Span& sp) const;
         }),
     (Function, TypeData_FunctionPointer),   // TODO: Pointer wrap, this is quite large
-    (Closure, struct {
-        const ::HIR::ExprNode_Closure*  node;
-        }),
-    (Generator, struct {
-        const ::HIR::ExprNode_Generator* node;
-        })
+    (NodeType, TypeData_NodeType)
     );
 
 class TypeInner
@@ -354,10 +384,13 @@ inline TypeRef TypeRef::new_path(::HIR::Path path, TypePathBinding binding) {
     return TypeRef(TypeData::make_Path({ mv$(path), mv$(binding) }));
 }
 inline TypeRef TypeRef::new_closure(::HIR::ExprNode_Closure* node_ptr) {
-    return TypeRef(TypeData::make_Closure({ node_ptr }));
+    return TypeRef(TypeData::make_NodeType({ node_ptr }));
 }
 inline TypeRef TypeRef::new_generator(::HIR::ExprNode_Generator* node_ptr) {
-    return TypeRef(TypeData::make_Generator({ node_ptr }));
+    return TypeRef(TypeData::make_NodeType({ node_ptr }));
+}
+inline TypeRef TypeRef::new_async(::HIR::ExprNode_AsyncBlock* node_ptr) {
+    return TypeRef(TypeData::make_NodeType({ node_ptr }));
 }
 
 inline const ::HIR::SimplePath* TypeRef::get_sort_path() const {

@@ -79,7 +79,7 @@ Attribute::Attribute(const Attribute& x):
     m_span(x.m_span),
     m_name(x.m_name)
     , m_data(x.m_data.clone())
-    , m_is_used(x.m_is_used)
+    , m_is_inert(x.m_is_inert)
 {
 }
 Attribute Attribute::clone() const
@@ -224,7 +224,7 @@ void Visibility::inplace_union(const Visibility& x)
 
 StructItem StructItem::clone() const
 {
-    return StructItem(m_attrs.clone(), m_vis, m_name, m_type.clone());
+    return StructItem(m_attrs.clone(), m_vis, m_name, m_type.clone(), m_default.clone());
 }
 TupleItem TupleItem::clone() const
 {
@@ -308,8 +308,8 @@ Enum Enum::clone() const
     for(const auto& var : m_variants)
     {
         TU_MATCHA( (var.m_data), (e),
-        (Value,
-            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, e.m_value.clone()) );
+        (Unit,
+            new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name) );
             ),
         (Tuple,
             decltype(e.m_items) new_st;
@@ -324,6 +324,7 @@ Enum Enum::clone() const
             new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, mv$(new_fields)) );
             )
         )
+        new_variants.back().m_discriminant_value = var.m_discriminant_value.clone();
     }
     return Enum(m_params.clone(), mv$(new_variants));
 }
@@ -419,7 +420,9 @@ UseItem UseItem::clone() const
 
 void ExternBlock::add_item(Named<Item> named_item)
 {
-    ASSERT_BUG(named_item.span, named_item.data.is_Function() || named_item.data.is_Static() || named_item.data.is_Type(), "Incorrect item type for ExternBlock - " << named_item.data.tag_str());
+    ASSERT_BUG(named_item.span,
+        named_item.data.is_Function() || named_item.data.is_Static() || named_item.data.is_Type() || named_item.data.is_MacroInv(),
+        "Incorrect item type for ExternBlock - " << named_item.data.tag_str());
     m_items.push_back( mv$(named_item) );
 }
 ExternBlock ExternBlock::clone() const

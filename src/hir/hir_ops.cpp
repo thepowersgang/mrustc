@@ -15,6 +15,7 @@
 #include <hir_expand/main_bindings.hpp>
 #include <mir/main_bindings.hpp>
 #include <trans/target.hpp>
+#include <floats.hpp>
 
 namespace {
     bool is_unbounded_infer(const ::HIR::TypeRef& type) {
@@ -122,11 +123,8 @@ namespace {
         TU_ARMA(Diverge, le) {
             BUG(sp, "Hit diverge");
             }
-        TU_ARMA(Closure, le) {
-            BUG(sp, "Hit closure");
-            }
-        TU_ARMA(Generator, le) {
-            BUG(sp, "Hit generator");
+        TU_ARMA(NodeType, le) {
+            BUG(sp, "Hit " << left);
             }
         TU_ARMA(Primitive, le) {
             if(const auto* re = right.data().opt_Primitive() )
@@ -598,11 +596,8 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 }
             TU_ARMA(Diverge, ae, be) {
                 }
-            TU_ARMA(Closure, ae, be) {
-                BUG(sp, "Hit closure");
-                }
-            TU_ARMA(Generator, ae, be) {
-                BUG(sp, "Hit generator");
+            TU_ARMA(NodeType, ae, be) {
+                BUG(sp, "Hit node-magic type (closure/generator/async) - " << a << " " << b);
                 }
             TU_ARMA(Primitive, ae, be) {
                 if( ae != be )
@@ -1218,13 +1213,17 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 //Debug_SetStagePre("Expand HIR Statics Mark");
                 HIR_Expand_StaticBorrowConstants_Mark_Expr(*this, ip, ep_mut);
             }
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::Lifetimes )
+            {
+                //Debug_SetStagePre("Expand HIR Lifetimes");
+                HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
+                ep.m_state->stage = ::HIR::ExprState::Stage::Lifetimes;
+            }
             if( ep.m_state->stage < ::HIR::ExprState::Stage::Sbc )
             {
                 if( ep.m_state->stage == ::HIR::ExprState::Stage::SbcRequest )
                     ERROR(Span(), E0000, "Loop in constant evaluation");
                 ep.m_state->stage = ::HIR::ExprState::Stage::SbcRequest;
-                //Debug_SetStagePre("Expand HIR Lifetimes");
-                HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Closures");
                 HIR_Expand_Closures_Expr(*this, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Statics");
@@ -1268,12 +1267,13 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
 
     const auto& vtable_ty_spath = this->m_vtable_path;
     const auto& vtable_ref = crate.get_struct_by_path(sp, vtable_ty_spath);
-    // Copy the param set from the trait in the trait object
-    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-    vtable_params.m_types = ThinVector<HIR::TypeRef>( te.m_trait.m_path.m_params.m_types.size() + this->m_type_indexes.size() );
-    for(size_t i = 0; i < te.m_trait.m_path.m_params.m_types.size(); i ++) {
-        vtable_params.m_types[i] = te.m_trait.m_path.m_params.m_types[i].clone();
+    HIR::PathParams pp_hrls;
+    if(te.m_trait.m_hrtbs) {
+        pp_hrls = te.m_trait.m_hrtbs->make_empty_params(true);
     }
+    // Copy the param set from the trait in the trait object
+    ::HIR::PathParams   vtable_params = MonomorphHrlsOnly(pp_hrls).monomorph_path_params(sp, te.m_trait.m_path.m_params, false);
+    vtable_params.m_types.resize( te.m_trait.m_path.m_params.m_types.size() + this->m_type_indexes.size() );
     // - Include associated types on bound
     for(const auto& ty_b : te.m_trait.m_type_bounds) {
         if( this->m_type_indexes.count(ty_b.first) == 0 ) {
@@ -1281,7 +1281,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
             continue ;
         }
         auto idx = this->m_type_indexes.at(ty_b.first);
-        vtable_params.m_types.at(idx) = ty_b.second.type.clone();
+        vtable_params.m_types.at(idx) = MonomorphHrlsOnly(pp_hrls).monomorph_type(sp, ty_b.second.type);
     }
     return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
 }
@@ -1313,6 +1313,21 @@ unsigned HIR::Trait::get_vtable_parent_index(const Span& sp, const HIR::PathPara
         }
     }
     return 0;
+}
+::std::pair<const ::HIR::AssociatedType*,const ::HIR::PathParams*> HIR::Trait::get_aty_def(const RcString& name) const
+{
+    auto it = m_types.find(name);
+    if( it != m_types.end() ) {
+        return std::make_pair(&it->second, nullptr);
+    }
+    for(const auto& parent : m_all_parent_traits)
+    {
+        it = parent.m_trait_ptr->m_types.find(name);
+        if( it != parent.m_trait_ptr->m_types.end() ) {
+            return std::make_pair(&it->second, &parent.m_path.m_params);
+        }
+    }
+    return std::make_pair(nullptr, nullptr);
 }
 
 /// Helper for getting the struct associated with a pattern path
@@ -1446,9 +1461,11 @@ double EncodedLiteralSlice::read_float(size_t size/*=0*/) const {
     assert(size <= m_size);
     switch(size)
     {
+    case 2: { F16 v; memcpy(&v, &m_base.bytes[m_ofs], 2); return v; }
     case 4: { float v; memcpy(&v, &m_base.bytes[m_ofs], 4); return v; }
     case 8: { double v; memcpy(&v, &m_base.bytes[m_ofs], 8); return v; }
-    default: abort();
+    case 16: { F128 v; memcpy(&v,  &m_base.bytes[m_ofs], 16); return v; }
+    default: BUG(Span(), "Unexpected float size");
     }
 }
 const Reloc* EncodedLiteralSlice::get_reloc() const {

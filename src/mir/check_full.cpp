@@ -888,6 +888,12 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                     state.drop_flags[se.idx] = (se.new_val != state.drop_flags[se.other]);
                 }
                 }
+            TU_ARMA(LoadDropFlag, se) {
+                MIR_TODO(mir_res, "");
+            }
+            TU_ARMA(SaveDropFlag, se) {
+                MIR_TODO(mir_res, "");
+            }
             TU_ARMA(Drop, se) {
                 if( se.flag_idx == ~0u || state.drop_flags.at(se.flag_idx) )
                 {

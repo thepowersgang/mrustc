@@ -348,6 +348,23 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
 
 ::HIR::Compare HIR::PathParams::compare_with_placeholders(const Span& sp, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder) const
 {
+    #if 0
+    struct NopMatch: public MatchGenerics {
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) override {
+            if( ty.data().is_Generic() ) {
+                return ty.data().as_Generic().binding == g.binding ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
+            }
+            return ::HIR::Compare::Unequal;
+        }
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
+            if( sz.is_Unevaluated() ) {
+                return ::HIR::Compare::Fuzzy;
+            }
+            return sz.is_Generic() && sz.as_Generic().binding == g.binding ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
+        }
+    } nop_match;
+    return this->match_test_generics_fuzz(sp, x, resolve_placeholder, nop_match);
+    #endif
     using ::HIR::Compare;
 
     auto rv = Compare::Equal;
@@ -364,6 +381,39 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
                 rv = Compare::Fuzzy;
         }
     }
+    #if 1
+    if( this->m_values.size() > 0 || x.m_values.size() > 0 ) {
+        if( this->m_values.size() != x.m_values.size() ) {
+            return Compare::Unequal;
+        }
+        for( unsigned int i = 0; i < x.m_values.size(); i ++ )
+        {
+            const auto& val_t = resolve_placeholder.get_val(sp, this->m_values[i]);
+            const auto& val_x = resolve_placeholder.get_val(sp, x.m_values[i]);
+            /*if( const auto* ge = val_t.opt_Generic() ) {
+                rv &= match.match_val(*ge, val_x);
+                if(rv == Compare::Unequal)
+                    return Compare::Unequal;
+            }
+            else*/ {
+                // TODO: Look up the the ivars?
+                if( val_t.is_Infer() || val_x.is_Infer() ) {
+                    //return Compare::Fuzzy;
+                    rv = Compare::Fuzzy;
+                }
+                else if( val_t != val_x ) {
+                    if( val_t.is_Unevaluated() || val_x.is_Unevaluated() ) {
+                        //return Compare::Fuzzy;
+                        rv = Compare::Fuzzy;
+                    }
+                    else {
+                        return Compare::Unequal;
+                    }
+                }
+            }
+        }
+    }
+    #endif
     return rv;
 }
 ::HIR::Compare HIR::PathParams::match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& match) const

@@ -606,6 +606,12 @@ namespace
             }
         TU_ARMA(SetDropFlag, e) {
             }
+        TU_ARMA(SaveDropFlag, e) {
+            rv |= visit_mir_lvalue_raw_mut(e.slot, ValUsage::Write, cb);
+            }
+        TU_ARMA(LoadDropFlag, e) {
+            rv |= visit_mir_lvalue_raw_mut(e.slot, ValUsage::Read, cb);
+            }
         TU_ARMA(Drop, e) {
             // Well, it mutates...
             rv |= visit_mir_lvalue_raw_mut(e.slot, ValUsage::Write, cb);
@@ -861,7 +867,7 @@ namespace
             return mv$(lv);
             }
         TU_ARMA(Borrow, e) {
-            return ::MIR::RValue::make_Borrow({ e.type, mv$(e.val) });
+            return ::MIR::RValue::make_Borrow({ e.type, false, mv$(e.val) });
             }
         TU_ARMA(Constant, c) {
             return mv$(c);
@@ -1418,6 +1424,12 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                         se.other == ~0u ? ~0u : this->df_base + se.other
                         }) );
                     ),
+                (SaveDropFlag,
+                    TODO(Span(), "clone_bb SaveDropFlag");
+                    ),
+                (LoadDropFlag,
+                    TODO(Span(), "clone_bb LoadDropFlag");
+                    ),
                 (Drop,
                     rv.statements.push_back( ::MIR::Statement::make_Drop({
                         se.kind,
@@ -1614,16 +1626,18 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     case ::HIR::CoreType::U16:  return ::MIR::Constant::make_Uint({ v.read_uint(2), ty.data().as_Primitive() });
                     case ::HIR::CoreType::U32:  return ::MIR::Constant::make_Uint({ v.read_uint(4), ty.data().as_Primitive() });
                     case ::HIR::CoreType::U64:  return ::MIR::Constant::make_Uint({ v.read_uint(8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::U128:  return ::MIR::Constant::make_Uint({ v.read_uint(16), ty.data().as_Primitive() });
                     case ::HIR::CoreType::Usize:  return ::MIR::Constant::make_Uint({ v.read_uint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::U128:  TODO(sp, "u128 const generic");
                     case ::HIR::CoreType::I8:   return ::MIR::Constant::make_Int({ v.read_sint(1), ty.data().as_Primitive() });
                     case ::HIR::CoreType::I16:  return ::MIR::Constant::make_Int({ v.read_sint(2), ty.data().as_Primitive() });
                     case ::HIR::CoreType::I32:  return ::MIR::Constant::make_Int({ v.read_sint(4), ty.data().as_Primitive() });
                     case ::HIR::CoreType::I64:  return ::MIR::Constant::make_Int({ v.read_sint(8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::I128:  return ::MIR::Constant::make_Int({ v.read_sint(16), ty.data().as_Primitive() });
                     case ::HIR::CoreType::Isize:  return ::MIR::Constant::make_Int({ v.read_sint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::I128:  TODO(sp, "i128 const generic");
+                    case ::HIR::CoreType::F16:  return ::MIR::Constant::make_Float({ v.read_float(2), ty.data().as_Primitive() });
                     case ::HIR::CoreType::F32:  return ::MIR::Constant::make_Float({ v.read_float(4), ty.data().as_Primitive() });
                     case ::HIR::CoreType::F64:  return ::MIR::Constant::make_Float({ v.read_float(8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::F128: return ::MIR::Constant::make_Float({ v.read_float(16), ty.data().as_Primitive() });
                     case ::HIR::CoreType::Char: return ::MIR::Constant::make_Uint({ v.read_uint(4), ty.data().as_Primitive() });
                     case ::HIR::CoreType::Str:  BUG(sp, "`str` const generic");
                     }
@@ -1676,7 +1690,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 ),
             (Borrow,
                 // TODO: Region IDs
-                return ::MIR::RValue::make_Borrow({ se.type, this->clone_lval(se.val) });
+                return ::MIR::RValue::make_Borrow({ se.type, se.is_raw, this->clone_lval(se.val) });
                 ),
             (Cast,
                 return ::MIR::RValue::make_Cast({ this->clone_lval(se.val), this->monomorph(se.type) });
@@ -3148,6 +3162,22 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     if( ae.other != be.other )
                         return false;
                     }
+                TU_ARMA(LoadDropFlag, ae, be) {
+                    if( ae.idx != be.idx )
+                        return false;
+                    if( ae.slot != be.slot )
+                        return false;
+                    if( ae.bit_index != be.bit_index )
+                        return false;
+                    }
+                TU_ARMA(SaveDropFlag, ae, be) {
+                    if( ae.idx != be.idx )
+                        return false;
+                    if( ae.slot != be.slot )
+                        return false;
+                    if( ae.bit_index != be.bit_index )
+                        return false;
+                    }
                 TU_ARMA(Drop, ae, be) {
                     if( ae.kind != be.kind )
                         return false;
@@ -3648,8 +3678,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 case HIR::CoreType::I16:
                                 case HIR::CoreType::I8:
                                     return ::MIR::Constant::make_Int({el.read_sint(el.m_size), ty});
+                                case HIR::CoreType::F16:
                                 case HIR::CoreType::F32:
                                 case HIR::CoreType::F64:
+                                case HIR::CoreType::F128:
                                     return ::MIR::Constant::make_Float({el.read_float(el.m_size), ty});
                                 case HIR::CoreType::Str:
                                     MIR_BUG(state, "Constant of type `str`?");
@@ -3907,8 +3939,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 {
                                 }
                                 break;
+                            case ::HIR::CoreType::F16:
                             case ::HIR::CoreType::F32:
                             case ::HIR::CoreType::F64:
+                            case ::HIR::CoreType::F128:
                                 // TODO: Cast to float
                                 break;
                             case ::HIR::CoreType::Char:
@@ -3951,8 +3985,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         case ::HIR::CoreType::Isize:
                             new_value = ::MIR::Constant::make_Int({ S128(U128(v)), ct });
                             break;
+                        case ::HIR::CoreType::F16:
                         case ::HIR::CoreType::F32:
                         case ::HIR::CoreType::F64:
+                        case ::HIR::CoreType::F128:
                             // TODO: Cast to float (can variants be casted to float?)
                             break;
                         case ::HIR::CoreType::Char:
@@ -5468,6 +5504,15 @@ bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             used_drop_flags[e->flag_idx] = true;
                         }
                     }
+                    else if( const auto* e = stmt.opt_SaveDropFlag() )
+                    {
+                        read_drop_flags[e->idx] = true;
+                        used_drop_flags[e->idx] = true;
+                    }
+                    else if( const auto* e = stmt.opt_LoadDropFlag() )
+                    {
+                        used_drop_flags[e->idx] = true;
+                    }
                 }
                 });
         DEBUG("Un-read drop flags:" << FMT_CB(ss,
@@ -5479,6 +5524,10 @@ bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 for(auto it = block.statements.begin(); it != block.statements.end(); )
                 {
                     if(it->is_SetDropFlag() && ! read_drop_flags[it->as_SetDropFlag().idx] ) {
+                        removed_statement = true;
+                        it = block.statements.erase(it);
+                    }
+                    else if( it->is_LoadDropFlag() && ! read_drop_flags[it->as_LoadDropFlag().idx] ) {
                         removed_statement = true;
                         it = block.statements.erase(it);
                     }
@@ -6495,6 +6544,8 @@ void MIR_OptimiseCrate(::HIR::Crate& crate, bool do_minimal_optimisation)
             else {
                 MIR_Optimise(res, p, mir, args, ty);
             }
+            // Run cleanup to handle now-monomoprhised inlined constants
+            MIR_Cleanup(res, p, mir, args, ty);
         }
         };
     ov.visit_crate(crate);

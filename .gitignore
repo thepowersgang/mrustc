@@ -7,6 +7,7 @@
 
 /obj
 /bin
+/build
 /mrustc.depend
 /mrustc.layout
 /rustc-*-src.tar.gz
@@ -15,7 +16,13 @@
 /crates.io
 /test_deps_run-pass.mk
 
+/no_core*
+
+/procmacro_dump*.bin
+/1.txt
+
 /tools/bin
+/tools/mir_opt_test/tests.log
 
 /output
 /output-*

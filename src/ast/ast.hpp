@@ -50,14 +50,17 @@ struct StructItem
     ::AST::Visibility   m_vis;
     RcString   m_name;
     TypeRef m_type;
+    // RFC3681
+    AST::Expr   m_default;
 
     //StructItem() {}
 
-    StructItem(::AST::AttributeList attrs, AST::Visibility vis, RcString name, TypeRef ty):
+    StructItem(::AST::AttributeList attrs, AST::Visibility vis, RcString name, TypeRef ty, Expr default_value):
         m_attrs( mv$(attrs) ),
         m_vis( mv$(vis) ),
-        m_name( mv$(name) ),
-        m_type( mv$(ty) )
+        m_name( mv$(name) )
+        , m_type( mv$(ty) )
+        , m_default( mv$(default_value) )
     {
     }
 
@@ -243,6 +246,7 @@ public:
             Always
         } inline_type = Inline::Auto;
         bool is_cold = false;
+        bool is_naked = false;
         std::vector<unsigned>   rustc_legacy_const_generics;
 
         std::string link_name;
@@ -265,6 +269,7 @@ public:
     const Span& sp() const { return m_span; }
 
     const ::std::string& abi() const { return m_abi; };
+    void set_abi(std::string s) { m_abi = std::move(s); }
     bool is_const() const { return m_flags.is_const; }
     bool is_unsafe() const { return m_flags.is_unsafe; }
     bool is_async() const { return m_flags.is_async; }
@@ -329,10 +334,9 @@ public:
     Trait clone() const;
 };
 
-TAGGED_UNION_EX(EnumVariantData, (), Value,
+TAGGED_UNION_EX(EnumVariantData, (), Unit,
     (
-    (Value, struct {
-        ::AST::Expr m_value;
+    (Unit, struct {
         }),
     (Tuple, struct {
         ::std::vector<TupleItem>    m_items;
@@ -352,29 +356,31 @@ struct EnumVariant
     AttributeList   m_attrs;
     RcString   m_name;
     EnumVariantData m_data;
+    /// Optional discriminant value
+    Expr    m_discriminant_value;
 
     EnumVariant()
     {
     }
 
-    EnumVariant(AttributeList attrs, RcString name, Expr&& value):
+    EnumVariant(AttributeList attrs, RcString name):
         m_attrs( mv$(attrs) ),
         m_name( mv$(name) ),
-        m_data( EnumVariantData::make_Value({mv$(value)}) )
+        m_data( EnumVariantData::make_Unit({}) )
     {
     }
 
     EnumVariant(AttributeList attrs, RcString name, ::std::vector<TupleItem> sub_types):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
-        m_data( EnumVariantData::make_Tuple( {mv$(sub_types)} ) )
+        m_data( EnumVariantData::make_Tuple({ std::move(sub_types) }) )
     {
     }
 
     EnumVariant(AttributeList attrs, RcString name, ::std::vector<StructItem> fields):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
-        m_data( EnumVariantData::make_Struct( {mv$(fields)} ) )
+        m_data( EnumVariantData::make_Struct({ std::move(fields) }) )
     {
     }
 
@@ -382,8 +388,7 @@ struct EnumVariant
     {
         os << "EnumVariant(" << x.m_name;
         TU_MATCH(EnumVariantData, (x.m_data), (e),
-        (Value,
-            os << " = " << e.m_value;
+        (Unit,
             ),
         (Tuple,
             os << "(" << e.m_items << ")";
@@ -392,6 +397,9 @@ struct EnumVariant
             os << " { " << e.m_fields << " }";
             )
         )
+        if( x.m_discriminant_value ) {
+            os << " = " << x.m_discriminant_value;
+        }
         return os << ")";
     }
 };
@@ -523,14 +531,12 @@ public:
 
 class ImplDef
 {
-    AttributeList   m_attrs;
     bool    m_is_unsafe;
     GenericParams  m_params;
     Spanned<Path>   m_trait;
     TypeRef m_type;
 public:
-    ImplDef(AttributeList attrs, GenericParams params, Spanned<Path> trait_type, TypeRef impl_type):
-        m_attrs( mv$(attrs) ),
+    ImplDef(GenericParams params, Spanned<Path> trait_type, TypeRef impl_type):
         m_is_unsafe( false ),
         m_params( mv$(params) ),
         m_trait( mv$(trait_type) ),
@@ -542,10 +548,6 @@ public:
 
     void set_is_unsafe() { m_is_unsafe = true; }
     bool is_unsafe() const { return m_is_unsafe; }
-
-    // Accessors
-    const AttributeList& attrs() const { return m_attrs; }
-          AttributeList& attrs()       { return m_attrs; }
 
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
@@ -670,7 +672,13 @@ public:
     struct FileInfo
     {
         bool    controls_dir = false;
-        bool    force_no_load = false;
+        //// 
+        //bool    force_no_load = false;
+        // Is this module disabled (i.e. it's tagged with a failing `#[cfg]`)?
+        // Disables down-stream file loading (as that might fail)
+        bool    is_disabled = false;
+        // Is this a `mod foo { ... }` or `mod foo;` (changes how `#[path]` is processed inside)
+        bool    in_mod_block = false;
         // Path to this module
         ::std::string   path = "!";
         // Directory controlled by this module

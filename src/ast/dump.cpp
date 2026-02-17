@@ -51,6 +51,9 @@ public:
             m_os << "const ";
             break;
         }
+        if( n.m_label.name != RcString() ) {
+            m_os << "'" << n.m_label << ": ";
+        }
         m_os << "{";
         inc_indent();
         if( n.m_local_mod )
@@ -59,30 +62,39 @@ public:
             m_os << indent() << "// ANON: " << n.m_local_mod->path() << "\n";
             handle_module(*n.m_local_mod);
         }
-        bool is_first = true;
         for( auto& child : n.m_nodes )
         {
-            if(is_first) {
-                is_first = false;
-            } else {
-                m_os << ";";
-            }
             m_os << "\n";
-            if( child ) {
-                this->print_attrs(child->attrs());
+            if( child.node ) {
+                this->print_attrs(child.node->attrs());
             }
             m_os << indent();
             m_expr_root = true;
-            if( !child.get() )
+            if( !child.node.get() )
                 m_os << "/* nil */";
             else
-                AST::NodeVisitor::visit(child);
+                AST::NodeVisitor::visit(child.node);
+            if( child.has_semicolon ) {
+                m_os << ";";
+            }
         }
-        if( !n.m_yields_final_value )
-            m_os << ";";
         m_os << "\n";
         dec_indent();
         m_os << indent() << "}";
+    }
+    virtual void visit(AST::ExprNode_AsyncBlock& n) override {
+        m_os << "async ";
+        if( n.m_is_move ) {
+            m_os << "move ";
+        }
+        AST::NodeVisitor::visit(n.m_inner);
+    }
+    virtual void visit(AST::ExprNode_GeneratorBlock& n) override {
+        m_os << "gen ";
+        if( n.m_is_move ) {
+            m_os << "move ";
+        }
+        AST::NodeVisitor::visit(n.m_inner);
     }
     virtual void visit(AST::ExprNode_Try& n) override {
         m_os << "try ";
@@ -189,6 +201,9 @@ public:
         case AST::ExprNode_Flow::CONTINUE:  m_os << "continue ";  break;
         case AST::ExprNode_Flow::YEET:      m_os << "do yeet ";  break;
         }
+        if( n.m_target.name != "" ) {
+            m_os << "'" << n.m_target << " ";
+        }
         AST::NodeVisitor::visit(n.m_value);
     }
     virtual void visit(AST::ExprNode_LetBinding& n) override {
@@ -200,6 +215,10 @@ public:
         if( n.m_value ) {
             m_os << " = ";
             AST::NodeVisitor::visit(n.m_value);
+        }
+        if( n.m_else ) {
+            m_os << " else ";
+            AST::NodeVisitor::visit(n.m_else);
         }
         m_os << ";";
     }
@@ -280,6 +299,10 @@ public:
         bool expr_root = m_expr_root;
         m_expr_root = false;
 
+        if( n.m_label.name != "" ) {
+            m_os << "'" << n.m_label << ": ";
+        }
+
         switch(n.m_type)
         {
         case AST::ExprNode_Loop::LOOP:
@@ -313,7 +336,7 @@ public:
         for(size_t i = 0; i < conds.size(); i ++) {
             if(i != 0) m_os << " && ";
             if(conds[i].opt_pat) {
-                if( i > 0 ) m_os << "let ";
+                m_os << "let ";
                 print_pattern(*conds[i].opt_pat, true);
                 m_os << " = ";
             }
@@ -326,7 +349,11 @@ public:
         bool expr_root = m_expr_root;
         m_expr_root = false;
 
-        m_os << "while let ";
+        if( n.m_label.name != "" ) {
+            m_os << "'" << n.m_label << ": ";
+        }
+
+        m_os << "while ";
         visit_iflet_conditions(n.m_conditions);
         if( expr_root )
         {
@@ -400,7 +427,7 @@ public:
     virtual void visit(AST::ExprNode_IfLet& n) override {
         bool expr_root = m_expr_root;
         m_expr_root = false;
-        m_os << "if let ";
+        m_os << "if ";
         visit_iflet_conditions(n.m_conditions);
 
         visit_if_common(expr_root, n.m_true, n.m_false);
@@ -444,6 +471,9 @@ public:
     }
     virtual void visit(AST::ExprNode_Closure& n) override {
         m_expr_root = false;
+        if( n.m_is_move ) {
+            m_os << "move ";
+        }
         m_os << "|";
         bool is_first = true;
         for( const auto& arg : n.m_args )
@@ -490,8 +520,10 @@ public:
                 m_os << "'\\u{" << ::std::hex << n.m_value << ::std::dec << "}'";
             }
             break;
+        case CORETYPE_F16:
         case CORETYPE_F32:
         case CORETYPE_F64:
+        case CORETYPE_F128:
             break;
         case CORETYPE_U8:
         case CORETYPE_U16:
@@ -501,6 +533,7 @@ public:
         case CORETYPE_UINT:
         case CORETYPE_ANY:
             m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
         case CORETYPE_I8:
         case CORETYPE_I16:
@@ -509,6 +542,7 @@ public:
         case CORETYPE_I128:
         case CORETYPE_INT:
             m_os << n.m_value;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
         }
     }
@@ -516,14 +550,25 @@ public:
         m_expr_root = false;
         switch(n.m_datatype)
         {
+        case CORETYPE_ANY:
+            m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
+            m_os << n.m_value;
+            break;
+        case CORETYPE_F16:
         case CORETYPE_F32:
             m_os.precision(::std::numeric_limits<float>::max_digits10 + 1);
             m_os << n.m_value;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
-        case CORETYPE_ANY:
         case CORETYPE_F64:
             m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
             m_os << n.m_value;
+            m_os << "_" << coretype_name(n.m_datatype);
+            break;
+        case CORETYPE_F128:
+            m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
+            m_os << n.m_value;
+            m_os << "_" << coretype_name(n.m_datatype);
             break;
         default:
             break;
@@ -544,6 +589,10 @@ public:
         m_expr_root = false;
         m_os << "b\"" << FmtEscaped(n.m_value) << "\"";
     }
+    virtual void visit(AST::ExprNode_CString& n) override {
+        m_expr_root = false;
+        m_os << "c\"" << FmtEscaped(n.m_value) << "\"";
+    }
 
     virtual void visit(AST::ExprNode_StructLiteral& n) override {
         m_expr_root = false;
@@ -551,8 +600,8 @@ public:
         inc_indent();
         for( auto& i : n.m_values )
         {
-            // TODO: Attributes
-            m_os << indent() << i.name << ": ";
+            print_attrs(i.attrs);
+            m_os << indent() << "r#" << i.name << ": ";
             AST::NodeVisitor::visit(i.value);
             m_os << ",\n";
         }
@@ -571,8 +620,8 @@ public:
         inc_indent();
         for( auto& i : n.m_values )
         {
-            // TODO: Attributes
-            m_os << indent() << i.name << ": ";
+            print_attrs(i.attrs);
+            m_os << indent() << "r#" << i.name << ": ";
             AST::NodeVisitor::visit(i.value);
             m_os << ",\n";
         }
@@ -713,10 +762,11 @@ public:
         case AST::ExprNode_UniOp::AWait: break;
         }
 
-        if( IS(*n.m_value, AST::ExprNode_BinOp) )
+        bool wrap = IS(*n.m_value, AST::ExprNode_BinOp) || IS(*n.m_value, AST::ExprNode_Cast);
+        if( wrap )
             m_os << "(";
         AST::NodeVisitor::visit(n.m_value);
-        if( IS(*n.m_value, AST::ExprNode_BinOp) )
+        if( wrap )
             m_os << ")";
         switch(n.m_type)
         {
@@ -1129,7 +1179,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         ),
     (Box, {
         const auto& v = p.data().as_Box();
-        m_os << "& ";
+        m_os << "box ";
         print_pattern(*v.sub, is_refutable);
         }),
     (Ref, {
@@ -1138,7 +1188,10 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << "&mut ";
         else
             m_os << "& ";
+        // Just in case the inner binds as mut
+        m_os << "(";
         print_pattern(*v.sub, is_refutable);
+        m_os << ")";
         }),
     (Value,
         m_os << v.start;
@@ -1162,7 +1215,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             print_pattern(sp.pat, is_refutable);
             m_os << ",";
         }
-        if( v.is_exhaustive ) {
+        if( !v.is_exhaustive ) {
             m_os << "..";
         }
         m_os << "}";
@@ -1285,8 +1338,7 @@ void RustPrinter::handle_enum(const AST::Enum& s)
     {
         m_os << indent() << "/*"<<idx<<"*/" << i.m_name;
         TU_MATCH(AST::EnumVariantData, (i.m_data), (e),
-        (Value,
-            m_os << " = " << e.m_value;
+        (Unit,
             ),
         (Tuple,
             m_os << "(";
@@ -1299,12 +1351,15 @@ void RustPrinter::handle_enum(const AST::Enum& s)
             inc_indent();
             for( const auto& i : e.m_fields )
             {
-                m_os << indent() << i.m_name << ": " << i.m_type.print_pretty() << "\n";
+                m_os << indent() << i.m_name << ": " << i.m_type.print_pretty() << ",\n";
             }
             dec_indent();
             m_os << indent() << "}";
             )
         )
+        if( i.m_discriminant_value ) {
+            m_os << " = " << i.m_discriminant_value;
+        }
         m_os << ",\n";
         idx ++;
     }

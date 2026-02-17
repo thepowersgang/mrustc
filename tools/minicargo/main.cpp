@@ -18,6 +18,7 @@
 #include <toml.h>   // TomlFile (workspace)
 #include <fstream>  // for workspace enumeration
 #include "cfg.hpp"
+#include "resolve.h"
 
 struct ProgramOptions
 {
@@ -182,136 +183,94 @@ int main(int argc, const char* argv[])
         }
 
         // Resolve dependencies to ensure only one version of each semver line exists
+        LockfileContents    lockfile;
         {
             Debug_SetPhase("Resolve Dependencies");
-            struct SemverRelease {
-                unsigned level;
-                unsigned version;
-                static SemverRelease for_package(const PackageVersion& ver) {
-                    if( ver.major != 0 ) {
-                        return SemverRelease { 0, ver.major };
-                    }
-                    if( ver.minor != 0 ) {
-                        return SemverRelease { 1, ver.minor };
-                    }
-                    return SemverRelease { 2, ver.patch };
-                }
-                int ord(const SemverRelease& x) const {
-                    if( level != x.level )  return level < x.level ? -1 : 1;
-                    if( version != x.version )  return version < x.version ? -1 : 1;
-                    return 0;
-                }
-                bool operator==(const SemverRelease& x) const {
-                    return ord(x) == 0;
-                }
-                bool operator<(const SemverRelease& x) const {
-                    return ord(x) == -1;
-                }
-            };
-            struct Rule {
-                std::string package;
-                SemverRelease   ver;
+            auto lockfile_path = workspace_manifest_path.is_valid()
+                ? workspace_manifest_path.parent() / "Cargo.lock"
+                : dir / "Cargo.lock"
+                ;
+            if( ::std::ifstream(lockfile_path).is_open() ) {
+                // TODO: Parse the lockfile and use it
+                //ResolveDepdencies_CargoLockFile(repo, m, lockfile_path);
+            }
+            // TODO: Implement the cargo resolver variants (need to find good docs)
 
-                static Rule for_manifest(const PackageManifest& m) {
-                    return Rule { m.name(), SemverRelease::for_package(m.version()) };
-                }
-                int ord(const Rule& x) const {
-                    if( package != x.package )  return package < x.package ? -1 : 1;
-                    return ver.ord(x.ver);
-                }
-                bool operator==(const Rule& x) const {
-                    return ord(x) == 0;
-                }
-                bool operator<(const Rule& x) const {
-                    return ord(x) == -1;
-                }
-            };
-            // a list of rules added whenever there's a conflict
-            //std::map<Rule, std::vector<PackageVersionSpec>>   rules;
-            struct LockfileEnumState {
-                const PackageManifest&  root;
-                /// Package seen/selected for each semver version line
-                std::map<Rule, const PackageManifest*> selected_versions;
-                /// Which manfiests have been seen so far
-                std::set<const PackageManifest*> seen_manifests;
-                /// Stack of packages to visit
-                std::vector<const PackageManifest*> visit_stack;
+            if( false ) {
+                lockfile = ResolveDependencies_MinicargoOriginal(repo, m);
+            }
+            else {
+                lockfile = ResolveDependencies_Cargo(repo, m, 1/*workspace_manifest.resolver_version*/);
+            }
 
-                LockfileEnumState(const PackageManifest& root): root(root) {
-                    reset();
+            // TODO: Save the selected versions into a lockfile?
+            for(const auto& e : lockfile.package_deps) {
+                DEBUG(e.first.name << " v" << e.first.version << " => {");
+                for(const auto& d : e.second) {
+                    DEBUG("  " << d.name << " v" << d.version);
                 }
-                void reset() {
-                    selected_versions.clear();
-                    seen_manifests.clear();
-                    visit_stack.clear();
-                    visit_stack.push_back(&root);
-                }
-                const PackageManifest* pop() {
-                    if( visit_stack.empty() ) {
-                        return nullptr;
-                    }
-                    else {
-                        auto rv = visit_stack.back();
-                        visit_stack.pop_back();
-                        return rv;
-                    }
-                }
-            } s(m);
-            while(const auto* cur_manifest = s.pop())
+                DEBUG("}");
+            }
+        }
+
+        // 2. Load all dependencies
+        Debug_SetPhase("Load Dependencies");
+        {
             {
-                auto base_path = cur_manifest->directory();
-                TRACE_FUNCTION_F(cur_manifest->name() << " " << cur_manifest->version() << " (" << base_path << ")");
-
-                // Enumerate all non-dev dependencies (don't care about features in this stage)
-                ::std::vector<const PackageRef*>    deps;
-                cur_manifest->iter_main_dependencies([&](const PackageRef& dep_c) { deps.push_back(&dep_c); });
-                cur_manifest->iter_build_dependencies([&](const PackageRef& dep_c) { deps.push_back(&dep_c); });
-
-                for(const auto* dep_ref : deps)
+                struct ApplyState {
+                    /// Stack of packages to visit
+                    std::vector<const PackageManifest*> visit_stack;
+                    std::set<const PackageManifest*> visited;
+                    const PackageManifest* pop() {
+                        if( visit_stack.empty() ) {
+                            return nullptr;
+                        }
+                        else {
+                            auto rv = visit_stack.back();
+                            visit_stack.pop_back();
+                            return rv;
+                        }
+                    }
+                } s;
+                s.visit_stack.push_back(&m);
+                while(const auto* cur_manifest = s.pop())
                 {
-                    bool is_repo = !dep_ref->get_version().m_bounds.empty();
-                    const auto* dep = const_cast<PackageRef&>(*dep_ref).load_manifest_raw(repo, base_path).get();
-                    if( !dep ) {
-                        DEBUG("Failed to load dependency: " << *dep_ref);
+                    if( !s.visited.insert(cur_manifest).second ) {
                         continue ;
                     }
-                    if( s.seen_manifests.insert(dep).second )
-                    {
-                        s.visit_stack.push_back(dep);
+                    DEBUG("Commiting for " << cur_manifest->name() << " " << cur_manifest->version());
+                    auto base_path = cur_manifest->directory();
+                    auto it = lockfile.package_deps.find( LockfileContents::PackageKey(*cur_manifest) );
+                    if(it == lockfile.package_deps.end()) {
+                        throw ::std::runtime_error(format("No lockfile entry for ", cur_manifest->name(), " ", cur_manifest->version()));
+                    }
+                    const auto& locked_deps = it->second;
 
-                        // If this is from the repository (i.e. not a path/git dependency)
-                        if( is_repo )
-                        {
-                            // Then check if it conflicts with a previously-selected dependency
-                            auto r = s.selected_versions.insert(std::make_pair( Rule::for_manifest(*dep), dep ));
-                            const auto* prev_dep = r.first->second;
-                            if( prev_dep != dep )
-                            {
-                                // Uh-oh, conflict
-                                // - Check if the existing one is a lower version, if it is then no issue
-                                // - Otherwise, we need to blacklist `r.first->second` and restart
-                                if( prev_dep->version() < dep->version() ) {
-                                    repo.blacklist_dependency(dep);
-                                    // No need to restart
-                                }
-                                else {
-                                    repo.blacklist_dependency(prev_dep);
-                                    // Reset the enumeration state, but keep the blacklist
-                                    s.reset();
-                                    break;
-                                }
-                            }
+                    ::std::vector<const PackageRef*>    deps;
+                    cur_manifest->iter_main_dependencies([&](const PackageRef& dep_c) { deps.push_back(&dep_c); });
+                    cur_manifest->iter_build_dependencies([&](const PackageRef& dep_c) { deps.push_back(&dep_c); });
+
+                    for(const PackageRef* dep_v : deps) {
+                        auto dep = const_cast<PackageRef*>(dep_v);
+                        auto loaded = dep->load_manifest_raw(repo, base_path, [&](const PackageVersion& v) {
+                            return locked_deps.count( LockfileContents::PackageKey(dep->name(), v) ) != 0;
+                        });
+                        if( !loaded ) {
+                            // Error?
+                            DEBUG(">> " << *dep << " = ?");
+                        }
+                        else {
+                            DEBUG(">> " << *dep << " = " << loaded->name() << " " << loaded->version());
+                            s.visit_stack.push_back(loaded.get());
+                            dep->set_package(std::move(loaded));
                         }
                     }
                 }
             }
 
-            // TODO: Save the contents of `s.selected_versions` into a lockfile?
+            // TODO: Pass lockfile here, instead of doing two passes
+            m.load_dependencies(repo, !bs_override_dir.is_valid(), /*include_dev=*/opts.test);
         }
-
-        // 2. Load all dependencies
-        Debug_SetPhase("Load Dependencies");
-        m.load_dependencies(repo, !bs_override_dir.is_valid(), /*include_dev=*/opts.test);
 
         // 3. Build dependency tree and build program.
         BuildOptions    build_opts;

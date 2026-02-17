@@ -79,6 +79,10 @@ DEF_VISIT_H(ExprNode_Yield, node) {
     TRACE_FUNCTION_F("_Yield");
     visit_node_ptr(node.m_value);
 }
+DEF_VISIT_H(ExprNode_AWait, node) {
+    TRACE_FUNCTION_F("_AWait");
+    visit_node_ptr(node.m_value);
+}
 DEF_VISIT_H(ExprNode_Let, node) {
     TRACE_FUNCTION_F("_Let: " << node.m_pattern);
     // Visit the value FIRST as it's evaluated before the variable is defined
@@ -322,6 +326,16 @@ DEF_VISIT_H(ExprNode_GeneratorWrapper, node) {
         visit_node_ptr(node.m_code);
     }
 }
+DEF_VISIT_H(ExprNode_AsyncBlock, node) {
+    TRACE_FUNCTION_F("_AsyncBlock");
+    if(node.m_code)
+    {
+        visit_node_ptr(node.m_code);
+    }
+    else
+    {
+    }
+}
 
 #undef DEF_VISIT
 #undef DEF_VISIT_H
@@ -445,13 +459,7 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         }
         this->visit_type(e.m_rettype);
         ),
-    (Closure,
-        //for(auto& t : e.m_closure_arg_types) {
-        //    this->visit_type(t);
-        //}
-        //this->visit_type(e.m_closure_rettype);
-        ),
-    (Generator,
+    (NodeType,
         )
     )
 }

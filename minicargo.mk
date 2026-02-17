@@ -85,6 +85,7 @@ else ifeq ($(RUSTC_VERSION),1.29.0)
 else ifeq ($(RUSTC_VERSION),1.39.0)
   MINICARGO_FLAGS_$(OUTDIR)cargo := --features vendored-openssl
   RUSTC_OUT_BIN := rustc_binary
+  USE_MERGED_BUILD=0
 else
   MINICARGO_FLAGS_$(OUTDIR)cargo := --features vendored-openssl
   MINICARGO_FLAGS_$(OUTDIR)rustc := --features llvm
@@ -109,6 +110,8 @@ ifeq ($(RUSTC_VERSION),1.54.0)
   RUST_LIB_PREFIX := library/
 else ifeq ($(RUSTC_VERSION),1.74.0)
   RUST_LIB_PREFIX := library/
+else ifeq ($(RUSTC_VERSION),1.90.0)
+  RUST_LIB_PREFIX := library/
 else
   RUST_LIB_PREFIX := src/lib
 endif
@@ -131,9 +134,16 @@ ifeq ($(RUSTC_VERSION),1.74.0)
   SRCDIR_RUSTC := compiler/rustc
   SRCDIR_RUSTC_DRIVER := compiler/rustc_driver
 endif
+ifeq ($(RUSTC_VERSION),1.90.0)
+  SRCDIR_RUSTC := compiler/rustc
+  SRCDIR_RUSTC_DRIVER := compiler/rustc_driver
+endif
 
 SRCDIR_RUST_TESTS := $(RUSTCSRC)src/test/
 ifeq ($(RUSTC_VERSION),1.74.0)
+SRCDIR_RUST_TESTS := $(RUSTCSRC)tests/
+endif
+ifeq ($(RUSTC_VERSION),1.90.0)
 SRCDIR_RUST_TESTS := $(RUSTCSRC)tests/
 endif
 
@@ -154,6 +164,7 @@ else ifeq ($(OS),Windows_NT)
 else
   RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 endif
+RUSTC_ARCH := $(firstword $(subst -, ,$(RUSTC_TARGET)))
 # Directory for minicargo build script overrides
 OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 
@@ -234,8 +245,11 @@ $(RUSTCSRC)mrustc-stdlib/Cargo.toml: $(RUSTC_SRC_DL) minicargo.mk
 	@echo "std = { path = \"../$(RUST_LIB_PREFIX)std\" }" >> $@
 	@echo "panic_unwind = { path = \"../$(RUST_LIB_PREFIX)panic_unwind\" }" >> $@
 	@echo "test = { path = \"../$(RUST_LIB_PREFIX)test\" }" >> $@
+	@echo "rustc-std-workspace-core = { path = \"../$(RUST_LIB_PREFIX)rustc-std-workspace-core\" }" >> $@
+	@echo "rustc-std-workspace-alloc = { path = \"../$(RUST_LIB_PREFIX)rustc-std-workspace-alloc\" }" >> $@
+	@echo "rustc-std-workspace-std = { path = \"../$(RUST_LIB_PREFIX)rustc-std-workspace-std\" }" >> $@
 LIBS: $(RUSTCSRC)mrustc-stdlib/Cargo.toml $(MRUSTC) $(MINICARGO)
-	+$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)mrustc-stdlib/
+	+STD_ENV_ARCH=$(RUSTC_ARCH) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)mrustc-stdlib/
 	+$(MINICARGO) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) lib/libproc_macro
 else
 LIBS: $(MRUSTC) $(MINICARGO) $(RUSTC_SRC_DL)
@@ -263,6 +277,7 @@ RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath $(OUTDIR))
 RUSTC_ENV_VARS += REAL_LIBRARY_PATH_VAR=LD_LIBRARY_PATH
 RUSTC_ENV_VARS += RUSTC_INSTALL_BINDIR=bin
+RUSTC_ENV_VARS += RUSTC_BOOTSTRAP=1
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
@@ -322,15 +337,8 @@ $(OUTDIR)cargo-build/libfailure-0_1_2.rlib: $(MRUSTC) LIBS
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
 
-HELLO_TEST := ui/hello.rs
-ifeq ($(RUSTC_VERSION),1.19.0)
-  HELLO_TEST := run-pass/hello.rs
-else ifeq ($(RUSTC_VERSION),1.29.0)
-  HELLO_TEST := run-pass/hello.rs
-endif
-
 # "hello, world" test - Invoked by the `make test` target
-$(OUTDIR)rust/test_run-pass_hello: $(SRCDIR_RUST_TESTS)$(HELLO_TEST) LIBS
+$(OUTDIR)rust/test_run-pass_hello: samples/hello.rs LIBS
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
 	$(DBG) $(MRUSTC) $< -o $@ --cfg debug_assertions -g -O -L $(OUTDIR) > $@_dbg.txt
@@ -426,8 +434,8 @@ RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::overaligned_allo
 #ENV_$(OUTDIR)stdtest/rustc-test := 
 #ENV_$(OUTDIR)stdtest/rustc-test += CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 
-$(OUTDIR)stdtest/%-test: $(RUSTCSRC)src/lib%/lib.rs LIBS
-	+MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR)
+$(OUTDIR)stdtest/%-test: $(RUSTCSRC)$(RUST_LIB_PREFIX)/Cargo.toml LIBS
+	+MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) --test $(RUSTCSRC)$(RUST_LIB_PREFIX)$* --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR)
 $(OUTDIR)stdtest/collectionstests: $(OUTDIR)stdtest/alloc-test
 	test -e $@
 $(OUTDIR)collectionstest_out.txt: $(OUTDIR)%

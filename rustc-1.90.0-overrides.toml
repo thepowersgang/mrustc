@@ -1,0 +1,14 @@
+#
+# minicargo overrides file
+#
+
+[add.'library/rustc-std-workspace-core'.dependencies.compiler_builtins]
+features = ["no-asm"]
+
+
+[delete]
+# Allow rustc's libproc_macro to build by removing the std dependency (it's built during rustc build, not during std build)
+'library/proc_macro' = [
+	"dependencies.std",
+	"dependencies.core",
+	]

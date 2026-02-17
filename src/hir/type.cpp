@@ -35,8 +35,10 @@ namespace HIR {
         case CoreType::U128: return os << "u128";
         case CoreType::I128: return os << "i128";
 
+        case CoreType::F16: return os << "f16";
         case CoreType::F32: return os << "f32";
         case CoreType::F64: return os << "f64";
+        case CoreType::F128:return os << "f128";
 
         case CoreType::Bool:    return os << "bool";
         case CoreType::Char:    return os << "char";
@@ -297,10 +299,11 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
                 os << "+";
             os << tr;
         }
-        if( !e.m_lifetimes.empty() ) {
-            for(const auto& lft : e.m_lifetimes)
+        if( !e.m_lifetime_bounds.empty() ) {
+            for(const auto& lft : e.m_lifetime_bounds)
                 os << "+" << lft;
         }
+        os << "+use" << e.m_use;
         os << "/*";
         TU_MATCH_HDRA( (e.m_inner), {)
         TU_ARMA(Known, ee) {
@@ -310,7 +313,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             os << "fn " << ee.m_origin << "#" << ee.m_index;
             }
         TU_ARMA(Alias, ee) {
-            os << "type" << ee.params << " " << ee.inner.get();
+            os << "type" << ee.params << " " << ee.inner->path;
             }
         }
         os << "*/";
@@ -368,13 +371,60 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         }
         os << ") -> " << e.m_rettype;
         }
-    TU_ARMA(Closure, e) {
-        os << "closure["<<e.node<<"]";
-        }
-    TU_ARMA(Generator, e) {
-        os << "generator["<<e.node<<"]";
+    TU_ARMA(NodeType, e) {
+        e.fmt(os);
         }
     }
+}
+
+bool HIR::TypeData_NodeType::operator==(const ::HIR::TypeData_NodeType& x) const
+{
+    return this->ord(x) == OrdEqual;
+}
+Ordering HIR::TypeData_NodeType::ord(const ::HIR::TypeData_NodeType& x) const
+{
+    ORD(static_cast<int>(this->tag()), static_cast<int>(x.tag()));
+    TU_MATCH_HDRA((*this, x), {)
+    TU_ARMA(Closure, te, xe) {
+        ORD(reinterpret_cast<uintptr_t>(te), reinterpret_cast<uintptr_t>(xe));
+        }
+    TU_ARMA(Generator, te, xe) {
+        ORD(reinterpret_cast<uintptr_t>(te), reinterpret_cast<uintptr_t>(xe));
+        }
+    TU_ARMA(Async, te, xe) {
+        ORD(reinterpret_cast<uintptr_t>(te), reinterpret_cast<uintptr_t>(xe));
+        }
+    }
+    return OrdEqual;
+}
+void ::HIR::TypeData_NodeType::fmt(::std::ostream& os) const
+{
+    TU_MATCH_HDRA((*this), {)
+    TU_ARMA(Closure, e) {
+        os << "closure["<<e<<"]";
+        }
+    TU_ARMA(Generator, e) {
+        os << "generator["<<e<<"]";
+        }
+    TU_ARMA(Async, e) {
+        os << "async["<<e<<"]";
+        }
+    }
+}
+::HIR::TypeData_NodeType HIR::TypeData_NodeType::clone() const
+{
+    TU_MATCH_HDRA((*this), {)
+    TU_ARMA(Closure, e) {
+        return e;
+        }
+    TU_ARMA(Generator, e) {
+        return e;
+        }
+    TU_ARMA(Async, e) {
+        return e;
+        }
+    }
+    throw "";
 }
 
 bool ::HIR::TypeRef::operator==(const ::HIR::CoreType& x) const
@@ -470,14 +520,8 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         }
         return te.m_rettype == xe.m_rettype;
         }
-    TU_ARMA(Closure, te, xe) {
-        if( te.node != xe.node )
-            return false;
-        //assert( te.m_rettype == xe.m_rettype );
-        return true;
-        }
-    TU_ARMA(Generator, te, xe) {
-        return te.node == xe.node;
+    TU_ARMA(NodeType, te, xe) {
+        return te == xe;
         }
     }
     throw "";
@@ -575,14 +619,8 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         ORD(te.m_arg_types, xe.m_arg_types);
         return ::ord(te.m_rettype, xe.m_rettype);
         ),
-    (Closure,
-        ORD( reinterpret_cast<::std::uintptr_t>(te.node), reinterpret_cast<::std::uintptr_t>(xe.node) );
-        //assert( te.m_rettype == xe.m_rettype );
-        return OrdEqual;
-        ),
-    (Generator,
-        ORD( reinterpret_cast<::std::uintptr_t>(te.node), reinterpret_cast<::std::uintptr_t>(xe.node) );
-        return OrdEqual;
+    (NodeType,
+        return te.ord(xe);
         )
     )
     throw "";
@@ -721,6 +759,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
 {
     return callback.cmp_type(sp, *this, x_in, resolve_placeholder);
 }
+HIR::TrackHrbStack::PopOnDrop HIR::TrackHrbStack::push_hrb(const std::unique_ptr<HIR::GenericParams>& params) const {
+    static HIR::GenericParams  empty_params;
+    return params ? push_hrb(*params) : PopOnDrop();
+}
 ::HIR::Compare HIR::MatchGenerics::cmp_path(const Span& sp, const ::HIR::Path& path_l, const ::HIR::Path& path_r, t_cb_resolve_type resolve_placeholder)
 {
     ::HIR::Compare  rv = Compare::Unequal;
@@ -812,8 +854,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             {
                 switch(*te)
                 {
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     return Compare::Fuzzy;
                     //return true;
                 default:
@@ -860,8 +904,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             {
                 switch(*xe)
                 {
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     return Compare::Fuzzy;
                 default:
                     DEBUG("- Fuzz fail");
@@ -967,6 +1013,8 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         if( te.m_markers.size() != xe.m_markers.size() ) {
             return Compare::Unequal;
         }
+        static const HIR::GenericParams empty_params;
+        auto _ = push_hrb(te.m_trait.m_hrtbs ? *te.m_trait.m_hrtbs : empty_params);
         auto cmp = match_generics_pp(sp, te.m_trait.m_path.m_params, xe.m_trait.m_path.m_params, resolve_placeholder, *this);
         for(unsigned int i = 0; i < te.m_markers.size(); i ++)
         {
@@ -1078,6 +1126,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             return Compare::Unequal;
         if( te.m_arg_types.size() != xe.m_arg_types.size() )
             return Compare::Unequal;
+        auto _ = push_hrb(te.hrls);
         auto rv = Compare::Equal;
         for( unsigned int i = 0; i < te.m_arg_types.size(); i ++ ) {
             rv &= this->cmp_type(sp, te.m_arg_types[i], xe.m_arg_types[i], resolve_placeholder);
@@ -1087,15 +1136,8 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         rv &= this->cmp_type(sp, te.m_rettype, xe.m_rettype, resolve_placeholder);
         return rv;
         }
-    TU_ARMA(Closure, te, xe) {
-        if( te.node != xe.node )
-            return Compare::Unequal;
-        return Compare::Equal;
-        }
-    TU_ARMA(Generator, te, xe) {
-        if( te.node != xe.node )
-            return Compare::Unequal;
-        return Compare::Equal;
+    TU_ARMA(NodeType, te, xe) {
+        return te == xe ? Compare::Equal : Compare::Unequal;
         }
     }
     throw "";
@@ -1221,8 +1263,10 @@ HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
         return ::HIR::TypeRef( TypeData::make_ErasedType({
             e.m_is_sized,
             mv$(traits),
-            e.m_lifetimes,
-            mv$(inner)
+            e.m_lifetime_bounds,
+            mv$(inner),
+            e.m_use.clone(),
+            e.m_use_present
             }) );
         }
     TU_ARMA(Array, e) {
@@ -1259,18 +1303,8 @@ HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
             ft.m_arg_types.push_back( a.clone() );
         return ::HIR::TypeRef(TypeData::make_Function( mv$(ft) ));
         }
-    TU_ARMA(Closure, e) {
-        TypeData::Data_Closure  oe;
-        oe.node = e.node;
-        //oe.m_closure_rettype = e.m_closure_rettype.clone();
-        //for(const auto& a : e.m_closure_arg_types)
-        //    oe.m_closure_arg_types.push_back( a.clone() );
-        return ::HIR::TypeRef(TypeData::make_Closure( mv$(oe) ));
-        }
-    TU_ARMA(Generator, e) {
-        TypeData::Data_Generator    oe;
-        oe.node = e.node;
-        return ::HIR::TypeRef(TypeData::make_Generator( mv$(oe) ));
+    TU_ARMA(NodeType, e) {
+        return ::HIR::TypeRef(e.clone());
         }
     }
     throw "";
@@ -1349,8 +1383,10 @@ HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
             TU_ARMA(Primitive, re) {
                 switch(re)
                 {
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     return Compare::Fuzzy;
                 default:
                     return Compare::Unequal;
@@ -1410,8 +1446,10 @@ HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
             TU_ARMA(Primitive, le) {
                 switch(le)
                 {
+                case ::HIR::CoreType::F16:
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
+                case ::HIR::CoreType::F128:
                     return Compare::Fuzzy;
                 default:
                     return Compare::Unequal;
@@ -1556,31 +1594,8 @@ HIR::TypeData_NamedFunction_Ty HIR::TypeData_NamedFunction_Ty::clone() const {
         rv &= le.m_rettype.compare_with_placeholders( sp, re.m_rettype, resolve_placeholder );
         return rv;
         }
-    TU_ARMA(Closure, le, re) {
-#if 0
-        if( le.node != re.node )
-            return Compare::Unequal;
-        if( le.m_closure_arg_types.size() != re.m_closure_arg_types.size() )
-            return Compare::Unequal;
-        auto rv = Compare::Equal;
-        for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
-        {
-            rv &= le.m_arg_types[i].compare_with_placeholders( sp, re.m_arg_types[i], resolve_placeholder );
-            if( rv == Compare::Unequal )
-                return Compare::Unequal;
-        }
-        rv &= le.m_rettype.compare_with_placeholders( sp, re.m_rettype, resolve_placeholder );
-        return rv;
-#else
-        if( le.node != re.node )
-            return Compare::Unequal;
-        return Compare::Equal;
-#endif
-        }
-    TU_ARMA(Generator, le, re) {
-        if( le.node != re.node )
-            return Compare::Unequal;
-        return Compare::Equal;
+    TU_ARMA(NodeType, le, re) {
+        return le == re ? Compare::Equal : Compare::Unequal;
         }
     }
     throw "";

@@ -8,29 +8,33 @@
 TargetVersion gTargetVersion;
 //int g_debug_indent_level = 0;
 
+struct Filters {
+    struct Types {
+        bool    macros = true;
+
+        bool    imports = true;
+        bool    functions = true;
+        bool    values = true;
+
+        bool    types = true;
+        bool    traits = true;
+    } types;
+    bool public_only = false;
+    bool no_body = false;
+};
+
 struct Args
 {
     Args(int argc, const char* const argv[]);
+    void help() const;
 
     ::std::string   infile;
+    Filters filters;
 };
 
 struct Dumper
 {
-    struct Filters {
-        struct Types {
-            bool    macros = true;
-
-            bool    imports = true;
-            bool    functions = true;
-            bool    values = true;
-
-            bool    types = true;
-            bool    traits = true;
-        } types;
-        bool public_only = false;
-        bool no_body = false;
-    } filters;
+    Filters filters;
 
     void dump_crate(const char* name, const ::HIR::Crate& crate) const;
     void dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod, int nindent=0) const;
@@ -50,8 +54,7 @@ int main(int argc, const char* argv[])
 {
     Args    args(argc, argv);
     Dumper  dumper;
-
-    dumper.filters.types.functions = true;
+    dumper.filters = args.filters;
 
     auto hir = HIR_Deserialise(args.infile);
     dumper.dump_crate("", *hir);
@@ -281,7 +284,7 @@ void Dumper::dump_struct(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
         auto indent2 = RepeatLitStr { "   ", nindent+1 };
         for(const auto& f : se)
         {
-            ::std::cout << indent2 << f.second.publicity << " " << f.first << ": " << f.second.ent << ",\n";
+            ::std::cout << indent2 << f.vis << " " << f.name << ": " << f.ty << ",\n";
         }
         ::std::cout << indent << "}\n";
         }
@@ -444,6 +447,20 @@ namespace {
             TU_ARMA(Token, e) {
                 os << e;
                 }
+            TU_ARMA(Concat, e) {
+                os << "${concat(";
+                for(const auto& v : e) {
+                    TU_MATCH_HDRA((v), {)
+                    TU_ARMA(Ident, ee) {
+                        os << ee;
+                        }
+                    TU_ARMA(Named, ee) {
+                        os << "$" << ee;
+                        }
+                    }
+                }
+                os << ")}";
+                }
             }
         }
     }
@@ -508,7 +525,55 @@ bool debug_enabled()
 
 Args::Args(int argc, const char* const argv[])
 {
-    this->infile = argv[1];
+    bool all_free = false;
+    const char* infile = nullptr;
+    for(int i = 1; i < argc; ++i) {
+        const char* arg = argv[i];
+        if( all_free || arg[0] != '-' ) {
+            if( !infile ) {
+                infile = arg;
+            }
+            else {
+                ::std::cerr << "Unexpected free argument: " << arg << "\n";
+                exit(1);
+            }
+        }
+        else if( arg[1] == '\0' ) {
+            all_free = true;
+        }
+        else if( arg[1] != '-' ) {
+            for(const char* s = arg+1; *s; s ++) {
+                switch(*s)
+                {
+                case 'h':
+                    this->help();
+                    exit(0);
+                    break;
+                default:
+                    ::std::cerr << "Unexpected flag `-" << *s << "`\n";
+                    exit(1);
+                }
+            }
+        }
+        else {
+            if( std::strcmp(arg, "--help") == 0 ) {
+                this->help();
+                exit(0);
+            }
+            else if( std::strcmp(arg, "--no-body") == 0 ) {
+                this->filters.no_body = true;
+            }
+            else {
+                ::std::cerr << "Unexpected flag `" << arg << "`\n";
+                exit(1);
+            }
+        }
+    }
+    this->infile = infile;
+}
+void Args::help() const
+{
+    ::std::cout << "Usage: dump_hirfile [-h] [..flags..] <path_to_.rlib>\n";
 }
 /*
 // TODO: This is copy-pasted from src/main.cpp, should live somewhere better

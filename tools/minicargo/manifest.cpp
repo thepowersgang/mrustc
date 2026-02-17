@@ -108,6 +108,7 @@ namespace
 {
     void target_edit_from_kv(ErrorHandler& eh, PackageTarget& target, const TomlKeyValue& kv, unsigned base_idx);
     void parse_edition(Edition& dst, ErrorHandler& eh, const TomlValue& value);
+    std::vector<PackageRef>& get_dep_list(Dependencies& deps, const std::string& key);
 }
 
 void Manifest_LoadOverrides(const ::std::string& s)
@@ -199,7 +200,7 @@ WorkspaceManifest WorkspaceManifest::load_from_toml(const ::helpers::path& works
                 else if( key == "rust-version" ) {
                     // Ignore, that's future-me's problem
                 }
-                else if( key == "license" ) {
+                else if( key == "license" || key == "homepage" || key == "repository" ) {
                     // Documentation metdata
                 }
                 else {
@@ -208,12 +209,8 @@ WorkspaceManifest WorkspaceManifest::load_from_toml(const ::helpers::path& works
             }
             else if( key == "dependencies" ) {
                 auto& dep_group = rv.m_dependencies;
-                ::std::vector<PackageRef>& dep_list =
-                    key == "dependencies" ? dep_group.main :
-                    key == "build-dependencies" ? dep_group.build :
-                    /*key == "dev-dependencies" ? */ dep_group.dev /*:
-                                                                               throw ""*/
-                    ;
+                //auto& dep_list = get_dep_list(dep_group, key);
+                auto& dep_list = dep_group.main;
 
                 assert(key_val.path.size() > 2);
                 const auto& depname = key_val.path[2];
@@ -227,6 +224,8 @@ WorkspaceManifest WorkspaceManifest::load_from_toml(const ::helpers::path& works
                 }
 
                 it->fill_from_kv(eh, was_added, key_val, 3, nullptr, dir);
+            }
+            else if( key == "lints" ) {
             }
             else {
                 eh.error("Unknown item in [workspace] `", key, "`");
@@ -291,7 +290,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
         auto cb2 = [&](const PackageRef& dep) {
             rv.m_features[dep.key()].push_back( "dep:" + dep.key() );
             };
-        auto cb = [&](const PackageManifest::Dependencies& deps) {
+        auto cb = [&](const Dependencies& deps) {
             for(const auto& dep : deps.main) {
                 cb2(dep);
             }
@@ -311,7 +310,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
 
     // Default targets
     // - If there's no library section, but src/lib.rs exists, add one
-    if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; }) )
+    if( rv.m_create_auto_lib && ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; }) )
     {
         // No library, add one pointing to lib.rs
         if( ::std::ifstream(package_dir / "src" / "lib.rs").good() )
@@ -321,7 +320,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
         }
     }
     // - If there's no binary section, but src/main.rs exists, add as a binary
-    if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Bin; }) )
+    if( rv.m_create_auto_bins && ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Bin; }) )
     {
         // No library, add one pointing to lib.rs
         if( ::std::ifstream(package_dir / "src" / "main.rs").good() )
@@ -434,7 +433,11 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
 PackageManifest PackageManifest::magic_manifest(const char* name)
 {
     PackageManifest rv;
+    rv.m_version.major = 1;
+    rv.m_version.minor = 99;
     rv.m_name = std::string("rustc-std-workspace-") + name;
+    rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Lib });
+    rv.m_targets.back().m_name = name;
     return rv;
 }
 
@@ -506,13 +509,19 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
             }
             else if( key == "exclude"
                 || key == "include"
+                || key == "publish"
                 )
             {
                 // Packaging
             }
             else if( key == "metadata" )
             {
-                // Unknown.
+                // Explicitly ignored by `cargo`
+            }
+            else if( key == "resolver" )
+            {
+                // Resolver version, doesn't really matter for minicargo?
+                // - This applies only when in the root manifest, ignored in dependencies
             }
             else if( key == "rust-version" )
             {
@@ -540,6 +549,14 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
             else if( key == "autoexamples" )
             {
                 //rv.m_create_auto_example = key_val.value.as_bool();
+            }
+            else if( key == "autolib" )
+            {
+                rv.m_create_auto_lib = key_val.value.as_bool();
+            }
+            else if( key == "autobins" )
+            {
+                rv.m_create_auto_bins = key_val.value.as_bool();
             }
             else if( key == "workspace" )
             {
@@ -628,13 +645,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
         }
         else if( section == "dependencies" || section == "build-dependencies" || section == "dev-dependencies" )
         {
-            auto& dep_group = rv.m_dependencies;
-            ::std::vector<PackageRef>& dep_list =
-                section == "dependencies" ? dep_group.main :
-                section == "build-dependencies" ? dep_group.build :
-                /*section == "dev-dependencies" ? */ dep_group.dev /*:
-                throw ""*/
-                ;
+            auto& dep_list = get_dep_list(rv.m_dependencies, section);
             assert(key_val.path.size() > 1);
 
             const auto& depname = key_val.path[1];
@@ -658,6 +669,31 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
         {
             // TODO: Various profiles (debug, release, ...)
         }
+        else if( section == "lints" )
+        {
+            if( key_val.path.size() == 4 && key_val.path[1] == "rust" && key_val.path[2] == "unexpected_cfgs" && key_val.path[3] == "check-cfg" ) {
+                // Array
+                if( key_val.value.m_type != TomlValue::Type::List ) {
+                    eh.error("check-cfg should be a list of strings");
+                }
+                const auto& ents = key_val.value.as_list();
+                for(const auto& e : ents) {
+                    if( e.m_type != TomlValue::Type::String ) {
+                        eh.error("check-cfg should be a list of strings");
+                    }
+                    const auto& s = e.as_string();
+                    try {
+                        m_lint_check_cfg.add_from_string(s.c_str());
+                    }
+                    catch(const std::exception& e) {
+                        eh.error("Failed to parse `check-cfg`: ", e.what());
+                    }
+                }
+            }
+            else {
+                // Ignore other lints
+            }
+        }
         else if( section == "target" )
         {
             // TODO: Target opts?
@@ -670,13 +706,12 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
             // - It can be a target spec, or a cfg(foo) same as rustc
             // Parse and validate early
             if( cfg.substr(0, 4) == "cfg(" ) {
-                try {
-                    Cfg_Check(cfg.c_str(), {});
-                }
-                catch(const std::exception& e)
-                {
-                    eh.error(e.what());
-                }
+                //try {
+                //    Cfg_Check(cfg.c_str(), {});
+                //}
+                //catch(const std::exception& e) {
+                //    eh.error(e.what());
+                //}
             }
             else {
                 // It's a target name
@@ -690,12 +725,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
                     || real_section == "build-dependencies" 
                     )
                 {
-                    ::std::vector<PackageRef>& dep_list =
-                        real_section == "dependencies" ? dep_group.main :
-                        real_section == "build-dependencies" ? dep_group.build :
-                        /*real_section == "dev-dependencies" ? */ dep_group.dev /*:
-                                                                                        throw ""*/
-                        ;
+                    auto& dep_list = get_dep_list(dep_group, real_section);
                     assert(key_val.path.size() > 3);
 
                     const auto& depname = key_val.path[3];
@@ -831,6 +861,9 @@ namespace
                 else if(s == "dylib") {
                     target.m_crate_types.push_back(PackageTarget::CrateType::dylib);
                 }
+                else if(s == "cdylib") {
+                    target.m_crate_types.push_back(PackageTarget::CrateType::cdylib);
+                }
                 // TODO: Other crate types
                 else {
                     eh.error("Unknown crate type - ", s);
@@ -865,9 +898,25 @@ namespace
         else if(value.as_string() == "2021") {
             dst = Edition::Rust2021;
         }
+        else if(value.as_string() == "2024") {
+            dst = Edition::Rust2024;
+        }
         else {
             eh.error("Unknown edition value ", value);
         }
+    }
+    std::vector<PackageRef>& get_dep_list(Dependencies& deps, const std::string& key)
+    {
+        if( key == "dependencies" ) {
+            return deps.main;
+        }
+        if( key == "build-dependencies" ) {
+            return deps.build;
+        }
+        if( key == "dev-dependencies" ) {
+            return deps.dev;
+        }
+        throw ::std::runtime_error(format("Unreachable: Bad key to `get_dep_list`: \"", key, "\""));
     }
 }
 
@@ -889,12 +938,6 @@ void PackageRef::fill_from_kv(
                 eh.warning("Workspace dependency already added?");
             }
             const auto& src_deps = wm->dependencies();
-            //const auto& src_deps =
-            //    section == "dependencies" ? wm->dependencies() :
-            //    section == "build-dependencies" ? wm->build_dependencies() :
-            //    /*section == "dev-dependencies" ? */ wm->dev_dependencies() /*:
-            //    throw ""*/
-            //    ;
             auto s_it = ::std::find_if(src_deps.begin(), src_deps.end(), [&](const auto& x) { return x.m_key == depname; });
             if( s_it == src_deps.end() ) {
                 eh.error("Unable to find dependency `", depname, "` in workspace");
@@ -1037,7 +1080,7 @@ void PackageManifest::iter_dep_groups(std::function<void(const Dependencies&)> c
         if( cfg.substr(0, 4) == "cfg(" ) {
             try {
                 // TODO: Pass feature list
-                success = Cfg_Check(cfg.c_str(), this->m_active_features);
+                success = Cfg_Check(cfg.c_str(), this->m_active_features, this->m_lint_check_cfg);
             }
             catch(const std::exception& /*e*/)
             {
@@ -1356,7 +1399,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
     m_build_script_output = rv;
 }
 
-std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo, const ::helpers::path& base_path)
+std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo, const ::helpers::path& base_path, std::function<bool(const PackageVersion&)> filter_cb)
 {
     if( m_manifest ) {
         return m_manifest;
@@ -1367,13 +1410,13 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
     if( this->has_git() )
     {
         DEBUG("Load dependency " << this->name() << " from git");
-        throw "TODO: Git";
+        throw ::std::runtime_error("TODO: PackageRef::load_manifest_raw - Git");
     }
 
     if( !this->get_version().m_bounds.empty() )
     {
         DEBUG("Load dependency " << this->name() << " from repo");
-        auto rv = repo.find(this->name(), this->get_version());
+        auto rv = repo.find(this->name(), this->get_version(), filter_cb);
         if( rv ) {
             return rv;
         }
@@ -1418,6 +1461,16 @@ std::shared_ptr<PackageManifest> PackageRef::load_manifest_raw(Repository& repo,
             static std::shared_ptr<PackageManifest> s_manifest_alloc = std::make_shared<PackageManifest>(PackageManifest::magic_manifest("alloc"));
             m_manifest = s_manifest_alloc;
         }
+        if( m_name == "rustc-std-workspace-core" )
+        {
+            static std::shared_ptr<PackageManifest> s_manifest_alloc = std::make_shared<PackageManifest>(PackageManifest::magic_manifest("core"));
+            m_manifest = s_manifest_alloc;
+        }
+        if( m_name == "rustc-std-workspace-std" )
+        {
+            static std::shared_ptr<PackageManifest> s_manifest_alloc = std::make_shared<PackageManifest>(PackageManifest::magic_manifest("std"));
+            m_manifest = s_manifest_alloc;
+        }
     }
 
     return m_manifest;
@@ -1426,7 +1479,7 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
 {
     TRACE_FUNCTION_F(this->m_name);
     if( !m_manifest ) {
-        m_manifest = load_manifest_raw(repo, base_path);
+        m_manifest = load_manifest_raw(repo, base_path, [](const PackageVersion&){return true;});
     }
     if( !m_manifest ) {
         throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));
@@ -1597,6 +1650,18 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             if(s[pos] == '.')
             {
                 pos ++;
+                if( s[pos] == '*' ) {
+                    rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::GreaterEqual, v });
+                    auto v2 = v;
+                    v2.minor += 1;
+                    rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::Less, v2 });
+
+                    while( pos < s.size() && isblank(s[pos]) )
+                        pos ++;
+                    if(pos == s.size())
+                        break ;
+                    continue ;
+                }
                 v.patch = H::parse_i(s, pos);
                 v.patch_set = true;
 
@@ -1645,7 +1710,7 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
         switch(b.ty)
         {
         case Bound::Type::Compatible: {
-            // ^ rules are >= specified, and < next major/breaking
+            // ^ rules are >= previous compatible (same patch), and < next major/breaking
             if( !(v >= b.ver.prev_compat()) )
                 return false;
             if( !(v < b.ver.next_breaking()) )
@@ -1681,6 +1746,10 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
         }
     }
     return true;
+}
+bool PackageVersionSpec::operator==(const PackageVersion& v) const
+{
+    return m_bounds.size() == 1 && (m_bounds[0].ty == Bound::Type::Compatible || m_bounds[0].ty == Bound::Type::Equal) && m_bounds[0].ver == v;
 }
 
 

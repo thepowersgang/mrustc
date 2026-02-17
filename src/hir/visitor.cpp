@@ -277,7 +277,10 @@ void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
         }
     TU_ARMA(Named, e) {
         for(auto& field : e) {
-            this->visit_type(field.second.ent);
+            this->visit_type(field.ty);
+            if( field.default_value ) {
+                this->visit_generic_path(*field.default_value, PathContext::VALUE);
+            }
         }
         }
     }
@@ -302,6 +305,7 @@ void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
         for(auto& var : e)
         {
             this->visit_type(var.type);
+            this->visit_expr(var.discriminant_expr);
         }
         }
     }
@@ -316,8 +320,10 @@ void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
         m_resolve->set_impl_generics_raw(MetadataType::Unknown, item.m_params);
     }
     this->visit_params(item.m_params);
-    for(auto& var : item.m_variants)
-        this->visit_type(var.second.ent);
+    for(auto& var : item.m_variants) {
+        this->visit_type(var.ty);
+        assert(!var.default_value);
+    }
     if( m_resolve ) {
         m_resolve->clear_impl_generics();
     }
@@ -378,8 +384,10 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
     TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
     for(auto& tps : params.m_types)
         this->visit_type( tps.m_default );
-    for(auto& val : params.m_values)
+    for(auto& val : params.m_values) {
         this->visit_type(val.m_type);
+        this->visit_constgeneric(val.m_default);
+    }
     for(auto& bound : params.m_bounds )
         visit_generic_bound(bound);
 }
@@ -442,6 +450,7 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
             }
             }
         }
+        this->visit_path_params(e.m_use);
         for(auto& trait : e.m_traits) {
             this->visit_trait_path(trait);
         }
@@ -475,9 +484,7 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         }
         this->visit_type(e.m_rettype);
         }
-    TU_ARMA(Closure, e) {
-        }
-    TU_ARMA(Generator, e) {
+    TU_ARMA(NodeType, e) {
         }
     }
 }

@@ -495,7 +495,7 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
         }
         return TomlToken { Type::String, str };
     default:
-        if(isalnum(c) || c == '_')
+        if(isalnum(c) || c == '_' || c == '-')
         {
             // Identifier
             while(isalnum(c) || c == '-' || c == '_')
@@ -507,9 +507,17 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
 
             int64_t val = 0;
             bool is_all_digit = true;
-            if( str.size() > 2 && str[0] == '0' ) {
-                if(str[1] == 'x') {
-                    for(size_t i = 2; i < str.size(); i ++) {
+            bool is_neg = false;
+            size_t i = 0;
+            if( str[0] == '-' ) {
+                is_neg = true;
+                i ++;
+            }
+
+            if( str.size()-i > 2 && str[i] == '0' ) {
+                if(str[i+1] == 'x') {
+                    i += 2;
+                    for(; i < str.size(); i ++) {
                         c = str[i];
                         if( !isxdigit(c) ) {
                             is_all_digit = false;
@@ -519,8 +527,9 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                         val += (c <= '9' ? c - '0' : (c & ~0x20) - 'A' + 10);
                     }
                 }
-                else if(str[1] == 'o') {
-                    for(size_t i = 2; i < str.size(); i ++) {
+                else if(str[i+1] == 'o') {
+                    i += 2;
+                    for(; i < str.size(); i ++) {
                         c = str[i];
                         if( !('0' <= c && c <= '7') ) {
                             is_all_digit = false;
@@ -530,8 +539,9 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                         val += c - '0';
                     }
                 }
-                else if(str[1] == 'b') {
-                    for(size_t i = 2; i < str.size(); i ++) {
+                else if(str[i+1] == 'b') {
+                    i += 2;
+                    for(; i < str.size(); i ++) {
                         c = str[i];
                         if( !('0' <= c && c <= '1') ) {
                             is_all_digit = false;
@@ -546,7 +556,8 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                 }
             }
             else {
-                for(char c : str) {
+                for(; i < str.size(); i ++) {
+                    c = str[i];
                     if( !isdigit(c) ) {
                         is_all_digit = false;
                         break;
@@ -556,13 +567,13 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                 }
             }
             if( is_all_digit ) {
-                return TomlToken { Type::Integer, val };
+                return TomlToken { Type::Integer, (is_neg ? -val : val) };
             }
             return TomlToken { Type::Ident, str };
         }
         else
         {
-            throw ::std::runtime_error(::format("Unexpected chracter '", (char)c, "' in file"));
+            throw ::std::runtime_error(::format("?:", m_line, ": Unexpected character '", (char)c, "' in file"));
         }
     }
 }

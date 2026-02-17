@@ -8,8 +8,10 @@ namespace MIR {
         class Allocation;
         class CallStackEntry;
     }
+    class LValue;
     class Statement;
     class Terminator;
+    class TypeResolve;
 }
 
 namespace HIR {
@@ -74,6 +76,7 @@ private:
     void run_statement(::MIR::eval::CallStackEntry& local_state, const ::MIR::Statement& stmt);
     // Returns UINT_MAX on return
     unsigned run_terminator(::MIR::eval::CallStackEntry& local_state, const ::MIR::Terminator& stmt);
+    bool call_function(::MIR::eval::CallStackEntry& local_state, const MIR::LValue& rv_slot, ::std::shared_ptr<::HIR::Path> path, ::std::vector<::MIR::eval::AllocationPtr> call_args);
 
     EncodedLiteral allocation_to_encoded(const ::HIR::TypeRef& ty, const ::MIR::eval::Allocation& a);
 };

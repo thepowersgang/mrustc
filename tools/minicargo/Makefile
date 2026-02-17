@@ -20,6 +20,8 @@ OBJS := main.o manifest.o repository.o cfg.o
 OBJS += build.o
 OBJS += jobs.o
 OBJS += file_timestamp.o os.o
+OBJS += resolve_0minicargo.o
+OBJS += resolve_cargo.o
 
 LINKFLAGS := -g -lpthread
 CXXFLAGS := -Wall -std=c++14 -g -O2

@@ -113,6 +113,7 @@ struct TyVisitor
             for(auto& trait : e.m_traits)
                 if( visit_trait_path(trait) )
                     return true;
+            visit_path_params(e.m_use);
             TU_MATCH_HDRA( (e.m_inner), {)
             TU_ARMA(Fcn, ee) {
                 if( visit_path(ee.m_origin) ) {
@@ -125,6 +126,7 @@ struct TyVisitor
                 }
                 }
             TU_ARMA(Alias, ee) {
+                visit_path_params(ee.params);
                 }
             }
             return false;
@@ -158,10 +160,8 @@ struct TyVisitor
             }
             return visit_type(e.m_rettype);
             }
-        TU_ARMA(Closure, e) {
-            }
-        TU_ARMA(Generator, e) {
-            // Visits?
+        TU_ARMA(NodeType, e) {
+            // These just have a node pointer, no visiting
             }
         }
         return false;
@@ -272,7 +272,7 @@ struct TyVisitorMonomorphNeeded: TyVisitor<WConst>
             if( ty.data().is_TraitObject() && is_generic_lft(ty.data().as_TraitObject().m_lifetime) )
                 return true;
             if( ty.data().is_ErasedType() ) {
-                for( const auto& l : ty.data().as_ErasedType().m_lifetimes ) {
+                for( const auto& l : ty.data().as_ErasedType().m_lifetime_bounds ) {
                     if( is_generic_lft(l) )
                         return true;
                 }
@@ -335,15 +335,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         ::HIR::TypeData::Data_TraitObject  to;
         if( e.m_trait.m_hrtbs ) {
             to.m_trait.m_hrtbs = box$(e.m_trait.m_hrtbs->clone());
-            m_hrb_stack.push_back(e.m_trait.m_hrtbs.get());
         }
-        to.m_trait = this->monomorph_traitpath(sp, e.m_trait, allow_infer, false);
-        for(const auto& trait : e.m_markers)
         {
-            to.m_markers.push_back( this->monomorph_genericpath(sp, trait, allow_infer, false) );
-        }
-        if( e.m_trait.m_hrtbs ) {
-            m_hrb_stack.pop_back();
+            auto _ = push_hrb(e.m_trait.m_hrtbs);
+            to.m_trait = this->monomorph_traitpath(sp, e.m_trait, allow_infer, false);
+            for(const auto& trait : e.m_markers)
+            {
+                to.m_markers.push_back( this->monomorph_genericpath(sp, trait, allow_infer, false) );
+            }
         }
         to.m_lifetime = monomorph_lifetime(sp, e.m_lifetime);
         return ::HIR::TypeRef( mv$(to) );
@@ -354,7 +353,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         for(const auto& trait : e.m_traits)
             traits.push_back( this->monomorph_traitpath(sp, trait, allow_infer, false) );
         ::std::vector< ::HIR::LifetimeRef>  lfts;
-        for(const auto& lft : e.m_lifetimes)
+        for(const auto& lft : e.m_lifetime_bounds)
             lfts.push_back(monomorph_lifetime(sp, lft));
 
         HIR::TypeData_ErasedType_Inner  inner;
@@ -380,7 +379,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
             e.m_is_sized,
             mv$(traits),
             mv$(lfts),
-            mv$(inner)
+            mv$(inner),
+            this->monomorph_path_params(sp, e.m_use, allow_infer),
+            e.m_use_present
             } );
         }
     TU_ARMA(Array, e) {
@@ -412,7 +413,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
             } );
         }
     TU_ARMA(Function, e) {
-        m_hrb_stack.push_back(&e.hrls);
+        auto _ = push_hrb(e.hrls);
         ::HIR::TypeData_FunctionPointer ft;
         ft.hrls = e.hrls.clone();
         ft.is_unsafe = e.is_unsafe;
@@ -421,19 +422,11 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         ft.m_rettype = this->monomorph_type(sp, e.m_rettype, allow_infer);
         for( const auto& arg : e.m_arg_types )
             ft.m_arg_types.push_back( this->monomorph_type(sp, arg, allow_infer) );
-        m_hrb_stack.pop_back();
         return ::HIR::TypeRef( mv$(ft) );
         }
     // Closures and generators are just passed through, needed for hackery in type checking (erasing HRLs)
-    TU_ARMA(Closure, e) {
-        ::HIR::TypeData::Data_Closure  oe;
-        oe.node = e.node;
-        return ::HIR::TypeRef( mv$(oe) );
-        }
-    TU_ARMA(Generator, e) {
-        ::HIR::TypeData::Data_Generator oe;
-        oe.node = e.node;
-        return ::HIR::TypeRef( mv$(oe) );
+    TU_ARMA(NodeType, e) {
+        return ::HIR::TypeRef(e.clone());
         }
     }
     throw "";
@@ -443,11 +436,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     if( lft.is_param() ) {
         HIR::GenericRef g {"", lft.binding};
 
-        // TODO: Have a flag/stack here for current defined HRL batches (trait paths and function pointers), if in one then do the hack
+        // Have a flag/stack here for current defined HRL batches (trait paths and function pointers), if in one then do the hack
         // - Otherwise, pass to `get_lifetime`
-        if( !m_hrb_stack.empty() && g.group() == 3 )  {
-            // TODO: Ensure that the param is in range.
-            return lft;
+        if( g.group() == HIR::GENERIC_Hrtb )  {
+            if( const auto* hrtb = has_hrb() ) {
+                // TODO: Ensure that the param is in range (has some issues with nested?)
+                //ASSERT_BUG(sp, g.idx() < hrtb->m_lifetimes.size(), "Found HRTB out of range - " << g << " from for" << hrtb->fmt_args());
+                return lft;
+            }
         }
 
         return get_lifetime(sp, g);
@@ -463,9 +459,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         return ::HIR::Path( this->monomorph_genericpath(sp, e2, allow_infer, false) );
         }
     TU_ARMA(UfcsKnown, e2) {
-        if( e2.hrtbs /*&& !ignore_hrls*/ ) {
-            m_hrb_stack.push_back(e2.hrtbs.get());
-        }
+        auto _ = push_hrb(e2.hrtbs);
         auto rv = ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
             this->monomorph_type(sp, e2.type, allow_infer),
             this->monomorph_genericpath(sp, e2.trait, allow_infer, false),
@@ -473,9 +467,6 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
             this->monomorph_path_params(sp, e2.params, allow_infer),
             e2.hrtbs ? box$(e2.hrtbs->clone()) : nullptr
             }));
-        if( e2.hrtbs /*&& !ignore_hrls*/ ) {
-            m_hrb_stack.pop_back();
-        }
         return rv;
         }
     TU_ARMA(UfcsUnknown, e2) {
@@ -498,8 +489,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
 }
 ::HIR::TraitPath Monomorphiser::monomorph_traitpath(const Span& sp, const ::HIR::TraitPath& tpl, bool allow_infer, bool ignore_hrls) const
 {
+    ::std::unique_ptr<PopOnDrop>    _;
     if( tpl.m_hrtbs && !ignore_hrls ) {
-        m_hrb_stack.push_back(tpl.m_hrtbs.get());
+        _ = std::make_unique<PopOnDrop>(push_hrb(*tpl.m_hrtbs));
     }
 
     ::HIR::TraitPath    rv {
@@ -513,10 +505,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     for(const auto& assoc : tpl.m_type_bounds) {
         rv.m_type_bounds.insert(::std::make_pair(
             assoc.first,
-            HIR::TraitPath::AtyEqual {
-                this->monomorph_genericpath(sp, assoc.second.source_trait, allow_infer, false),
-                this->monomorph_type(sp, assoc.second.type, allow_infer)
-                }
+            this->monomorph_tp_aty_equal(sp, assoc.second, allow_infer)
             ));
     }
     for(const auto& assoc : tpl.m_trait_bounds) {
@@ -526,11 +515,15 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         rv.m_trait_bounds.insert(::std::make_pair( assoc.first, std::move(v) ));
     }
 
-    if( tpl.m_hrtbs && !ignore_hrls ) {
-        m_hrb_stack.pop_back();
-    }
-
     return rv;
+}
+::HIR::TraitPath::AtyEqual Monomorphiser::monomorph_tp_aty_equal(const Span& sp, const ::HIR::TraitPath::AtyEqual& tpl, bool allow_infer) const
+{
+    return HIR::TraitPath::AtyEqual {
+        this->monomorph_genericpath(sp, tpl.source_trait, allow_infer, false),
+        {},
+        this->monomorph_type(sp, tpl.type, allow_infer)
+        };
 }
 ::HIR::ConstGeneric Monomorphiser::monomorph_constgeneric(const Span& sp, const ::HIR::ConstGeneric& val, bool allow_infer) const
 {
@@ -828,11 +821,13 @@ void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HI
     case ::HIR::InferClass::Float:
         switch(ct)
         {
+        case ::HIR::CoreType::F16:
         case ::HIR::CoreType::F32:
         case ::HIR::CoreType::F64:
+        case ::HIR::CoreType::F128:
             break;
         default:
-            ERROR(sp, E0000, "Type unificiation of integer literal with non-integer - " << type);
+            ERROR(sp, E0000, "Type unificiation of float literal with non-float - " << type);
         }
         break;
     case ::HIR::InferClass::Integer:

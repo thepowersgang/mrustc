@@ -83,6 +83,16 @@ public:
             return false;
         }
     }
+    /// <summary>Consumes a token if it is of the specified type</summary>
+    bool   getTokenIf(eTokenType exp, Token& dst) { // I'd like std::optional, but not available
+        if(lookahead(0) == exp) {
+            dst = getToken();
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
     /// <summary>Obtains a token, asserting that it's of the specified type</summary>
     Token   getTokenCheck(eTokenType exp);
     void    putback(Token tok);

@@ -10,6 +10,7 @@
 #include <macro_rules/macro_rules.hpp>
 #include <mir/mir.hpp>
 #include "serialise_lowlevel.hpp"
+#include "../hir_typeck/monomorph.hpp"  // monomorphise_path_needed
 
 //namespace {
     class HirSerialiser
@@ -242,7 +243,8 @@
 
                 m_out.write_bool(e.m_is_sized);
                 serialise_vec(e.m_traits);
-                serialise_vec(e.m_lifetimes);
+                serialise_vec(e.m_lifetime_bounds);
+                serialise_pathparams(e.m_use);
                 }
             TU_ARMA(Array, e) {
                 serialise_type(e.inner);
@@ -275,8 +277,7 @@
                 serialise_vec(e.m_arg_types);
                 }
                 break;
-            case ::HIR::TypeData::TAG_Closure:
-            case ::HIR::TypeData::TAG_Generator:
+            case ::HIR::TypeData::TAG_NodeType:
                 BUG(Span(), "Encountered invalid type when serialising - " << ty);
                 break;
             }
@@ -315,11 +316,13 @@
         void serialise(const ::HIR::TraitPath::AtyEqual& e)
         {
             serialise(e.source_trait);
+            serialise_pathparams(e.aty_params);
             serialise(e.type);
         }
         void serialise(const ::HIR::TraitPath::AtyBound& e)
         {
             serialise(e.source_trait);
+            serialise_pathparams(e.aty_params);
             serialise_vec(e.traits);
         }
         void serialise_path(const ::HIR::Path& path)
@@ -338,7 +341,13 @@
                 serialise_pathparams(e.impl_params);
                 }
             TU_ARMA(UfcsKnown, e) {
-                m_out.write_tag(2);
+                if(e.hrtbs) {
+                    m_out.write_tag(3);
+                    serialise_generics(*e.hrtbs);
+                }
+                else {
+                    m_out.write_tag(2);
+                }
                 serialise_type(e.type);
                 serialise_genericpath(e.trait);
                 m_out.write_string(e.item);
@@ -367,6 +376,7 @@
         void serialise(const ::HIR::ValueParamDef& pd) {
             m_out.write_string(pd.m_name);
             serialise_type(pd.m_type);
+            serialise(pd.m_default);
         }
         void serialise(const ::HIR::GenericBound& b) {
             TRACE_FUNCTION_F(b);
@@ -652,6 +662,22 @@
                 serialise(e.joiner);
                 serialise(e.controlling_input_loops);
                 }
+            TU_ARMA(Concat, e) {
+                m_out.write_tag(3);
+                serialise_vec(e);
+                }
+            }
+        }
+        void serialise(const ::MacroExpansionConcatEnt& e) {
+            m_out.write_tag(e.tag());
+            TU_MATCH_HDRA((e), {)
+            TU_ARMA(Ident, i) {
+                serialise(i.hygiene);
+                m_out.write_string(i.name);
+                }
+            TU_ARMA(Named, i) {
+                serialise(i);
+                }
             }
         }
         void serialise(const ::Token& tok) {
@@ -706,7 +732,7 @@
         }
         void serialise(const ::HIR::ConstGeneric_Unevaluated& v)
         {
-            ASSERT_BUG(v.expr->span(), v.expr->m_mir, "Encountered non-translated value in ConstGeneric");
+            ASSERT_BUG(v.expr->span(), v.expr->m_mir, "Encountered non-translated value in ConstGeneric: " << v);
             serialise_pathparams(v.params_impl);
             serialise_pathparams(v.params_item);
             serialise(*v.expr);
@@ -849,6 +875,18 @@
                 serialise_vec(e.lines);
                 serialise_vec(e.params);
                 }
+            TU_ARMA(SaveDropFlag, e) {
+                m_out.write_tag(6);
+                m_out.write_count(e.idx);
+                serialise(e.slot);
+                m_out.write_count(e.bit_index);
+                }
+            TU_ARMA(LoadDropFlag, e) {
+                m_out.write_tag(7);
+                m_out.write_count(e.idx);
+                serialise(e.slot);
+                m_out.write_count(e.bit_index);
+                }
             }
         }
         void serialise(const ::MIR::Terminator& term)
@@ -973,6 +1011,7 @@
                 ),
             (Borrow,
                 m_out.write_tag( static_cast<int>(e.type) );
+                m_out.write_bool(e.is_raw);
                 serialise(e.val);
                 ),
             (Cast,
@@ -1049,6 +1088,7 @@
                 m_out.write_string(e);
                 ),
             (Const,
+                ASSERT_BUG(Span(), monomorphise_path_needed(*e.p), "Unexpected Constant: " << *e.p);
                 serialise_path(*e.p);
                 ),
             (Generic,
@@ -1276,6 +1316,7 @@
             m_out.write_string(v.name);
             m_out.write_bool(v.is_struct);
             serialise(v.type);
+            m_out.write_u64(v.discriminant_value);
         }
 
         void serialise(const ::HIR::TraitMarkings& m)
@@ -1335,6 +1376,16 @@
             m_out.write_count(item.m_max_field_alignment);
             serialise(item.m_markings);
             serialise(item.m_struct_markings);
+        }
+        void serialise(const ::HIR::StructField& fld)
+        {
+            serialise(fld.name);
+            serialise(fld.vis);
+            serialise(fld.ty);
+            m_out.write_bool(fld.default_value != nullptr);
+            if(fld.default_value) {
+                serialise(*fld.default_value);
+            }
         }
         void serialise(const ::HIR::Union& item)
         {

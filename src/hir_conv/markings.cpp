@@ -54,7 +54,7 @@ public:
         // HACK: Just determine what ?Sized parameter is controlling the sized-ness
         if( str.m_struct_markings.dst_type == ::HIR::StructMarkings::DstType::Possible )
         {
-            auto& last_field_ty = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().back().ent : str.m_data.as_Named().back().second.ent);
+            auto& last_field_ty = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().back().ent : str.m_data.as_Named().back().ty);
             for(size_t i = 0; i < str.m_params.m_types.size(); i++)
             {
                 const auto& param = str.m_params.m_types[i];
@@ -150,7 +150,7 @@ public:
             // TODO: Ensure that only the last field is ?Sized
             if( se.size() > 0 )
             {
-                return get_field_dst_type(se.back().second.ent, str.m_params, def, params);
+                return get_field_dst_type(se.back().ty, str.m_params, def, params);
             }
             }
         }
@@ -236,13 +236,13 @@ public:
                         for(unsigned int i = 0; i < se.size(); i ++)
                         {
                             // If the data is PhantomData, ignore it.
-                            if( TU_TEST2(se[i].second.ent.data(), Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
+                            if( TU_TEST2(se[i].ty.data(), Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
                             {
                                 continue ;
                             }
-                            if( monomorphise_type_needed(se[i].second.ent) ) {
-                                auto ty_l = monomorph_cb_l.monomorph_type(sp, se[i].second.ent, false);
-                                auto ty_r = monomorph_cb_r.monomorph_type(sp, se[i].second.ent, false);
+                            if( monomorphise_type_needed(se[i].ty) ) {
+                                auto ty_l = monomorph_cb_l.monomorph_type(sp, se[i].ty, false);
+                                auto ty_r = monomorph_cb_r.monomorph_type(sp, se[i].ty, false);
                                 if( ty_l != ty_r ) {
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
@@ -317,7 +317,7 @@ public:
             field_ty = &se.at(str.m_struct_markings.coerce_unsized_index).ent;
             ),
         (Named,
-            field_ty = &se.at(str.m_struct_markings.coerce_unsized_index).second.ent;
+            field_ty = &se.at(str.m_struct_markings.coerce_unsized_index).ty;
             )
         )
         assert(field_ty);

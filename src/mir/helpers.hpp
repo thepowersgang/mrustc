@@ -38,7 +38,7 @@ struct CheckFailure:
 
 #define MIR_BUG(state, ...) do { const char* __fcn = __FUNCTION__; (state).print_bug( [&](auto& _os){_os << __fcn << ": " << __VA_ARGS__; } ); throw ""; } while(0)
 #define MIR_ASSERT(state, cnd, ...) do { if( !(cnd) ) (state).print_bug( [&](auto& _os){_os << __FILE__ << ":" << __LINE__ << " ASSERT " #cnd " failed - " << __VA_ARGS__; } ); } while(0)
-#define MIR_TODO(state, ...) do { (state).print_todo( [&](auto& _os){_os << __VA_ARGS__; } ); throw ""; } while(0)
+#define MIR_TODO(state, ...) do { (state).print_todo( [&](auto& _os){_os << __FILE__ << ":" << __LINE__ << ": " << __VA_ARGS__; } ); throw ""; } while(0)
 #define MIR_DEBUG(state, ...) do { DEBUG(FMT_CB(_ss, (state).fmt_pos(_ss);) << __VA_ARGS__); } while(0)
 
 class TypeResolve
@@ -137,6 +137,16 @@ public:
 
     bool lvalue_is_copy(const ::MIR::LValue& val) const;
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
+
+    /// @brief Handler for the `offset_of` intrinsic
+    /// @param ty Type
+    /// @param params Field names (must be Const::String)
+    /// @return Offset in bytes
+    size_t intrinsic_offset_of(const ::HIR::TypeRef& ty, const ::std::vector<MIR::Param>& params) const;
+    /// @brief Handler for the `type_name` intrinsic, strips out mrustc's helper comments
+    /// @param ty Type
+    /// @return Clean string form of the type
+    std::string intrinsic_type_name(const ::HIR::TypeRef& ty) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeResolve& x) {
         x.fmt_pos(os);
@@ -398,6 +408,12 @@ namespace visit {
                 }
                 }
             TU_ARMA(SetDropFlag, e) {
+                }
+            TU_ARMA(SaveDropFlag, e) {
+                rv |= visit_lvalue(e.slot, ValUsage::Write);
+                }
+            TU_ARMA(LoadDropFlag, e) {
+                rv |= visit_lvalue(e.slot, ValUsage::Read);
                 }
             TU_ARMA(Drop, e) {
                 rv |= visit_lvalue(e.slot, ValUsage::Move);

@@ -60,7 +60,7 @@ void Span::print_span_message(::std::function<void(::std::ostream&)> tag, ::std:
     sink << sp << " ";
     //sink << sp->filename << ":" << sp->start_line << ": ";
     tag(sink);
-    sink << ":";
+    sink << ": ";
     msg(sink);
     sink << ::std::endl;
     

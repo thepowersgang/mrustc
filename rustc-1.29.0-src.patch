@@ -320,3 +320,22 @@
 +#include <limits>
  #include <numeric>
  #include <vector>
+
+# Work around old inference in compiler-builtins
+--- src/libcompiler_builtins/src/float/div.rs
++++ src/libcompiler_builtins/src/float/div.rs
+@@ -122,3 +122,3 @@
+     // is accurate to about 3.5 binary digits.
+-    let q31b = CastInto::<u32>::cast(b_significand << 8.cast());
++    let q31b = CastInto::<u32>::cast(b_significand << 8);
+     let mut reciprocal = (0x7504f333u32).wrapping_sub(q31b);
+@@ -332,3 +332,3 @@
+     // is accurate to about 3.5 binary digits.
+-    let q31b = CastInto::<u32>::cast(b_significand >> 21.cast());
++    let q31b = CastInto::<u32>::cast(b_significand >> 21);
+     let mut recip32 = (0x7504f333u32).wrapping_sub(q31b);
+@@ -358,3 +358,3 @@
+     // The last iteration needs to happen with extra precision.
+-    let q63blo = CastInto::<u32>::cast(b_significand << 11.cast());
++    let q63blo = CastInto::<u32>::cast(b_significand << 11);
+     let correction: u64;

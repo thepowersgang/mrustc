@@ -19,10 +19,11 @@ extern int g_debug_indent_level;
 #endif
 
 #ifndef DISABLE_DEBUG
-# define MAX_INDENT_LEVEL   400
-# define DEBUG_ENABLED  (debug_enabled() DEBUG_EXTRA_ENABLE)
+// Note: Set for `curl-sys-0_4_82` build script, which has a log chain of method calls
+# define MAX_INDENT_LEVEL   450
 # define INDENT()    do { g_debug_indent_level += 1; assert(g_debug_indent_level<MAX_INDENT_LEVEL); } while(0)
 # define UNINDENT()    do { g_debug_indent_level -= 1; } while(0)
+# define DEBUG_ENABLED  (debug_enabled() DEBUG_EXTRA_ENABLE)
 # define DEBUG(ss)   do{ if(DEBUG_ENABLED) { debug_output(g_debug_indent_level, __FUNCTION__) << ss << std::dec << ::std::endl; } } while(0)
 # define TRACE_FUNCTION  TraceLog _tf_( DEBUG_ENABLED ? __func__ : nullptr)
 # define TRACE_FUNCTION_F(ss)    TraceLog _tf_(DEBUG_ENABLED ? __func__ : nullptr, [&](::std::ostream&__os){ __os << ss; })

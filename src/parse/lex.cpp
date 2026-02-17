@@ -477,10 +477,12 @@ Token Lexer::getTokenInt()
                         this->ungetc();
 
                         if(0)   ;
+                        else if(suffix == "f16") num_type = CORETYPE_F16;
                         else if(suffix == "f32") num_type = CORETYPE_F32;
                         else if(suffix == "f64") num_type = CORETYPE_F64;
+                        else if(suffix == "f128") num_type = CORETYPE_F128;
                         else
-                            throw ParseError::Generic( FMT("Unknown number suffix " << suffix) );
+                            ERROR(this->point_span(), E0000, "Unknown float suffix " << suffix);
                     }
                     else
                     {
@@ -512,10 +514,12 @@ Token Lexer::getTokenInt()
                     else if(suffix == "u64") num_type = CORETYPE_U64;
                     else if(suffix == "u128") num_type = CORETYPE_U128;
                     else if(suffix == "usize") num_type = CORETYPE_UINT;
+                    else if(suffix == "f16") num_type = CORETYPE_F16;
                     else if(suffix == "f32") num_type = CORETYPE_F32;
                     else if(suffix == "f64") num_type = CORETYPE_F64;
+                    else if(suffix == "f128") num_type = CORETYPE_F128;
                     else
-                        throw ParseError::Generic(*this, FMT("Unknown integer suffix '" << suffix << "'"));
+                        ERROR(this->point_span(), E0000, "Unknown integer suffix " << suffix);
                     return Token(val, num_type);
                 }
                 else {
@@ -868,6 +872,24 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool pa
         str += ch;
         ch = this->getc();
     }
+    if( ch == '\"') {
+        // C String literal
+        if( str == "c" ) {
+            str = "";
+            while( (ch = this->getc()) != '"' ) {
+                if( ch == '\\' ) {
+                    auto v = this->parseEscape('"');
+                    if( v != ~0u ) {
+                        str += Codepoint(v);
+                    }
+                }
+                else {
+                    str += ch;
+                }
+            }
+            return Token(TOK_CSTRING, mv$(str), realGetHygiene());
+        }
+    }
 
     this->ungetc();
     if(parse_reserved_word)
@@ -958,9 +980,9 @@ U128 Lexer::parseInt(NumMode* num_mode_out)
 // Takes the VERY lazy way of reading the float into a string then passing to strtod
 double Lexer::parseFloat(U128 whole)
 {
-    const int MAX_LEN = 63;
-    const int MAX_SIG = MAX_LEN - 1 - 4;
     std::string  sbuf = FMT(whole << ".");
+    //const int MAX_LEN = 63;
+    //const int MAX_SIG = MAX_LEN - 1 - 4;
     //char buf[MAX_LEN+1];
     //int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
 
@@ -1349,6 +1371,7 @@ Token Lex_FindReservedWord(const ::std::string& s, AST::Edition edition)
         break;
     case AST::Edition::Rust2018:
     case AST::Edition::Rust2021:
+    case AST::Edition::Rust2024:
         len = LEN(RWORDS_2018);
         RWORDS = RWORDS_2018;
         break;

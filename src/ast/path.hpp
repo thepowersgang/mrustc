@@ -151,6 +151,7 @@ TAGGED_UNION_EX(PathBinding_Value, (), Unbound, (
 TAGGED_UNION_EX(PathBinding_Type, (), Unbound, (
     (Unbound, struct {
         }),
+    (Primitive, eCoreType),
     (Crate, struct {
         const ExternCrate* crate_;
         }),
@@ -697,8 +698,8 @@ TAGGED_UNION_EX(PathParamEnt, (), Null, (
     (Lifetime, LifetimeRef),
     (Type, TypeRef),
     (Value, AST::ExprNodeP),
-    (AssociatedTyEqual, ::std::pair<RcString, TypeRef>),
-    (AssociatedTyBound, ::std::pair<RcString, Path>)
+    (AssociatedTyEqual, ::std::pair<PathNode, TypeRef>),
+    (AssociatedTyBound, ::std::pair<PathNode, std::vector<Path>>)
     ),
     (), (),
     (

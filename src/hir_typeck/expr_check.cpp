@@ -144,6 +144,13 @@ namespace {
             check_types_equal(*this->closure_ret_types.back().yield_type, node.m_value);
             node.m_value->visit(*this);
         }
+        void visit(::HIR::ExprNode_AWait& node) override
+        {
+            node.m_value->visit(*this);
+            auto t = ::HIR::TypeRef::new_path(::HIR::Path(node.m_value->m_res_type.clone(), m_resolve.m_lang_Future, "Output"), {});
+            m_resolve.expand_associated_types(node.span(), t);
+            check_types_equal(node.span(), node.m_res_type, t);
+        }
         void visit(::HIR::ExprNode_Loop& node) override
         {
             TRACE_FUNCTION_F(&node << " loop { ... }");
@@ -438,9 +445,14 @@ namespace {
                             ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - argument " << i << " different");
                     }
                     }
-                TU_ARMA(Closure, se) {
-                    // Allowed, but won't exist after expansion
-                    // TODO: Check argument types
+                TU_ARMA(NodeType, se) {
+                    if( se.is_Closure() ) {
+                        // Allowed, but won't exist after expansion
+                        // TODO: Check argument types
+                    }
+                    else {
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - not a function");
+                    }
                     }
                 }
                 }
@@ -651,7 +663,7 @@ namespace {
             ASSERT_BUG(node.span(), fields_ptr, "Didn't get field for path in _StructLiteral - " << ty);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
             for(const auto& fld : fields) {
-                DEBUG(fld.first << ": " << fld.second.ent);
+                DEBUG(fld.name << ": " << fld.ty);
             }
 
             auto ms = MonomorphStatePtr(&ty, &ty_path.m_params, nullptr);
@@ -660,9 +672,9 @@ namespace {
             for( auto& val : node.m_values)
             {
                 const auto& name = val.first;
-                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
+                auto it = ::std::find_if(fields.begin(), fields.end(), [&](const HIR::StructField& v)->bool{ return v.name == name; });
                 assert(it != fields.end());
-                const auto& des_ty_r = it->second.ent;
+                const auto& des_ty_r = it->ty;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
 
@@ -905,14 +917,16 @@ namespace {
                     m_resolve.expand_associated_types(node.span(), tmp_ft);
                     e = &tmp_ft.data().as_Function();
                 }
+                auto hrls = e->hrls.make_empty_params(true);
+                auto m = MonomorphHrlsOnly(hrls);
                 if( e->is_variadic ? node.m_args.size() < e->m_arg_types.size() : node.m_args.size() != e->m_arg_types.size() ) {
                     ERROR(node.span(), E0000, "Incorrect number of arguments to call via " << val_ty);
                 }
                 for( unsigned int i = 0; i < e->m_arg_types.size(); i ++ )
                 {
-                    check_types_equal(node.m_args[i]->span(), e->m_arg_types[i], node.m_args[i]->m_res_type);
+                    check_types_equal(node.m_args[i]->span(), m.monomorph_type(node.span(), e->m_arg_types[i]), node.m_args[i]->m_res_type);
                 }
-                check_types_equal(node.span(), node.m_res_type, e->m_rettype);
+                check_types_equal(node.span(), node.m_res_type, m.monomorph_type(node.span(), e->m_rettype));
             }
             else if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
             {
@@ -995,9 +1009,9 @@ namespace {
             {
                 ASSERT_BUG(sp, is_index, "Non-index _Field on tuple");
             }
-            else if( str_ty.data().is_Closure() )
+            else if( str_ty.data().is_NodeType() )
             {
-                ASSERT_BUG(sp, is_index, "Non-index _Field on closure");
+                ASSERT_BUG(sp, is_index, "Non-index _Field on magic type");
             }
             else
             {
@@ -1074,6 +1088,7 @@ namespace {
             
             MonomorphState  out_params;
             StaticTraitResolve::ValuePtr v = this->m_resolve.get_value(sp, node.m_path, out_params, /*signature_only=*/true);
+            HIR::TypeRef    ty;
             TU_MATCH_HDRA( (v), {)
             TU_ARMA(NotFound, ve) {
                 BUG(sp, node.m_path << " Not found");
@@ -1083,14 +1098,12 @@ namespace {
                 BUG(sp, node.m_path << " still unknown (has ivars?)");
                 }
             TU_ARMA(Static, ve) {
-                auto ty = out_params.monomorph_type(node.span(), ve->m_type);
+                ty = out_params.monomorph_type(node.span(), ve->m_type);
                 this->m_resolve.expand_associated_types(sp, ty);
-                check_types_equal(sp, node.m_res_type, ty);
                 }
             TU_ARMA(Constant, ve) {
-                auto ty = out_params.monomorph_type(node.span(), ve->m_type);
+                ty = out_params.monomorph_type(node.span(), ve->m_type);
                 this->m_resolve.expand_associated_types(sp, ty);
-                check_types_equal(sp, node.m_res_type, ty);
                 }
             TU_ARMA(StructConstant, ve) {
                 // TODO: Check struct type
@@ -1100,14 +1113,20 @@ namespace {
                 }
             
             TU_ARMA(Function, ve) {
-                // TODO: Check function type
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({ node.m_path.clone(), ve }));
                 }
             TU_ARMA(StructConstructor, ve) {
-                // TODO: Check function type (struct constructor)
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({ node.m_path.clone(), ve.s }));
                 }
             TU_ARMA(EnumConstructor, ve) {
-                // TODO: Check function type (enum variant constructor)
+                ty = ::HIR::TypeRef(::HIR::TypeData::make_NamedFunction({
+                    node.m_path.clone(),
+                    ::HIR::TypeData_NamedFunction_Ty::make_EnumConstructor({ ve.e, ve.v })
+                    }));
                 }
+            }
+            if( ty != HIR::TypeRef() ) {
+                check_types_equal(sp, node.m_res_type, ty);
             }
         }
 
@@ -1169,6 +1188,20 @@ namespace {
                 this->m_loops = ::std::move(loops);
             }
         }
+        void visit(::HIR::ExprNode_AsyncBlock& node) override
+        {
+            TRACE_FUNCTION_F(&node << " async { ... }");
+
+            // Can be null after generation
+            if( node.m_code )
+            {
+                auto loops = ::std::move(this->m_loops);
+                this->closure_ret_types.push_back(RetTarget(node.m_code->m_res_type));
+                node.m_code->visit( *this );
+                this->closure_ret_types.pop_back( );
+                this->m_loops = ::std::move(loops);
+            }
+        }
 
     private:
         void check_types_equal(const ::HIR::TypeRef& l, const ::HIR::ExprNodeP& node) const
@@ -1206,6 +1239,8 @@ namespace {
             //    return check_types_equal(sp, l, m_cur_expr->m_erased_types.at(e->m_index));
             //}
             DEBUG(sp << " - " << l << " == " << r);
+            MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, l);
+            MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, r);
             if( /*l.data().is_Diverge() ||*/ r.data().is_Diverge() ) {
                 // Diverge, matches everything.
                 // TODO: Is this always true?
@@ -1390,7 +1425,9 @@ namespace {
             if( item.m_code )
             {
                 DEBUG("Function code " << p);
-                ExprVisitor_Validate    ev(m_resolve, item.m_args, item.m_return);
+                ::HIR::TypeRef tmp;
+                const auto& ret_ty = m_resolve.fix_trait_default_return(item.m_code->span(), p, item.m_return, tmp);
+                ExprVisitor_Validate    ev(m_resolve, item.m_args, ret_ty);
                 ev.visit_root( item.m_code );
             }
             else
@@ -1408,6 +1445,7 @@ namespace {
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
+            auto _ = this->m_resolve.set_item_generics(item.m_params);
             if( item.m_value )
             {
                 t_args  tmp;
@@ -1419,9 +1457,9 @@ namespace {
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             auto _ = this->m_resolve.set_impl_generics(MetadataType::None, item.m_params);
 
+            ::HIR::TypeRef enum_type = ::HIR::Enum::get_repr_type(item.m_tag_repr);
             if( auto* e = item.m_data.opt_Value() )
             {
-                auto enum_type = ::HIR::Enum::get_repr_type(item.m_tag_repr);
                 for(auto& var : e->variants)
                 {
                     DEBUG("Enum value " << p << " - " << var.name);

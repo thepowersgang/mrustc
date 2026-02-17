@@ -13,10 +13,10 @@ extern bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl, bool igno
 extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes=false);
 
 class Monomorphiser
+    : virtual public HIR::TrackHrbStack
 {
     const HIR::Crate*   consteval_crate;
     HIR::ItemPath consteval_path;
-    mutable std::vector<const HIR::GenericParams*>  m_hrb_stack;
 public:
     Monomorphiser()
         : consteval_crate(nullptr)
@@ -24,21 +24,6 @@ public:
     {
     }
     virtual ~Monomorphiser() = default;
-    
-    class PopOnDrop {
-        friend class Monomorphiser;
-        std::vector<const HIR::GenericParams*>& v;
-        PopOnDrop(std::vector<const HIR::GenericParams*>& v): v(v) {
-        }
-    public:
-        ~PopOnDrop() {
-            v.pop_back();
-        }
-    };
-    PopOnDrop push_hrb(const HIR::GenericParams& params) const {
-        m_hrb_stack.push_back(&params);
-        return PopOnDrop(m_hrb_stack);
-    }
 
     void set_consteval_state(const HIR::Crate& crate, HIR::ItemPath ip) {
         this->consteval_crate = &crate;
@@ -53,6 +38,7 @@ public:
     virtual ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const;
     ::HIR::Path monomorph_path(const Span& sp, const ::HIR::Path& tpl, bool allow_infer=true) const;
     ::HIR::TraitPath monomorph_traitpath(const Span& sp, const ::HIR::TraitPath& tpl, bool allow_infer, bool ignore_hrls=false) const;
+    ::HIR::TraitPath::AtyEqual monomorph_tp_aty_equal(const Span& sp, const ::HIR::TraitPath::AtyEqual& tpl, bool allow_infer) const;
     ::HIR::PathParams monomorph_path_params(const Span& sp, const ::HIR::PathParams& tpl, bool allow_infer) const;
     virtual ::HIR::GenericPath monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer=true, bool ignore_hrls=false) const;
 
@@ -233,7 +219,7 @@ struct MonomorphState:
 
 
     bool has_types() const {
-        return pp_method->m_types.size() > 0 || pp_impl->m_types.size() > 0;
+        return (pp_method && pp_method->has_params()) || (pp_impl && pp_impl->has_params());
     }
 
 

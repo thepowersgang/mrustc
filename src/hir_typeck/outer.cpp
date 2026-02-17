@@ -403,91 +403,8 @@ namespace {
             // If an ErasedType is encountered, check if it has an origin set.
             if(auto* e = ty.data_mut().opt_ErasedType())
             {
-                for(auto& lft : e->m_lifetimes)
+                for(auto& lft : e->m_lifetime_bounds)
                     visit_lifetime(sp, lft);
-                if( auto* ee = e->m_inner.opt_Fcn() )
-                {
-                    DEBUG("Set origin of ErasedType - " << ty);
-                    DEBUG("&ty.data() = " << &ty.data());
-                    // If not, figure out what to do with it
-
-                    // If the function path is set, we're processing the return type of a function
-                    // - Add this to the list of erased types associated with the function
-                    if( ee->m_origin != HIR::SimplePath() )
-                    {
-                        // Already set, somehow (maybe we're visiting the function after expansion)
-                    }
-                    else if( m_fcn_path )
-                    {
-                        assert(m_fcn_ptr);
-                        DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
-
-                        ::HIR::PathParams    params = m_fcn_ptr->m_params.make_nop_params(1);
-                        // Populate with function path
-                        ee->m_origin = m_fcn_path->get_full_path();
-                        TU_MATCH_HDRA( (ee->m_origin.m_data), {)
-                        TU_ARMA(Generic, e2) {
-                            e2.m_params = mv$(params);
-                            }
-                        TU_ARMA(UfcsInherent, e2) {
-                            e2.params = mv$(params);
-                            // Impl params, just directly references the parameters.
-                            // - Downstream monomorph will fix that
-                            e2.impl_params = m_resolve.m_impl_generics->make_nop_params(0);
-                            }
-                        TU_ARMA(UfcsKnown, e2) {
-                            e2.params = mv$(params);
-                            }
-                        TU_ARMA(UfcsUnknown, e2) {
-                            throw "";
-                            }
-                        }
-                        ee->m_index = m_fcn_erased_count++;
-                    }
-                    // If the function _pointer_ is set (but not the path), then we're in the function arguments
-                    // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
-                    else if( m_fcn_ptr )
-                    {
-                        size_t idx = m_fcn_ptr->m_params.m_types.size();
-                        auto name = RcString::new_interned(FMT("erased$" << idx));
-                        auto new_ty = ::HIR::TypeRef( name, 256 + idx );
-                        m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), e->m_is_sized });
-                        for( auto& trait : e->m_traits )
-                        {
-                            struct M: MonomorphiserNop {
-                                const HIR::TypeRef& new_ty;
-                                M(const HIR::TypeRef& ty): new_ty(ty) {}
-                                ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
-                                    if( ty.binding == GENERIC_ErasedSelf ) {
-                                        return new_ty.clone();
-                                    }
-                                    return HIR::TypeRef(ty);
-                                }
-                            } m { new_ty };
-                            // TODO: Monomorph the trait to replace `Self` with this generic?
-                            // - Except, that should it be?
-                            m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                                nullptr,
-                                new_ty.clone(),
-                                m.monomorph_traitpath(sp, trait, false)
-                                }));
-                        }
-                        for(const auto& lft : e->m_lifetimes)
-                        {
-                            m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
-                                new_ty.clone(),
-                                lft
-                                }));
-                        }
-                        ty = ::std::move(new_ty);
-                    }
-                    else
-                    {
-                        // TODO: If we're in a top-level `type`, then it must be used as the return type of a function.
-                        // https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html#type-alias
-                        ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
-                    }
-                }
             }
         }
 
@@ -924,7 +841,7 @@ namespace {
                     auto& impl_fcn = e.second.data;
                     const auto& trait_fcn = v_it->second.as_Function();
 
-                    auto fcn_params = impl_fcn.m_params.make_nop_params(1);
+                    auto fcn_params = trait_fcn.m_params.make_nop_params(1);
                     MonomorphStatePtr   ms { &impl.m_type, &impl.m_trait_args, &fcn_params };
                     HIR::TypeRef    tmp;
                     auto maybe_monomorph = [&](const HIR::TypeRef& ty)->const HIR::TypeRef& {
@@ -990,10 +907,58 @@ namespace {
                             }
                         }
                     }
-                    const auto& exp_ret_ty = maybe_monomorph(trait_fcn.m_return);
-                    if( impl_fcn.m_return != exp_ret_ty ) {
-                        failures.push_back(FMT("Mismatched return type (expected " << exp_ret_ty << ", got " << impl_fcn.m_return << ")"));
+                    // Handle `implTrait` in returns
+                    // - Would need to re-create `exp_ret_ty` to keep the `impl Trait`, OR keep a non-erased/expanded copy of the type
+                    // > The difference tends to be in lifetimes, so match the two types and update lifetimes?
+                    struct MCB: public ::HIR::MatchGenerics {
+                        ::std::map<RcString,const ::HIR::TypeRef*>  mapping;
+                        ::HIR::Compare cmp_type(const Span& sp, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, HIR::t_cb_resolve_type resolve_cb) override {
+                            // If the LHS is an ATY that starts with `erased#` then just accept it?
+                            // - Also record the mapping
+                            if( const auto* ty_p = ty_l.data().opt_Path() ) {
+                                if( const auto* path_p = ty_p->path.m_data.opt_UfcsKnown() ) {
+                                    if( path_p->item.compare(0, strlen(ATY_PREFIX_ERASED), ATY_PREFIX_ERASED) == 0  ) {
+                                        mapping.insert(std::make_pair(path_p->item, &ty_r));
+                                        return ::HIR::Compare::Equal;
+                                    }
+                                }
+                            }
+                            return ::HIR::MatchGenerics::cmp_type(sp, ty_l, ty_r, resolve_cb);
+                        }
+                        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, HIR::t_cb_resolve_type resolve_cb) override {
+                            return (!ty.data().is_Generic() || ty.data().as_Generic() != g)
+                                ? ::HIR::Compare::Unequal
+                                : ::HIR::Compare::Equal;
+                        }
+                        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
+                            return (!sz.is_Generic() || sz.as_Generic() != g)
+                                ? ::HIR::Compare::Unequal
+                                : ::HIR::Compare::Equal;
+                        }
+                    } match_cb;
+                    const auto& exp_ret_ty1 = maybe_monomorph(trait_fcn.m_return);
+                    if( !exp_ret_ty1.match_test_generics(sp, impl_fcn.m_return, HIR::ResolvePlaceholdersNop(), match_cb) ) {
+                        failures.push_back(FMT(
+                            "Mismatched return type:\n"
+                            << "  Expected " << exp_ret_ty1 << "\n"
+                            << "  Found    " << impl_fcn.m_return));
                     }
+                    HIR::TypeRef    exp_ret_ty_real;
+                    const auto& exp_ret_ty = match_cb.mapping.empty()
+                        ? exp_ret_ty1
+                        : (exp_ret_ty_real = clone_ty_with(sp, exp_ret_ty1, [&](const ::HIR::TypeRef& ref, ::HIR::TypeRef& out)->bool {
+                            if( const auto* ty_p = ref.data().opt_Path() ) {
+                                if( const auto* path_p = ty_p->path.m_data.opt_UfcsKnown() ) {
+                                    auto it = match_cb.mapping.find(path_p->item);
+                                    if( it != match_cb.mapping.end() ) {
+                                        out = it->second->clone();
+                                        return true;
+                                    }
+                                }
+                            }
+                            return false;
+                        }))
+                        ;
 
                     //if( impl_fcn.m_params.m_lifetimes.size() != trait_fcn.m_params.m_lifetimes.size() ) {
                     //    failures.push_back(FMT("Mismatched lifetime param count (expected " << trait_fcn.m_params.m_lifetimes.size() << ", got " << impl_fcn.m_params.m_lifetimes.size() << ")"));
@@ -1012,7 +977,7 @@ namespace {
                                 os << "    -> " << maybe_monomorph(trait_fcn.m_return) << "\n";
                                 os << "    " << trait_fcn.m_params.fmt_bounds();
                                 }) << "\n"
-                            << "Impl : " << FMT_CB(os, {
+                            << "Impl :\n" << FMT_CB(os, {
                                 os << "    fn " << e.first << impl_fcn.m_params.fmt_args() << "(";
                                 for(const auto& a : impl_fcn.m_args)
                                 {
@@ -1050,10 +1015,12 @@ namespace {
                         }
                     }
 
-                    impl_fcn.m_return = exp_ret_ty.clone();
                     // HACK: Clone the expected type, so the lifetimes match.
+                    DEBUG("Updating < " << impl.m_type << " as " << trait_path << impl.m_trait_args << " >::" << e.first);
+                    impl_fcn.m_return = exp_ret_ty.clone();
                     for( size_t i = 0; i < std::min(impl_fcn.m_args.size(), trait_fcn.m_args.size()); i ++ )
                     {
+                        DEBUG("ARG" << i << "> " << trait_fcn.m_args[i].second);
                         impl_fcn.m_args[i].second = m_resolve.monomorph_expand(sp, trait_fcn.m_args[i].second, ms);
                     }
                     DEBUG("Updated < " << impl.m_type << " as " << trait_path << impl.m_trait_args << " >::" << e.first);

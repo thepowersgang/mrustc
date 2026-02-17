@@ -74,8 +74,10 @@ Token Token::make_float(double val, enum eCoreType datatype)
     rv.m_data = Data::make_Float({datatype, val});
     switch(datatype)
     {
+    case CORETYPE_F16:
     case CORETYPE_F32:
     case CORETYPE_F64:
+    case CORETYPE_F128:
     case CORETYPE_ANY:
         break;
     default:
@@ -403,6 +405,7 @@ struct EscapedString {
             return FMT(m_data.as_Float().m_floatval << "_" << m_data.as_Float().m_datatype);
         }
     case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"" << m_hygiene);
+    case TOK_CSTRING:   return FMT("c\"" << EscapedString(m_data.as_String()) << "\"" << m_hygiene);
     case TOK_BYTESTRING:return FMT("b\"" << m_data.as_String() << "\"");
     case TOK_HASH:  return "#";
     case TOK_UNDERSCORE:return "_";
@@ -553,8 +556,9 @@ struct EscapedString {
         break;
     case TOK_IDENT:
     case TOK_LIFETIME:
-        if( tok.m_data.is_Ident() )
-            os << "\"" << tok.m_data.as_Ident() << "\"";
+        if( const auto* td = tok.m_data.opt_Ident() ) {
+            os << "\"" << td->name << "\"" << td->hygiene;
+        }
         else if( tok.m_data.is_None() )
             ;
         else

@@ -36,6 +36,9 @@ mod protocol;
 mod serialisation;
 mod diagnostic;
 
+pub mod tracked_env;
+pub mod tracked_path;
+
 pub mod token_stream {
 
     #[derive(Debug,Clone,Default)]

@@ -47,7 +47,7 @@ void handle_save(const Span& sp, AST::Crate& crate, const std::string& name, con
         DEBUG("Bind '"<<name<<"' to " << path);
     }
 }
-void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, eItemType type)
+void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, eItemType type, AST::Item& item)
 {
     // NOTE: MSVC has a limit to the number of if-else chains
     if(g_handlers.empty())
@@ -194,6 +194,76 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
             H::add("Poll"      , Handler(ITEM_ENUM  , handle_save));   // 1.74 - `::core::task::poll::Poll`
             H::add("Context"   , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::task::wake::Context`
         }
+        if( TARGETVER_LEAST_1_90 )
+        {
+            H::add("contract_build_check_ensures", Handler(ITEM_FN, handle_save));  // 1.90 - `::core::contracts::build_check_ensures`
+            H::add("contract_check_requires", Handler(ITEM_FN, handle_save));  // 1.90 - `::core::intrinsics::contract_check_requires`
+            H::add("contract_check_ensures" , Handler(ITEM_FN, handle_save));  // 1.90 - `::core::intrinsics::contract_check_ensures`
+            H::add("use_cloned", Handler(ITEM_TRAIT, handle_save)); // 1.90 - `::core::clone::use_cloned` - for the `.use` syntax
+
+            H::add("Ordering", Handler(ITEM_ENUM, handle_save));    // comparison ordering
+
+            H::add("meta_sized", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::MetaSized
+            H::add("pointee_sized", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::PointeeSized
+            H::add("bikeshed_guaranteed_no_drop", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::BikeshedGuaranteedNoDrop
+            H::add("unsafe_unpin", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::UnsafeUnpin
+            H::add("unsized_const_param_ty", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::UnsizedConstParamTy
+            H::add("coerce_pointee_validated", Handler(ITEM_TRAIT, handle_save));    // ::core::marker::CoercePointeeValidated
+
+            H::add("async_fn", Handler(ITEM_TRAIT, handle_save));
+            H::add("async_fn_mut", Handler(ITEM_TRAIT, handle_save));
+            H::add("async_fn_once", Handler(ITEM_TRAIT, handle_save));
+
+            H::add("async_fn_kind_helper", Handler(ITEM_TRAIT, handle_save));   // ::core::ops::async_function::internal_implementation_detail::AsyncFnKindHelper
+            H::add("coroutine_state", Handler(ITEM_ENUM, handle_save)); // ::core::ops::coroutine::CoroutineState
+            H::add("coroutine", Handler(ITEM_TRAIT, handle_save)); // ::core::ops::coroutine::Coroutine
+            H::add("deref_pure", Handler(ITEM_TRAIT, handle_save)); // ::core::ops::deref::DerefPure
+            H::add("legacy_receiver", Handler(ITEM_TRAIT, handle_save)); // ::core::ops::deref::LegacyReceiver
+
+            H::add("type_id", Handler(ITEM_STRUCT, handle_save)); // ::core::any::TypeId
+
+            H::add("async_iterator", Handler(ITEM_TRAIT, handle_save)); // ::core::async_iter::async_iter::AsyncIterator
+            H::add("fused_iterator", Handler(ITEM_TRAIT, handle_save)); // ::core::iter::traits::marker::FusedIterator
+
+            // Various panic handlers
+            H::add("panic_const_add_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_sub_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_mul_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_div_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_rem_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_neg_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_shr_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_shl_overflow", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_div_by_zero", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_rem_by_zero", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_coroutine_resumed", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_fn_resumed", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_gen_fn_resumed", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_gen_fn_none", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_coroutine_resumed_panic", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_fn_resumed_panic", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_gen_fn_resumed_panic", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_gen_fn_none_panic", Handler(ITEM_FN, handle_save));
+
+            H::add("panic_const_coroutine_resumed_drop", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_fn_resumed_drop", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_async_gen_fn_resumed_drop", Handler(ITEM_FN, handle_save));
+            H::add("panic_const_gen_fn_none_drop", Handler(ITEM_FN, handle_save));
+
+            H::add("panic_null_pointer_dereference", Handler(ITEM_FN, handle_save));
+            H::add("panic_invalid_enum_construction", Handler(ITEM_FN, handle_save));
+
+            H::add("unsafe_pinned", Handler(ITEM_STRUCT, handle_save)); // ::core::pin::unsafe_pinned::UnsafePinned
+
+            H::add("RangeCopy", Handler(ITEM_STRUCT, handle_save)); // ::core::range::Range
+            H::add("RangeInclusiveCopy", Handler(ITEM_STRUCT, handle_save)); // ::core::range::RangeInclusive
+            H::add("RangeFromCopy", Handler(ITEM_STRUCT, handle_save)); // ::core::range::RangeFrom
+
+            H::add("async_drop", Handler(ITEM_TRAIT, handle_save)); // ::core::future::async_drop::AsyncDrop
+            H::add("async_drop_in_place", Handler(ITEM_FN, handle_save)); // ::core::future::async_drop::async_drop_in_place
+
+            H::add("global_alloc_ty", Handler(ITEM_STRUCT, handle_save));   // ::alloc::alloc::Global
+        }
     }
     const char* real_name = nullptr;    // For when lang items have their name changed
     auto it = g_handlers.find(name.c_str());
@@ -251,7 +321,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     // Functions
     else if( name == "panic" ) { }
     else if( name == "panic_bounds_check" ) { }
-    else if( name == "panic_fmt" ) { }
+    else if( name == "panic_fmt" ) {
+        item.as_Function().m_markings.link_name = "rust_begin_unwind";
+    }
     else if( name == "str_eq" ) { }
     else if( name == "drop_in_place" ) { }
     else if( name == "align_offset" ) { }
@@ -318,9 +390,9 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
-        auto v = attr.parse_equals_string(crate, mod);
+        auto name = attr.parse_equals_string(crate, mod);
         TU_MATCH_HDRA( (i), {)
         default:
             TODO(sp, "Unknown item type " << i.tag_str() << " with #["<<attr<<"] attached at " << path);
@@ -328,31 +400,72 @@ public:
         TU_ARMA(None, e) {
             // NOTE: Can happen when #[cfg] removed this
             }
+        TU_ARMA(Impl, e) {
+                 if( name == "i8" ) {}
+            else if( name == "u8" ) {}
+            else if( name == "i16" ) {}
+            else if( name == "u16" ) {}
+            else if( name == "i32" ) {}
+            else if( name == "u32" ) {}
+            else if( name == "i64" ) {}
+            else if( name == "u64" ) {}
+            else if( name == "i128" ) {}
+            else if( name == "u128" ) {}
+            else if( name == "isize" ) {}
+            else if( name == "usize" ) {}
+            else if( name == "const_ptr" ) {}
+            else if( name == "mut_ptr" ) {}
+            else if( TARGETVER_LEAST_1_54 && name == "const_slice_ptr" ) {}
+            else if( TARGETVER_LEAST_1_54 && name == "mut_slice_ptr" ) {}
+            else if( TARGETVER_LEAST_1_54 && name == "array" ) {}
+            else if( /*TARGETVER_1_39 &&*/ name == "bool" ) {}
+            // rustc_unicode
+            else if( name == "char" ) {}
+            // collections
+            else if( name == "str" ) {}
+            else if( name == "slice" ) {}
+            else if( TARGETVER_LEAST_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
+            else if( TARGETVER_LEAST_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
+            else if( TARGETVER_LEAST_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
+            else if( TARGETVER_LEAST_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
+            // std - interestingly
+            else if( name == "f32" ) {}
+            else if( name == "f64" ) {}
+            else if( TARGETVER_LEAST_1_29 && name == "f32_runtime" ) {}
+            else if( TARGETVER_LEAST_1_29 && name == "f64_runtime" ) {}
+            else {
+                ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
+            }
+
+            // TODO: Somehow annotate these impls to allow them to provide inherents?
+            // - mrustc is lazy and inefficient, so these don't matter :)
+
+            }
         TU_ARMA(Function, e) {
             if( e.code().is_valid() ) {
-                handle_lang_item(sp, crate, path, v, ITEM_FN);
+                handle_lang_item(sp, crate, path, name, ITEM_FN, i);
             }
             else {
-                handle_lang_item(sp, crate, path, v, ITEM_EXTERN_FN);
+                handle_lang_item(sp, crate, path, name, ITEM_EXTERN_FN, i);
             }
             }
         TU_ARMA(Type, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_TYPE_ALIAS);
+            handle_lang_item(sp, crate, path, name, ITEM_TYPE_ALIAS, i);
             }
         TU_ARMA(Static, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_STATIC);
+            handle_lang_item(sp, crate, path, name, ITEM_STATIC, i);
             }
         TU_ARMA(Struct, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_STRUCT);
+            handle_lang_item(sp, crate, path, name, ITEM_STRUCT, i);
             }
         TU_ARMA(Enum, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_ENUM);
+            handle_lang_item(sp, crate, path, name, ITEM_ENUM, i);
             }
         TU_ARMA(Union, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_UNION);
+            handle_lang_item(sp, crate, path, name, ITEM_UNION, i);
             }
         TU_ARMA(Trait, e) {
-            handle_lang_item(sp, crate, path, v, ITEM_TRAIT);
+            handle_lang_item(sp, crate, path, name, ITEM_TRAIT, i);
             }
         }
     }
@@ -365,49 +478,6 @@ public:
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         // TODO: lang items on associated items (e.g. functions - `RangeFull::new`)
     }
-
-    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
-        ::std::string name = mi.parse_equals_string(crate, mod);
-
-             if( name == "i8" ) {}
-        else if( name == "u8" ) {}
-        else if( name == "i16" ) {}
-        else if( name == "u16" ) {}
-        else if( name == "i32" ) {}
-        else if( name == "u32" ) {}
-        else if( name == "i64" ) {}
-        else if( name == "u64" ) {}
-        else if( name == "i128" ) {}
-        else if( name == "u128" ) {}
-        else if( name == "isize" ) {}
-        else if( name == "usize" ) {}
-        else if( name == "const_ptr" ) {}
-        else if( name == "mut_ptr" ) {}
-        else if( TARGETVER_LEAST_1_54 && name == "const_slice_ptr" ) {}
-        else if( TARGETVER_LEAST_1_54 && name == "mut_slice_ptr" ) {}
-        else if( TARGETVER_LEAST_1_54 && name == "array" ) {}
-        else if( /*TARGETVER_1_39 &&*/ name == "bool" ) {}
-        // rustc_unicode
-        else if( name == "char" ) {}
-        // collections
-        else if( name == "str" ) {}
-        else if( name == "slice" ) {}
-        else if( TARGETVER_LEAST_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
-        else if( TARGETVER_LEAST_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
-        else if( TARGETVER_LEAST_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
-        else if( TARGETVER_LEAST_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
-        // std - interestingly
-        else if( name == "f32" ) {}
-        else if( name == "f64" ) {}
-        else if( TARGETVER_LEAST_1_29 && name == "f32_runtime" ) {}
-        else if( TARGETVER_LEAST_1_29 && name == "f64_runtime" ) {}
-        else {
-            ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
-        }
-
-        // TODO: Somehow annotate these impls to allow them to provide inherents?
-        // - mrustc is lazy and inefficient, so these don't matter :)
-    }
 };
 
 class Decorator_Main:
@@ -415,7 +485,7 @@ class Decorator_Main:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if( i.is_None() ) {
             // Ignore.
@@ -439,7 +509,7 @@ class Decorator_Start:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_None())
         {
@@ -464,7 +534,7 @@ class Decorator_PanicImplementation:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {
@@ -486,7 +556,7 @@ class Decorator_PanicHandler:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {
@@ -508,7 +578,7 @@ class Decorator_RustcStdInternalSymbol:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         // Attribute that acts as like `#[no_mangle]` `#[linkage="external"]`
     }
@@ -519,7 +589,7 @@ class Decorator_AllocErrorHandler:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item& i) const override
     {
         if(i.is_Function())
         {

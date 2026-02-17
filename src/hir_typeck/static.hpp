@@ -42,6 +42,9 @@ class StaticTraitResolve:
     mutable ::std::map< ::HIR::TypeRef, bool >  m_drop_cache;
     mutable ::std::map< std::string, HIR::TypeRef>  m_aty_cache;
 
+    /// Cache of the result of find_impl__check_crate_raw
+    mutable ::std::map< std::string, std::pair<HIR::PathParams,HIR::Compare> >   m_cached_impl_checks;
+
 public:
     explicit StaticTraitResolve(const ::HIR::Crate& crate):
         TraitResolveCommon(crate)
@@ -54,6 +57,7 @@ private:
         m_clone_cache.clear();
         m_drop_cache.clear();
         m_aty_cache.clear();
+        m_cached_impl_checks.clear();
         TraitResolveCommon::prep_indexes(Span());
     }
 public:
@@ -179,6 +183,7 @@ private:
         ) const;
 
 public:
+    const ::HIR::TypeRef& fix_trait_default_return(const Span& sp, const HIR::ItemPath& p, const ::HIR::TypeRef& tpl, ::HIR::TypeRef& tmp) const;
 
     void expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const;
     void expand_associated_types_path(const Span& sp, ::HIR::Path& input) const;
