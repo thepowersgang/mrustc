@@ -8014,7 +8014,10 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                             const auto& t = context.m_ivars.get_type(tr);
                             if(const auto* te = t.data().opt_Infer()) {
                                 DEBUG("Disable IVar " << te->index);
-                                context.possible_ivar_vals[te->index].force_disable = true;
+                                // NOTE: if this ivar hasn't had possibilties applied, then it might not have a slot in the list yet.
+                                if( te->index < context.possible_ivar_vals.size() ) {
+                                    context.possible_ivar_vals.at(te->index).force_disable = true;
+                                }
                             }
                             return false;
                         };
