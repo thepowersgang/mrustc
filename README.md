@@ -15,10 +15,11 @@ Progress
 --------
 
 - Builds working copies of `rustc` and `cargo` from a release source tarball
-  - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, 1.39.0, 1.54.0, and 1.74.0
+  - Currently tested to fully bootstrap (with a binary-equal 1.91.1) version 1.90.0
+  - Slso supports and might still bootstrap (assuming the right environment) - rustc 1.19.0, 1.29.0, 1.39.0, 1.54.0, 1.74.0
   - NOTE: Older versions (1.29 and older) don't build on modern systems, due to outdated openssl bindings
 - Supported Targets (CI tested for libstd):
-  - x86-64 linux GNU (should always work, fully bootstrap tested)
+  - x86-64 linux GNU (Specifically Debian/Ubuntu; should always work, fully bootstrap tested)
   - x86-64 windows MSVC (Status: runnable executables on Windows 10, but bootstrap hasn't ever been fully tested)
   - Secondary Targets
     - x86-64 and arm64 macOS
