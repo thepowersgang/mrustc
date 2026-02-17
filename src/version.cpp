@@ -9,8 +9,8 @@
 #include <sstream>
 
 #define VERSION_MAJOR   0
-#define VERSION_MINOR   11
-#define VERSION_PATCH   2
+#define VERSION_MINOR   12
+#define VERSION_PATCH   0
 
 #ifdef _WIN32
 # define VERSION_GIT_ISDIRTY    1
