@@ -3608,7 +3608,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 }
 
                 const auto& impl_params = out_params.pp_impl_data;
-                for(size_t i = 0; i < impl_params.m_types.size(); i ++ ) {
+                /*for(size_t i = 0; i < impl_params.m_types.size(); i ++ ) {
                     if( !params_set.m_types[i] ) {
                         // TODO: Error when there's a type param that can't be determined?
                     }
@@ -3622,7 +3622,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                     if( !params_set.m_lifetimes[i] ) {
                         // TODO: Error when there's a lifetime param that can't be determined?
                     }
-                }
+                }*/
 
                 out_params.pp_impl = &out_params.pp_impl_data;
                 DEBUG("PP impl = " << *out_params.pp_impl);

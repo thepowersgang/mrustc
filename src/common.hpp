@@ -195,7 +195,7 @@ template <typename T>
 struct LList
 {
     const LList*  m_prev;
-    T   m_item;
+    T   m_item{};
 
     LList():
         m_prev(nullptr)
