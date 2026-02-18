@@ -108,7 +108,7 @@ CARGO_FLAGS := --target $(RUSTC_TARGET) -j $(PARLEVEL) --release --verbose
 CARGO_ENV := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 CARGO_ENV += RUSTC_BOOTSTRAP=1
 CARGO_ENV += CARGO_HOME=$(CARGO_HOME)
-CARGO_ENV += RUSTFLAGS="-Z force-unstable-if-unmarked -C link_args=-Wl,-rpath,\$$ORIGIN/../lib"
+CARGO_ENV += RUSTFLAGS="-Z force-unstable-if-unmarked -C link_args=-Wl,-rpath,\$$ORIGIN/../lib -C target-feature=-crt-static"
 
 fn_opt_copy = (test -e "$2" && test ! "$1" -nt "$2") || cp "$1" "$2"
 
