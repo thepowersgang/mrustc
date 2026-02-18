@@ -47,7 +47,7 @@ struct Reloc {
     }
 };
 struct EncodedLiteral {
-    static const unsigned PTR_BASE = 0x1000;
+    inline static const unsigned PTR_BASE = 0x1000;
 
     std::vector<uint8_t>    bytes;
     std::vector<Reloc>  relocations;
