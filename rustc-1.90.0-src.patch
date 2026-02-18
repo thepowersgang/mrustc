@@ -1,4 +1,3 @@
-# Disable various struct size checks, as mrustc isn't as good at niche optimisations
 --- compiler/rustc_hir/src/hir.rs
 +++ compiler/rustc_hir/src/hir.rs
 @@ -4938,4 +4938,5 @@
@@ -23,8 +22,6 @@
 +#[cfg(not(rust_compiler="mrustc"))]
  #[cfg(all(target_pointer_width = "64", any(target_arch = "aarch64", target_arch = "x86_64")))]
  rustc_data_structures::static_assert_size!(Parser<'_>, 288);
-
-# Workaround for some strange cases of method lookups
 --- compiler/rustc_middle/src/ty/sty.rs
 +++ compiler/rustc_middle/src/ty/sty.rs
 @@ -2026,4 +2026,4 @@
