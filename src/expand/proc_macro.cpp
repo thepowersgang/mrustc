@@ -1278,17 +1278,17 @@ namespace {
         void visit(::AST::ExprNode_Loop& node) {
             TODO(sp, "ExprNode_Loop");
         }
-        void visit(::AST::ExprNode_WhileLet& node) {
-            TODO(sp, "ExprNode_Loop");
+        void visit(::AST::ExprNode_For& node) {
+            TODO(sp, "ExprNode_For");
+        }
+        void visit(::AST::ExprNode_While& node) {
+            TODO(sp, "ExprNode_While");
         }
         void visit(::AST::ExprNode_Match& node) {
             TODO(sp, "ExprNode_Match");
         }
         void visit(::AST::ExprNode_If& node) {
             TODO(sp, "ExprNode_If");
-        }
-        void visit(::AST::ExprNode_IfLet& node) {
-            TODO(sp, "ExprNode_IfLet");
         }
 
         void visit(::AST::ExprNode_WildcardPattern& node) {

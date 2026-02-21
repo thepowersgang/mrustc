@@ -738,11 +738,12 @@ class Deriver_PartialEq:
     }
     AST::ExprNodeP compare_and_ret(Span sp, const RcString& core_name, AST::ExprNodeP v1, AST::ExprNodeP v2) const override
     {
-        return NEWNODE(If,
-            NEWNODE(BinOp, AST::ExprNode_BinOp::CMPNEQU, mv$(v1), mv$(v2)),
-            NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(Bool, false)),
-            nullptr
-            );
+        std::vector<AST::ExprNode_If::Arm>  arms;
+        arms.push_back(AST::ExprNode_If::Arm {
+            make_vec1(AST::IfLet_Condition { {}, NEWNODE(BinOp, AST::ExprNode_BinOp::CMPNEQU, mv$(v1), mv$(v2)) }),
+            NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(Bool, false))
+        });
+        return NEWNODE(If, std::move(arms), nullptr );
     }
     AST::ExprNodeP equal_value(Span sp, const RcString& core_name) const override
     {

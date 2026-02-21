@@ -962,37 +962,6 @@ namespace typecheck
             }
         }
 
-        void visit(::HIR::ExprNode_If& node) override
-        {
-            TRACE_FUNCTION_F(&node << " if ...");
-
-            this->context.add_ivars( node.m_cond->m_res_type );
-
-            {
-                auto _ = this->push_inner_coerce_scoped(false);
-                this->context.equate_types(node.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), node.m_cond->m_res_type);
-                node.m_cond->visit( *this );
-            }
-
-            this->context.add_ivars( node.m_true->m_res_type );
-            if( node.m_false ) {
-                this->context.equate_types_coerce(node.span(), node.m_res_type, node.m_true);
-            }
-            else {
-                this->context.equate_types(node.span(), node.m_true->m_res_type, ::HIR::TypeRef::new_unit());
-                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
-            }
-            node.m_true->visit( *this );
-
-            if( node.m_false ) {
-                this->context.add_ivars( node.m_false->m_res_type );
-                this->context.equate_types_coerce(node.span(), node.m_res_type, node.m_false);
-                node.m_false->visit( *this );
-            }
-            else {
-            }
-        }
-
 
         void visit(::HIR::ExprNode_Assign& node) override
         {

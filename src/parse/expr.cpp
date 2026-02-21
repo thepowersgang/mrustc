@@ -486,19 +486,8 @@ std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
 /// While loop (either as a statement, or as part of an expression)
 ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime)
 {
-    if( TARGETVER_LEAST_1_74 || lex.lookahead(0) == TOK_RWORD_LET ) {
-        // TODO: Pattern list (same as match)?
-        auto conditions = Parse_IfLetChain(lex);
-        return NEWNODE( AST::ExprNode_WhileLet, lifetime, ::std::move(conditions), Parse_ExprBlockNode(lex) );
-    }
-    else {
-        ExprNodeP cnd;
-        {
-            SET_PARSE_FLAG(lex, disallow_struct_literal);
-            cnd = Parse_Expr1(lex);
-        }
-        return NEWNODE( AST::ExprNode_Loop, lifetime, ::std::move(cnd), Parse_ExprBlockNode(lex) );
-    }
+    auto conditions = Parse_IfLetChain(lex);
+    return NEWNODE( AST::ExprNode_While, lifetime, ::std::move(conditions), Parse_ExprBlockNode(lex) );
 }
 /// For loop (either as a statement, or as part of an expression)
 ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime)
@@ -514,7 +503,7 @@ ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime)
         SET_PARSE_FLAG(lex, disallow_struct_literal);
         val = Parse_Expr0(lex);
     }
-    return NEWNODE( AST::ExprNode_Loop, lifetime, ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
+    return NEWNODE( AST::ExprNode_For, lifetime, ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
 }
 /// Parse an 'if' statement
 // Note: TOK_RWORD_IF has already been eaten
@@ -523,49 +512,38 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
     TRACE_FUNCTION;
 
     Token   tok;
-    ExprNodeP cond;
-    std::vector<AST::IfLet_Condition>   conditions;
+    std::vector<AST::ExprNode_If::Arm>  arms;
+    ExprNodeP else_block;
+    do {
+        std::vector<AST::IfLet_Condition>   conditions;
 
-    {
-        SET_PARSE_FLAG(lex, disallow_struct_literal);
-        if( TARGETVER_LEAST_1_74 || lex.lookahead(0) == TOK_RWORD_LET ) {
+        {
+            SET_PARSE_FLAG(lex, disallow_struct_literal);
             conditions = Parse_IfLetChain(lex);
-            // If the conditions are just booleans, emit as `if`
-            if( conditions.size() == 1 && !conditions[0].opt_pat ) {
-                cond = std::move(conditions[0].value);
-                conditions.clear();
-            }
         }
-        else {
-            // TODO: `if foo && let bar` is valid
-            cond = Parse_Expr0(lex);
+
+        // Contents
+        ExprNodeP code = Parse_ExprBlockNode(lex);
+
+        arms.push_back(AST::ExprNode_If::Arm {
+            std::move(conditions),
+            std::move(code)
+        });
+
+        // Handle else:
+        if( !lex.getTokenIf(TOK_RWORD_ELSE) ) {
+            // No `else`, leave `else_block` as `nullptr`
+            break;
         }
-    }
-
-    // Contents
-    ExprNodeP code = Parse_ExprBlockNode(lex);
-
-    // Handle else:
-    ExprNodeP altcode;
-    if( lex.getTokenIf(TOK_RWORD_ELSE) )
-    {
         // Recurse for 'else if'
-        if( lex.getTokenIf(TOK_RWORD_IF) ) {
-            altcode = Parse_IfStmt(lex);
+        if( !lex.getTokenIf(TOK_RWORD_IF) ) {
+            else_block= Parse_ExprBlockNode(lex);
+            break;
         }
-        // - or get block
-        else {
-            altcode = Parse_ExprBlockNode(lex);
-        }
-    }
-    // - or nothing
-    else {
-    }
+        // Keep looping
+    } while(true);
 
-    if( !cond )
-        return NEWNODE( AST::ExprNode_IfLet, ::std::move(conditions), ::std::move(code), ::std::move(altcode) );
-    else
-        return NEWNODE( AST::ExprNode_If, ::std::move(cond), ::std::move(code), ::std::move(altcode) );
+    return NEWNODE( AST::ExprNode_If, ::std::move(arms), ::std::move(else_block) );
 }
 /// "match" block
 ExprNodeP Parse_Expr_Match(TokenStream& lex)
