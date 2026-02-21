@@ -406,6 +406,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     // I.e. These are ANDs
                     for( auto& c : arm.m_guards )
                     {
+                        // TODO: Create a variable scope, then a temporary scope, then visit, then end the temporary scope (raising temporaries)
+                        // - These are dropped ...
                         // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
                         conv.visit_node_ptr( c.val );
                         MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
@@ -423,6 +425,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                         /// Was an arm seen that was possible to match? (indicates that `local_false` has been set as the current block)
                         bool had_possible = false;
                         // These are ORs - multiple options for this guard pattern to match
+                        ::std::vector<std::pair<MIR::BasicBlockId, const PatternRulesetBuilder::Ruleset*>>    ends;
                         for(auto& sr : pat_builder.m_rulesets)
                         {
                             DEBUG("sr.m_rules = " << sr.m_rules);
@@ -438,13 +441,12 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                                 ASSERT_BUG(c.val->span(), builder.block_active(), "Block not active");
                                 MIR_LowerHIR_Match_Simple__GeneratePattern(builder, c.val->span(), sr.m_rules.data(), sr.m_rules.size(),
                                     c.val->m_res_type, match_cond_val, 0, local_false);
-                                conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), sr.m_bindings);
-                                builder.end_block(::MIR::Terminator::make_Goto(destructure));
+                                ends.push_back(std::make_pair(builder.pause_cur_block(), &sr));
                                 builder.set_cur_block(local_false);
                                 had_possible = true;
                             }
                         }
-                        if(!is_cond_bb_set) {
+                        if( !is_cond_bb_set ) {
                             cond_false = builder.new_bb_unlinked();
                             is_cond_bb_set = true;
                             // No patterns as output, so `false` is unreachable?
@@ -452,6 +454,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                         if( had_possible ) {
                             // Currently in `local_false`
                             DEBUG("GUARD: Clean up and jump to `cond_false`");
+                            // NOTE: Want to only clear up items added before this scope.
                             builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
                             builder.uncomplete_scope(tmp_scope);    // Remove the `complete` flag
                             //builder.end_split_arm(arm.m_code->span(), split_scope, true);
@@ -459,6 +462,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                         }
                         else {
                             // TODO: What does it mean if there's no possible arms?
+                        }
+                        // Only introduce the new bindings (with `destructure_from_list`) after handling the early-exit case
+                        // - This stops the `terminate_scope_early` from dropping too eagerly
+                        for(const auto& e : ends) {
+                            builder.set_cur_block(e.first);
+                            conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), e.second->m_bindings);
+                            builder.end_block(::MIR::Terminator::make_Goto(destructure));
                         }
 
                         ASSERT_BUG(node.span(), !builder.block_active(), "Block still active?");
@@ -498,6 +508,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             else
             {
                 // Different paths to the bound varibles, the condition code needs to be specialised for each pattern
+                // - Can't just assign to variables, as the condition borrows the input while the body will move it
                 for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
                 {
                     TRACE_FUNCTION_FR("Bindings (AR" << i << ")", "Bindings (AR" << i << ")");
