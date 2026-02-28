@@ -1291,15 +1291,13 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
         }
     };
     // TODO: Can this use the code in `monomorphise.cpp`?
-    struct Cloner
+    struct Cloner: public ::MIR::Cloner
     {
-        const Span& sp;
-        const ::StaticTraitResolve& resolve;
+        const ::StaticTraitResolve& m_resolve;
         const ::MIR::Terminator::Data_Call& te;
         ::std::vector<unsigned> copy_args;  // Local indexes containing copies of Copy args
         ParamsSet   params;
         unsigned int bb_base = ~0u;
-        unsigned int tmp_base = ~0u;
         unsigned int var_base = ~0u;
         unsigned int df_base = ~0u;
 
@@ -1309,84 +1307,47 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
         ::MIR::LValue   retval;
 
         Cloner(const Span& sp, const ::StaticTraitResolve& resolve, ::MIR::Terminator::Data_Call& te):
-            sp(sp),
-            resolve(resolve),
+            ::MIR::Cloner(sp),
+            m_resolve(resolve),
             te(te),
             copy_args(te.args.size(), ~0u)
         {
         }
 
-        ::HIR::TypeRef monomorph(const ::HIR::TypeRef& ty) const {
-            TRACE_FUNCTION_F(ty);
-            auto rv = params.monomorph_type(sp, ty);
-            resolve.expand_associated_types(sp, rv);
-            return rv;
+        ::MIR::BasicBlockId map_bb_idx(::MIR::BasicBlockId idx) const override {
+            return this->bb_base + idx;
         }
-        ::HIR::GenericPath monomorph(const ::HIR::GenericPath& ty) const {
-            TRACE_FUNCTION_F(ty);
-            auto rv = params.monomorph_genericpath(sp, ty, false);
-            for(auto& arg : rv.m_params.m_types)
-                resolve.expand_associated_types(sp, arg);
-            return rv;
+        virtual unsigned map_local(unsigned f) const {
+            return this->var_base + f;
         }
-        ::HIR::Path monomorph(const ::HIR::Path& ty) const {
-            TRACE_FUNCTION_F(ty);
-            auto rv = params.monomorph_path(sp, ty, false);
-            TU_MATCH(::HIR::Path::Data, (rv.m_data), (e2),
-            (Generic,
-                for(auto& arg : e2.m_params.m_types)
-                    resolve.expand_associated_types(sp, arg);
-                ),
-            (UfcsInherent,
-                resolve.expand_associated_types(sp, e2.type);
-                for(auto& arg : e2.params.m_types)
-                    resolve.expand_associated_types(sp, arg);
-                // TODO: impl params too?
-                for(auto& arg : e2.impl_params.m_types)
-                    resolve.expand_associated_types(sp, arg);
-                ),
-            (UfcsKnown,
-                resolve.expand_associated_types(sp, e2.type);
-                for(auto& arg : e2.trait.m_params.m_types)
-                    resolve.expand_associated_types(sp, arg);
-                for(auto& arg : e2.params.m_types)
-                    resolve.expand_associated_types(sp, arg);
-                ),
-            (UfcsUnknown,
-                BUG(sp, "Encountered UfcsUnknown");
-                )
-            )
-            return rv;
-        }
-        ::HIR::PathParams monomorph(const ::HIR::PathParams& ty) const {
-            TRACE_FUNCTION_F(ty);
-            auto rv = params.monomorph_path_params(sp, ty, false);
-            for(auto& arg : rv.m_types)
-                resolve.expand_associated_types(sp, arg);
-            return rv;
+        virtual unsigned map_drop_flag(unsigned f) const {
+            return this->df_base + f;
         }
 
-        ::std::vector<MIR::AsmParam>    clone_asm_params(const ::std::vector<MIR::AsmParam>& params) const
-        {
-            ::std::vector<MIR::AsmParam>    rv;
-            for(const auto& p : params)
+        const HIR::TypeRef& value_generic_type(HIR::GenericRef ce) const override {
+            const HIR::GenericParams* p;
+            switch(ce.group())
             {
-                TU_MATCH_HDRA((p), {)
-                TU_ARMA(Const, v)
-                    rv.push_back( this->clone_constant(v) );
-                TU_ARMA(Sym, v)
-                    rv.push_back( this->monomorph(v) );
-                TU_ARMA(Reg, v)
-                    rv.push_back(::MIR::AsmParam::make_Reg({
-                        v.dir,
-                        v.spec.clone(),
-                        v.input  ? box$(this->clone_param(*v.input)) : std::unique_ptr<MIR::Param>(),
-                        v.output ? box$(this->clone_lval(*v.output)) : std::unique_ptr<MIR::LValue>()
-                        }));
-                }
+            case 0: // impl level
+                p = params.impl_params_def;
+                break;
+            case 1: // method level
+                p = params.fcn_params_def;
+                break;
+            default:
+                TODO(sp, "Typecheck const generics - look up the type");
             }
-            return rv;
+            ASSERT_BUG(sp, p, "No generic list for " << ce);
+            ASSERT_BUG(sp, ce.idx() < p->m_values.size(), "Generic param index out of range");
+            return p->m_values.at(ce.idx()).m_type;
         }
+        const Monomorphiser& monomorphiser() const override {
+            return params;
+        }
+        const StaticTraitResolve* resolve() const override {
+            return &this->m_resolve;
+        }
+
         ::MIR::BasicBlock clone_bb(const ::MIR::BasicBlock& src, unsigned src_idx, unsigned new_idx) const
         {
             ::MIR::BasicBlock   rv;
@@ -1394,57 +1355,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             for(const auto& stmt : src.statements)
             {
                 DEBUG("BB" << src_idx << "->BB" << new_idx << "/" << rv.statements.size() << ": " << stmt);
-                TU_MATCHA( (stmt), (se),
-                (Assign,
-                    rv.statements.push_back( ::MIR::Statement::make_Assign({
-                        this->clone_lval(se.dst),
-                        this->clone_rval(se.src)
-                        }) );
-                    ),
-                (Asm,
-                    rv.statements.push_back( ::MIR::Statement::make_Asm({
-                        se.tpl,
-                        this->clone_name_lval_vec(se.outputs),
-                        this->clone_name_lval_vec(se.inputs),
-                        se.clobbers,
-                        se.flags
-                        }) );
-                    ),
-                (Asm2,
-                    rv.statements.push_back( ::MIR::Statement::make_Asm2({
-                        se.options,
-                        se.lines,
-                        this->clone_asm_params(se.params)
-                        }) );
-                    ),
-                (SetDropFlag,
-                    rv.statements.push_back( ::MIR::Statement::make_SetDropFlag({
-                        this->df_base + se.idx,
-                        se.new_val,
-                        se.other == ~0u ? ~0u : this->df_base + se.other
-                        }) );
-                    ),
-                (SaveDropFlag,
-                    TODO(Span(), "clone_bb SaveDropFlag");
-                    ),
-                (LoadDropFlag,
-                    TODO(Span(), "clone_bb LoadDropFlag");
-                    ),
-                (Drop,
-                    rv.statements.push_back( ::MIR::Statement::make_Drop({
-                        se.kind,
-                        this->clone_lval(se.slot),
-                        se.flag_idx == ~0u ? ~0u : this->df_base + se.flag_idx
-                        }) );
-                    ),
-                (ScopeEnd,
-                    ::MIR::Statement::Data_ScopeEnd new_se;
-                    new_se.slots.reserve(se.slots.size());
-                    for(auto idx : se.slots)
-                        new_se.slots.push_back(this->var_base + idx);
-                    rv.statements.push_back(::MIR::Statement( mv$(new_se) ));
-                    )
-                )
+                rv.statements.push_back(this->clone_stmt(stmt));
                 DEBUG("-> " << rv.statements.back());
             }
             DEBUG("BB" << src_idx << "->BB" << new_idx << "/" << rv.statements.size() << ": " << src.terminator);
@@ -1457,276 +1368,37 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             DEBUG("-> " << rv.terminator);
             return rv;
         }
-        ::MIR::Terminator clone_term(const ::MIR::Terminator& src) const
+        ::MIR::Terminator clone_term(const ::MIR::Terminator& src) const override
         {
-            TU_MATCHA( (src), (se),
-            (Incomplete,
-                return ::MIR::Terminator::make_Incomplete({});
-                ),
-            (Return,
+            if( src.is_Return() ) {
                 return ::MIR::Terminator::make_Goto(this->te.ret_block);
-                ),
-            (Diverge,
+            }
+            else if( src.is_Diverge() ) {
                 return ::MIR::Terminator::make_Goto(this->te.panic_block);
-                ),
-            (Panic,
-                return ::MIR::Terminator::make_Panic({});
-                ),
-            (Goto,
-                return ::MIR::Terminator::make_Goto(se + this->bb_base);
-                ),
-            (If,
-                return ::MIR::Terminator::make_If({
-                    this->clone_lval(se.cond),
-                    se.bb_true  + this->bb_base,
-                    se.bb_false + this->bb_base
-                    });
-                ),
-            (Switch,
-                ::std::vector<::MIR::BasicBlockId>  arms;
-                arms.reserve(se.targets.size());
-                for(const auto& bbi : se.targets)
-                    arms.push_back( bbi + this->bb_base );
-                return ::MIR::Terminator::make_Switch({ this->clone_lval(se.val), mv$(arms) });
-                ),
-            (SwitchValue,
-                ::std::vector<::MIR::BasicBlockId>  arms;
-                arms.reserve(se.targets.size());
-                for(const auto& bbi : se.targets)
-                    arms.push_back( bbi + this->bb_base );
-                return ::MIR::Terminator::make_SwitchValue({ this->clone_lval(se.val), se.def_target + this->bb_base, mv$(arms), se.values.clone() });
-                ),
-            (Call,
-                ::MIR::CallTarget   tgt;
-                TU_MATCHA( (se.fcn), (ste),
-                (Value,
-                    tgt = ::MIR::CallTarget::make_Value( this->clone_lval(ste) );
-                    ),
-                (Path,
-                    tgt = ::MIR::CallTarget::make_Path( this->monomorph(ste) );
-                    ),
-                (Intrinsic,
-                    tgt = ::MIR::CallTarget::make_Intrinsic({ ste.name, this->monomorph(ste.params) });
-                    )
-                )
-                return ::MIR::Terminator::make_Call({
-                    this->bb_base + se.ret_block,
-                    this->bb_base + se.panic_block,
-                    this->clone_lval(se.ret_val),
-                    mv$(tgt),
-                    this->clone_param_vec(se.args)
-                    });
-                )
-            )
-            throw "";
-        }
-        ::std::vector< ::std::pair<::std::string,::MIR::LValue> > clone_name_lval_vec(const ::std::vector< ::std::pair<::std::string,::MIR::LValue> >& src) const
-        {
-            ::std::vector< ::std::pair<::std::string,::MIR::LValue> >  rv;
-            rv.reserve(src.size());
-            for(const auto& e : src)
-                rv.push_back(::std::make_pair(e.first, this->clone_lval(e.second)));
-            return rv;
-        }
-        ::std::vector<::MIR::LValue> clone_lval_vec(const ::std::vector<::MIR::LValue>& src) const
-        {
-            ::std::vector<::MIR::LValue>    rv;
-            rv.reserve(src.size());
-            for(const auto& lv : src)
-                rv.push_back( this->clone_lval(lv) );
-            return rv;
-        }
-        ::std::vector<::MIR::Param> clone_param_vec(const ::std::vector<::MIR::Param>& src) const
-        {
-            ::std::vector<::MIR::Param>    rv;
-            rv.reserve(src.size());
-            for(const auto& lv : src)
-                rv.push_back( this->clone_param(lv) );
-            return rv;
+            }
+            else {
+                return ::MIR::Cloner::clone_term(src);
+            }
         }
 
-        ::MIR::LValue clone_lval(const ::MIR::LValue& src) const
+        ::MIR::LValue clone_lval(const ::MIR::LValue& src) const override
         {
-            auto wrappers = src.m_wrappers;
-            for(auto& w : wrappers)
-            {
-                if( w.is_Index() ) {
-                    w = ::MIR::LValue::Wrapper::new_Index( this->var_base + w.as_Index() );
-                }
+            auto rv = ::MIR::Cloner::clone_lval(src);
+            if( rv.m_root.is_Return() ) {
+                return this->retval.clone_wrapped( std::move(rv.m_wrappers) );
             }
-            TU_MATCHA( (src.m_root), (se),
-            (Return,
-                return this->retval.clone_wrapped( mv$(wrappers) );
-                ),
-            (Argument,
-                const auto& arg = this->te.args.at(se);
-                if( this->copy_args[se] != ~0u )
-                {
-                    return ::MIR::LValue( ::MIR::LValue::Storage::new_Local(this->copy_args[se]), mv$(wrappers) );
+            if( rv.m_root.is_Argument() ) {
+                auto se = rv.m_root.as_Argument();
+                const auto& arg = this->te.args.at( se );
+                if( this->copy_args[se] != ~0u ) {
+                    return ::MIR::LValue( ::MIR::LValue::Storage::new_Local(this->copy_args[se]), std::move(rv.m_wrappers) );
                 }
-                else
-                {
+                else {
                     assert( !arg.is_Constant() );   // Should have been handled in the above
-                    return arg.as_LValue().clone_wrapped( mv$(wrappers) );
-                }
-                ),
-            (Local,
-                return ::MIR::LValue( ::MIR::LValue::Storage::new_Local(this->var_base + se), mv$(wrappers) );
-                ),
-            (Static,
-                return ::MIR::LValue( ::MIR::LValue::Storage::new_Static(this->monomorph(se)), mv$(wrappers) );
-                )
-            )
-            throw "";
-        }
-        ::MIR::Constant clone_constant(const ::MIR::Constant& src) const
-        {
-            TU_MATCH_HDRA( (src), {)
-            TU_ARMA(Int  , ce) return ::MIR::Constant(ce);
-            TU_ARMA(Uint , ce) return ::MIR::Constant(ce);
-            TU_ARMA(Float, ce) return ::MIR::Constant(ce);
-            TU_ARMA(Bool , ce) return ::MIR::Constant(ce);
-            TU_ARMA(Bytes, ce) return ::MIR::Constant(ce);
-            TU_ARMA(StaticString, ce) return ::MIR::Constant(ce);
-            TU_ARMA(Const, ce) {
-                return ::MIR::Constant::make_Const({ box$(this->monomorph(*ce.p)) });
-                }
-            TU_ARMA(Generic, ce) {
-                const HIR::GenericParams* p;
-                switch(ce.group())
-                {
-                case 0: // impl level
-                    p = params.impl_params_def;
-                    break;
-                case 1: // method level
-                    p = params.fcn_params_def;
-                    break;
-                default:
-                    TODO(sp, "Typecheck const generics - look up the type");
-                }
-                ASSERT_BUG(sp, p, "No generic list for " << ce);
-                ASSERT_BUG(sp, ce.idx() < p->m_values.size(), "Generic param index out of range");
-                const auto& ty = p->m_values.at(ce.idx()).m_type;
-
-                auto val = params.get_value(sp, ce);
-                TU_MATCH_HDRA( (val), {)
-                default:
-                    TODO(sp, "Monomorphise MIR generic constant " << ce << " = " << val);
-                TU_ARMA(Generic, ve) {
-                    return ve;
-                    }
-                TU_ARMA(Evaluated, ve) {
-                    auto v = EncodedLiteralSlice(*ve);
-                    ASSERT_BUG(sp, ty.data().is_Primitive(), "Handle non-primitive const generic: " << ty);
-                    // TODO: This is duplicated in `mir/from_hir_match.cpp` - De-duplicate?
-                    switch(ty.data().as_Primitive())
-                    {
-                    case ::HIR::CoreType::Bool: return ::MIR::Constant::make_Bool({ v.read_uint(1) == 0 });
-                    case ::HIR::CoreType::U8:   return ::MIR::Constant::make_Uint({ v.read_uint(1), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::U16:  return ::MIR::Constant::make_Uint({ v.read_uint(2), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::U32:  return ::MIR::Constant::make_Uint({ v.read_uint(4), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::U64:  return ::MIR::Constant::make_Uint({ v.read_uint(8), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::U128:  return ::MIR::Constant::make_Uint({ v.read_uint(16), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::Usize:  return ::MIR::Constant::make_Uint({ v.read_uint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::I8:   return ::MIR::Constant::make_Int({ v.read_sint(1), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::I16:  return ::MIR::Constant::make_Int({ v.read_sint(2), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::I32:  return ::MIR::Constant::make_Int({ v.read_sint(4), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::I64:  return ::MIR::Constant::make_Int({ v.read_sint(8), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::I128:  return ::MIR::Constant::make_Int({ v.read_sint(16), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::Isize:  return ::MIR::Constant::make_Int({ v.read_sint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::F16:  return ::MIR::Constant::make_Float({ v.read_float(2), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::F32:  return ::MIR::Constant::make_Float({ v.read_float(4), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::F64:  return ::MIR::Constant::make_Float({ v.read_float(8), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::F128: return ::MIR::Constant::make_Float({ v.read_float(16), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::Char: return ::MIR::Constant::make_Uint({ v.read_uint(4), ty.data().as_Primitive() });
-                    case ::HIR::CoreType::Str:  BUG(sp, "`str` const generic");
-                    }
-                    }
-                }
-                }
-            TU_ARMA(Function, ce) {
-                return ::MIR::Constant::make_Function({ box$(this->monomorph(*ce.p)) });
-                }
-            TU_ARMA(ItemAddr, ce) {
-                if(!ce)
-                    return ::MIR::Constant::make_ItemAddr({});
-                return ::MIR::Constant::make_ItemAddr(box$(this->monomorph(*ce)));
+                    return arg.as_LValue().clone_wrapped( std::move(rv.m_wrappers) );
                 }
             }
-            throw "";
-        }
-        ::MIR::Param clone_param(const ::MIR::Param& src) const
-        {
-            TU_MATCHA( (src), (se),
-            (LValue,
-                // NOTE: No need to use `copy_args` here as all uses of Param are copies/moves
-                //if( const auto* ae = se.opt_Argument() )
-                //    return this->te.args.at(ae->idx).clone();
-                return clone_lval(se);
-                ),
-            (Borrow,
-                return ::MIR::Param::make_Borrow({ se.type, this->clone_lval(se.val) });
-                ),
-            (Constant,
-                return clone_constant(se);
-                )
-            )
-            throw "";
-        }
-        ::MIR::RValue clone_rval(const ::MIR::RValue& src) const
-        {
-            TU_MATCHA( (src), (se),
-            (Use,
-                //if( const auto* ae = se.opt_Argument() )
-                //    if( const auto* e = this->te.args.at(ae->idx).opt_Constant() )
-                //        return e->clone();
-                return ::MIR::RValue( this->clone_lval(se) );
-                ),
-            (Constant,
-                return this->clone_constant(se);
-                ),
-            (SizedArray,
-                return ::MIR::RValue::make_SizedArray({ this->clone_param(se.val), params.monomorph_arraysize(sp, se.count) });
-                ),
-            (Borrow,
-                // TODO: Region IDs
-                return ::MIR::RValue::make_Borrow({ se.type, se.is_raw, this->clone_lval(se.val) });
-                ),
-            (Cast,
-                return ::MIR::RValue::make_Cast({ this->clone_lval(se.val), this->monomorph(se.type) });
-                ),
-            (BinOp,
-                return ::MIR::RValue::make_BinOp({ this->clone_param(se.val_l), se.op, this->clone_param(se.val_r) });
-                ),
-            (UniOp,
-                return ::MIR::RValue::make_UniOp({ this->clone_lval(se.val), se.op });
-                ),
-            (DstMeta,
-                return ::MIR::RValue::make_DstMeta({ this->clone_lval(se.val) });
-                ),
-            (DstPtr,
-                return ::MIR::RValue::make_DstPtr({ this->clone_lval(se.val) });
-                ),
-            (MakeDst,
-                return ::MIR::RValue::make_MakeDst({ this->clone_param(se.ptr_val), this->clone_param(se.meta_val) });
-                ),
-            (Tuple,
-                return ::MIR::RValue::make_Tuple({ this->clone_param_vec(se.vals) });
-                ),
-            (Array,
-                return ::MIR::RValue::make_Array({ this->clone_param_vec(se.vals) });
-                ),
-            (UnionVariant,
-                return ::MIR::RValue::make_UnionVariant({ this->monomorph(se.path), se.index, this->clone_param(se.val) });
-                ),
-            (EnumVariant,
-                return ::MIR::RValue::make_EnumVariant({ this->monomorph(se.path), se.index, this->clone_param_vec(se.vals) });
-                ),
-            (Struct,
-                return ::MIR::RValue::make_Struct({ this->monomorph(se.path), this->clone_param_vec(se.vals) });
-                )
-            )
-            throw "";
+            return rv;
         }
     };
 
