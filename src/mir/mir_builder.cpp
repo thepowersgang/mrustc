@@ -695,11 +695,87 @@ void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::RValue& rval, co
     )
 }
 
+
+MirBuilder::SaveCodeProto MirBuilder::code_save_start()
+{
+    // Push to the stack
+    // Create a new block and link in
+    static size_t s_next_index;
+    SaveCodeProto   rv;
+    rv.index = s_next_index ++;
+    m_code_save_stack.push_back(CodeSaveStackEnt { rv.index, {} });
+    // If currently in a block, then go into a new one
+    if(block_active())
+    {
+        new_bb_linked();
+    }
+    return rv;
+}
+MirBuilder::SavedCode MirBuilder::code_save_end(SaveCodeProto h)
+{
+    // Check stack
+    assert(!block_active());    // Can't be a block active
+    assert(!m_code_save_stack.empty());
+    assert(h.index == m_code_save_stack.back().index);
+    SavedCode   rv;
+    rv.blocks = std::move(m_code_save_stack.back().blocks);
+    m_code_save_stack.pop_back();
+    return rv;
+}
+void MirBuilder::insert_cloned(const Span& sp, const SavedCode& c, CloneMapper& mapper)
+{
+    assert(block_active()); // Need an active block to start inserting
+    if( !c.blocks.empty() )
+    {
+        struct Cloner: ::MIR::Cloner {
+            CloneMapper& mapper;
+            std::map<unsigned,unsigned> new_block_map;
+
+            Cloner(const Span& sp, CloneMapper& mapper)
+                : ::MIR::Cloner(sp)
+                , mapper(mapper)
+                {}
+
+            ::MIR::BasicBlockId map_bb_idx(::MIR::BasicBlockId idx) const override {
+                auto it = new_block_map.find(idx);
+                if(it != new_block_map.end()) {
+                    return it->second;
+                }
+                return mapper.update_bb_ref(idx);
+            }
+        } cloner { sp, mapper };
+        // Allocate new block IDs for all referenced blocks
+        for(auto bb_idx : c.blocks)
+        {
+            cloner.new_block_map.insert(std::make_pair(bb_idx, new_bb_unlinked()));
+        }
+        // End the current block with a goto to the first block
+        end_block(::MIR::Terminator::make_Goto({ cloner.new_block_map[c.blocks.front()] }));
+
+        // Start inserting (and remapping)
+        for(auto bb_idx : c.blocks)
+        {
+            auto& dst = m_output.blocks[cloner.new_block_map.at(bb_idx)];
+            const auto& src = m_output.blocks[bb_idx];
+            for(const auto& v : src.statements) {
+                dst.statements.push_back(cloner.clone_stmt(v));
+            }
+
+            dst.terminator = cloner.clone_term(src.terminator);
+        }
+        // Leave no active block
+    }
+}
+
 void MirBuilder::set_cur_block(unsigned int new_block)
 {
     ASSERT_BUG(Span(), !m_block_active, "Updating block when previous is active");
     ASSERT_BUG(Span(), new_block < m_output.blocks.size(), "Invalid block ID being started - " << new_block);
     ASSERT_BUG(Span(), m_output.blocks[new_block].terminator.is_Incomplete(), "Attempting to resume a completed block - BB" << new_block);
+    // Record this new block in the save stack entries
+    for(auto& v : m_code_save_stack) {
+        v.blocks.push_back(new_block);
+    }
     DEBUG("BB" << new_block << " START");
     m_current_block = new_block;
     m_block_active = true;
@@ -754,7 +830,7 @@ unsigned int MirBuilder::new_drop_flag(bool default_state)
             break;
         }
     }
-    DEBUG("(" << default_state << ") = " << rv);
+    DEBUG("df$" << rv << " := " << default_state);
     return rv;
 }
 unsigned int MirBuilder::new_drop_flag_and_set(const Span& sp, bool set_state)
@@ -805,19 +881,6 @@ ScopeHandle MirBuilder::new_scope_loop(const Span& sp)
     m_scopes.back().data.as_Loop().entry_bb = m_current_block;
     m_scope_stack.push_back( idx );
     DEBUG("START (loop) scope " << idx);
-    return ScopeHandle { *this, idx };
-}
-ScopeHandle MirBuilder::new_scope_freeze(const Span& sp)
-{
-    unsigned int idx = m_scopes.size();
-    m_scopes.push_back( ScopeDef {sp, ScopeType::make_Freeze({})} );
-    m_scopes.back().data.as_Freeze().original_aliases.resize( m_variable_aliases.size() );
-    for(size_t i = 0; i < m_variable_aliases.size(); i ++)
-    {
-        m_scopes.back().data.as_Freeze().original_aliases[i] = (m_variable_aliases[i].second != MIR::LValue());
-    }
-    m_scope_stack.push_back( idx );
-    DEBUG("START (freeze) scope " << idx);
     return ScopeHandle { *this, idx };
 }
 void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cleanup/*=true*/)
@@ -1468,6 +1531,34 @@ void MirBuilder::terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_l
     }
 }
 
+void MirBuilder::merge_split_lists(const Span& sp, const ScopeHandle& handle,
+    const ::std::map<unsigned int, VarState>& states, ::std::map<unsigned int, VarState>& end_states, MirBuilder::SlotType type
+)
+{
+    // Insert copies of the parent state
+    for(const auto& ent : states)
+    {
+        if( end_states.count(ent.first) == 0 ) {
+            auto s = this->get_slot_state(sp, ent.first, type, &handle).clone();
+            DEBUG("Add from parent: " << (type == SlotType::Local ? ::MIR::LValue::new_Local(ent.first) : ::MIR::LValue::new_Argument(ent.first)) << " = " << s);
+            end_states.insert(::std::make_pair( ent.first, std::move(s) ));
+        }
+    }
+    // Merge state
+    for(auto& ent : end_states)
+    {
+        auto idx = ent.first;
+        auto& out_state = ent.second;
+
+        // Merge the states
+        auto it = states.find(idx);
+        const auto& src_state = (it != states.end() ? it->second : this->get_slot_state(sp, idx, type, &handle));
+
+        auto lv = (type == SlotType::Local ? ::MIR::LValue::new_Local(idx) : ::MIR::LValue::new_Argument(idx));
+        merge_state(sp, *this, mv$(lv), out_state, src_state);
+    }
+}
+
 void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool reachable, bool early/*=false*/)
 {
     ASSERT_BUG(sp, handle.idx < m_scopes.size(), "Handle passed to end_split_arm is invalid");
@@ -1475,6 +1566,25 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     ASSERT_BUG(sp, sd.data.is_Split(), "Ending split arm on non-Split arm - " << sd.data.tag_str());
     auto& sd_split = sd.data.as_Split();
     ASSERT_BUG(sp, !sd_split.arms.empty(), "Split arm list is empty (impossible)");
+
+    // If this is not at the top of the stack (if there are other splits in the way), then get state from them
+    for(auto v : ::reverse(m_scope_stack)) {
+        if( v == handle.idx ) {
+            break;
+        }
+
+        // If this stack entry is a Split, get the current values and add them to `sd_split`
+        if( const auto* other_split = m_scopes.at(v).data.opt_Split() ) {
+            for(auto& s : other_split->arms.back().states) {
+                DEBUG("In scope " << handle.idx << " _" << s.first << " = " << s.second << " (from scope " << v << ")");
+                sd_split.arms.back().states[s.first] = s.second.clone();
+            }
+            for(auto& s : other_split->arms.back().arg_states) {
+                DEBUG("In scope " << handle.idx << " a" << s.first << " = " << s.second << " (from scope " << v << ")");
+                sd_split.arms.back().arg_states[s.first] = s.second.clone();
+            }
+        }
+    }
 
     TRACE_FUNCTION_F("end split scope " << handle.idx << " arm " << (sd_split.arms.size()-1) << (reachable ? " reachable" : "") << (early ? " early" : ""));
     if( reachable )
@@ -1489,29 +1599,8 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
         {
             DEBUG("Reachable w/ end state, merging");
 
-            auto merge_list = [sp,this](const auto& states, auto& end_states, auto type) {
-                // Insert copies of the parent state
-                for(const auto& ent : states) {
-                    if( end_states.count(ent.first) == 0 ) {
-                        end_states.insert(::std::make_pair( ent.first, get_slot_state(sp, ent.first, type, 1).clone() ));
-                    }
-                }
-                // Merge state
-                for(auto& ent : end_states)
-                {
-                    auto idx = ent.first;
-                    auto& out_state = ent.second;
-
-                    // Merge the states
-                    auto it = states.find(idx);
-                    const auto& src_state = (it != states.end() ? it->second : get_slot_state(sp, idx, type, 1));
-
-                    auto lv = (type == SlotType::Local ? ::MIR::LValue::new_Local(idx) : ::MIR::LValue::new_Argument(idx));
-                    merge_state(sp, *this, mv$(lv), out_state, src_state);
-                }
-                };
-            merge_list(this_arm_state.states, sd_split.end_state.states, SlotType::Local);
-            merge_list(this_arm_state.arg_states, sd_split.end_state.arg_states, SlotType::Argument);
+            merge_split_lists(sp, handle, this_arm_state.states, sd_split.end_state.states, SlotType::Local);
+            merge_split_lists(sp, handle, this_arm_state.arg_states, sd_split.end_state.arg_states, SlotType::Argument);
         }
         else
         {
@@ -1531,7 +1620,7 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
             }
             for(auto& ent : this_arm_state.arg_states)
             {
-                DEBUG("Argument(" << ent.first << ") = " << ent.second);
+                DEBUG("State a" << ent.first << " = " << ent.second);
                 sd_split.end_state.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
             }
             sd_split.end_state_valid = true;
@@ -1552,12 +1641,12 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
         DEBUG("New Arm");
         for(auto& ent : sd_split.cond_state.states)
         {
-            DEBUG(" Condition State _" << ent.first << " = " << ent.second);
+            DEBUG("Condition State _" << ent.first << " = " << ent.second);
             arm.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
         }
         for(auto& ent : sd_split.cond_state.arg_states)
         {
-            DEBUG(" Condition Argument(" << ent.first << ") = " << ent.second);
+            DEBUG("Condition State a" << ent.first << " = " << ent.second);
             arm.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
         }
         sd_split.arms.push_back(mv$(arm));
@@ -1601,31 +1690,10 @@ void MirBuilder::end_split_condition(const Span& sp, const ScopeHandle& handle)
 
     const auto& this_arm_state = sd_split.arms.back();
 
-    DEBUG("Split condition clause end: merging");
+    DEBUG("Split condition clause end (scope " << handle.idx << "): merging");
 
-    auto merge_list = [sp,this](const auto& states, auto& end_states, auto type) {
-        // Insert copies of the parent state
-        for(const auto& ent : states) {
-            if( end_states.count(ent.first) == 0 ) {
-                end_states.insert(::std::make_pair( ent.first, get_slot_state(sp, ent.first, type, 1).clone() ));
-            }
-        }
-        // Merge state
-        for(auto& ent : end_states)
-        {
-            auto idx = ent.first;
-            auto& out_state = ent.second;
-
-            // Merge the states
-            auto it = states.find(idx);
-            const auto& src_state = (it != states.end() ? it->second : get_slot_state(sp, idx, type, 1));
-
-            auto lv = (type == SlotType::Local ? ::MIR::LValue::new_Local(idx) : ::MIR::LValue::new_Argument(idx));
-            merge_state(sp, *this, mv$(lv), out_state, src_state);
-        }
-        };
-    merge_list(this_arm_state.states, sd_split.cond_state.states, SlotType::Local);
-    merge_list(this_arm_state.arg_states, sd_split.cond_state.arg_states, SlotType::Argument);
+    merge_split_lists(sp, handle, this_arm_state.states    , sd_split.cond_state.states    , SlotType::Local   );
+    merge_split_lists(sp, handle, this_arm_state.arg_states, sd_split.cond_state.arg_states, SlotType::Argument);
 }
 void MirBuilder::complete_scope(ScopeDef& sd)
 {
@@ -1639,8 +1707,6 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         DEBUG("Loop");
         ),
     (Split,
-        ),
-    (Freeze,
         )
     )
 
@@ -1695,36 +1761,6 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         if(e.end_state_valid)
         {
             H::apply_end_state(sd.span, *this, e.end_state);
-        }
-        }
-    TU_ARMA(Freeze, e) {
-        TRACE_FUNCTION_F("Freeze");
-        for(auto& ent : e.changed_slots)
-        {
-            auto& vs = this->get_slot_state_mut(sd.span, ent.first, SlotType::Local);
-            auto lv = ::MIR::LValue::new_Local(ent.first);
-            DEBUG(lv << " " << vs << " => " << ent.second);
-            if( vs != ent.second )
-            {
-                if( vs.is_Valid() ) {
-                    ERROR(sd.span, E0000, "Value went from " << vs << " => " << ent.second << " over freeze");
-                }
-                else if( !this->lvalue_is_copy(sd.span, lv) ) {
-                    ERROR(sd.span, E0000, "Non-Copy value went from " << vs << " => " << ent.second << " over freeze");
-                }
-                else {
-                    // It's a Copy value, and it wasn't originally fully Valid - allowable
-                }
-            }
-        }
-
-        for(size_t i = 0; i < e.original_aliases.size(); i ++)
-        {
-            if( !e.original_aliases[i] && this->m_variable_aliases[i].second != MIR::LValue() )
-            {
-                DEBUG("Reset alias on #" << i);
-                this->m_variable_aliases[i].second = MIR::LValue();
-            }
         }
         }
     }
@@ -1914,16 +1950,24 @@ bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val) const
     return rv == 2;
 }
 
-const VarState& MirBuilder::get_slot_state(const Span& sp, unsigned int idx, SlotType type, unsigned int skip_count/*=0*/) const
+const VarState& MirBuilder::get_slot_state(const Span& sp, unsigned int idx, SlotType type, const ScopeHandle* above_scope/*=nullptr*/) const
 {
     // 1. Find an applicable Split scope
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
+        // Is this supposed to only consider above a specified (likely split) scope?
+        if( above_scope ) {
+            // Once the scope is found, clear `above_scope` so subsequent iterations skip this check
+            if( scope_idx == above_scope->idx ) {
+                above_scope = nullptr;
+            }
+            continue ;
+        }
         const auto& scope_def = m_scopes.at(scope_idx);
-        TU_MATCH_DEF( ScopeType, (scope_def.data), (e),
-        (
-            ),
-        (Owning,
+        TU_MATCH_HDRA( (scope_def.data), {)
+        default:
+            break;
+        TU_ARMA(Owning, e) {
             if( type == SlotType::Local )
             {
                 auto it = ::std::find(e.slots.begin(), e.slots.end(), idx);
@@ -1931,20 +1975,22 @@ const VarState& MirBuilder::get_slot_state(const Span& sp, unsigned int idx, Slo
                     break ;
                 }
             }
-            ),
-        (Split,
+            }
+        TU_ARMA(Split, e) {
             const auto& cur_arm = e.arms.back();
             const auto& list = (type == SlotType::Local ? cur_arm.states : cur_arm.arg_states);
             auto it = list.find(idx);
             if( it != list.end() )
             {
-                if( ! skip_count -- )
-                {
-                    return it->second;
-                }
+                DEBUG("From scope " << scope_idx);
+                return it->second;
             }
-            )
-        )
+            }
+        }
+    }
+
+    if( above_scope ) {
+        BUG(sp, "Scope " << *above_scope << " not found on stack");
     }
     switch(type)
     {
@@ -2317,8 +2363,6 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
         ),
     (Loop,
         // No values
-        ),
-    (Freeze,
         )
     )
 }

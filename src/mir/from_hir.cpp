@@ -308,11 +308,14 @@ namespace {
             )
         }
 
-        MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b)
+        MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b, HIR::TypeRef* out_ty)
         {
+            HIR::TypeRef    tmp_ty;
+            if( !out_ty ) {
+                out_ty = &tmp_ty;
+            }
+            HIR::TypeRef& ty = *out_ty;
             MIR::LValue lval;
-            HIR::TypeRef    ty;
-
             MIR_LowerHIR_GetTypeValueForPath(sp, m_builder, outer_ty, outer_lval, b.field, ty, lval);
 
             if(b.is_split_slice())
@@ -402,7 +405,7 @@ namespace {
             for(size_t i = bindings.size(); i--;)
             {
                 const auto& b = bindings[i];
-                auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
+                auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b, nullptr);
 
                 MIR::RValue rv;
                 switch( b.binding->m_type )
@@ -428,15 +431,8 @@ namespace {
                     rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, mv$(lval) });
                     break;
                 }
-                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv) );
-            }
-        }
-        void destructure_aliases_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
-        {
-            for(const auto& b : bindings)
-            {
-                auto val = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
-                m_builder.add_variable_alias(sp, b.binding->m_slot, b.binding->m_type, mv$(val));
+                // NOTE: Don't drop the destination, as `match` does some tricky things with calling destructure multiple times (to handle or-patterns)
+                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv), /*drop_destination=*/false );
             }
         }
 
