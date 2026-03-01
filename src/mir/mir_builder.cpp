@@ -315,7 +315,7 @@ void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
     DEBUG(m_result);
 }
 
-void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool drop_destination/*=true*/)
+void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool update_dest_state/*=true*/)
 {
     DEBUG(dst << " = " << val);
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
@@ -399,7 +399,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     )
 
     // Drop target if populated
-    if( drop_destination )
+    if( update_dest_state )
     {
         mark_value_assigned(sp, dst);
     }

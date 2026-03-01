@@ -524,6 +524,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                             //builder.terminate_scope_early(sp, scope.handle);
                         }
                     }
+                    // End the top scope early, which also handles ending all intervening scopes
                     builder.terminate_scope_early(sp, scopes.front().handle);
                     // Indicate an exit point to the split
                     builder.end_split_arm(arm.m_code->span(), pat_scope, /*reachable*/true, /*early*/true);
@@ -660,7 +661,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 // Add the final bindings and jump to the body
                 builder.set_cur_block(mapper.new_cond_true);
                 DEBUG("Arm " << arm_idx << " rule " << i-first_arm_rule_idx << ":  Destructure");
-                conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[i].m_bindings);
+                conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[i].m_bindings, /*update_dst_state*/false);
                 builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
 
                 ArmCode::Pattern    acp;

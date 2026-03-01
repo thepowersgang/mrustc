@@ -326,7 +326,7 @@ public:
 
     // - Statements
     // Push an assignment. NOTE: This also marks the rvalue as moved
-    void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool drop_destination=true);
+    void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool update_dest_state=true);
     // Push a drop (likely only used by scope cleanup)
     void push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int drop_flag=~0u);
     // Push a shallow drop (for Box)
@@ -504,7 +504,7 @@ public:
     //virtual void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) = 0;
     virtual void define_vars_from(const Span& sp, const ::HIR::Pattern& pat) = 0;
 
-    virtual void destructure_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
+    virtual void destructure_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings, bool update_states=true) = 0;
     virtual MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b, HIR::TypeRef* out_ty) = 0;
 
     virtual SaveAndEditVal<const ScopeHandle*> disable_borrow_extension() = 0;

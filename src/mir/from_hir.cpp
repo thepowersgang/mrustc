@@ -398,7 +398,7 @@ namespace {
             return lval;
         }
 
-        void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
+        void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings, bool update_states/*=true*/) override
         {
             TRACE_FUNCTION_F(outer_lval << ": " << outer_ty << " [" << bindings << "]");
             // Reverse order to avoid potential use-after-move for `foo @ Bar(baz, ..)`
@@ -432,7 +432,7 @@ namespace {
                     break;
                 }
                 // NOTE: Don't drop the destination, as `match` does some tricky things with calling destructure multiple times (to handle or-patterns)
-                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv), /*drop_destination=*/false );
+                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv), update_states);
             }
         }
 
