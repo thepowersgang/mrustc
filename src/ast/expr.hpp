@@ -337,62 +337,48 @@ struct ExprNode_CallObject:
 struct ExprNode_Loop:
     public ExprNode
 {
-    enum Type {
-        LOOP,
-        WHILE,
-        FOR,
-    } m_type;
     Ident   m_label;
-    AST::Pattern    m_pattern;
-    ExprNodeP    m_cond; // if NULL, loop is a 'loop'
     ExprNodeP    m_code;
 
     ExprNode_Loop():
-        m_type(LOOP),
         m_label("")
     {
     }
     ExprNode_Loop(Ident label, ExprNodeP code):
-        m_type(LOOP),
         m_label( ::std::move(label) ),
-        m_code( ::std::move(code) )
-    {}
-    ExprNode_Loop(Ident label, ExprNodeP cond, ExprNodeP code):
-        m_type(WHILE),
-        m_label( ::std::move(label) ),
-        m_cond( ::std::move(cond) ),
-        m_code( ::std::move(code) )
-    {}
-    ExprNode_Loop(Ident label, AST::Pattern pattern, ExprNodeP val, ExprNodeP code):
-        m_type(FOR),
-        m_label( ::std::move(label) ),
-        m_pattern( ::std::move(pattern) ),
-        m_cond( ::std::move(val) ),
         m_code( ::std::move(code) )
     {}
     NODE_METHODS();
-private:
-    ExprNode_Loop(Type type, Ident label, AST::Pattern pattern, ExprNodeP val, ExprNodeP code)
-        : m_type( type )
-        , m_label( ::std::move(label) )
-        , m_pattern( ::std::move(pattern) )
-        , m_cond( ::std::move(val) )
-        , m_code( ::std::move(code) )
+};
+struct ExprNode_For:
+    public ExprNode
+{
+    Ident   m_label;
+    AST::Pattern    m_pattern;
+    ExprNodeP    m_value;
+    ExprNodeP    m_code;
+
+    ExprNode_For(Ident label, AST::Pattern pattern, ExprNodeP val, ExprNodeP code):
+        m_label( ::std::move(label) ),
+        m_pattern( ::std::move(pattern) ),
+        m_value( ::std::move(val) ),
+        m_code( ::std::move(code) )
     {}
+    NODE_METHODS();
 };
 struct IfLet_Condition
 {
     ::std::unique_ptr<AST::Pattern> opt_pat;
     ExprNodeP    value;
 };
-struct ExprNode_WhileLet:
+struct ExprNode_While:
     public ExprNode
 {
     Ident   m_label;
     std::vector<IfLet_Condition> m_conditions;
     ExprNodeP    m_code;
 
-    ExprNode_WhileLet(Ident label, std::vector<IfLet_Condition> conditions, ExprNodeP code)
+    ExprNode_While(Ident label, std::vector<IfLet_Condition> conditions, ExprNodeP code)
         : m_label( ::std::move(label) )
         , m_conditions( ::std::move(conditions) )
         , m_code( ::std::move(code) )
@@ -435,29 +421,16 @@ struct ExprNode_Match:
 struct ExprNode_If:
     public ExprNode
 {
-    ExprNodeP    m_cond;
-    ExprNodeP    m_true;
-    ExprNodeP    m_false;
+    struct Arm {
+        std::vector<IfLet_Condition>   m_conditions;
+        ExprNodeP    m_body;
+    };
+    std::vector<Arm>    m_arms;
+    ExprNodeP    m_else;
 
-    ExprNode_If(ExprNodeP cond, ExprNodeP true_code, ExprNodeP false_code):
-        m_cond( ::std::move(cond) ),
-        m_true( ::std::move(true_code) ),
-        m_false( ::std::move(false_code) )
-    {
-    }
-    NODE_METHODS();
-};
-struct ExprNode_IfLet:
-    public ExprNode
-{
-    std::vector<IfLet_Condition>   m_conditions;
-    ExprNodeP    m_true;
-    ExprNodeP    m_false;
-
-    ExprNode_IfLet(std::vector<IfLet_Condition> conditions, ExprNodeP true_code, ExprNodeP false_code)
-        : m_conditions( ::std::move(conditions) )
-        , m_true( ::std::move(true_code) )
-        , m_false( ::std::move(false_code) )
+    ExprNode_If(std::vector<Arm> arms, ExprNodeP else_code):
+        m_arms( ::std::move(arms) ),
+        m_else( ::std::move(else_code) )
     {
     }
     NODE_METHODS();
@@ -828,10 +801,10 @@ public:
     NT(ExprNode_CallMethod);
     NT(ExprNode_CallObject);
     NT(ExprNode_Loop);
-    NT(ExprNode_WhileLet);
+    NT(ExprNode_For);
+    NT(ExprNode_While);
     NT(ExprNode_Match);
     NT(ExprNode_If);
-    NT(ExprNode_IfLet);
 
     NT(ExprNode_WildcardPattern);
     NT(ExprNode_Integer);
@@ -883,10 +856,10 @@ public:
     NT(ExprNode_CallMethod);
     NT(ExprNode_CallObject);
     NT(ExprNode_Loop);
-    NT(ExprNode_WhileLet);
+    NT(ExprNode_For);
+    NT(ExprNode_While);
     NT(ExprNode_Match);
     NT(ExprNode_If);
-    NT(ExprNode_IfLet);
 
     NT(ExprNode_WildcardPattern);
     NT(ExprNode_Integer);

@@ -483,106 +483,58 @@ struct LowerHIR_ExprNode_Visitor:
             ) );
     }
     virtual void visit(::AST::ExprNode_Loop& v) override {
-        switch( v.m_type )
-        {
-        case ::AST::ExprNode_Loop::LOOP:
-            m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
-                v.m_label.name,
-                lower(v.m_code)
-                ) );
-            break;
-        case ::AST::ExprNode_Loop::WHILE: {
-            ::std::vector< ::HIR::ExprNodeP>    code;
-            // - if `m_cond` { () } else { break `m_label` }
-            code.push_back( ::HIR::ExprNodeP(new ::HIR::ExprNode_If( v.span(),
-                lower(v.m_cond),
-                ::HIR::ExprNodeP( new ::HIR::ExprNode_Tuple(v.span(), {}) ),
-                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl(v.span(), v.m_label.name, false) )
-                )) );
-            code.push_back( lower(v.m_code) );
-
-            m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
-                v.m_label.name,
-                ::HIR::ExprNodeP(new ::HIR::ExprNode_Block( v.span(), false, mv$(code), {} ))
-                ) );
-            break; }
-        case ::AST::ExprNode_Loop::FOR:
-            // NOTE: This should already be desugared (as a pass before resolve)
-            BUG(v.span(), "Encountered still-sugared for loop");
-            break;
-        }
-
-        // Iterate the constructed loop and determine if there are any `break` statements pointing to it
-        {
-            struct LoopVisitor:
-                public ::HIR::ExprVisitorDef
-            {
-                const RcString& top_label;
-                bool    top_is_broken;
-                ::std::vector< const RcString*>   name_stack;
-
-                LoopVisitor(const RcString& top_label):
-                    top_label(top_label),
-                    top_is_broken(false),
-                    name_stack()
-                {}
-
-                void visit(::HIR::ExprNode_Loop& node) override {
-                    bool push = !node.m_require_label;  // Ignore any loops that require a targeted break
-                    if( push ) {
-                        this->name_stack.push_back( &node.m_label );
-                    }
-                    ::HIR::ExprVisitorDef::visit(node);
-                    if( push ) {
-                        this->name_stack.pop_back( );
-                    }
-                }
-                void visit(::HIR::ExprNode_LoopControl& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-
-                    if( node.m_continue ) {
-                    }
-                    else {
-                        for( auto it = this->name_stack.rbegin(); it != this->name_stack.rend(); ++ it )
-                        {
-                            if( node.m_label == "" || node.m_label == **it )
-                                return ;
-                        }
-                        if( node.m_label == "" || node.m_label == this->top_label ) {
-                            this->top_is_broken = true;
-                        }
-                        else {
-                            // break is for a higher loop
-                        }
-                    }
-                }
-            };
-        }
+        m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
+            v.m_label.name,
+            lower(v.m_code)
+            ) );
     }
-    virtual void visit(::AST::ExprNode_WhileLet& v) override {
-        TODO(v.span(), "`while let` left sugared");
+    void visit(::AST::ExprNode_For& v) override {
+        // NOTE: This should already be desugared (as a pass before resolve)
+        BUG(v.span(), "Encountered still-sugared for loop");
+    }
+    ::std::vector< ::HIR::ExprNode_Match::Guard> iflet_to_guards(std::vector<AST::IfLet_Condition>& guards) {
+        ::std::vector< ::HIR::ExprNode_Match::Guard>    rv;
+        rv.reserve(guards.size());
+        for(auto& c : guards) {
+            auto cond_pat = c.opt_pat
+                ? LowerHIR_Pattern(*c.opt_pat)
+                : HIR::Pattern { HIR::PatternBinding(), HIR::Pattern::Data::make_Value({ ::HIR::Pattern::Value::make_Integer({
+                    HIR::CoreType::Bool,
+                    U128(1)
+                    }) }) }
+                ;
+            auto cond_val = lower_opt(c.value);
+            rv.push_back(::HIR::ExprNode_Match::Guard { std::move(cond_pat), std::move(cond_val) });
+        }
+        return rv;
+    }
+    virtual void visit(::AST::ExprNode_While& v) override {
+        // Desugar to `loop { match () { _ if ... => { body }, _ => break, } }`
+        ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
+        arms.push_back( ::HIR::ExprNode_Match::Arm {
+            make_vec1(::HIR::Pattern()),
+            iflet_to_guards(v.m_conditions),
+            lower(v.m_code)
+            });
+        arms.push_back(::HIR::ExprNode_Match::Arm {
+            make_vec1(::HIR::Pattern()),
+            {},
+            ::std::make_unique<HIR::ExprNode_LoopControl>(v.span(), "", false, nullptr)
+        });
+        m_rv.reset(new HIR::ExprNode_Loop(v.span(), v.m_label.name, std::make_unique<HIR::ExprNode_Match>(
+            v.span(),
+            std::make_unique<HIR::ExprNode_Tuple>(v.span(), ::std::vector<HIR::ExprNodeP>()),
+            std::move(arms)
+        )));
     }
     virtual void visit(::AST::ExprNode_Match& v) override {
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
 
         for(auto& arm : v.m_arms)
         {
-            ::std::vector< ::HIR::ExprNode_Match::Guard>    guards;
-            guards.reserve(arm.m_guard.size());
-            for(auto& c : arm.m_guard) {
-                auto cond_pat = c.opt_pat
-                    ? LowerHIR_Pattern(*c.opt_pat)
-                    : HIR::Pattern { HIR::PatternBinding(), HIR::Pattern::Data::make_Value({ ::HIR::Pattern::Value::make_Integer({
-                        HIR::CoreType::Bool,
-                        U128(1)
-                        }) }) }
-                    ;
-                auto cond_val = lower_opt(c.value);
-                guards.push_back(::HIR::ExprNode_Match::Guard { std::move(cond_pat), std::move(cond_val) });
-            }
             ::HIR::ExprNode_Match::Arm  new_arm {
                 {},
-                mv$(guards),
+                iflet_to_guards(arm.m_guard),
                 lower(arm.m_code)
                 };
 
@@ -598,15 +550,28 @@ struct LowerHIR_ExprNode_Visitor:
             ));
     }
     virtual void visit(::AST::ExprNode_If& v) override {
-        m_rv.reset( new ::HIR::ExprNode_If( v.span(),
-            lower(v.m_cond),
-            lower(v.m_true),
-            lower_opt(v.m_false)
+        ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
+        // Desugar to a `match`
+        for(auto& arm : v.m_arms)
+        {
+            arms.push_back( ::HIR::ExprNode_Match::Arm {
+                make_vec1(::HIR::Pattern()),
+                iflet_to_guards(arm.m_conditions),
+                lower(arm.m_body)
+                } );
+        }
+        arms.push_back(::HIR::ExprNode_Match::Arm {
+            make_vec1(::HIR::Pattern()),
+            {},
+            v.m_else
+            ? lower(v.m_else)
+            : std::make_unique<HIR::ExprNode_Tuple>(v.span(), ::std::vector<HIR::ExprNodeP>())
+            });
+
+        m_rv.reset( new ::HIR::ExprNode_Match( v.span(),
+            std::make_unique<HIR::ExprNode_Tuple>(v.span(), ::std::vector<HIR::ExprNodeP>()),
+            std::move(arms)
             ));
-    }
-    virtual void visit(::AST::ExprNode_IfLet& v) override {
-        // TODO: Do the desugar here, so irrefutable patterns can be handled nicely
-        TODO(v.span(), "`if let` left sugared");
     }
 
     virtual void visit(::AST::ExprNode_WildcardPattern& v) override {

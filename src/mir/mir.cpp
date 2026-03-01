@@ -7,6 +7,9 @@
  */
 #include <mir/mir.hpp>
 #include <algorithm>    // std::min
+#include <hir_typeck/monomorph.hpp>
+#include <hir/encoded_literal.hpp>
+#include <trans/target.hpp> // Target_GetPointerBits
 
 namespace MIR {
     ::std::ostream& operator<<(::std::ostream& os, const Constant& v) {
@@ -873,3 +876,390 @@ bool MIR::SwitchValues::operator==(const SwitchValues& x) const
     return true;
 }
 
+const HIR::TypeRef& MIR::Cloner::value_generic_type(HIR::GenericRef ce) const
+{
+    TODO(sp, "`value_generic_type` not implemented, shouldn't be called unless `monomorpiser` has been overridden");
+}
+const Monomorphiser& MIR::Cloner::monomorphiser() const
+{
+    static MonomorphiserNop    nop;
+    return nop;
+}
+
+::HIR::TypeRef MIR::Cloner::monomorph(const ::HIR::TypeRef& ty) const {
+    TRACE_FUNCTION_F(ty);
+    auto rv = monomorphiser().monomorph_type(sp, ty);
+    if(auto* r = resolve()) {
+        r->expand_associated_types(sp, rv);
+    }
+    return rv;
+}
+::HIR::GenericPath MIR::Cloner::monomorph(const ::HIR::GenericPath& ty) const {
+    TRACE_FUNCTION_F(ty);
+    auto rv = monomorphiser().monomorph_genericpath(sp, ty, false);
+    if(const auto* r = resolve()) {
+        for(auto& arg : rv.m_params.m_types)
+            r->expand_associated_types(sp, arg);
+    }
+    return rv;
+}
+::HIR::Path MIR::Cloner::monomorph(const ::HIR::Path& ty) const {
+    TRACE_FUNCTION_F(ty);
+    auto rv = monomorphiser().monomorph_path(sp, ty, false);
+    if(const auto* r = resolve()) {
+        TU_MATCH(::HIR::Path::Data, (rv.m_data), (e2),
+        (Generic,
+            for(auto& arg : e2.m_params.m_types)
+                r->expand_associated_types(sp, arg);
+            ),
+        (UfcsInherent,
+            r->expand_associated_types(sp, e2.type);
+            for(auto& arg : e2.params.m_types)
+                r->expand_associated_types(sp, arg);
+            // TODO: impl params too?
+            for(auto& arg : e2.impl_params.m_types)
+                r->expand_associated_types(sp, arg);
+            ),
+        (UfcsKnown,
+            r->expand_associated_types(sp, e2.type);
+            for(auto& arg : e2.trait.m_params.m_types)
+                r->expand_associated_types(sp, arg);
+            for(auto& arg : e2.params.m_types)
+                r->expand_associated_types(sp, arg);
+            ),
+        (UfcsUnknown,
+            BUG(sp, "Encountered UfcsUnknown");
+            )
+        )
+    }
+    return rv;
+}
+::HIR::PathParams MIR::Cloner::monomorph(const ::HIR::PathParams& ty) const {
+    TRACE_FUNCTION_F(ty);
+    auto rv = monomorphiser().monomorph_path_params(sp, ty, false);
+    if(const auto* r = resolve()) {
+        for(auto& arg : rv.m_types)
+            r->expand_associated_types(sp, arg);
+    }
+    return rv;
+}
+
+::std::vector<MIR::AsmParam> MIR::Cloner::clone_asm_params(const ::std::vector<MIR::AsmParam>& params) const
+{
+    ::std::vector<MIR::AsmParam>    rv;
+    for(const auto& p : params)
+    {
+        TU_MATCH_HDRA((p), {)
+        TU_ARMA(Const, v)
+            rv.push_back( this->clone_constant(v) );
+        TU_ARMA(Sym, v)
+            rv.push_back( this->monomorph(v) );
+        TU_ARMA(Reg, v)
+            rv.push_back(::MIR::AsmParam::make_Reg({
+                v.dir,
+                v.spec.clone(),
+                v.input  ? box$(this->clone_param(*v.input)) : std::unique_ptr<MIR::Param>(),
+                v.output ? box$(this->clone_lval(*v.output)) : std::unique_ptr<MIR::LValue>()
+                }));
+        }
+    }
+    return rv;
+}
+::MIR::Statement MIR::Cloner::clone_stmt(const ::MIR::Statement& src) const
+{
+    TU_MATCH_HDRA( (src), { )
+    TU_ARMA(Assign, se) {
+        return ::MIR::Statement::make_Assign({
+            this->clone_lval(se.dst),
+            this->clone_rval(se.src)
+            });
+        }
+    TU_ARMA(Asm, se) {
+        return ::MIR::Statement::make_Asm({
+            se.tpl,
+            this->clone_name_lval_vec(se.outputs),
+            this->clone_name_lval_vec(se.inputs),
+            se.clobbers,
+            se.flags
+            });
+        }
+    TU_ARMA(Asm2, se) {
+        return ::MIR::Statement::make_Asm2({
+            se.options,
+            se.lines,
+            this->clone_asm_params(se.params)
+            });
+        }
+    TU_ARMA(SetDropFlag, se) {
+        return ::MIR::Statement::make_SetDropFlag({
+            map_drop_flag(se.idx),
+            se.new_val,
+            se.other == ~0u ? ~0u : map_drop_flag(se.other)
+            });
+        }
+    TU_ARMA(SaveDropFlag, se) {
+        TODO(Span(), "clone_bb SaveDropFlag");
+        }
+    TU_ARMA(LoadDropFlag, se) {
+        TODO(Span(), "clone_bb LoadDropFlag");
+        }
+    TU_ARMA(Drop, se) {
+        return ::MIR::Statement::make_Drop({
+            se.kind,
+            this->clone_lval(se.slot),
+            se.flag_idx == ~0u ? ~0u : map_drop_flag(se.flag_idx)
+            });
+        }
+    TU_ARMA(ScopeEnd, se) {
+        ::MIR::Statement::Data_ScopeEnd new_se;
+        new_se.slots.reserve(se.slots.size());
+        for(auto idx : se.slots)
+            new_se.slots.push_back(map_local(idx));
+        return ::MIR::Statement( mv$(new_se) );
+        }
+    }
+    throw "";
+}
+::MIR::Terminator MIR::Cloner::clone_term(const ::MIR::Terminator& src) const
+{
+    TU_MATCH_HDRA( (src), { )
+    TU_ARMA(Incomplete, se) {
+        return ::MIR::Terminator::make_Incomplete({});
+        }
+    TU_ARMA(Return, se) {
+        return ::MIR::Terminator::make_Return({});
+        }
+    TU_ARMA(Diverge, se) {
+        return ::MIR::Terminator::make_Diverge({});
+        }
+    TU_ARMA(Panic, se) {
+        return ::MIR::Terminator::make_Panic({});
+        }
+    TU_ARMA(Goto, se) {
+        return ::MIR::Terminator::make_Goto(map_bb_idx(se));
+        }
+    TU_ARMA(If, se) {
+        return ::MIR::Terminator::make_If({
+            this->clone_lval(se.cond),
+            map_bb_idx(se.bb_true  ),
+            map_bb_idx(se.bb_false)
+            });
+        }
+    TU_ARMA(Switch, se) {
+        ::std::vector<::MIR::BasicBlockId>  arms;
+        arms.reserve(se.targets.size());
+        for(const auto& bbi : se.targets)
+            arms.push_back( map_bb_idx(bbi) );
+        return ::MIR::Terminator::make_Switch({ this->clone_lval(se.val), mv$(arms) });
+        }
+    TU_ARMA(SwitchValue, se) {
+        ::std::vector<::MIR::BasicBlockId>  arms;
+        arms.reserve(se.targets.size());
+        for(const auto& bbi : se.targets)
+            arms.push_back( map_bb_idx(bbi) );
+        return ::MIR::Terminator::make_SwitchValue({ this->clone_lval(se.val), map_bb_idx(se.def_target), mv$(arms), se.values.clone() });
+        }
+    TU_ARMA(Call, se) {
+        ::MIR::CallTarget   tgt;
+        TU_MATCHA( (se.fcn), (ste),
+        (Value,
+            tgt = ::MIR::CallTarget::make_Value( this->clone_lval(ste) );
+            ),
+        (Path,
+            tgt = ::MIR::CallTarget::make_Path( this->monomorph(ste) );
+            ),
+        (Intrinsic,
+            tgt = ::MIR::CallTarget::make_Intrinsic({ ste.name, this->monomorph(ste.params) });
+            )
+        )
+        return ::MIR::Terminator::make_Call({
+            map_bb_idx(se.ret_block),
+            map_bb_idx(se.panic_block),
+            this->clone_lval(se.ret_val),
+            mv$(tgt),
+            this->clone_param_vec(se.args)
+            });
+        }
+    }
+    throw "";
+}
+::std::vector< ::std::pair<::std::string,::MIR::LValue> > MIR::Cloner::clone_name_lval_vec(const ::std::vector< ::std::pair<::std::string,::MIR::LValue> >& src) const
+{
+    ::std::vector< ::std::pair<::std::string,::MIR::LValue> >  rv;
+    rv.reserve(src.size());
+    for(const auto& e : src)
+        rv.push_back(::std::make_pair(e.first, this->clone_lval(e.second)));
+    return rv;
+}
+::std::vector<::MIR::LValue> MIR::Cloner::clone_lval_vec(const ::std::vector<::MIR::LValue>& src) const
+{
+    ::std::vector<::MIR::LValue>    rv;
+    rv.reserve(src.size());
+    for(const auto& lv : src)
+        rv.push_back( this->clone_lval(lv) );
+    return rv;
+}
+::std::vector<::MIR::Param> MIR::Cloner::clone_param_vec(const ::std::vector<::MIR::Param>& src) const
+{
+    ::std::vector<::MIR::Param>    rv;
+    rv.reserve(src.size());
+    for(const auto& lv : src)
+        rv.push_back( this->clone_param(lv) );
+    return rv;
+}
+
+::MIR::LValue MIR::Cloner::clone_lval(const ::MIR::LValue& src) const
+{
+    auto wrappers = src.m_wrappers;
+    for(auto& w : wrappers)
+    {
+        if( w.is_Index() ) {
+            w = ::MIR::LValue::Wrapper::new_Index( map_local(w.as_Index()) );
+        }
+    }
+    TU_MATCH_HDRA( (src.m_root), {)
+    TU_ARMA(Return, se) {
+        return ::MIR::LValue( ::MIR::LValue::Storage::new_Return(), mv$(wrappers) );
+        }
+    TU_ARMA(Argument, se) {
+        return ::MIR::LValue( ::MIR::LValue::Storage::new_Argument(se), mv$(wrappers) );
+        }
+    TU_ARMA(Local, se) {
+        return ::MIR::LValue( ::MIR::LValue::Storage::new_Local(this->map_local(se)), mv$(wrappers) );
+        }
+    TU_ARMA(Static, se) {
+        return ::MIR::LValue( ::MIR::LValue::Storage::new_Static(this->monomorph(se)), mv$(wrappers) );
+        }
+    }
+    throw "";
+}
+::MIR::Constant MIR::Cloner::clone_constant(const ::MIR::Constant& src) const
+{
+    TU_MATCH_HDRA( (src), {)
+    TU_ARMA(Int  , ce) return ::MIR::Constant(ce);
+    TU_ARMA(Uint , ce) return ::MIR::Constant(ce);
+    TU_ARMA(Float, ce) return ::MIR::Constant(ce);
+    TU_ARMA(Bool , ce) return ::MIR::Constant(ce);
+    TU_ARMA(Bytes, ce) return ::MIR::Constant(ce);
+    TU_ARMA(StaticString, ce) return ::MIR::Constant(ce);
+    TU_ARMA(Const, ce) {
+        return ::MIR::Constant::make_Const({ box$(this->monomorph(*ce.p)) });
+        }
+    TU_ARMA(Generic, ce) {
+        auto val = monomorphiser().get_value(sp, ce);
+        TU_MATCH_HDRA( (val), {)
+        default:
+            TODO(sp, "Monomorphise MIR generic constant " << ce << " = " << val);
+        TU_ARMA(Generic, ve) {
+            return ve;
+            }
+        TU_ARMA(Evaluated, ve) {
+            const auto& ty = this->value_generic_type(ce);
+            auto v = EncodedLiteralSlice(*ve);
+            ASSERT_BUG(sp, ty.data().is_Primitive(), "Handle non-primitive const generic: " << ty);
+            // TODO: This is duplicated in `mir/from_hir_match.cpp` - De-duplicate?
+            switch(ty.data().as_Primitive())
+            {
+            case ::HIR::CoreType::Bool: return ::MIR::Constant::make_Bool({ v.read_uint(1) != 0 });
+            case ::HIR::CoreType::U8:
+            case ::HIR::CoreType::U16:
+            case ::HIR::CoreType::U32:
+            case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::U128:  return ::MIR::Constant::make_Uint({ v.read_uint(ve->bytes.size()), ty.data().as_Primitive() });
+            case ::HIR::CoreType::Usize:  return ::MIR::Constant::make_Uint({ v.read_uint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
+            case ::HIR::CoreType::I8:
+            case ::HIR::CoreType::I16:
+            case ::HIR::CoreType::I32:
+            case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::I128:  return ::MIR::Constant::make_Int({ v.read_sint(ve->bytes.size()), ty.data().as_Primitive() });
+            case ::HIR::CoreType::Isize:  return ::MIR::Constant::make_Int({ v.read_sint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
+            case ::HIR::CoreType::F16:
+            case ::HIR::CoreType::F32:
+            case ::HIR::CoreType::F64:
+            case ::HIR::CoreType::F128: return ::MIR::Constant::make_Float({ v.read_float(ve->bytes.size()), ty.data().as_Primitive() });
+            case ::HIR::CoreType::Char: return ::MIR::Constant::make_Uint({ v.read_uint(4), ty.data().as_Primitive() });
+            case ::HIR::CoreType::Str:  BUG(sp, "`str` const generic");
+            }
+            }
+        }
+        }
+    TU_ARMA(Function, ce) {
+        return ::MIR::Constant::make_Function({ box$(this->monomorph(*ce.p)) });
+        }
+    TU_ARMA(ItemAddr, ce) {
+        if(!ce)
+            return ::MIR::Constant::make_ItemAddr({});
+        return ::MIR::Constant::make_ItemAddr(box$(this->monomorph(*ce)));
+        }
+    }
+    throw "";
+}
+::MIR::Param MIR::Cloner::clone_param(const ::MIR::Param& src) const
+{
+    TU_MATCHA( (src), (se),
+    (LValue,
+        return clone_lval(se);
+        ),
+    (Borrow,
+        return ::MIR::Param::make_Borrow({ se.type, this->clone_lval(se.val) });
+        ),
+    (Constant,
+        return clone_constant(se);
+        )
+    )
+    throw "";
+}
+::MIR::RValue MIR::Cloner::clone_rval(const ::MIR::RValue& src) const
+{
+    TU_MATCH_HDRA( (src), {)
+    TU_ARMA(Use, se) {
+        //if( const auto* ae = se.opt_Argument() )
+        //    if( const auto* e = this->te.args.at(ae->idx).opt_Constant() )
+        //        return e->clone();
+        return ::MIR::RValue( this->clone_lval(se) );
+        }
+    TU_ARMA(Constant, se) {
+        return this->clone_constant(se);
+        }
+    TU_ARMA(SizedArray, se) {
+        return ::MIR::RValue::make_SizedArray({ this->clone_param(se.val), monomorphiser().monomorph_arraysize(sp, se.count) });
+        }
+    TU_ARMA(Borrow, se) {
+        return ::MIR::RValue::make_Borrow({ se.type, se.is_raw, this->clone_lval(se.val) });
+        }
+    TU_ARMA(Cast, se) {
+        return ::MIR::RValue::make_Cast({ this->clone_lval(se.val), this->monomorph(se.type) });
+        }
+    TU_ARMA(BinOp, se) {
+        return ::MIR::RValue::make_BinOp({ this->clone_param(se.val_l), se.op, this->clone_param(se.val_r) });
+        }
+    TU_ARMA(UniOp, se) {
+        return ::MIR::RValue::make_UniOp({ this->clone_lval(se.val), se.op });
+        }
+    TU_ARMA(DstMeta, se) {
+        return ::MIR::RValue::make_DstMeta({ this->clone_lval(se.val) });
+        }
+    TU_ARMA(DstPtr, se) {
+        return ::MIR::RValue::make_DstPtr({ this->clone_lval(se.val) });
+        }
+    TU_ARMA(MakeDst, se) {
+        return ::MIR::RValue::make_MakeDst({ this->clone_param(se.ptr_val), this->clone_param(se.meta_val) });
+        }
+    TU_ARMA(Tuple, se) {
+        return ::MIR::RValue::make_Tuple({ this->clone_param_vec(se.vals) });
+        }
+    TU_ARMA(Array, se) {
+        return ::MIR::RValue::make_Array({ this->clone_param_vec(se.vals) });
+        }
+    TU_ARMA(UnionVariant, se) {
+        return ::MIR::RValue::make_UnionVariant({ this->monomorph(se.path), se.index, this->clone_param(se.val) });
+        }
+    TU_ARMA(EnumVariant, se) {
+        return ::MIR::RValue::make_EnumVariant({ this->monomorph(se.path), se.index, this->clone_param_vec(se.vals) });
+        }
+    TU_ARMA(Struct, se) {
+        return ::MIR::RValue::make_Struct({ this->monomorph(se.path), this->clone_param_vec(se.vals) });
+        }
+    }
+    throw "";
+}

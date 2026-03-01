@@ -262,7 +262,7 @@ public:
         WRAPIF( n.m_val
             , AST::ExprNode_Deref, AST::ExprNode_UniOp
             , AST::ExprNode_Cast, AST::ExprNode_BinOp, AST::ExprNode_Assign
-            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_IfLet, AST::ExprNode_Match
+            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_Match
             );
         m_os << "." << n.m_method;
         m_os << "(";
@@ -303,30 +303,35 @@ public:
             m_os << "'" << n.m_label << ": ";
         }
 
-        switch(n.m_type)
-        {
-        case AST::ExprNode_Loop::LOOP:
-            m_os << "loop";
-            break;
-        case AST::ExprNode_Loop::WHILE:
-            m_os << "while ";
-            AST::NodeVisitor::visit(n.m_cond);
-            break;
-        case AST::ExprNode_Loop::FOR:
-            m_os << "for ";
-            print_pattern(n.m_pattern, true);
-            m_os << " in ";
-            AST::NodeVisitor::visit(n.m_cond);
-            break;
-        }
+        m_os << "loop";
 
-        if( expr_root )
-        {
+        if( expr_root ) {
             m_os << "\n";
             m_os << indent();
         }
-        else
-        {
+        else {
+            m_os << " ";
+        }
+
+        AST::NodeVisitor::visit(n.m_code);
+    }
+    virtual void visit(AST::ExprNode_For& n) override {
+        bool expr_root = m_expr_root;
+        m_expr_root = false;
+
+        if( n.m_label.name != "" ) {
+            m_os << "'" << n.m_label << ": ";
+        }
+        m_os << "for ";
+        print_pattern(n.m_pattern, true);
+        m_os << " in ";
+        AST::NodeVisitor::visit(n.m_value);
+
+        if( expr_root ) {
+            m_os << "\n";
+            m_os << indent();
+        }
+        else {
             m_os << " ";
         }
 
@@ -345,7 +350,7 @@ public:
             m_os << ")";
         }
     }
-    void visit(AST::ExprNode_WhileLet& n) override {
+    void visit(AST::ExprNode_While& n) override {
         bool expr_root = m_expr_root;
         m_expr_root = false;
 
@@ -419,54 +424,34 @@ public:
     virtual void visit(AST::ExprNode_If& n) override {
         bool expr_root = m_expr_root;
         m_expr_root = false;
-        m_os << "if ";
-        AST::NodeVisitor::visit(n.m_cond);
-
-        visit_if_common(expr_root, n.m_true, n.m_false);
-    }
-    virtual void visit(AST::ExprNode_IfLet& n) override {
-        bool expr_root = m_expr_root;
-        m_expr_root = false;
-        m_os << "if ";
-        visit_iflet_conditions(n.m_conditions);
-
-        visit_if_common(expr_root, n.m_true, n.m_false);
-    }
-    void visit_if_common(bool expr_root, ::AST::ExprNodeP& tv, ::AST::ExprNodeP& fv)
-    {
-        if( expr_root )
-        {
-            m_os << "\n";
-            m_os << indent();
-        }
-        else
-        {
-            m_os << " ";
-        }
-
-        bool is_block = (dynamic_cast<const AST::ExprNode_Block*>(&*tv) != nullptr);
-        if( !is_block ) m_os << "{ ";
-        AST::NodeVisitor::visit(tv);
-        if( !is_block ) m_os << " }";
-        if(fv.get())
-        {
-            if( expr_root )
-            {
-                m_os << "\n";
-                m_os << indent() << "else";
-                // handle chained if statements nicely
-                if( IS(*fv, AST::ExprNode_If) || IS(*fv, AST::ExprNode_IfLet) ) {
-                    m_expr_root = true;
-                    m_os << " ";
+        for(auto& arm : n.m_arms) {
+            if( &arm != n.m_arms.data() ) {
+                if( expr_root ) {
+                    m_os << indent();
                 }
-                else
-                    m_os << "\n" << indent();
+                m_os << "else ";
             }
-            else
-            {
-                m_os << " else ";
+
+            m_os << "if ";
+            visit_iflet_conditions(arm.m_conditions);
+
+            bool is_block = (dynamic_cast<const AST::ExprNode_Block*>(&*arm.m_body) != nullptr);
+            if( !is_block ) m_os << "{ ";
+            AST::NodeVisitor::visit(arm.m_body);
+            if( !is_block ) m_os << " }";
+            if( expr_root ) {
+                m_os << "\n";
             }
-            AST::NodeVisitor::visit(fv);
+        }
+        if( n.m_else ) {
+            if( expr_root ) {
+                m_os << indent();
+            }
+            m_os << "else";
+            bool is_block = (dynamic_cast<const AST::ExprNode_Block*>(&*n.m_else) != nullptr);
+            if( !is_block ) m_os << "{ ";
+            AST::NodeVisitor::visit(n.m_else);
+            if( !is_block ) m_os << " }";
         }
     }
     virtual void visit(AST::ExprNode_Closure& n) override {
@@ -666,7 +651,7 @@ public:
         WRAPIF( n.m_obj
             , AST::ExprNode_Deref, AST::ExprNode_UniOp
             , AST::ExprNode_Cast, AST::ExprNode_BinOp, AST::ExprNode_Assign
-            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_IfLet, AST::ExprNode_Match
+            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_Match
             );
         m_os << "." << n.m_name;
     }
@@ -675,7 +660,7 @@ public:
         WRAPIF( n.m_obj
             , AST::ExprNode_Deref, AST::ExprNode_UniOp
             , AST::ExprNode_Cast, AST::ExprNode_BinOp, AST::ExprNode_Assign
-            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_IfLet, AST::ExprNode_Match
+            , AST::ExprNode_Match, AST::ExprNode_If, AST::ExprNode_Match
             );
         m_os << "[";
         AST::NodeVisitor::visit(n.m_idx);

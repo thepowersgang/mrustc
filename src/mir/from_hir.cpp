@@ -308,11 +308,14 @@ namespace {
             )
         }
 
-        MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b)
+        MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b, HIR::TypeRef* out_ty)
         {
+            HIR::TypeRef    tmp_ty;
+            if( !out_ty ) {
+                out_ty = &tmp_ty;
+            }
+            HIR::TypeRef& ty = *out_ty;
             MIR::LValue lval;
-            HIR::TypeRef    ty;
-
             MIR_LowerHIR_GetTypeValueForPath(sp, m_builder, outer_ty, outer_lval, b.field, ty, lval);
 
             if(b.is_split_slice())
@@ -395,14 +398,14 @@ namespace {
             return lval;
         }
 
-        void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
+        void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings, bool update_states/*=true*/) override
         {
             TRACE_FUNCTION_F(outer_lval << ": " << outer_ty << " [" << bindings << "]");
             // Reverse order to avoid potential use-after-move for `foo @ Bar(baz, ..)`
             for(size_t i = bindings.size(); i--;)
             {
                 const auto& b = bindings[i];
-                auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
+                auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b, nullptr);
 
                 MIR::RValue rv;
                 switch( b.binding->m_type )
@@ -428,15 +431,8 @@ namespace {
                     rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, mv$(lval) });
                     break;
                 }
-                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv) );
-            }
-        }
-        void destructure_aliases_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
-        {
-            for(const auto& b : bindings)
-            {
-                auto val = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
-                m_builder.add_variable_alias(sp, b.binding->m_slot, b.binding->m_type, mv$(val));
+                // NOTE: Don't drop the destination, as `match` does some tricky things with calling destructure multiple times (to handle or-patterns)
+                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv), update_states);
             }
         }
 
@@ -1163,68 +1159,6 @@ namespace {
             }
 
             m_builder.end_block( ::MIR::Terminator::make_If({ mv$(decision_val), true_branch, false_branch }) );
-        }
-
-        void visit(::HIR::ExprNode_If& node) override
-        {
-            TRACE_FUNCTION_FR("_If", "_If");
-
-            auto true_branch = m_builder.new_bb_unlinked();
-            auto false_branch = m_builder.new_bb_unlinked();
-            emit_if(node.m_cond, true_branch, false_branch);
-
-            auto next_block = m_builder.new_bb_unlinked();
-            auto result_val = m_builder.new_temporary(node.m_res_type);
-
-            // Scope handles cases where one arm moves a value but the other doesn't
-            auto scope = m_builder.new_scope_split( node.m_true->span() );
-
-            // 'true' branch
-            {
-                auto stmt_scope = m_builder.new_scope_temp(node.m_true->span());
-                m_builder.set_cur_block(true_branch);
-                this->visit_node_ptr(node.m_true);
-                if( m_builder.block_active() || m_builder.has_result() ) {
-                    m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_true->span()) );
-                    m_builder.terminate_scope(node.span(), mv$(stmt_scope));
-                    m_builder.end_split_arm(node.span(), scope, true);
-                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-                }
-                else {
-                    m_builder.terminate_scope(node.span(), mv$(stmt_scope), false);
-                    m_builder.end_split_arm(node.span(), scope, false);
-                }
-            }
-
-            // 'false' branch
-            m_builder.set_cur_block(false_branch);
-            if( node.m_false )
-            {
-                auto stmt_scope = m_builder.new_scope_temp(node.m_false->span());
-                this->visit_node_ptr(node.m_false);
-                if( m_builder.block_active() )
-                {
-                    m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_false->span()) );
-                    m_builder.terminate_scope(node.span(), mv$(stmt_scope));
-                    m_builder.end_split_arm(node.span(), scope, true);
-                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-                }
-                else {
-                    m_builder.terminate_scope(node.span(), mv$(stmt_scope), false);
-                    m_builder.end_split_arm(node.span(), scope, false);
-                }
-            }
-            else
-            {
-                // Assign `()` to the result
-                m_builder.push_stmt_assign(node.span(),  result_val.clone(), ::MIR::RValue::make_Tuple({}) );
-                m_builder.end_split_arm(node.span(), scope, true);
-                m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-            }
-            m_builder.set_cur_block(next_block);
-            m_builder.terminate_scope( node.span(), mv$(scope) );
-
-            m_builder.set_result( node.span(), mv$(result_val) );
         }
 
         void generate_checked_binop(const Span& sp, ::MIR::LValue res_slot, ::MIR::eBinOp op, ::MIR::Param val_l, const ::HIR::TypeRef& ty_l, ::MIR::Param val_r, const ::HIR::TypeRef& ty_r)

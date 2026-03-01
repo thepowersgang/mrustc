@@ -288,24 +288,6 @@ struct ExprNode_Match:
 
     NODE_METHODS();
 };
-// TODO: Refactor this such that if-else if-else is represented in a flat manner, instead of being recursive
-// - `if let` is a challenge with that form
-struct ExprNode_If:
-    public ExprNode
-{
-    ::HIR::ExprNodeP    m_cond;
-    ::HIR::ExprNodeP    m_true;
-    ::HIR::ExprNodeP    m_false;
-
-    ExprNode_If(Span sp, ::HIR::ExprNodeP cond, ::HIR::ExprNodeP true_code, ::HIR::ExprNodeP false_code):
-        ExprNode( mv$(sp) ),
-        m_cond( mv$(cond) ),
-        m_true( mv$(true_code) ),
-        m_false( mv$(false_code) )
-    {}
-
-    NODE_METHODS();
-};
 
 struct ExprNode_Assign:
     public ExprNode
@@ -1037,7 +1019,6 @@ public:
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
     NV(ExprNode_Match)
-    NV(ExprNode_If)
 
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)
@@ -1094,7 +1075,6 @@ public:
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
     NV(ExprNode_Match)
-    NV(ExprNode_If)
 
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)

@@ -111,12 +111,10 @@ TAGGED_UNION(ScopeType, Owning,
         ::MIR::BasicBlockId   entry_bb;
         ::std::vector<unsigned> drop_flags;
         }),
-    // State which should end up with no mutation of variable states
     (Freeze, struct {
-        ::std::map<unsigned int,VarState>    changed_slots;
-        //::std::map<unsigned int,VarState>    changed_args;
-        std::vector<bool>   original_aliases;
-        })
+        /// Has `unfreeze_scope` been called on this entry?
+        bool unfrozen = false;
+    })
     );
 
 #define FIELD_DEREF 0xFFFF
@@ -253,6 +251,29 @@ public:
     /// Check if the passed type is Box<T> and returns a pointer to the T type if so, otherwise nullptr
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 
+    class SavedAliases {
+        friend class MirBuilder;
+        // Just remember which variables had aliases on them, as we want to clear anything added while saving.
+        ::std::vector<bool> set_aliases;
+    };
+    /// Save the current state of aliases (see add_variable_alias)
+    SavedAliases save_aliases() const {
+        SavedAliases    rv;
+        rv.set_aliases.reserve(m_variable_aliases.size());
+        for(const auto& v : m_variable_aliases) {
+            rv.set_aliases.push_back(v.second != MIR::LValue());
+        }
+        return rv;
+    }
+    void restore_aliases(SavedAliases a) {
+        assert(a.set_aliases.size() == m_variable_aliases.size());
+        for(size_t i = 0; i < a.set_aliases.size(); i ++) {
+            if( !a.set_aliases[i] ) {
+                m_variable_aliases.at(i).second = MIR::LValue();
+            }
+        }
+    }
+
     // Variable aliases (used for match guards)
     void add_variable_alias(const Span& sp, unsigned idx, HIR::PatternBinding::Type ty, MIR::LValue lv) {
         DEBUG("#" << idx << " = " << int(ty) << " " << lv);
@@ -305,7 +326,7 @@ public:
 
     // - Statements
     // Push an assignment. NOTE: This also marks the rvalue as moved
-    void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool drop_destination=true);
+    void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool update_dest_state=true);
     // Push a drop (likely only used by scope cleanup)
     void push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int drop_flag=~0u);
     // Push a shallow drop (for Box)
@@ -331,6 +352,36 @@ public:
     void raise_temporaries(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope, bool to_above=false);
     void raise_temporaries(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope, bool to_above=false);
 
+
+    class SaveCodeProto {
+        friend class MirBuilder;
+        size_t index;
+    };
+    /// @brief Start saving code for later duplication (match guards)
+    /// @return Handle to the current save stack entry
+    SaveCodeProto code_save_start();
+    class SavedCode {
+        friend class MirBuilder;
+        std::vector<unsigned>   blocks;
+    };
+    /// @brief Complete and finalise saved code
+    SavedCode code_save_end(SaveCodeProto h);
+    class CloneMapper {
+    public:
+        virtual MIR::BasicBlockId update_bb_ref(MIR::BasicBlockId bb_idx) = 0;
+    };
+    /// @brief Insert saved code, applying the supplied mapper
+    void insert_cloned(const Span& sp, const SavedCode& c, CloneMapper& mapper);
+private:
+    struct CodeSaveStackEnt {
+        /// Unique index to catch stack violations
+        size_t  index;
+        /// Basic blocks in the copied region
+        std::vector<unsigned>   blocks;
+    };
+    std::vector<CodeSaveStackEnt>   m_code_save_stack;
+public:
+
     void set_cur_block(unsigned int new_block);
     ::MIR::BasicBlockId pause_cur_block();
 
@@ -346,10 +397,15 @@ public:
     void drop_flag_alias(unsigned int old_idx, unsigned int new_idx);
 
     // --- Scopes ---
+    /// Scope controlling the state of defined variables
     ScopeHandle new_scope_var(const Span& sp);
+    /// Scope controlling the state of temporaries created within it
     ScopeHandle new_scope_temp(const Span& sp);
+    /// Scope for split code paths (e.g. `if`)
     ScopeHandle new_scope_split(const Span& sp);
+    /// Scope for escapable code paths (e.g. `loop`)
     ScopeHandle new_scope_loop(const Span& sp);
+    /// Prevent any mutation of states above this scope until `unfreeze_scope` is called
     ScopeHandle new_scope_freeze(const Span& sp);
 
     /// Raises every variable defined in the source scope into the target scope
@@ -364,12 +420,8 @@ public:
     void end_split_arm_early(const Span& sp);
     /// Terminates the current split condition clause (used for the conditional portion of a match arm)
     void end_split_condition(const Span& sp, const ScopeHandle&);
-
-    void uncomplete_scope(const ScopeHandle& scope) {
-        auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
-        auto& s = m_scopes.at(*it);
-        s.complete = false;
-    }
+    /// Allows mutation through a freeze scope (see `new_scope_freeze`)
+    void unfreeze_scope(const Span& sp, const ScopeHandle& );
 
     const ScopeHandle& fcn_scope() const {
         return m_fcn_scope;
@@ -381,18 +433,25 @@ public:
     void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
     enum class SlotType {
+        /// @brief Local variable (either a binding or a temporary, it matters not). Maps to `LValue::Local`
         Local,  // Local ~0u is return
+        /// Function argument. Maps to `LValue::Argument`
         Argument
     };
-    const VarState& get_slot_state(const Span& sp, unsigned int idx, SlotType type, unsigned int skip_count=0) const;
+    const VarState& get_slot_state(const Span& sp, unsigned int idx, SlotType type, const ScopeHandle* above_scope=nullptr) const;
     VarState& get_slot_state_mut(const Span& sp, unsigned int idx, SlotType type);
 
     VarState* get_val_state_mut_p(const Span& sp, const ::MIR::LValue& lv, bool expect_valid=false);
+
+    void merge_split_lists(const Span& sp, const ScopeHandle& handle,
+        const ::std::map<unsigned int, VarState>& states, ::std::map<unsigned int, VarState>& end_states, MirBuilder::SlotType type
+    );
 
     void terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_loop);
 
     void drop_value_from_state(const Span& sp, const VarState& vs, ::MIR::LValue lv);
     void drop_scope_values(const ScopeDef& sd);
+    /// Finalise a scope before it's fully destroyed. Doesn't emit destructors (already done by `drop_scope_values`)
     void complete_scope(ScopeDef& sd);
 
 public:
@@ -445,8 +504,8 @@ public:
     //virtual void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) = 0;
     virtual void define_vars_from(const Span& sp, const ::HIR::Pattern& pat) = 0;
 
-    virtual void destructure_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
-    virtual void destructure_aliases_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
+    virtual void destructure_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings, bool update_states=true) = 0;
+    virtual MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b, HIR::TypeRef* out_ty) = 0;
 
     virtual SaveAndEditVal<const ScopeHandle*> disable_borrow_extension() = 0;
 };

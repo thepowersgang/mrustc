@@ -2331,22 +2331,18 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             }
         }
         void visit(AST::ExprNode_Loop& node) override {
-            AST::NodeVisitorDef::visit(node.m_cond);
             this->context.push_block();
-            switch( node.m_type )
-            {
-            case ::AST::ExprNode_Loop::LOOP:
-                break;
-            case ::AST::ExprNode_Loop::WHILE:
-                break;
-            case ::AST::ExprNode_Loop::FOR:
-                BUG(node.span(), "`for` should be desugared");
-            }
             node.m_code->visit( *this );
             this->context.pop_block();
         }
-        void visit(AST::ExprNode_WhileLet& node) override {
-            BUG(node.span(), "`while let` should be desugared");
+        void visit(AST::ExprNode_For& node) override {
+            BUG(node.span(), "`for` should be desugared");
+        }
+        void visit(AST::ExprNode_While& node) override {
+            this->context.push_block();
+            visit_if_let_conditions(node.m_conditions);
+            node.m_code->visit(*this);
+            this->context.pop_block();
         }
 
         void visit(AST::ExprNode_LetBinding& node) override {
@@ -2364,29 +2360,30 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
                 this->context.m_var_count += n_vars;
             }
         }
-        void visit(AST::ExprNode_IfLet& node) override {
-            BUG(node.span(), "`if let` should be desugared");
-#if 0
-            DEBUG("ExprNode_IfLet");
-            node.m_value->visit( *this );
-
-            this->context.push_block();
-
-            this->context.start_patbind();
-            for(auto& pat : node.m_patterns)
-            {
-                Resolve_Absolute_Pattern(this->context, true, pat);
-                this->context.end_patbind_arm(pat.span());
+        void visit_if_let_conditions(std::vector<AST::IfLet_Condition>& conds) {
+            for(auto& cond : conds) {
+                // Visit the value first, so it doesn't bind to the newly created variables in the pattern
+                cond.value->visit(*this);
+                
+                if( cond.opt_pat )
+                {
+                    this->context.start_patbind();
+                    Resolve_Absolute_Pattern(this->context, true, *cond.opt_pat);
+                    this->context.end_patbind_arm(cond.opt_pat->span());
+                    this->context.end_patbind();
+                }
             }
-            this->context.end_patbind();
-
-            assert( node.m_true );
-            node.m_true->visit( *this );
-            this->context.pop_block();
-
-            if(node.m_false)
-                node.m_false->visit(*this);
-#endif
+        }
+        void visit(AST::ExprNode_If& node) override {
+            for(auto& arm : node.m_arms) {
+                this->context.push_block();
+                visit_if_let_conditions(arm.m_conditions);
+                arm.m_body->visit(*this);
+                this->context.pop_block();
+            }
+            if( node.m_else ) {
+                node.m_else->visit(*this);
+            }
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
             DEBUG("ExprNode_StructLiteral");

@@ -306,53 +306,71 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
 
 // Handles lowering non-trivial matches to MIR
 // - Non-trivial means that there's more than one pattern
+// - Trivial matches are handled using `MIR_LowerHIR_Let`
 void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val )
 {
-    // TODO: If any arm moves a non-Copy value, then mark `match_val` as moved
     TRACE_FUNCTION;
+    // NOTE: Lowers to the following pattern:
+    // ```
+    // loop {   // `match_scope`
+    //     let _value = foo;
+    //     if let Ok(_) = _value {
+    //         if bar() {
+    //             break { 1 };
+    //         }
+    //     }
+    //     if let Ok(v) = _value {
+    //         if true {
+    //             break v;
+    //         }
+    //     }
+    //     if let Err(_) = _value {
+    //         if true {
+    //             break panic();
+    //         }
+    //     }
+    //     diverge()
+    // }
+    // ```
 
+    // Indicates that an arm has a guard (which prevents most of the match optimisations from working)
     bool fall_back_on_simple = false;
 
     const auto& match_ty = node.m_value->m_res_type;
     auto result_val = builder.new_temporary( node.m_res_type );
     auto next_block = builder.new_bb_unlinked();
 
-    // 1. Stop the current block so we can generate code
+    /// Top level scope for the match
+    auto match_scope = builder.new_scope_loop(node.span());
+
+    // 1. Stop the current block so we can generate code before generating the pattern matching code
     auto first_cmp_block = builder.pause_cur_block();
 
-    auto match_scope = builder.new_scope_split(node.span());
-
-    // Map of arm index to ruleset
+    /// Entries for each arm, containing the code to run for each
     ::std::vector< ArmCode> arm_code;
+    /// Final list of rules (flattened patterns), for all patterns
     t_arm_rules arm_rules;
+
+    // For each arm, generate the contents of the logical `if pattern_matches { if guard { break body; } }`
     for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
     {
         TRACE_FUNCTION_FR("ARM " << arm_idx, "ARM " << arm_idx);
         /*const*/ auto& arm = node.m_arms[arm_idx];
         const Span& sp = arm.m_code->span();
-        ArmCode ac;
 
-        // Register introduced bindings to be dropped on return/diverge within this scope
-        auto drop_scope = builder.new_scope_var( arm.m_code->span() );
-        // - Define variables from the first pattern
-        conv.define_vars_from(node.span(), arm.m_patterns.front());
-
-        auto arm_body_block = builder.new_bb_unlinked();
-
-        auto pat_scope = builder.new_scope_split(node.span());
+        // ---
+        // Convert all patterns on this arm into flattened "rules"
+        // ---
         auto first_arm_rule_idx = arm_rules.size();
         for( unsigned int pat_idx = 0; pat_idx < arm.m_patterns.size(); pat_idx ++ )
         {
             const auto& pat = arm.m_patterns[pat_idx];
 
-            // - Convert HIR pattern into ruleset
             auto pat_builder = PatternRulesetBuilder { builder.resolve() };
             pat_builder.append_from(node.span(), pat, match_ty);
             size_t first_rule = arm_rules.size();
             for(auto& sr : pat_builder.m_rulesets)
             {
-                ::std::sort(sr.m_bindings.begin(), sr.m_bindings.end(),
-                    [](const PatternBinding& a, const PatternBinding& b){ return a.binding->m_slot < b.binding->m_slot; });
                 size_t i = &sr - &pat_builder.m_rulesets.front();
                 if( sr.m_is_impossible )
                 {
@@ -361,6 +379,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 else
                 {
                     DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << " #" << i << ") " << pat << " ==> [" << sr.m_rules << "]");
+                    // Sort the binding lists, so we can check that the lists are compatible
+                    ::std::sort(sr.m_bindings.begin(), sr.m_bindings.end(),
+                        [](const PatternBinding& a, const PatternBinding& b){ return a.binding->m_slot < b.binding->m_slot; });
                     // Ensure that all patterns binding to the same set of variables (only check the variables)
                     if( first_rule < arm_rules.size() ) {
                         const auto& fr = arm_rules[first_rule];
@@ -375,157 +396,279 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             }
         }
 
-        // Generate `if` guard and destructuring code
-        // - Prefers to use one copy (if all rules have the same binding set)
+        ArmCode ac;
+
+        /// Block allocated for the body code of this arm (jumped to after bindings are set)
+        auto arm_body_block = builder.new_bb_unlinked();
+
+        /// Block for when the first rule matches (contains the guard and binding setup for this rule)
+        auto entry_block_pat0 = builder.new_bb_unlinked();
+        builder.set_cur_block( entry_block_pat0 );
+
+        // Split scope for the `if pattern_matches { }` outer arm,
+        auto pat_scope = builder.new_scope_split(node.span());
+        builder.end_split_arm(sp, pat_scope, /*reachable=*/true);   // Inject the `else` case first, this should not push any statements
+
+        // Generate code for this arm (guard, destructuring, and body)
         {
-            auto _dbe = conv.disable_borrow_extension();
-            // Do all rules in this `match` arm have the same set of bindings?
-            // - Checks in `arm_rules`, which has all arms in it
-            bool same_bindings = std::all_of(arm_rules.begin() + first_arm_rule_idx+1, arm_rules.end(),
-                    [&](const PatternRuleset& r)->bool{ return r.m_bindings == arm_rules[first_arm_rule_idx].m_bindings; }
-                    );
+            // Scopes present for the body (generated during guard processing)
+            // - Temporary/variable scopes, and split scopes
+            struct MatchScope {
+                ScopeHandle handle;
+                bool is_split;
+            };
+            std::vector<MatchScope> scopes;
 
-            auto emit_condition = [&](MIR::BasicBlockId& cond_false, const std::vector<PatternBinding>& bindings) {
-                if( !arm.m_guards.empty() )
+            const auto& bindings0 = arm_rules[first_arm_rule_idx].m_bindings;
+            // Create aliases for every binding that only allows shared/immutable access (for use in the guard)
+            auto aliases = builder.save_aliases();
+            std::vector<unsigned>   binding_temps;
+            for(const auto& b : bindings0)
+            {
+                HIR::TypeRef final_ty;
+                const Span& sp = arm.m_code->span();
+                // Get the path and type of the bound value (why get type, we can just look up the binding type?)
+                auto val = conv.get_value_for_binding_path(sp, match_ty, match_val, b, &final_ty);
+                // Allocate a temporary to hold a borrow of that type
+                auto tmp = builder.new_temporary(::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, std::move(final_ty)));
+                // - Store the temporary index so later copies can write to it
+                binding_temps.push_back(tmp.as_Local());
+                // Assign the temporary with a borrow of the other slot
+                builder.push_stmt_assign(sp, tmp.clone(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, std::move(val) }));
+                // And set an alias to point to `*temp`
+                builder.add_variable_alias(sp, b.binding->m_slot, b.binding->m_type, ::MIR::LValue::new_Deref(std::move(tmp)));
+            }
+
+            // Require that either there's no guards, or that there's only one rule
+            // - Otherwise, we can't (currently) prevent use-after-free
+            // This is expected to fail at some point, but more testing needed elsewhere
+            bool should_freeze = (!arm.m_guards.empty() && first_arm_rule_idx+1 < arm_rules.size());
+            scopes.push_back({ builder.new_scope_freeze(sp), false });
+            if( !should_freeze ) {
+                builder.unfreeze_scope(sp, scopes.front().handle);
+            }
+
+            // Start saving code (the copyable part of the guard, after the assignment of the binding temporaries)
+            auto cs_h = builder.code_save_start();
+            MIR::BasicBlockId cond_false_block_pat0 = ~0u;
+            // Emit the condtion using the first set of bindings
+            if( !arm.m_guards.empty() )
+            {
+                auto _dbe = conv.disable_borrow_extension();
+                // Emit the guard code
+                TRACE_FUNCTION_FR("CONDITIONAL", "CONDITIONAL");
+
+                // The guards are chanined, and all must match for the arm to be taken
+                // I.e. These are ANDs
+                for( auto& c : arm.m_guards )
                 {
-                    TRACE_FUNCTION_FR("CONDITIONAL", "CONDITIONAL");
+                    const Span& sp = c.val->span();
+                    // Emit the logical `if !guard { } else { ... }`
 
-                    const Span& top_span = arm.m_guards.front().val->span();
+                    /// Block for when this guard successfully matches
+                    auto destructure = builder.new_bb_unlinked();
+                    
+                    // Make a temp scope and push
+                    scopes.push_back({ builder.new_scope_temp(c.val->span()), false });
+                    conv.visit_node_ptr( c.val );
+                    MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
+                    DEBUG("GUARD " << c.pat << " = " << match_cond_val);
 
-                    // Set up a scope that doesn't allow modification of variable states outside it
-                    auto freeze_scope = builder.new_scope_freeze(top_span);
-                    conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
+                    // Generate simplified rules from patterns
+                    auto pat_builder = PatternRulesetBuilder { builder.resolve() };
+                    pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);
 
-                    // A scope for temporary variables defined within these expressions
-                    auto tmp_scope = builder.new_scope_temp(top_span);
-                    //auto split_scope = builder.new_scope_split(top_span);
-
-                    bool is_cond_bb_set = false;
-
-                    // The guards are chanined, and all must match for the arm to be taken
-                    // I.e. These are ANDs
-                    for( auto& c : arm.m_guards )
+                    /// Block for when a pattern fails to match
+                    auto local_false = builder.new_bb_unlinked();
+                    bool local_false_used = false;
+                    // OR'd patterns
+                    ::std::vector<std::pair<MIR::BasicBlockId, const PatternRulesetBuilder::Ruleset*>>    ends;
+                    for(auto& sr : pat_builder.m_rulesets)
                     {
-                        // TODO: Define variables from all patterns so they don't get dropped by the tmp/freeze?
-                        conv.visit_node_ptr( c.val );
-                        MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
-                        DEBUG("GUARD " << c.pat << " = " << match_cond_val);
-
-                        /// Block for when this guard successfully matches
-                        auto destructure = builder.new_bb_unlinked();
-
-                        // Generate simplified rules from patterns
-                        auto pat_builder = PatternRulesetBuilder { builder.resolve() };
-                        pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);
-
-                        /// Block for when a pattern fails to match
-                        auto local_false = builder.new_bb_unlinked();
-                        /// Was an arm seen that was possible to match? (indicates that `local_false` has been set as the current block)
-                        bool had_possible = false;
-                        // These are ORs - multiple options for this guard pattern to match
-                        for(auto& sr : pat_builder.m_rulesets)
-                        {
-                            DEBUG("sr.m_rules = " << sr.m_rules);
-                            if( sr.m_is_impossible ) {
-                                // The rule is impossible, so don't visit
-                            }
-                            else {
-
-                                if( had_possible ) {
-                                    local_false = builder.new_bb_unlinked();
-                                }
-
-                                ASSERT_BUG(c.val->span(), builder.block_active(), "Block not active");
-                                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, c.val->span(), sr.m_rules.data(), sr.m_rules.size(),
-                                    c.val->m_res_type, match_cond_val, 0, local_false);
-                                conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), sr.m_bindings);
-                                builder.end_block(::MIR::Terminator::make_Goto(destructure));
-                                builder.set_cur_block(local_false);
-                                had_possible = true;
-                            }
-                        }
-                        if(!is_cond_bb_set) {
-                            cond_false = builder.new_bb_unlinked();
-                            is_cond_bb_set = true;
-                            // No patterns as output, so `false` is unreachable?
-                        }
-                        if( had_possible ) {
-                            // Currently in `local_false`
-                            DEBUG("GUARD: Clean up and jump to `cond_false`");
-                            builder.terminate_scope_early( arm.m_code->span(), tmp_scope );
-                            builder.uncomplete_scope(tmp_scope);    // Remove the `complete` flag
-                            //builder.end_split_arm(arm.m_code->span(), split_scope, true);
-                            builder.end_block(::MIR::Terminator::make_Goto(cond_false));
+                        if( sr.m_is_impossible ) {
+                            // The rule is impossible, so don't visit
                         }
                         else {
-                            // TODO: What does it mean if there's no possible arms?
+
+                            if( local_false_used ) {
+                                local_false = builder.new_bb_unlinked();
+                            }
+
+                            ASSERT_BUG(c.val->span(), builder.block_active(), "Block not active");
+                            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, c.val->span(), sr.m_rules.data(), sr.m_rules.size(),
+                                c.val->m_res_type, match_cond_val, 0, local_false);
+                            ends.push_back(std::make_pair(builder.pause_cur_block(), &sr));
+                            builder.set_cur_block(local_false);
+                            local_false_used = true;
                         }
-
-                        ASSERT_BUG(node.span(), !builder.block_active(), "Block still active?");
-                        builder.set_cur_block(destructure);
                     }
-                    // Now we're in BB`destructure` from the last loop
+                    if( !local_false_used ) {
+                        // None of the patterns were possible?
+                        TODO(sp, "No possible arms in a `if-let` guard?");
+                    }
+                    if( cond_false_block_pat0 == ~0u ) {
+                        cond_false_block_pat0 = builder.new_bb_unlinked();
+                    }
+                    // Split scope for the body of this logical `if`
+                    scopes.push_back({ builder.new_scope_split(sp), true });
+                    builder.end_split_arm(sp, scopes.back().handle, true);
+                    // Currently in `local_false`
+                    DEBUG("GUARD: Clean up and jump to `cond_false`");
+                    // End the top scope early, which also handles ending all intervening scopes
+                    builder.terminate_scope_early(sp, scopes.front().handle);
+                    // Indicate an exit point to the split
+                    builder.end_split_arm(arm.m_code->span(), pat_scope, /*reachable*/true, /*early*/true);
+                    builder.end_block(::MIR::Terminator::make_Goto(cond_false_block_pat0));
 
-                    // End scopes, releasing temporaries
-                    //builder.terminate_scope( arm.m_code->span(), std::move(split_scope) );
-                    builder.terminate_scope( arm.m_code->span(), std::move(tmp_scope) );
-                    builder.terminate_scope( arm.m_code->span(), std::move(freeze_scope) );
-                }
+                    // Introduce a local variable scope for the new bindings
+                    scopes.push_back({ builder.new_scope_var(c.val->span()), false });
+                    for(const auto& b : ends.front().second->m_bindings ) {
+                        builder.define_variable(b.binding->m_slot);
+                    }
 
-                conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
-                // TODO: Previous versions had reachable=false here (causing a use-after-free), would having `true` lead to leaks?
-                builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/true );
-                builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
-                };
-            if( same_bindings )
-            {
-                // If the patterns share the same set of bindings (same paths), the `condition` code can be shared
-                TRACE_FUNCTION_FR("Bindings (common)", "Bindings (common)");
-                MIR::BasicBlockId cond_false_block = ~0u;
-                auto entry_block = builder.new_bb_unlinked();
-                builder.set_cur_block( entry_block );
+                    // Only introduce the new bindings (with `destructure_from_list`) after handling the early-exit case
+                    // - This stops the `terminate_scope_early` from dropping too eagerly
+                    for(const auto& e : ends) {
+                        builder.set_cur_block(e.first);
+                        conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), e.second->m_bindings, /*update_states=*/&e == ends.data());
+                        builder.end_block(::MIR::Terminator::make_Goto(destructure));
+                    }
 
-                emit_condition(cond_false_block, arm_rules[first_arm_rule_idx].m_bindings);
-
-                for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
-                {
-                    ArmCode::Pattern    acp;
-                    acp.entry = entry_block;
-                    acp.cond_false = cond_false_block;
-                    ac.rules.push_back(acp);
+                    ASSERT_BUG(node.span(), !builder.block_active(), "Block still active?");
+                    builder.set_cur_block(destructure);
                 }
             }
-            else
-            {
-                // Different paths to the bound varibles, the condition code needs to be specialised for each pattern
-                for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
-                {
-                    TRACE_FUNCTION_FR("Bindings (AR" << i << ")", "Bindings (AR" << i << ")");
-                    MIR::BasicBlockId cond_false_block = ~0u;
-                    auto entry_block = builder.new_bb_unlinked();
-                    builder.set_cur_block( entry_block );
+            // Release the freezing of outer states
+            if( should_freeze ) {
+                // NOTE: The first scope should be the freeze
+                builder.unfreeze_scope(sp, scopes.front().handle);
+            }
+            // And undo aliases
+            builder.restore_aliases(std::move(aliases));
+            auto guard_end_block = builder.new_bb_unlinked();
+            builder.end_block( ::MIR::Terminator::make_Goto(guard_end_block) );
+            auto guard_code = builder.code_save_end(std::move(cs_h));
+            builder.set_cur_block(guard_end_block);
+            // Emit actual bindings
+            DEBUG("Arm " << arm_idx << " rule " << 0 << ":  Destructure");
+            scopes.push_back({ builder.new_scope_var(arm.m_code->span()), false });
+            conv.define_vars_from(node.span(), arm.m_patterns.front());
+            conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings0);
+            builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
+            // Emit body code
+            DEBUG("-- Body Code");
 
-                    emit_condition(cond_false_block, arm_rules[i].m_bindings);
+            scopes.push_back({ builder.new_scope_temp(arm.m_code->span()), false });
+            builder.set_cur_block( arm_body_block );
 
-                    ArmCode::Pattern    acp;
-                    acp.entry = entry_block;
-                    acp.cond_false = cond_false_block;
-                    ac.rules.push_back(acp);
+            // Push the MovedOut state up into the split's m_cond_state, so that values moved
+            // in the pattern are recognized as moved in following branches.
+            //builder.end_split_condition( arm.m_code->span(), match_scope );
+
+            conv.visit_node_ptr( arm.m_code );
+
+            if( builder.block_active() ) {
+                // - Set result
+                auto res = builder.get_result(arm.m_code->span());
+                builder.push_stmt_assign( arm.m_code->span(), result_val.clone(), mv$(res) );
+            }
+            else {
+                assert(!builder.has_result());
+            }
+            // Pop/end scopes
+            while(!scopes.empty()) {
+                if( scopes.back().is_split ) {
+                    builder.end_split_arm(arm.m_code->span(), scopes.back().handle, /*reachable*/builder.block_active());
                 }
+                builder.terminate_scope( arm.m_code->span(), std::move(scopes.back().handle), builder.block_active() );
+                scopes.pop_back();
+            }
+            builder.end_split_arm(arm.m_code->span(), pat_scope, /*reachable*/builder.block_active());
+            builder.terminate_scope( sp, std::move(pat_scope), builder.block_active() );
+            builder.terminate_scope_early(sp, match_scope);
+            
+            // Go to the next block (out of the match) (if the body didn't diverge)
+            if( builder.block_active() ) {
+                builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
+            }
+
+            // The first rule just uses the code generated above
+            {
+                ArmCode::Pattern    acp;
+                acp.entry = entry_block_pat0;
+                acp.cond_false = cond_false_block_pat0;
+                ac.rules.push_back(acp);
+            }
+            // Subsequent rules clone the guard with different values for the bindings, and (importantly) a different failure exit point
+            for(size_t i = first_arm_rule_idx+1; i < arm_rules.size(); i ++)
+            {
+                TRACE_FUNCTION_FR("Bindings (AR" << i << ")", "Bindings (AR" << i << ")");
+
+                // Clone guard code, with the two exit blocks updated, and references updated
+                struct Mapper
+                    : public MirBuilder::CloneMapper
+                {
+                    MIR::BasicBlockId cond_false;
+                    MIR::BasicBlockId cond_true;
+                    MIR::BasicBlockId new_cond_false;
+                    MIR::BasicBlockId new_cond_true;
+
+                    Mapper(MirBuilder& builder, MIR::BasicBlockId cond_false, MIR::BasicBlockId cond_true)
+                        : cond_false(cond_false)
+                        , cond_true (cond_true )
+                        , new_cond_false(builder.new_bb_unlinked())
+                        , new_cond_true (builder.new_bb_unlinked())
+                    {
+                    }
+                    MIR::BasicBlockId update_bb_ref(MIR::BasicBlockId bb_idx) {
+                        if( bb_idx == cond_false ) {
+                            return new_cond_false;
+                        }
+                        if( bb_idx == cond_true ) {
+                            return new_cond_true;
+                        }
+                        BUG(Span(), "update_bb_ref: Unknown BB " << bb_idx);
+                    }
+                } mapper(builder, cond_false_block_pat0, guard_end_block);
+
+                auto entry_block = builder.new_bb_unlinked();
+                builder.set_cur_block( entry_block );
+                // Set the binding temporaries with the correct borrows
+                assert(binding_temps.size() == arm_rules[i].m_bindings.size());
+                for(size_t j = 0; j < binding_temps.size(); j ++)
+                {
+                    const auto& b = arm_rules[i].m_bindings[j];
+                    auto val = conv.get_value_for_binding_path(sp, match_ty, match_val, b, nullptr);
+                    builder.push_stmt_assign(
+                        sp,
+                        ::MIR::LValue::new_Local(binding_temps[j]),
+                        ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, std::move(val) })
+                    );
+                }
+                // Clone the guard contents with updated block references
+                builder.insert_cloned(sp, guard_code, mapper);
+
+                // Add the final bindings and jump to the body
+                builder.set_cur_block(mapper.new_cond_true);
+                DEBUG("Arm " << arm_idx << " rule " << i-first_arm_rule_idx << ":  Destructure");
+                conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[i].m_bindings, /*update_dst_state*/false);
+                builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
+
+                ArmCode::Pattern    acp;
+                acp.entry = entry_block;
+                acp.cond_false = mapper.new_cond_false;
+                ac.rules.push_back(acp);
             }
         }
 
-        builder.terminate_scope( sp, mv$(pat_scope) );
-
-        // Condition
-        if(arm.m_guards.size() > 0)
+        // If there is a guard, then flag
+        if( !arm.m_guards.empty() )
         {
             ac.has_condition = true;
 
-            // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
-
             // TODO: What to do with conditionals in the fast model?
             // > Could split the match on each conditional - separating such that if a conditional fails it can fall into the other compatible branches.
+            // For now: Disable the complex logic, and fall back to a sequence of checks.
             fall_back_on_simple = true;
         }
         else
@@ -533,41 +676,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             ac.has_condition = false;
         }
 
-        // Code
-        DEBUG("-- Body Code");
-
-        auto tmp_scope = builder.new_scope_temp(arm.m_code->span());
-        builder.set_cur_block( arm_body_block );
-
-        // Push the MovedOut state up into the split's m_cond_state, so that values moved
-        // in the pattern are recognized as moved in following branches.
-        builder.end_split_condition( arm.m_code->span(), match_scope );
-
-        conv.visit_node_ptr( arm.m_code );
-
-        if( !builder.block_active() && !builder.has_result() ) {
-            DEBUG("Arm diverged");
-            // Nothing need be done, as the block diverged.
-            // - Drops were handled by the diverging block (if not, the below will panic)
-            builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope), false );
-            builder.terminate_scope( arm.m_code->span(), mv$(drop_scope), false );
-            builder.end_split_arm( arm.m_code->span(), match_scope, false );
-        }
-        else {
-            DEBUG("Arm result");
-            // - Set result
-            auto res = builder.get_result(arm.m_code->span());
-            builder.push_stmt_assign( arm.m_code->span(), result_val.clone(), mv$(res) );
-            // - Drop all non-moved values from this scope
-            builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
-            builder.terminate_scope( arm.m_code->span(), mv$(drop_scope) );
-            // - Split end match scope
-            builder.end_split_arm( arm.m_code->span(), match_scope, true );
-            // - Go to the next block
-            builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-        }
-
-        arm_code.push_back( mv$(ac) );
+        arm_code.push_back( std::move(ac) );
     }
 
     // Sort columns of `arm_rules` to maximise effectiveness
