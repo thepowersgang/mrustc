@@ -448,6 +448,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 builder.unfreeze_scope(sp, scopes.front().handle);
             }
 
+            // Block at the start of the saved guard data
+            auto block0 = builder.pause_cur_block();
+            builder.set_cur_block(block0);
             // Start saving code (the copyable part of the guard, after the assignment of the binding temporaries)
             auto cs_h = builder.code_save_start();
             MIR::BasicBlockId cond_false_block_pat0 = ~0u;
@@ -602,34 +605,49 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // Subsequent rules clone the guard with different values for the bindings, and (importantly) a different failure exit point
             for(size_t i = first_arm_rule_idx+1; i < arm_rules.size(); i ++)
             {
-                TRACE_FUNCTION_FR("Bindings (AR" << i << ")", "Bindings (AR" << i << ")");
+                TRACE_FUNCTION_FR(
+                    "Bindings (AR" << i << ")",
+                    "Bindings (AR" << i << ")"
+                );
 
                 // Clone guard code, with the two exit blocks updated, and references updated
                 struct Mapper
                     : public MirBuilder::CloneMapper
                 {
+                    MIR::BasicBlockId block0;
                     MIR::BasicBlockId cond_false;
                     MIR::BasicBlockId cond_true;
                     MIR::BasicBlockId new_cond_false;
                     MIR::BasicBlockId new_cond_true;
 
-                    Mapper(MirBuilder& builder, MIR::BasicBlockId cond_false, MIR::BasicBlockId cond_true)
-                        : cond_false(cond_false)
+                    Mapper(MirBuilder& builder, MIR::BasicBlockId block0, MIR::BasicBlockId cond_false, MIR::BasicBlockId cond_true)
+                        : block0(block0)
+                        , cond_false(cond_false)
                         , cond_true (cond_true )
                         , new_cond_false(builder.new_bb_unlinked())
                         , new_cond_true (builder.new_bb_unlinked())
                     {
+                        DEBUG("new_cond_false=" << new_cond_false << ", new_cond_true=" << new_cond_true);
                     }
                     MIR::BasicBlockId update_bb_ref(MIR::BasicBlockId bb_idx) {
+                        // Any block defined before the save just propagates through
+                        // E.g. if the guard contains a `break`
+                        if( bb_idx < block0 ) {
+                            return bb_idx;
+                        }
                         if( bb_idx == cond_false ) {
                             return new_cond_false;
                         }
                         if( bb_idx == cond_true ) {
                             return new_cond_true;
                         }
-                        BUG(Span(), "update_bb_ref: Unknown BB " << bb_idx);
+                        BUG(Span(), "update_bb_ref: Unknown BB " << bb_idx << " "
+                            << ": block0=" << block0
+                            << ", cond_false=" << cond_false
+                            << ", cond_true=" << cond_true
+                        );
                     }
-                } mapper(builder, cond_false_block_pat0, guard_end_block);
+                } mapper(builder, block0, cond_false_block_pat0, guard_end_block);
 
                 auto entry_block = builder.new_bb_unlinked();
                 builder.set_cur_block( entry_block );

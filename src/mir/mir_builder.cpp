@@ -701,6 +701,7 @@ void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::RValue& rval, co
 
 MirBuilder::SaveCodeProto MirBuilder::code_save_start()
 {
+    TRACE_FUNCTION;
     // Push to the stack
     // Create a new block and link in
     static size_t s_next_index;
@@ -723,10 +724,12 @@ MirBuilder::SavedCode MirBuilder::code_save_end(SaveCodeProto h)
     SavedCode   rv;
     rv.blocks = std::move(m_code_save_stack.back().blocks);
     m_code_save_stack.pop_back();
+    DEBUG("rv.blocks = { " << rv.blocks << " }");
     return rv;
 }
 void MirBuilder::insert_cloned(const Span& sp, const SavedCode& c, CloneMapper& mapper)
 {
+    TRACE_FUNCTION;
     assert(block_active()); // Need an active block to start inserting
     if( !c.blocks.empty() )
     {
@@ -755,16 +758,19 @@ void MirBuilder::insert_cloned(const Span& sp, const SavedCode& c, CloneMapper& 
         // End the current block with a goto to the first block
         end_block(::MIR::Terminator::make_Goto({ cloner.new_block_map[c.blocks.front()] }));
 
+        DEBUG("c.blocks = [" << c.blocks << "]");
+        DEBUG("new_block_map = {" << cloner.new_block_map << "}");
         // Start inserting (and remapping)
-        for(auto bb_idx : c.blocks)
+        for(auto src_idx : c.blocks)
         {
-            auto& dst = m_output.blocks[cloner.new_block_map.at(bb_idx)];
-            const auto& src = m_output.blocks[bb_idx];
+            auto new_idx = cloner.new_block_map.at(src_idx);
+            DEBUG("BB" << new_idx << " <= BB" << src_idx);
+            const auto& src = m_output.blocks[src_idx];
+            set_cur_block(new_idx);
             for(const auto& v : src.statements) {
-                dst.statements.push_back(cloner.clone_stmt(v));
+                push_stmt(sp, cloner.clone_stmt(v));
             }
-
-            dst.terminator = cloner.clone_term(src.terminator);
+            end_block(cloner.clone_term(src.terminator));
         }
         // Leave no active block
     }
@@ -777,7 +783,10 @@ void MirBuilder::set_cur_block(unsigned int new_block)
     ASSERT_BUG(Span(), m_output.blocks[new_block].terminator.is_Incomplete(), "Attempting to resume a completed block - BB" << new_block);
     // Record this new block in the save stack entries
     for(auto& v : m_code_save_stack) {
-        v.blocks.push_back(new_block);
+        // Just in case a block is saved+resumed
+        if( std::find(v.blocks.begin(), v.blocks.end(), new_block) == v.blocks.end() ) {
+            v.blocks.push_back(new_block);
+        }
     }
     DEBUG("BB" << new_block << " START");
     m_current_block = new_block;
