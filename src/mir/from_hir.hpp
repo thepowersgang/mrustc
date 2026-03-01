@@ -110,7 +110,11 @@ TAGGED_UNION(ScopeType, Owning,
         // TODO: Any drop flags allocated in the loop must be re-initialised at the start of the loop (or before a loopback)
         ::MIR::BasicBlockId   entry_bb;
         ::std::vector<unsigned> drop_flags;
-        })
+        }),
+    (Freeze, struct {
+        /// Has `unfreeze_scope` been called on this entry?
+        bool unfrozen = false;
+    })
     );
 
 #define FIELD_DEREF 0xFFFF
@@ -393,10 +397,16 @@ public:
     void drop_flag_alias(unsigned int old_idx, unsigned int new_idx);
 
     // --- Scopes ---
+    /// Scope controlling the state of defined variables
     ScopeHandle new_scope_var(const Span& sp);
+    /// Scope controlling the state of temporaries created within it
     ScopeHandle new_scope_temp(const Span& sp);
+    /// Scope for split code paths (e.g. `if`)
     ScopeHandle new_scope_split(const Span& sp);
+    /// Scope for escapable code paths (e.g. `loop`)
     ScopeHandle new_scope_loop(const Span& sp);
+    /// Prevent any mutation of states above this scope until `unfreeze_scope` is called
+    ScopeHandle new_scope_freeze(const Span& sp);
 
     /// Raises every variable defined in the source scope into the target scope
     void raise_all(const Span& sp, ScopeHandle src, const ScopeHandle& target);
@@ -410,12 +420,8 @@ public:
     void end_split_arm_early(const Span& sp);
     /// Terminates the current split condition clause (used for the conditional portion of a match arm)
     void end_split_condition(const Span& sp, const ScopeHandle&);
-
-    void uncomplete_scope(const ScopeHandle& scope) {
-        auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
-        auto& s = m_scopes.at(*it);
-        s.complete = false;
-    }
+    /// Allows mutation through a freeze scope (see `new_scope_freeze`)
+    void unfreeze_scope(const Span& sp, const ScopeHandle& );
 
     const ScopeHandle& fcn_scope() const {
         return m_fcn_scope;
@@ -427,7 +433,9 @@ public:
     void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
     enum class SlotType {
+        /// @brief Local variable (either a binding or a temporary, it matters not). Maps to `LValue::Local`
         Local,  // Local ~0u is return
+        /// Function argument. Maps to `LValue::Argument`
         Argument
     };
     const VarState& get_slot_state(const Span& sp, unsigned int idx, SlotType type, const ScopeHandle* above_scope=nullptr) const;
@@ -443,6 +451,7 @@ private:
 
     void drop_value_from_state(const Span& sp, const VarState& vs, ::MIR::LValue lv);
     void drop_scope_values(const ScopeDef& sd);
+    /// Finalise a scope before it's fully destroyed. Doesn't emit destructors (already done by `drop_scope_values`)
     void complete_scope(ScopeDef& sd);
 
 public:

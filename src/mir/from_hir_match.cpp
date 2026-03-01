@@ -411,12 +411,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
         // Generate code for this arm (guard, destructuring, and body)
         {
-            // Require that either there's no guards, or that there's only one rule
-            // - Otherwise, we can't (currently) prevent use-after-free
-            // This is expected to fail at some point, but more testing needed elsewhere
-            ASSERT_BUG(node.span(), arm.m_guards.empty() || first_arm_rule_idx+1 == arm_rules.size(), 
-                "TODO: Correctly handle ensuring that repeated guards don't mutate state");
-
             // Scopes present for the body (generated during guard processing)
             // - Temporary/variable scopes, and split scopes
             struct MatchScope {
@@ -444,6 +438,16 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 // And set an alias to point to `*temp`
                 builder.add_variable_alias(sp, b.binding->m_slot, b.binding->m_type, ::MIR::LValue::new_Deref(std::move(tmp)));
             }
+
+            // Require that either there's no guards, or that there's only one rule
+            // - Otherwise, we can't (currently) prevent use-after-free
+            // This is expected to fail at some point, but more testing needed elsewhere
+            bool should_freeze = (!arm.m_guards.empty() && first_arm_rule_idx+1 < arm_rules.size());
+            scopes.push_back({ builder.new_scope_freeze(sp), false });
+            if( !should_freeze ) {
+                builder.unfreeze_scope(sp, scopes.front().handle);
+            }
+
             // Start saving code (the copyable part of the guard, after the assignment of the binding temporaries)
             auto cs_h = builder.code_save_start();
             MIR::BasicBlockId cond_false_block_pat0 = ~0u;
@@ -517,9 +521,10 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                             builder.end_split_arm(sp, scope.handle, true);
                         }
                         else {
-                            builder.terminate_scope_early(sp, scope.handle);
+                            //builder.terminate_scope_early(sp, scope.handle);
                         }
                     }
+                    builder.terminate_scope_early(sp, scopes.front().handle);
                     // Indicate an exit point to the split
                     builder.end_split_arm(arm.m_code->span(), pat_scope, /*reachable*/true, /*early*/true);
                     builder.end_block(::MIR::Terminator::make_Goto(cond_false_block_pat0));
@@ -542,6 +547,12 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     builder.set_cur_block(destructure);
                 }
             }
+            // Release the freezing of outer states
+            if( should_freeze ) {
+                // NOTE: The first scope should be the freeze
+                builder.unfreeze_scope(sp, scopes.front().handle);
+            }
+            // And undo aliases
             builder.restore_aliases(std::move(aliases));
             auto guard_end_block = builder.new_bb_unlinked();
             builder.end_block( ::MIR::Terminator::make_Goto(guard_end_block) );
