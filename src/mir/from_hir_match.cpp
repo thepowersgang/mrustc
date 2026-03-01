@@ -514,16 +514,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     builder.end_split_arm(sp, scopes.back().handle, true);
                     // Currently in `local_false`
                     DEBUG("GUARD: Clean up and jump to `cond_false`");
-                    // Clean up every scope, starting at the top level
-                    for( const auto& scope : ::reverse(scopes) )
-                    {
-                        if(scope.is_split) {
-                            builder.end_split_arm(sp, scope.handle, true);
-                        }
-                        else {
-                            //builder.terminate_scope_early(sp, scope.handle);
-                        }
-                    }
                     // End the top scope early, which also handles ending all intervening scopes
                     builder.terminate_scope_early(sp, scopes.front().handle);
                     // Indicate an exit point to the split
@@ -540,7 +530,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     // - This stops the `terminate_scope_early` from dropping too eagerly
                     for(const auto& e : ends) {
                         builder.set_cur_block(e.first);
-                        conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), e.second->m_bindings);
+                        conv.destructure_from_list(arm.m_code->span(), c.val->m_res_type, match_cond_val.clone(), e.second->m_bindings, /*update_states=*/&e == ends.data());
                         builder.end_block(::MIR::Terminator::make_Goto(destructure));
                     }
 
