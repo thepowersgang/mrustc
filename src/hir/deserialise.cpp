@@ -1618,6 +1618,20 @@ namespace {
                 deserialise_vec< MIR::AsmParam>()
                 });
             break;
+        case 6:
+            rv = ::MIR::Statement::make_SaveDropFlag({
+                deserialise_mir_lvalue(),
+                static_cast<unsigned>(m_in.read_count()),
+                static_cast<unsigned>(m_in.read_count())
+            });
+            break;
+        case 7:
+            rv = ::MIR::Statement::make_LoadDropFlag({
+                static_cast<unsigned>(m_in.read_count()),
+                deserialise_mir_lvalue(),
+                static_cast<unsigned>(m_in.read_count())
+            });
+            break;
         default:
             BUG(Span(), "Bad tag for MIR::Statement - " << tag);
         }
