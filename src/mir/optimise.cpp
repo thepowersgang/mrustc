@@ -5885,6 +5885,10 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     used_dfs.at(e->other) = true;
                 used_dfs.at(e->idx) = true;
             }
+            else if( const auto* e = stmt.opt_LoadDropFlag() )
+            {
+                used_dfs.at(e->idx) = true;
+            }
         }
 
         if( const auto* te = block.terminator.opt_Call() )
@@ -6010,6 +6014,14 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     se->idx = df_rewrite_table[se->idx];
                     if( se->other != ~0u )
                         se->other = df_rewrite_table[se->other];
+                }
+                else if( auto* se = stmt.opt_LoadDropFlag() )
+                {
+                    se->idx = df_rewrite_table[se->idx];
+                }
+                else if( auto* se = stmt.opt_SaveDropFlag() )
+                {
+                    se->idx = df_rewrite_table[se->idx];
                 }
                 else if( auto* se = stmt.opt_ScopeEnd() )
                 {

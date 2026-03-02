@@ -3260,28 +3260,44 @@ namespace {
 
                 bool visit_stmt(::MIR::Statement& stmt) override
                 {
+                    auto get_drop_flags_slot = [this]()->MIR::LValue {
+                        ::MIR::LValue   slot = ::MIR::LValue::new_Argument(0);
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // .0
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast(1));   // .value (From MaybeUninit)
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));   // .value (From ManuallyDrop)
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(m_drop_flags_field));   // .drop_flags
+                        return slot;
+                    };
                     if( auto* s = stmt.opt_Drop() ) {
                         if( m_drop_flag_mapping.count(s->flag_idx) != 0 ) {
-                            // TODO: Need to emit a different `SetDropFlag` to load from bitset
                             // `LoadDropFlag(df$N, src_lv, bit_num)`, where `src_lv` is an array of `u8`
-                            TODO(Span(), "Rewrite drop flag usage df$" << s->flag_idx);
+                            auto slot = get_drop_flags_slot();
+                            unsigned bit_num = m_drop_flag_mapping.at(s->flag_idx);
+                            m_new_statements.push_back(::MIR::Statement::make_LoadDropFlag({
+                                s->flag_idx,
+                                std::move(slot),
+                                bit_num,
+                            }));
                         }
                     }
                     else if(auto* s = stmt.opt_SetDropFlag() ) {
                         if( m_drop_flag_mapping.count(s->other) != 0 ) {
-                            TODO(Span(), "Rewrite drop flag usage df$" << s->other);
+                            auto slot = get_drop_flags_slot();
+                            unsigned bit_num = m_drop_flag_mapping.at(s->other);
+                            // `LoadDropFlag(df$N, src_lv, bit_num)`, where `src_lv` is an array of `u8`
+                            m_new_statements.push_back(::MIR::Statement::make_LoadDropFlag({
+                                s->other,
+                                std::move(slot),
+                                bit_num,
+                            }));
                         }
                         if( m_drop_flag_mapping.count(s->idx) != 0 ) {
                             // Copy this statement to the output queue, and then rewrite to be:
                             m_new_statements.push_back(*s);
                             // `SaveDropFlag(dst_lv, bit_num, df$N)`
-                            ::MIR::LValue   slot = ::MIR::LValue::new_Argument(0);
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // .0
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast(1));   // .value (From MaybeUninit)
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));   // .value (From ManuallyDrop)
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(m_drop_flags_field));   // .drop_flags
+                            auto slot = get_drop_flags_slot();
                             unsigned bit_num = m_drop_flag_mapping.at(s->idx);
                             stmt = ::MIR::Statement::make_SaveDropFlag({
                                 std::move(slot),
@@ -3345,8 +3361,13 @@ namespace {
                             d->flag_idx = drop_flag_mapping.at(d->flag_idx);
                         }
                     }
+                    if( auto* d = stmt.opt_LoadDropFlag() ) {
+                        d->idx = drop_flag_mapping.at(d->idx);
+                    }
                 }
             }
+            //gen_node->m_drop
+            MIR_Validate(resolve, path, *drop_impl_body, gen_node->m_drop_fcn_ptr->m_args, ::HIR::TypeRef::new_unit());
             gen_node->m_drop_fcn_ptr->m_code.m_mir = std::move(drop_impl_body);
         }
         else

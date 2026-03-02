@@ -432,18 +432,26 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             case ::MIR::Statement::TAGDEAD:
                 throw "";
             case ::MIR::Statement::TAG_SetDropFlag:
+                MIR_ASSERT(state, stmt.as_SetDropFlag().idx < fcn.drop_flags.size(), "");
+                if( stmt.as_SetDropFlag().other != ~0u ) {
+                    MIR_ASSERT(state, stmt.as_SetDropFlag().other < fcn.drop_flags.size(), "");
+                }
                 break;
             case ::MIR::Statement::TAG_LoadDropFlag:
+                MIR_ASSERT(state, stmt.as_LoadDropFlag().idx < fcn.drop_flags.size(), "");
                 val_state.ensure_valid(state, stmt.as_LoadDropFlag().slot);
                 break;
             case ::MIR::Statement::TAG_SaveDropFlag:
+                MIR_ASSERT(state, stmt.as_SaveDropFlag().idx < fcn.drop_flags.size(), "");
                 val_state.ensure_valid(state, stmt.as_SaveDropFlag().slot);
                 break;
             case ::MIR::Statement::TAG_Drop:
                 // Invalidate the slot
-                if( stmt.as_Drop().flag_idx == ~0u )
-                {
+                if( stmt.as_Drop().flag_idx == ~0u ) {
                     val_state.ensure_valid(state, stmt.as_Drop().slot);
+                }
+                else {
+                    MIR_ASSERT(state, stmt.as_Drop().flag_idx < fcn.drop_flags.size(), "");
                 }
                 val_state.mark_validity( state, stmt.as_Drop().slot, false );
                 break;
@@ -751,6 +759,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 case ::MIR::Statement::TAG_SaveDropFlag:
                 case ::MIR::Statement::TAG_LoadDropFlag:
                     {
+                        const auto idx = stmt.is_SaveDropFlag() ? stmt.as_SaveDropFlag().idx : stmt.as_LoadDropFlag().idx;
+                        MIR_ASSERT(state, idx < fcn.drop_flags.size(), "df" << idx << " out of range (nflags " << fcn.drop_flags.size() << ")");
                         const auto& slot = stmt.is_SaveDropFlag() ? stmt.as_SaveDropFlag().slot : stmt.as_LoadDropFlag().slot;
                         const auto bit = stmt.is_SaveDropFlag() ? stmt.as_SaveDropFlag().bit_index : stmt.as_LoadDropFlag().bit_index;
                         ::HIR::TypeRef  slot_tmp;
