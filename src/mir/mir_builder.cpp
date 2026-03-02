@@ -2391,16 +2391,16 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
 
 std::map<unsigned, MirBuilder::SavedActiveLocal> MirBuilder::get_active_locals(const Span& sp, std::set<unsigned>& saved_drop_flags) const
 {
+    TRACE_FUNCTION;
     std::map<unsigned, MirBuilder::SavedActiveLocal>    rv;
     for(size_t i = 0; i < m_slot_states.size(); i ++)
     {
-        TU_MATCH_HDRA( (m_slot_states[i]), { )
+        const auto& s = get_slot_state(sp, i, SlotType::Local);
+        TU_MATCH_HDRA( (s), {)
         default:
-            // TODO: Handle optionals, requires some way to get the value of a drop flag
-            // - OR: Rewriting of drop flags into a bitset down the line
-            m_slot_states[i].get_used_drop_flags(&saved_drop_flags);
-            //ASSERT_BUG(Span(), !m_slot_states[i].contains_optional(), "Save state with optional (save drop flag): " << m_slot_states[i]);
-            rv.insert( std::make_pair( static_cast<unsigned>(i), SavedActiveLocal(m_slot_states[i].clone()) ));
+            DEBUG("_" << i << " : " << s);
+            s.get_used_drop_flags(&saved_drop_flags);
+            rv.insert( std::make_pair( static_cast<unsigned>(i), SavedActiveLocal(s.clone()) ));
             break;
         TU_ARMA(Invalid, e) {}
         TU_ARMA(MovedOut, e) {}
