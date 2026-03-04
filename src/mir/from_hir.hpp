@@ -505,7 +505,8 @@ public:
     virtual void define_vars_from(const Span& sp, const ::HIR::Pattern& pat) = 0;
 
     virtual void destructure_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings, bool update_states=true) = 0;
-    virtual MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b, HIR::TypeRef* out_ty) = 0;
+    virtual MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b) = 0;
+    virtual const HIR::TypeRef& get_binding_type(const Span& sp, unsigned index) const = 0;
 
     virtual SaveAndEditVal<const ScopeHandle*> disable_borrow_extension() = 0;
 };

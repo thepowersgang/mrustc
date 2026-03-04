@@ -308,13 +308,9 @@ namespace {
             )
         }
 
-        MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b, HIR::TypeRef* out_ty)
+        MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b)
         {
-            HIR::TypeRef    tmp_ty;
-            if( !out_ty ) {
-                out_ty = &tmp_ty;
-            }
-            HIR::TypeRef& ty = *out_ty;
+            HIR::TypeRef ty;
             MIR::LValue lval;
             MIR_LowerHIR_GetTypeValueForPath(sp, m_builder, outer_ty, outer_lval, b.field, ty, lval);
 
@@ -405,7 +401,7 @@ namespace {
             for(size_t i = bindings.size(); i--;)
             {
                 const auto& b = bindings[i];
-                auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b, nullptr);
+                auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
 
                 MIR::RValue rv;
                 switch( b.binding->m_type )
@@ -434,6 +430,10 @@ namespace {
                 // NOTE: Don't drop the destination, as `match` does some tricky things with calling destructure multiple times (to handle or-patterns)
                 m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv), update_states);
             }
+        }
+        const HIR::TypeRef& get_binding_type(const Span& sp, unsigned index) const
+        {
+            return m_variable_types.at(index);
         }
 
         void emit_unwind(const Span& sp)
@@ -466,6 +466,7 @@ namespace {
                 const Span& sp = subnode->span();
 
                 auto stmt_scope = m_builder.new_scope_temp(sp);
+                // NOTE: Only set the statement scope if processing a block
                 auto _stmt_scope_push = save_and_edit(m_stmt_scope, &stmt_scope);
                 this->visit_node_ptr(subnode);
 
@@ -3366,7 +3367,6 @@ namespace {
                     }
                 }
             }
-            //gen_node->m_drop
             MIR_Validate(resolve, path, *drop_impl_body, gen_node->m_drop_fcn_ptr->m_args, ::HIR::TypeRef::new_unit());
             gen_node->m_drop_fcn_ptr->m_code.m_mir = std::move(drop_impl_body);
         }

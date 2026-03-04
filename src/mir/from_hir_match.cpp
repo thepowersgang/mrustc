@@ -423,12 +423,22 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // Create aliases for every binding that only allows shared/immutable access (for use in the guard)
             auto aliases = builder.save_aliases();
             std::vector<unsigned>   binding_temps;
+            std::vector<unsigned>   binding_temps_alt(bindings0.size(), ~0u);
             for(const auto& b : bindings0)
             {
-                HIR::TypeRef final_ty;
+                HIR::TypeRef final_ty = conv.get_binding_type(sp, b.binding->m_slot).clone();
                 const Span& sp = arm.m_code->span();
-                // Get the path and type of the bound value (why get type, we can just look up the binding type?)
-                auto val = conv.get_value_for_binding_path(sp, match_ty, match_val, b, &final_ty);
+                auto val = conv.get_value_for_binding_path(sp, match_ty, match_val, b);
+                DEBUG("Set alias for: " << *b.binding << " := " << val);
+                if( b.binding->m_type != ::HIR::PatternBinding::Type::Move ) {
+                    final_ty.get_unique().as_Borrow().type = ::HIR::BorrowType::Shared;
+                    // Not a move binding, still need to borrow but no deref
+                    // - Or, make another temporary for the borrow (no scope needed)
+                    auto tmp2 = builder.new_temporary(final_ty);
+                    binding_temps_alt[binding_temps.size()] = tmp2.as_Local();
+                    builder.push_stmt_assign(sp, tmp2.clone(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, std::move(val) }));
+                    val = std::move(tmp2);
+                }
                 // Allocate a temporary to hold a borrow of that type
                 auto tmp = builder.new_temporary(::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, std::move(final_ty)));
                 // - Store the temporary index so later copies can write to it
@@ -436,7 +446,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 // Assign the temporary with a borrow of the other slot
                 builder.push_stmt_assign(sp, tmp.clone(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, std::move(val) }));
                 // And set an alias to point to `*temp`
-                builder.add_variable_alias(sp, b.binding->m_slot, b.binding->m_type, ::MIR::LValue::new_Deref(std::move(tmp)));
+                builder.add_variable_alias(sp, b.binding->m_slot, ::HIR::PatternBinding::Type::Move, ::MIR::LValue::new_Deref(std::move(tmp)));
             }
 
             // Require that either there's no guards, or that there's only one rule
@@ -656,7 +666,24 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 for(size_t j = 0; j < binding_temps.size(); j ++)
                 {
                     const auto& b = arm_rules[i].m_bindings[j];
-                    auto val = conv.get_value_for_binding_path(sp, match_ty, match_val, b, nullptr);
+                    auto val = conv.get_value_for_binding_path(sp, match_ty, match_val, b);
+                    DEBUG("Set alias for: " << *b.binding << " := " << val);
+                    if( b.binding->m_type != ::HIR::PatternBinding::Type::Move ) {
+                        MIR::LValue tmp2;
+                        if( binding_temps_alt[j] == ~0u ) {
+                            // Not a move binding, still need to borrow but no deref
+                            // - Or, make another temporary for the borrow (no scope needed)
+                            auto final_ty = conv.get_binding_type(sp, b.binding->m_slot).clone();
+                            final_ty.get_unique().as_Borrow().type = ::HIR::BorrowType::Shared;
+                            tmp2 = builder.new_temporary(final_ty);
+                            binding_temps_alt[j] = tmp2.as_Local();
+                        }
+                        else {
+                            tmp2 = ::MIR::LValue::new_Local(binding_temps_alt[j]);
+                        }
+                        builder.push_stmt_assign(sp, tmp2.clone(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, false, std::move(val) }));
+                        val = std::move(tmp2);
+                    }
                     builder.push_stmt_assign(
                         sp,
                         ::MIR::LValue::new_Local(binding_temps[j]),
