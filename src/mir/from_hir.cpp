@@ -467,7 +467,7 @@ namespace {
 
                 auto stmt_scope = m_builder.new_scope_temp(sp);
                 // NOTE: Only set the statement scope if processing a block
-                auto _stmt_scope_push = save_and_edit(m_stmt_scope, &stmt_scope);
+                auto _stmt_scope_push = save_and_edit(m_stmt_scope, dynamic_cast<::HIR::ExprNode_Block*>(subnode.get()) ? &stmt_scope : nullptr);
                 this->visit_node_ptr(subnode);
 
                 if( m_builder.block_active() || m_builder.has_result() ) {

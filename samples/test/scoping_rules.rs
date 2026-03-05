@@ -14,7 +14,7 @@ impl<'a> ::std::ops::Drop for DropFlag<'a>
 fn temporaries_in_yielded_expr()
 {
     let drop_count = ::std::cell::Cell::new(0);
-    let _foo = ({ DropFlag(&drop_count).0 }, assert_eq!(drop_count.get(), 0) );
+    let _foo = ({ DropFlag(&drop_count).0 }, assert_eq!(drop_count.get(), 1) );
     drop(_foo);
     assert_eq!(drop_count.get(), 1);
 }
