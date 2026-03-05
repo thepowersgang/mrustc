@@ -267,7 +267,8 @@ namespace
                     BUG(sp, "resolve/absolute.cpp - Context::push_var - No block");
                 }
                 auto& vb = m_name_context.back().as_VarBlock();
-                for( const auto& v : vb.variables )
+                // Work backwards, in case there are multiple bindings in the same scope.
+                for( const auto& v : ::reverse(vb.variables) )
                 {
                     if( v.first == name ) {
                         DEBUG("Arm defined var @ " << m_block_level << ": #" << v.second << " " << name);
