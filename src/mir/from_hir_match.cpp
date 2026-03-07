@@ -487,6 +487,15 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     MIR::LValue match_cond_val = builder.get_result_in_lvalue(c.val->span(), c.val->m_res_type);
                     DEBUG("GUARD " << c.pat << " = " << match_cond_val);
 
+                    // If this is not a pattern-match, terminate the temporary scope here
+                    if( c.is_if ) {
+                        auto t = builder.new_temporary(c.val->m_res_type);
+                        builder.push_stmt_assign(c.val->span(), t.clone(), std::move(match_cond_val));
+                        match_cond_val = std::move(t);
+                        builder.terminate_scope(sp, std::move(scopes.back().handle));
+                        scopes.pop_back();
+                    }
+
                     // Generate simplified rules from patterns
                     auto pat_builder = PatternRulesetBuilder { builder.resolve() };
                     pat_builder.append_from(node.span(), c.pat, c.val->m_res_type);

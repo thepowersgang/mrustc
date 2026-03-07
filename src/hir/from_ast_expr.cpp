@@ -504,7 +504,7 @@ struct LowerHIR_ExprNode_Visitor:
                     }) }) }
                 ;
             auto cond_val = lower_opt(c.value);
-            rv.push_back(::HIR::ExprNode_Match::Guard { std::move(cond_pat), std::move(cond_val) });
+            rv.push_back(::HIR::ExprNode_Match::Guard { std::move(cond_pat), std::move(cond_val), c.opt_pat ? false : true });
         }
         return rv;
     }

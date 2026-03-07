@@ -948,7 +948,13 @@ namespace typecheck
                     this->context.add_ivars( c.val->m_res_type );
                     c.val->visit( *this );
 
-                    this->context.handle_pattern(node.span(), c.pat, c.val->m_res_type);
+                    // Shortcut `if` to avoid the pattern matching complexity
+                    if( c.is_if ) {
+                        this->context.equate_types(c.val->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), c.val->m_res_type);
+                    }
+                    else {
+                        this->context.handle_pattern(node.span(), c.pat, c.val->m_res_type);
+                    }
                 }
 
                 this->context.add_ivars( arm.m_code->m_res_type );

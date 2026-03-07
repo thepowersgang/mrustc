@@ -266,6 +266,8 @@ struct ExprNode_Match:
         ::HIR::Pattern  pat;
         /// Guard value
         ::HIR::ExprNodeP    val;
+        /// Indicates that this guard is an `if` (changes scoping rules, and tweaks how typecheck happens)
+        bool is_if;
     };
     struct Arm
     {
