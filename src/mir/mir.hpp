@@ -16,6 +16,7 @@
 #include <cstdint>
 
 struct MonomorphState;
+class StaticTraitResolve;
 
 namespace MIR {
 
@@ -755,5 +756,45 @@ public:
     mutable EnumCachePtr trans_enum_state;
 };
 
+class Cloner
+{
+public:
+    const Span& sp;
+    Cloner(const Span& sp): sp(sp) {}
+
+    virtual ::MIR::BasicBlockId map_bb_idx(::MIR::BasicBlockId idx) const {
+        return idx;
+    }
+    virtual unsigned map_local(unsigned f) const {
+        return f;
+    }
+    virtual unsigned map_drop_flag(unsigned f) const {
+        return f;
+    }
+
+    virtual const HIR::TypeRef& value_generic_type(HIR::GenericRef ce) const;
+    virtual const Monomorphiser& monomorphiser() const;
+    virtual const StaticTraitResolve* resolve() const { return nullptr; }
+
+    virtual ::MIR::Statement clone_stmt(const ::MIR::Statement& src) const;
+    virtual ::MIR::Terminator clone_term(const ::MIR::Terminator& src) const;
+
+    virtual ::MIR::LValue clone_lval(const ::MIR::LValue& src) const;
+    virtual ::MIR::RValue clone_rval(const ::MIR::RValue& src) const;
+    virtual ::MIR::Param clone_param(const ::MIR::Param& src) const;
+    virtual ::MIR::Constant clone_constant(const ::MIR::Constant& src) const;
+
+    ::std::vector<MIR::AsmParam> clone_asm_params(const ::std::vector<MIR::AsmParam>& params) const;
+    ::std::vector< ::std::pair<::std::string,::MIR::LValue> > clone_name_lval_vec(const ::std::vector< ::std::pair<::std::string,::MIR::LValue> >& src) const;
+    ::std::vector<::MIR::Param> clone_param_vec(const ::std::vector<::MIR::Param>& src) const;
+    ::std::vector<::MIR::LValue> clone_lval_vec(const ::std::vector<::MIR::LValue>& src) const;
+
+    // -- Monomorphise various types
+    ::HIR::TypeRef monomorph(const ::HIR::TypeRef& x) const;
+    ::HIR::GenericPath monomorph(const ::HIR::GenericPath& x) const;
+    ::HIR::Path monomorph(const ::HIR::Path& x) const;
+    ::HIR::PathParams monomorph(const ::HIR::PathParams& x) const;
 };
+
+} // namespace MIR
 

@@ -185,9 +185,6 @@ namespace {
         void visit(::HIR::ExprNode_Match& node) override {
             no_revisit(node);
         }
-        void visit(::HIR::ExprNode_If& node) override {
-            no_revisit(node);
-        }
 
         void visit(::HIR::ExprNode_Assign& node) override {
             no_revisit(node);
@@ -1848,9 +1845,6 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Match& node) override {
-            no_revisit(node);
-        }
-        void visit(::HIR::ExprNode_If& node) override {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Assign& node) override {

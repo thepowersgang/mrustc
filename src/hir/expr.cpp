@@ -116,13 +116,6 @@ DEF_VISIT_H(ExprNode_Match, node) {
         visit_node_ptr(arm.m_code);
     }
 }
-DEF_VISIT_H(ExprNode_If, node) {
-    TRACE_FUNCTION_F("_If");
-    visit_node_ptr(node.m_cond);
-    visit_node_ptr(node.m_true);
-    if( node.m_false )
-        visit_node_ptr(node.m_false);
-}
 
 DEF_VISIT(ExprNode_Assign, node,
     TRACE_FUNCTION_F("_Assign");

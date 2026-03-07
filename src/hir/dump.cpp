@@ -476,35 +476,6 @@ namespace {
             }
             m_os << indent() << "}";
         }
-        void visit(::HIR::ExprNode_If& node) override
-        {
-            m_os << "if ";
-            this->visit_node_ptr(node.m_cond);
-            m_os << " ";
-            if( NODE_IS(node.m_true, _Block) ) {
-                this->visit_node_ptr(node.m_true);
-            }
-            else {
-                m_os << "{";
-                this->visit_node_ptr(node.m_true);
-                m_os << "}";
-            }
-            if( node.m_false )
-            {
-                m_os << " else ";
-                if( NODE_IS(node.m_false, _Block) ) {
-                    this->visit_node_ptr(node.m_false);
-                }
-                else if( NODE_IS(node.m_false, _If) ) {
-                    this->visit_node_ptr(node.m_false);
-                }
-                else {
-                    m_os << "{ ";
-                    this->visit_node_ptr(node.m_false);
-                    m_os << " }";
-                }
-            }
-        }
         void visit(::HIR::ExprNode_Assign& node) override
         {
             this->visit_node_ptr(node.m_slot);
@@ -847,7 +818,12 @@ namespace {
                 m_os << "move ";
             }
             m_os << "async {";
-            this->visit_node_ptr(node.m_code);
+            if( !node.m_code ) {
+                m_os << "/* lowered: " << node.m_obj_path << " */";
+            }
+            else {
+                this->visit_node_ptr(node.m_code);
+            }
             m_os << "}";
         }
 
