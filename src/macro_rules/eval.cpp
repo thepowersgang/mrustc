@@ -1296,6 +1296,7 @@ namespace
             case TOK_INTEGER:
             case TOK_FLOAT:
             case TOK_STRING:
+            case TOK_CSTRING:
             case TOK_BYTESTRING:
             case TOK_RWORD_TRUE:
             case TOK_RWORD_FALSE:
