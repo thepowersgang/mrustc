@@ -39,6 +39,12 @@
     <ClCompile Include="..\..\tools\minicargo\jobs.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\resolve_0minicargo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\resolve_cargo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\minicargo\manifest.h">
