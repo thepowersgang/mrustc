@@ -203,18 +203,6 @@ namespace {
                 arm.m_code->visit( *this );
             }
         }
-        void visit(::HIR::ExprNode_If& node) override
-        {
-            TRACE_FUNCTION_F(&node << " if ... { ... } else { ... }");
-            node.m_cond->visit( *this );
-            node.m_true->visit( *this );
-            check_types_equal(node.span(), node.m_res_type, node.m_true->m_res_type);
-            if( node.m_false )
-            {
-                node.m_false->visit( *this );
-                check_types_equal(node.span(), node.m_res_type, node.m_false->m_res_type);
-            }
-        }
         void visit(::HIR::ExprNode_Assign& node) override
         {
             TRACE_FUNCTION_F(&node << "... ?= ...");

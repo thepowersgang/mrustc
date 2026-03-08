@@ -999,7 +999,6 @@ namespace {
                 NV(ExprNode_Loop)
                 NV(ExprNode_LoopControl)
                 NV(ExprNode_Match)
-                NV(ExprNode_If)
 
                 NV(ExprNode_Assign)
                 NV(ExprNode_BinOp)
@@ -1150,14 +1149,6 @@ namespace {
                 for(auto& pat : arm.m_patterns)
                     equate_pattern(node.span(), pat, node.m_value->m_res_type, *node.m_value);
                 equate_node_types(node, arm.m_code);
-            }
-        }
-        void visit(::HIR::ExprNode_If& node) override {
-            HIR::ExprVisitorDef::visit(node);
-            // Equate both arms to the output
-            if( node.m_false ) {
-                equate_node_types(node, node.m_true );
-                equate_node_types(node, node.m_false);
             }
         }
 

@@ -323,12 +323,16 @@ NODE(ExprNode_CallObject, {
 })
 
 NODE(ExprNode_Loop, {
-    os << "LOOP [" << m_label << "] " << m_pattern;
-    if(m_cond)
-        os << " in/= " << *m_cond;
+    os << "LOOP [" << m_label << "] " << *m_code;
+},{
+    return NEWNODE(ExprNode_Loop, m_label, m_code->clone());
+})
+
+NODE(ExprNode_For, {
+    os << "FOR [" << m_label << "] " << m_pattern << "in" << *m_value;
     os << " " << *m_code;
 },{
-    return NEWNODE(ExprNode_Loop, m_type, m_label, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
+    return NEWNODE(ExprNode_For, m_label, m_pattern.clone(), m_value->clone(), m_code->clone());
 })
 
 namespace {
@@ -338,6 +342,7 @@ namespace {
                 os << " && ";
             }
             if( cond.opt_pat ) {
+                os << "let ";
                 os << *cond.opt_pat << " = ";
             }
             os << "(" << *cond.value << ")";
@@ -358,16 +363,16 @@ namespace {
     }
 }
 
-NODE(ExprNode_WhileLet, {
+NODE(ExprNode_While, {
     if(m_label != "") {
         os << "'" << m_label << ": ";
     }
-    os << "while let ";
+    os << "while ";
     fmt_iflet_conditions(os, m_conditions);
     os << " { " << *m_code << " }";
     },{
         auto new_conds = clone_iflet_conditions(m_conditions);
-        return NEWNODE(ExprNode_WhileLet, m_label, mv$(new_conds), m_code->clone());
+        return NEWNODE(ExprNode_While, m_label, mv$(new_conds), m_code->clone());
     })
 
 NODE(ExprNode_Match, {
@@ -399,20 +404,26 @@ NODE(ExprNode_Match, {
 })
 
 NODE(ExprNode_If, {
-    os << "if " << *m_cond << " { " << *m_true << " }";
-    if(m_false)
-        os << " else { " << *m_false << " }";
+    for(const auto& arm : m_arms) {
+        if( &arm != m_arms.data() ) {
+            os << " else ";
+        }
+        os << "if ";
+        fmt_iflet_conditions(os, arm.m_conditions);
+        os << " { " << *arm.m_body << " }";
+    }
+    if(m_else)
+        os << " else { " << *m_else << " }";
 },{
-    return NEWNODE(ExprNode_If, m_cond->clone(), m_true->clone(), OPT_CLONE(m_false));
-})
-NODE(ExprNode_IfLet, {
-    os << "if let ";
-    fmt_iflet_conditions(os, m_conditions);
-    os << " { " << *m_true << " }";
-    if(m_false) os << " else { " << *m_false << " }";
-},{
-    auto new_conds = clone_iflet_conditions(m_conditions);
-    return NEWNODE(ExprNode_IfLet, mv$(new_conds), m_true->clone(), OPT_CLONE(m_false));
+    std::vector<Arm>    arms;
+    arms.reserve(m_arms.size());
+    for(const auto& arm : m_arms) {
+        arms.push_back(ExprNode_If::Arm {
+            clone_iflet_conditions(arm.m_conditions),
+            arm.m_body->clone()
+        });
+    }
+    return NEWNODE(ExprNode_If, std::move(arms), OPT_CLONE(m_else));
 })
 
 NODE(ExprNode_WildcardPattern, {
@@ -754,11 +765,17 @@ NV(ExprNode_CallObject,
 NV(ExprNode_Loop,
 {
     INDENT();
-    visit(node.m_cond);
     visit(node.m_code);
     UNINDENT();
 })
-NV(ExprNode_WhileLet,
+NV(ExprNode_For,
+{
+    INDENT();
+    visit(node.m_value);
+    visit(node.m_code);
+    UNINDENT();
+})
+NV(ExprNode_While,
 {
     INDENT();
     for(auto& c : node.m_conditions) {
@@ -783,19 +800,13 @@ NV(ExprNode_Match,
 NV(ExprNode_If,
 {
     INDENT();
-    visit(node.m_cond);
-    visit(node.m_true);
-    visit(node.m_false);
-    UNINDENT();
-})
-NV(ExprNode_IfLet,
-{
-    INDENT();
-    for(auto& c : node.m_conditions) {
-        visit(c.value);
+    for(auto& a : node.m_arms) {
+        for(auto& c : a.m_conditions) {
+            visit(c.value);
+        }
+        visit(a.m_body);
     }
-    visit(node.m_true);
-    visit(node.m_false);
+    visit(node.m_else);
     UNINDENT();
 })
 

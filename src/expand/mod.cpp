@@ -1182,10 +1182,10 @@ struct CExpandExpr:
                 void visit(::AST::ExprNode_CallMethod& v) override { invalid(v); }
                 void visit(::AST::ExprNode_CallObject& v) override { invalid(v); }
                 void visit(::AST::ExprNode_Loop& v) override { invalid(v); }
-                void visit(::AST::ExprNode_WhileLet& v) override { invalid(v); }
+                void visit(::AST::ExprNode_For& v) override { invalid(v); }
+                void visit(::AST::ExprNode_While& v) override { invalid(v); }
                 void visit(::AST::ExprNode_Match& v) override { invalid(v); }
                 void visit(::AST::ExprNode_If& v) override { invalid(v); }
-                void visit(::AST::ExprNode_IfLet& v) override { invalid(v); }
 
                 void visit(::AST::ExprNode_WildcardPattern& v) override {
                     m_rv_set = true;
@@ -1297,104 +1297,73 @@ struct CExpandExpr:
         this->visit_vector(node.m_args);
     }
     void visit(::AST::ExprNode_Loop& node) override {
-        this->visit_nodelete(node, node.m_cond);
         this->visit_nodelete(node, node.m_code);
+    }
+    void visit(::AST::ExprNode_For& node) override {
         Expand_Pattern(this->expand_state, this->cur_mod(),  node.m_pattern, false);
-        if(node.m_type == ::AST::ExprNode_Loop::FOR)
-        {
-            static const RcString rcstring_into_iter = RcString::new_interned("into_iter");
-            static const RcString rcstring_next = RcString::new_interned("next");
-            static const RcString rcstring_it = RcString::new_interned("it");
-            auto core_crate = crate.m_ext_cratename_core;
-            auto path_Some = get_path(core_crate, "option", "Option", "Some");
-            auto path_None = get_path(core_crate, "option", "Option", "None");
-            auto path_IntoIterator = get_path(core_crate, "iter", "IntoIterator");
-            auto path_Iterator     = get_path(core_crate, "iter", "Iterator"    );
-            // Desugar into:
-            // {
-            //     match <_ as ::iter::IntoIterator>::into_iter(`m_cond`) {
-            //     mut it => {
-            //         `m_label`: loop {
-            //             match ::iter::Iterator::next(&mut it) {
-            //             Some(`m_pattern`) => `m_code`,
-            //             None => break `m_label`,
-            //             }
-            //         }
-            //     }
-            // }
-            ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
-            // - `Some(pattern ) => code`
-            arms.push_back( ::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Some, ::make_vec1( mv$(node.m_pattern) ) ) ),
-                {},
-                mv$(node.m_code)
-                ) );
-            // - `None => break label`
-            arms.push_back( ::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagValue(), node.span(), ::AST::Pattern::Value::make_Named(path_None)) ),
-                {},
-                ::AST::ExprNodeP(new ::AST::ExprNode_Flow(::AST::ExprNode_Flow::BREAK, node.m_label, nullptr))
-                ) );
+        this->visit_nodelete(node, node.m_value);
+        this->visit_nodelete(node, node.m_code);
 
-            replacement.reset(new ::AST::ExprNode_Match(
-                ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_IntoIterator, { ::AST::PathNode(rcstring_into_iter) } ),
-                    ::make_vec1( mv$(node.m_cond) )
-                    )),
-                ::make_vec1(::AST::ExprNode_Match_Arm(
-                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), rcstring_it) ),
-                    {},
-                    ::AST::ExprNodeP(new ::AST::ExprNode_Loop(
-                        node.m_label,
-                        ::AST::ExprNodeP(new ::AST::ExprNode_Match(
-                            ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                                ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_Iterator, { ::AST::PathNode(rcstring_next) } ),
-                                ::make_vec1( ::AST::ExprNodeP(new ::AST::ExprNode_UniOp(
-                                    ::AST::ExprNode_UniOp::REFMUT,
-                                    ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path(rcstring_it) ))
-                                    )) )
-                                )),
-                            mv$(arms)
-                            ))
-                        )) )
-                    )
-                ) );
-        }
+        static const RcString rcstring_into_iter = RcString::new_interned("into_iter");
+        static const RcString rcstring_next = RcString::new_interned("next");
+        static const RcString rcstring_it = RcString::new_interned("it");
+        auto core_crate = crate.m_ext_cratename_core;
+        auto path_Some = get_path(core_crate, "option", "Option", "Some");
+        auto path_None = get_path(core_crate, "option", "Option", "None");
+        auto path_IntoIterator = get_path(core_crate, "iter", "IntoIterator");
+        auto path_Iterator     = get_path(core_crate, "iter", "Iterator"    );
+        // Desugar into:
+        // {
+        //     match <_ as ::iter::IntoIterator>::into_iter(`m_cond`) {
+        //     mut it => {
+        //         `m_label`: loop {
+        //             match ::iter::Iterator::next(&mut it) {
+        //             Some(`m_pattern`) => `m_code`,
+        //             None => break `m_label`,
+        //             }
+        //         }
+        //     }
+        // }
+        ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
+        // - `Some(pattern ) => code`
+        arms.push_back( ::AST::ExprNode_Match_Arm(
+            ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Some, ::make_vec1( mv$(node.m_pattern) ) ) ),
+            {},
+            mv$(node.m_code)
+            ) );
+        // - `None => break label`
+        arms.push_back( ::AST::ExprNode_Match_Arm(
+            ::make_vec1( ::AST::Pattern(::AST::Pattern::TagValue(), node.span(), ::AST::Pattern::Value::make_Named(path_None)) ),
+            {},
+            ::AST::ExprNodeP(new ::AST::ExprNode_Flow(::AST::ExprNode_Flow::BREAK, node.m_label, nullptr))
+            ) );
+
+        replacement.reset(new ::AST::ExprNode_Match(
+            ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
+                ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_IntoIterator, { ::AST::PathNode(rcstring_into_iter) } ),
+                ::make_vec1( mv$(node.m_value) )
+                )),
+            ::make_vec1(::AST::ExprNode_Match_Arm(
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), rcstring_it) ),
+                {},
+                ::AST::ExprNodeP(new ::AST::ExprNode_Loop(
+                    node.m_label,
+                    ::AST::ExprNodeP(new ::AST::ExprNode_Match(
+                        ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
+                            ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_Iterator, { ::AST::PathNode(rcstring_next) } ),
+                            ::make_vec1( ::AST::ExprNodeP(new ::AST::ExprNode_UniOp(
+                                ::AST::ExprNode_UniOp::REFMUT,
+                                ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path(rcstring_it) ))
+                                )) )
+                            )),
+                        mv$(arms)
+                        ))
+                    )) )
+                )
+            ) );
     }
 
-    AST::ExprNodeP desugar_let_chain(const Span& sp, std::vector<AST::IfLet_Condition>& conditions, AST::ExprNodeP true_block, std::function<AST::ExprNodeP()> get_false_block)
-    {
-        // Iterate the conditions in reverse, because this is being built from the innermost block
-        for(size_t i = conditions.size(); i--; )
-        {
-            auto& cond = conditions[i];
-            auto node_nomatch = get_false_block();
-            node_nomatch->set_span(sp);
-            if( cond.opt_pat ) {
-                ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
-                // - `pattern => body`
-                arms.push_back( ::AST::ExprNode_Match_Arm(
-                    ::make_vec1( std::move(*cond.opt_pat) ),
-                    {},
-                    std::move(true_block)
-                ) );
-                // - `_ => break,`
-                arms.push_back( ::AST::ExprNode_Match_Arm(
-                    ::make_vec1( ::AST::Pattern() ),
-                    {},
-                    std::move(node_nomatch)
-                ) );
-                true_block.reset(new ::AST::ExprNode_Match( std::move(cond.value), std::move(arms) ));
-            }
-            else {
-                true_block.reset(new ::AST::ExprNode_If( std::move(cond.value), std::move(true_block), std::move(node_nomatch) ));
-            }
-            true_block->set_span(sp);
-        }
-        return true_block;
-    }
-
-    void visit(::AST::ExprNode_WhileLet& node) override {
+    void visit(::AST::ExprNode_While& node) override {
         for(auto& cond : node.m_conditions) {
             if( cond.opt_pat ) {
                 Expand_Pattern(this->expand_state, this->cur_mod(),  *cond.opt_pat, true);
@@ -1402,25 +1371,6 @@ struct CExpandExpr:
             this->visit_nodelete(node, cond.value);
         }
         this->visit_nodelete(node, node.m_code);
-
-        // Desugar into:
-        /*
-         * loop {
-         *   match val_a {
-         *    pat_a => match val_b {
-         *      pat_b => ...,
-         *      _ => break,
-         *      },
-         *   _ => break,
-         *   }
-         * }
-         */
-        auto node_body = desugar_let_chain(node.span(), node.m_conditions,
-            std::move(node.m_code),
-            [&](){ return AST::ExprNodeP { new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, node.m_label, AST::ExprNodeP()) }; }
-        );
-        replacement.reset(new ::AST::ExprNode_Loop(node.m_label, std::move(node_body) ));
-        replacement->set_span(node.span());
     }
     void visit(::AST::ExprNode_Match& node) override {
         this->visit_nodelete(node, node.m_val);
@@ -1452,53 +1402,16 @@ struct CExpandExpr:
         }
     }
     void visit(::AST::ExprNode_If& node) override {
-        this->visit_nodelete(node, node.m_cond);
-        this->visit_nodelete(node, node.m_true);
-        this->visit_nodelete(node, node.m_false);
-    }
-    void visit(::AST::ExprNode_IfLet& node) override {
-        for(auto& cond : node.m_conditions) {
-            if( cond.opt_pat ) {
-                Expand_Pattern(this->expand_state, this->cur_mod(),  *cond.opt_pat, true);
+        for(auto& arm : node.m_arms) {
+            for(auto& cond : arm.m_conditions) {
+                if( cond.opt_pat ) {
+                    Expand_Pattern(this->expand_state, this->cur_mod(),  *cond.opt_pat, true);
+                }
+                this->visit_nodelete(node, cond.value);
             }
-            this->visit_nodelete(node, cond.value);
+            this->visit_nodelete(node, arm.m_body);
         }
-        this->visit_nodelete(node, node.m_true);
-        this->visit_nodelete(node, node.m_false);
-
-        // TODO: Desugar into:
-        /*
-        * '#iflet: {
-        *   match val_a {
-        *    pat_a => match val_b {
-        *      pat_b => break '#iflet ({ true body }),
-        *      _ => {},
-        *      },
-        *   _ => {},
-        *   }
-        *   false body
-        * }
-        */
-#if 1
-        Ident   label({}, RcString::new_interned("#iflet"));
-        auto node_body = desugar_let_chain(node.span(), node.m_conditions,
-            AST::ExprNodeP { new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, label, std::move(node.m_true)) },
-            [&](){ return AST::ExprNodeP { new AST::ExprNode_Block() }; }
-        );
-        // - Create the block
-        auto* replacement = new ::AST::ExprNode_Block();
-        replacement->m_label = label;
-        replacement->m_nodes.push_back({ true, std::move(node_body) });
-        if(node.m_false) {
-            replacement->m_nodes.push_back({ false, std::move(node.m_false) });
-        }
-        else {
-            replacement->m_nodes.push_back({ false, new AST::ExprNode_Tuple({}) });
-            replacement->m_nodes.back().node->set_span(node.span());
-        }
-        replacement->set_span(node.span());
-        this->replacement.reset(replacement);
-#endif
+        this->visit_nodelete(node, node.m_else);
     }
     void visit(::AST::ExprNode_WildcardPattern& node) override { }
     void visit(::AST::ExprNode_Integer& node) override { }

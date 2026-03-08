@@ -360,15 +360,6 @@ namespace {
                 this->visit_node_ptr( arm.m_code );
             }
         }
-        void visit(::HIR::ExprNode_If& node) override
-        {
-            auto _ = this->push_usage( ::HIR::ValueUsage::Move );
-            this->visit_node_ptr( node.m_cond );
-            this->visit_node_ptr( node.m_true );
-            if( node.m_false ) {
-                this->visit_node_ptr( node.m_false );
-            }
-        }
 
         void visit(::HIR::ExprNode_Assign& node) override
         {

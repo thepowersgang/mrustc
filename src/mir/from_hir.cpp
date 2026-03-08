@@ -310,9 +310,8 @@ namespace {
 
         MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b)
         {
+            HIR::TypeRef ty;
             MIR::LValue lval;
-            HIR::TypeRef    ty;
-
             MIR_LowerHIR_GetTypeValueForPath(sp, m_builder, outer_ty, outer_lval, b.field, ty, lval);
 
             if(b.is_split_slice())
@@ -395,7 +394,7 @@ namespace {
             return lval;
         }
 
-        void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
+        void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings, bool update_states/*=true*/) override
         {
             TRACE_FUNCTION_F(outer_lval << ": " << outer_ty << " [" << bindings << "]");
             // Reverse order to avoid potential use-after-move for `foo @ Bar(baz, ..)`
@@ -428,16 +427,13 @@ namespace {
                     rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, false, mv$(lval) });
                     break;
                 }
-                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv) );
+                // NOTE: Don't drop the destination, as `match` does some tricky things with calling destructure multiple times (to handle or-patterns)
+                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv), update_states);
             }
         }
-        void destructure_aliases_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
+        const HIR::TypeRef& get_binding_type(const Span& sp, unsigned index) const
         {
-            for(const auto& b : bindings)
-            {
-                auto val = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
-                m_builder.add_variable_alias(sp, b.binding->m_slot, b.binding->m_type, mv$(val));
-            }
+            return m_variable_types.at(index);
         }
 
         void emit_unwind(const Span& sp)
@@ -470,7 +466,8 @@ namespace {
                 const Span& sp = subnode->span();
 
                 auto stmt_scope = m_builder.new_scope_temp(sp);
-                auto _stmt_scope_push = save_and_edit(m_stmt_scope, &stmt_scope);
+                // NOTE: Only set the statement scope if processing a block
+                auto _stmt_scope_push = save_and_edit(m_stmt_scope, dynamic_cast<::HIR::ExprNode_Block*>(subnode.get()) ? &stmt_scope : nullptr);
                 this->visit_node_ptr(subnode);
 
                 if( m_builder.block_active() || m_builder.has_result() ) {
@@ -1163,68 +1160,6 @@ namespace {
             }
 
             m_builder.end_block( ::MIR::Terminator::make_If({ mv$(decision_val), true_branch, false_branch }) );
-        }
-
-        void visit(::HIR::ExprNode_If& node) override
-        {
-            TRACE_FUNCTION_FR("_If", "_If");
-
-            auto true_branch = m_builder.new_bb_unlinked();
-            auto false_branch = m_builder.new_bb_unlinked();
-            emit_if(node.m_cond, true_branch, false_branch);
-
-            auto next_block = m_builder.new_bb_unlinked();
-            auto result_val = m_builder.new_temporary(node.m_res_type);
-
-            // Scope handles cases where one arm moves a value but the other doesn't
-            auto scope = m_builder.new_scope_split( node.m_true->span() );
-
-            // 'true' branch
-            {
-                auto stmt_scope = m_builder.new_scope_temp(node.m_true->span());
-                m_builder.set_cur_block(true_branch);
-                this->visit_node_ptr(node.m_true);
-                if( m_builder.block_active() || m_builder.has_result() ) {
-                    m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_true->span()) );
-                    m_builder.terminate_scope(node.span(), mv$(stmt_scope));
-                    m_builder.end_split_arm(node.span(), scope, true);
-                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-                }
-                else {
-                    m_builder.terminate_scope(node.span(), mv$(stmt_scope), false);
-                    m_builder.end_split_arm(node.span(), scope, false);
-                }
-            }
-
-            // 'false' branch
-            m_builder.set_cur_block(false_branch);
-            if( node.m_false )
-            {
-                auto stmt_scope = m_builder.new_scope_temp(node.m_false->span());
-                this->visit_node_ptr(node.m_false);
-                if( m_builder.block_active() )
-                {
-                    m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_false->span()) );
-                    m_builder.terminate_scope(node.span(), mv$(stmt_scope));
-                    m_builder.end_split_arm(node.span(), scope, true);
-                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-                }
-                else {
-                    m_builder.terminate_scope(node.span(), mv$(stmt_scope), false);
-                    m_builder.end_split_arm(node.span(), scope, false);
-                }
-            }
-            else
-            {
-                // Assign `()` to the result
-                m_builder.push_stmt_assign(node.span(),  result_val.clone(), ::MIR::RValue::make_Tuple({}) );
-                m_builder.end_split_arm(node.span(), scope, true);
-                m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
-            }
-            m_builder.set_cur_block(next_block);
-            m_builder.terminate_scope( node.span(), mv$(scope) );
-
-            m_builder.set_result( node.span(), mv$(result_val) );
         }
 
         void generate_checked_binop(const Span& sp, ::MIR::LValue res_slot, ::MIR::eBinOp op, ::MIR::Param val_l, const ::HIR::TypeRef& ty_l, ::MIR::Param val_r, const ::HIR::TypeRef& ty_r)
@@ -3326,28 +3261,44 @@ namespace {
 
                 bool visit_stmt(::MIR::Statement& stmt) override
                 {
+                    auto get_drop_flags_slot = [this]()->MIR::LValue {
+                        ::MIR::LValue   slot = ::MIR::LValue::new_Argument(0);
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // .0
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast(1));   // .value (From MaybeUninit)
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));   // .value (From ManuallyDrop)
+                        slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(m_drop_flags_field));   // .drop_flags
+                        return slot;
+                    };
                     if( auto* s = stmt.opt_Drop() ) {
                         if( m_drop_flag_mapping.count(s->flag_idx) != 0 ) {
-                            // TODO: Need to emit a different `SetDropFlag` to load from bitset
                             // `LoadDropFlag(df$N, src_lv, bit_num)`, where `src_lv` is an array of `u8`
-                            TODO(Span(), "Rewrite drop flag usage df$" << s->flag_idx);
+                            auto slot = get_drop_flags_slot();
+                            unsigned bit_num = m_drop_flag_mapping.at(s->flag_idx);
+                            m_new_statements.push_back(::MIR::Statement::make_LoadDropFlag({
+                                s->flag_idx,
+                                std::move(slot),
+                                bit_num,
+                            }));
                         }
                     }
                     else if(auto* s = stmt.opt_SetDropFlag() ) {
                         if( m_drop_flag_mapping.count(s->other) != 0 ) {
-                            TODO(Span(), "Rewrite drop flag usage df$" << s->other);
+                            auto slot = get_drop_flags_slot();
+                            unsigned bit_num = m_drop_flag_mapping.at(s->other);
+                            // `LoadDropFlag(df$N, src_lv, bit_num)`, where `src_lv` is an array of `u8`
+                            m_new_statements.push_back(::MIR::Statement::make_LoadDropFlag({
+                                s->other,
+                                std::move(slot),
+                                bit_num,
+                            }));
                         }
                         if( m_drop_flag_mapping.count(s->idx) != 0 ) {
                             // Copy this statement to the output queue, and then rewrite to be:
                             m_new_statements.push_back(*s);
                             // `SaveDropFlag(dst_lv, bit_num, df$N)`
-                            ::MIR::LValue   slot = ::MIR::LValue::new_Argument(0);
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));  // Pin.ptr
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());   // *
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));    // .0
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast(1));   // .value (From MaybeUninit)
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(0));   // .value (From ManuallyDrop)
-                            slot.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field(m_drop_flags_field));   // .drop_flags
+                            auto slot = get_drop_flags_slot();
                             unsigned bit_num = m_drop_flag_mapping.at(s->idx);
                             stmt = ::MIR::Statement::make_SaveDropFlag({
                                 std::move(slot),
@@ -3411,8 +3362,12 @@ namespace {
                             d->flag_idx = drop_flag_mapping.at(d->flag_idx);
                         }
                     }
+                    if( auto* d = stmt.opt_LoadDropFlag() ) {
+                        d->idx = drop_flag_mapping.at(d->idx);
+                    }
                 }
             }
+            MIR_Validate(resolve, path, *drop_impl_body, gen_node->m_drop_fcn_ptr->m_args, ::HIR::TypeRef::new_unit());
             gen_node->m_drop_fcn_ptr->m_code.m_mir = std::move(drop_impl_body);
         }
         else

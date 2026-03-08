@@ -948,7 +948,13 @@ namespace typecheck
                     this->context.add_ivars( c.val->m_res_type );
                     c.val->visit( *this );
 
-                    this->context.handle_pattern(node.span(), c.pat, c.val->m_res_type);
+                    // Shortcut `if` to avoid the pattern matching complexity
+                    if( c.is_if ) {
+                        this->context.equate_types(c.val->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), c.val->m_res_type);
+                    }
+                    else {
+                        this->context.handle_pattern(node.span(), c.pat, c.val->m_res_type);
+                    }
                 }
 
                 this->context.add_ivars( arm.m_code->m_res_type );
@@ -959,37 +965,6 @@ namespace typecheck
             if( node.m_arms.empty() ) {
                 DEBUG("Empty match");
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
-            }
-        }
-
-        void visit(::HIR::ExprNode_If& node) override
-        {
-            TRACE_FUNCTION_F(&node << " if ...");
-
-            this->context.add_ivars( node.m_cond->m_res_type );
-
-            {
-                auto _ = this->push_inner_coerce_scoped(false);
-                this->context.equate_types(node.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool), node.m_cond->m_res_type);
-                node.m_cond->visit( *this );
-            }
-
-            this->context.add_ivars( node.m_true->m_res_type );
-            if( node.m_false ) {
-                this->context.equate_types_coerce(node.span(), node.m_res_type, node.m_true);
-            }
-            else {
-                this->context.equate_types(node.span(), node.m_true->m_res_type, ::HIR::TypeRef::new_unit());
-                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
-            }
-            node.m_true->visit( *this );
-
-            if( node.m_false ) {
-                this->context.add_ivars( node.m_false->m_res_type );
-                this->context.equate_types_coerce(node.span(), node.m_res_type, node.m_false);
-                node.m_false->visit( *this );
-            }
-            else {
             }
         }
 
