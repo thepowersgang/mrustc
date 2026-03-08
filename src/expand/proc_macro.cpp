@@ -21,6 +21,9 @@
 # define NOMINMAX
 # define NOGDI  // Don't include GDI functions (defines some macros that collide with mrustc ones)
 # include <Windows.h>
+# ifdef CONST
+#  undef CONST
+# endif
 #else
 # include <unistd.h>    // read/write/pipe
 # include <spawn.h>

@@ -2573,7 +2573,7 @@ namespace {
                         if( reloc_it != encoded.relocations.end() && reloc_it->ofs <= i ) {
                             MIR_ASSERT(*m_mir_res, reloc_it->ofs == i, "Relocation not aligned to a pointer - " << reloc_it->ofs << " != " << i);
                             MIR_ASSERT(*m_mir_res, reloc_it->len == ptr_size, "Relocation size not pointer size - " << reloc_it->len << " != " << ptr_size);
-                            v -= EncodedLiteral::PTR_BASE;
+                            v -= CONST_PTR_BASE;
                             //MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Reloc=" << *reloc_it << " Literal=" << encoded);
 
                             m_of << "(uintptr_t)";

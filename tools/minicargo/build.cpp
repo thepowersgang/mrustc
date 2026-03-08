@@ -19,6 +19,7 @@
 #include "os.hpp"
 #include <fstream>
 #include <cassert>
+#include <cctype>   // isblank
 
 #include <cstdint>
 #include <unordered_map>
@@ -1071,8 +1072,8 @@ RunnableJob Job_Codegen::start()
     const auto* exe = getenv("SHELL");
     args.push_back("-c");
     args.push_back(std::move(line));
-    StringListKV    env;
     #endif
+    StringListKV    env;
     return RunnableJob(exe, std::move(args), std::move(env), helpers::path());
 }
 bool Job_Codegen::complete(bool was_successful)

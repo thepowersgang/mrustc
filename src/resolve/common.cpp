@@ -846,7 +846,7 @@ namespace {
                             if( v.is_None() ) {
                                 break;
                             }
-                            return v;
+                            return std::move(v);
                         }
                         mi = &H::get_crate(sp, crate, p->path).get_macroitem_by_path(sp, p->path, true);
                         if(const auto* p = mi->opt_Import())
@@ -856,7 +856,7 @@ namespace {
                                 if( v.is_None() ) {
                                     break;
                                 }
-                                return v;
+                                return std::move(v);
                             }
                             // Fall throught to fail
                         }
