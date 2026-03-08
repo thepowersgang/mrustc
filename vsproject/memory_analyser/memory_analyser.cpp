@@ -1244,9 +1244,9 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                 // Invalid!
                 DO_DEBUG("ThinVector< " << inner_ty << " >: BAD " << (void*)start << "-" << (void*)end << "-" << (void*)max);
             }
-            m_counts[FMT_STRING("~A " << ty)] += (max - start);
+            m_counts[FMT_STRING("~A " << ty)] += static_cast<unsigned>(max - start);
             m_counts[FMT_STRING(">" << ty)] ++;
-            m_counts[FMT_STRING("~Waste " << ty)] += (max - end);
+            m_counts[FMT_STRING("~Waste " << ty)] += static_cast<unsigned>(max - end);
         }
         // std::map and std::set are effectively the same
         else if( ty.is_udt_suffix("std::map<") || ty.is_udt_suffix("std::set<") ) {
@@ -1332,7 +1332,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
                     }
                 }
             }
-            m_counts[FMT_STRING("~A " << ty)] += total_bytes;
+            m_counts[FMT_STRING("~A " << ty)] += static_cast<unsigned>(total_bytes);
             m_counts[FMT_STRING(">" << ty)] ++;
         }
         // std::unordered_map
