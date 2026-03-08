@@ -5,6 +5,10 @@
 #include "../common.hpp"
 #include <int128.h>
 
+namespace {
+    const unsigned CONST_PTR_BASE = 0x1000;
+}
+
 struct Reloc {
     size_t  ofs;
     size_t  len;
@@ -47,8 +51,6 @@ struct Reloc {
     }
 };
 struct EncodedLiteral {
-    inline static const unsigned PTR_BASE = 0x1000;
-
     std::vector<uint8_t>    bytes;
     std::vector<Reloc>  relocations;
 

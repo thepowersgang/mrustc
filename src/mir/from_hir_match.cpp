@@ -1320,8 +1320,8 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
             auto len = lit.slice(ptr_size, ptr_size).read_uint(ptr_size).truncate_u64();
             auto* r = lit.get_reloc();
             ASSERT_BUG(sp, r, "Null relocation for string in pattern generation");
-            ASSERT_BUG(sp, ptr >= EncodedLiteral::PTR_BASE, "");
-            ptr -= EncodedLiteral::PTR_BASE;
+            ASSERT_BUG(sp, ptr >= CONST_PTR_BASE, "");
+            ptr -= CONST_PTR_BASE;
 
             ASSERT_BUG(sp, !r->p, "TODO: Handle &str match constant with non-string relocation - " << *r->p);
             ASSERT_BUG(sp, ptr <= r->bytes.size(), "");
@@ -1336,8 +1336,8 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
             auto len = lit.slice(ptr_size, ptr_size).read_uint(ptr_size).truncate_u64();
             auto* r = lit.get_reloc();
             ASSERT_BUG(sp, r, "Null relocation for byte-string in pattern generation");
-            ASSERT_BUG(sp, ptr >= EncodedLiteral::PTR_BASE, "");
-            ptr -= EncodedLiteral::PTR_BASE;
+            ASSERT_BUG(sp, ptr >= CONST_PTR_BASE, "");
+            ptr -= CONST_PTR_BASE;
 
             if( r->p ) {
                 ASSERT_BUG(sp, ptr == 0, "TODO: Non-zero offset with reference");

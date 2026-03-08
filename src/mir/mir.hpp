@@ -15,7 +15,9 @@
 #include <int128.h>
 #include <cstdint>
 
+struct Span;
 struct MonomorphState;
+class Monomorphiser;
 class StaticTraitResolve;
 
 namespace MIR {

@@ -8,7 +8,7 @@ namespace MIR {
         class Allocation;
         class CallStackEntry;
     }
-    class LValue;
+    struct LValue;
     class Statement;
     class Terminator;
     class TypeResolve;

@@ -1477,7 +1477,7 @@ AST::Named<AST::Item> Parse_ExternBlock_Item(TokenStream& lex, const std::string
 
 AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::AttributeList& block_attrs)
 {
-    TRACE_FUNCTION;
+    TRACE_FUNCTION_F(abi);
     Token   tok;
 
     Parse_ParentAttrs(lex,  block_attrs);
@@ -2106,7 +2106,7 @@ namespace {
             }
             if( lex.getTokenIf(TOK_BRACE_OPEN) ) {
                 item_name = "";
-                item_data = ::AST::Item( Parse_ExternBlock(lex, "C", meta_items) );
+                item_data = ::AST::Item( Parse_ExternBlock(lex, std::move(abi), meta_items) );
             }
             else {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);

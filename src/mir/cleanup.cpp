@@ -439,8 +439,8 @@ namespace {
     TU_ARMA(Borrow, te) {
         const auto* data_reloc = lit.get_reloc();
         const auto data_ptr = lit.read_uint(Target_GetPointerBits()/8);
-        MIR_ASSERT(state, data_ptr >= EncodedLiteral::PTR_BASE, "Bad pointer value - 0x" << std::hex << data_ptr);
-        const auto ofs = data_ptr - EncodedLiteral::PTR_BASE;
+        MIR_ASSERT(state, data_ptr >= CONST_PTR_BASE, "Bad pointer value - 0x" << std::hex << data_ptr);
+        const auto ofs = data_ptr - CONST_PTR_BASE;
 
         if(data_reloc->p)
         {

@@ -1499,6 +1499,12 @@ bool InterpreterThread::step_one(Value& out_thread_result)
         case ::MIR::Statement::TAG_ScopeEnd:
             LOG_TODO(stmt);
             break;
+        case ::MIR::Statement::TAG_SaveDropFlag:
+            LOG_TODO(stmt);
+            break;
+        case ::MIR::Statement::TAG_LoadDropFlag:
+            LOG_TODO(stmt);
+            break;
         }
 
         cur_frame.stmt_idx += 1;

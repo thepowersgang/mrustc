@@ -1,0 +1,4 @@
+cargo::rerun-if-changed=build.rs
+cargo::rerun-if-changed=configure.rs
+#cargo:compiler-rt=
+cargo:rustc-cfg=feature="mem-unaligned"
