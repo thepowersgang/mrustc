@@ -2526,6 +2526,20 @@ namespace HIR {
                     else
                         throw Defer();
                 }
+                else if( te->name == "size_of_val" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    if( const auto* v = ty.data().opt_Slice()) {
+                        size_t  size_val;
+                        if( !Target_GetSizeOf(state.sp, this->resolve, v->inner, size_val) )
+                            throw Defer();
+                        ValueRef    meta;
+                        local_state.get_lval(::MIR::LValue::new_Deref(e.args.at(0).as_LValue().clone()), &meta);
+                        dst.write_uint(state, Target_GetPointerBits(), meta.read_uint(state, Target_GetPointerBits()) * size_val);
+                    }
+                    else {
+                        MIR_TODO(state, "size_of_val " << ty);
+                    }
+                }
                 else if( te->name == "align_of" || te->name == "min_align_of" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     size_t  align_val;
