@@ -423,10 +423,14 @@ namespace {
     TU_ARMA(Pointer, te) {
         if(lit.get_reloc())
         {
+            // NOTE: This can be a `*mut T` from `&T`, so force this to be a shared borrow (it's of a constant, so it should be that already)
             // Share logic with `Borrow` below, but wrap returned value in a cast op
-            auto ty_borrow = ::HIR::TypeRef::new_borrow(te.type, te.inner.clone());
+            auto ty_borrow = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, te.inner.clone());
+            auto ty_ptr_shared = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, te.inner.clone());
             auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit, ty_borrow.clone(), params, mv$(path));
             auto lval = mutator.in_temporary( mv$(ty_borrow), mv$(rval) );
+            rval = ::MIR::RValue::make_Cast({ mv$(lval), ty_ptr_shared.clone() });
+            lval = mutator.in_temporary( mv$(ty_ptr_shared), mv$(rval) );
             return ::MIR::RValue::make_Cast({ mv$(lval), mv$(ty) });
         }
         else
