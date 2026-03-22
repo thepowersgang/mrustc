@@ -27,6 +27,15 @@ public:
         Framework,
     } kind;
 
+    /// <summary>
+    /// (For `RawDylib`) Names of items imported using this extern block, used for import lib generation
+    /// </summary>
+    std::vector<RcString>   contained_names;
+    /// <summary>
+    /// (For `RawDylib`) Module path to this extern block, doesn't include the crate name (that's implied by the contained crate)
+    /// </summary>
+    std::vector<RcString>   mod_path_nodes;
+
     ExternLibrary(::std::string name, Kind kind = Kind::Dylib)
         : name(std::move(name))
         , kind(kind)

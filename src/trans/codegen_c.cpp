@@ -1247,9 +1247,49 @@ namespace {
                         }
                         break;
                         case ExternLibrary::Kind::RawDylib:
-                            // TODO: 
-                            //libraries_and_dirs.push_lib(lib.name.c_str());
-                            TODO(Span(), "Handle raw-dylib");
+                            // This needs to create an import library :(
+                            // - For this, need to get the list of functions that were in the tagged block, and save the signatures
+                            // - I guess for that the list could be added during expand?
+                            {
+                                HIR::SimplePath p { crate.m_crate_name, lib.mod_path_nodes };
+                                const auto& mod = crate.get_mod_by_path(Span(), p);
+                                auto def_path = m_outfile_path_c + "_" + lib.name + ".def";
+                                {
+                                    ::std::ofstream ofs(def_path);
+                                    ofs << "LIBRARY " << lib.name << "\r\n";
+                                    ofs << "EXPORTS\r\n";
+                                    for(const auto& name : lib.contained_names) {
+                                        const auto& v = mod.m_value_items.at(name);
+                                        ofs << "  " << name << (v->ent.is_Static() ? " DATA" : "") << "\r\n";
+                                    }
+                                }
+                                auto lib_path = m_outfile_path_c + "_" + lib.name + ".lib";
+                                StringList  args;
+                                args.push_back(detect_msvc().path_vcvarsall);
+                                args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler );
+                                args.push_back("&");
+                                args.push_back("lib");
+                                args.push_back(FMT("/def:" << def_path));
+                                args.push_back(FMT("/out:" << lib_path));
+
+                                ::std::stringstream cmd_ss;
+                                cmd_ss << "echo \"\" & ";
+                                size_t i = -1;
+                                for(const auto& arg : args.get_vec())
+                                {
+                                    if(strcmp(arg, "&") == 0 ) {
+                                        cmd_ss << "&";
+                                    }
+                                    else if( strchr(arg, ' ') == nullptr ) {
+                                        cmd_ss << arg << " ";
+                                    }
+                                    else {
+                                        cmd_ss << "\"" << FmtShell(arg, true) << "\" ";
+                                    }
+                                }
+                                system(cmd_ss.str().c_str());
+                                libraries_and_dirs.push_explicit(std::move(lib_path));
+                            }
                             break;
                         }
                     };

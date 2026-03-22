@@ -430,7 +430,7 @@ STATIC_DECORATOR("link_section", CHandler_LinkSection);
 class CHandler_Link:
     public ExpandDecorator
 {
-    AttrStage   stage() const override { return AttrStage::Pre; }
+    AttrStage   stage() const override { return AttrStage::Post; }
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& , size_t , slice<const AST::Attribute> attrs, const AST::Visibility& vis, AST::Item&i) const override {
         if(i.is_None()) {
@@ -464,6 +464,13 @@ class CHandler_Link:
                     }
                     else if( v == "raw-dylib" ) {
                         link.kind = ExternLibrary::Kind::RawDylib;
+                        for(const auto& ii : b->items()) {
+                            if( ii.data.is_Function() || ii.data.is_Static() ) {
+                                link.contained_names.push_back( ii.name );
+                            }
+                        }
+                        link.mod_path_nodes = path.nodes;
+                        link.mod_path_nodes.pop_back(); // Remove the "" at the end
                     }
                     else if( v == "static" ) {
                         link.kind = ExternLibrary::Kind::Static;

@@ -1744,10 +1744,13 @@ namespace {
                 }
             }
         };
-        return ExternLibrary {
+        auto rv = ExternLibrary {
             m_in.read_string(),
             H::kind_from_tag(m_in.read_count())
             };
+        rv.mod_path_nodes = deserialise_vec<RcString>();
+        rv.contained_names = deserialise_vec<RcString>();
+        return rv;
     }
     ::HIR::Crate HirDeserialiser::deserialise_crate()
     {

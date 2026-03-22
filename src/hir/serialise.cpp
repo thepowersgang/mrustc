@@ -479,6 +479,8 @@
             };
             m_out.write_string(lib.name);
             m_out.write_count(H::tag_from_kind(lib.kind));
+            serialise_vec(lib.mod_path_nodes);
+            serialise_vec(lib.contained_names);
         }
         void serialise_module(const ::HIR::Module& mod)
         {
