@@ -2105,7 +2105,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             }
             for(const auto& lib : e.m_libraries)
             {
-                g_crate_ptr->m_ext_libs.push_back( ::HIR::ExternLibrary { lib.lib_name } );
+                g_crate_ptr->m_ext_libs.push_back(lib);
             }
             }
         TU_ARMA(Impl, e) {
@@ -2652,7 +2652,8 @@ public:
         auto crate_file = (p == ::std::string::npos ? ext_crate.second.m_filename : ext_crate.second.m_filename.substr(p+1));
         rv.m_ext_crates.insert( ::std::make_pair( ext_crate.first, ::HIR::ExternCrate { mv$(ext_crate.second.m_hir), crate_file, ext_crate.second.m_filename } ) );
     }
-    path_Sized = rv.get_lang_item_path(sp, "sized");
+    // TODO: Some crates don't need these
+    path_Sized = rv.get_lang_item_path_opt("sized");
     path_PointeeSized = rv.get_lang_item_path_opt("pointee_sized");
     path_MetadataSized = rv.get_lang_item_path_opt("metadata_sized");
 

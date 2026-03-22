@@ -149,6 +149,8 @@
     <ClCompile Include="..\..\tools\minicargo\manifest.cpp" />
     <ClCompile Include="..\..\tools\minicargo\os.cpp" />
     <ClCompile Include="..\..\tools\minicargo\repository.cpp" />
+    <ClCompile Include="..\..\tools\minicargo\resolve_0minicargo.cpp" />
+    <ClCompile Include="..\..\tools\minicargo\resolve_cargo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\minicargo\build.h" />

@@ -1245,15 +1245,15 @@ namespace MIR { namespace eval {
                         metadata = val.slice(Target_GetPointerBits()/8);
                     }
                     auto p = val.read_ptr(state);
-                    MIR_ASSERT(state, p.first >= EncodedLiteral::PTR_BASE, "Null (<PTR_BASE) pointer deref");
+                    MIR_ASSERT(state, p.first >= CONST_PTR_BASE, "Null (<PTR_BASE) pointer deref");
                     MIR_ASSERT(state, p.first % al == 0, "Unaligned pointer deref");
-                    DEBUG("> " << ValueRef(p.second) << " - o=" << (p.first - EncodedLiteral::PTR_BASE) << " sz=" << sz << " " << *typ);
+                    DEBUG("> " << ValueRef(p.second) << " - o=" << (p.first - CONST_PTR_BASE) << " sz=" << sz << " " << *typ);
                     // TODO: Determine size using metadata?
                     if(sz == SIZE_MAX) {
-                        val = ValueRef(p.second, p.first - EncodedLiteral::PTR_BASE);
+                        val = ValueRef(p.second, p.first - CONST_PTR_BASE);
                     }
                     else {
-                        val = ValueRef(p.second, p.first - EncodedLiteral::PTR_BASE).slice(0, sz);
+                        val = ValueRef(p.second, p.first - CONST_PTR_BASE).slice(0, sz);
                     }
                     }
                 TU_ARMA(Index, e) {
@@ -1403,10 +1403,10 @@ namespace MIR { namespace eval {
                 dst.write_uint(state, 1, e2.v);
             }
             TU_ARM(c, Bytes, e2) {
-                dst.write_ptr(state, EncodedLiteral::PTR_BASE, ConstantPtr::allocate(e2.data(), e2.size()));
+                dst.write_ptr(state, CONST_PTR_BASE, ConstantPtr::allocate(e2.data(), e2.size()));
             }
             TU_ARM(c, StaticString, e2) {
-                dst.write_ptr(state, EncodedLiteral::PTR_BASE, ConstantPtr::allocate(e2.data(), e2.size()));
+                dst.write_ptr(state, CONST_PTR_BASE, ConstantPtr::allocate(e2.data(), e2.size()));
                 dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), e2.size());
             }
             TU_ARM(c, Const, e2) {
@@ -1435,7 +1435,7 @@ namespace MIR { namespace eval {
             }
             TU_ARM(c, ItemAddr, e2) {
                 assert(e2);
-                dst.write_ptr(state, EncodedLiteral::PTR_BASE, get_staticref_mono(*e2));
+                dst.write_ptr(state, CONST_PTR_BASE, get_staticref_mono(*e2));
             }
             }
         }
@@ -1445,7 +1445,7 @@ namespace MIR { namespace eval {
         {
             ValueRef    meta;
             auto val = this->get_lval(lv, &meta);
-            dst.write_ptr(state, EncodedLiteral::PTR_BASE + val.get_ofs(), val.get_storage());
+            dst.write_ptr(state, CONST_PTR_BASE + val.get_ofs(), val.get_storage());
             if(meta.is_valid())
             {
                 auto ptr_size = Target_GetPointerBits() / 8;
@@ -1596,7 +1596,7 @@ namespace MIR { namespace eval {
                     MIR_BUG(state, "Invalid argument for pointer: " << p);
                 }
                 // TODO: Look up the static
-                return ::std::make_pair(EncodedLiteral::PTR_BASE, RelocPtr(get_staticref_mono(*e.as_ItemAddr())));
+                return ::std::make_pair(CONST_PTR_BASE, RelocPtr(get_staticref_mono(*e.as_ItemAddr())));
                 }
             }
             abort();
@@ -1889,7 +1889,7 @@ namespace {
                         auto vr = local_state.get_lval(p.as_LValue());
                         auto ptr = vr.read_ptr(local_state.state);
                         this->len = vr.slice(Target_GetPointerBits()/8).read_usize(local_state.state);
-                        this->data = ptr.second.as_value().get_bytes(ptr.first - EncodedLiteral::PTR_BASE, this->len, true);
+                        this->data = ptr.second.as_value().get_bytes(ptr.first - CONST_PTR_BASE, this->len, true);
                         MIR_ASSERT(local_state.state, this->data, "Invalid pointer " << p << " : " << vr << " = " << ptr.second << " @ " << ptr.first << "+" << this->len);
                         this->reloc = std::move(ptr.second);
                     }
@@ -2128,7 +2128,7 @@ namespace HIR {
             case HIR::TypeData::TAG_Pointer:
             case HIR::TypeData::TAG_Function:
                 if( const auto* e = src_ty.data().opt_NamedFunction() ) {
-                    dst.write_ptr(state, EncodedLiteral::PTR_BASE, local_state.get_staticref_mono(e->path));
+                    dst.write_ptr(state, CONST_PTR_BASE, local_state.get_staticref_mono(e->path));
                 }
                 else {
                     dst.copy_from( state, inval.slice(0, std::min(inval.get_len(), dst.get_len())) );
@@ -2253,7 +2253,7 @@ namespace HIR {
                     {
                         static const RcString rcstring_vtable = RcString::new_interned("vtable#");
                         auto vtable_path = ::HIR::Path(dynamic_type_s->clone(), tep->m_trait.m_path.clone(), rcstring_vtable);
-                        dst.slice(Target_GetPointerBits()/8).write_ptr(state, EncodedLiteral::PTR_BASE, local_state.get_staticref(std::move(vtable_path)));
+                        dst.slice(Target_GetPointerBits()/8).write_ptr(state, CONST_PTR_BASE, local_state.get_staticref(std::move(vtable_path)));
                     }
                     else if( /*const auto* tep =*/ dynamic_type_d->data().opt_Slice() )
                     {
@@ -2526,6 +2526,20 @@ namespace HIR {
                     else
                         throw Defer();
                 }
+                else if( te->name == "size_of_val" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    if( const auto* v = ty.data().opt_Slice()) {
+                        size_t  size_val;
+                        if( !Target_GetSizeOf(state.sp, this->resolve, v->inner, size_val) )
+                            throw Defer();
+                        ValueRef    meta;
+                        local_state.get_lval(::MIR::LValue::new_Deref(e.args.at(0).as_LValue().clone()), &meta);
+                        dst.write_uint(state, Target_GetPointerBits(), meta.read_uint(state, Target_GetPointerBits()) * size_val);
+                    }
+                    else {
+                        MIR_TODO(state, "size_of_val " << ty);
+                    }
+                }
                 else if( te->name == "align_of" || te->name == "min_align_of" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     size_t  align_val;
@@ -2542,12 +2556,12 @@ namespace HIR {
                 else if( te->name == "type_name" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     auto name = state.intrinsic_type_name(ty);
-                    dst.write_ptr(state, EncodedLiteral::PTR_BASE, AllocationPtr::allocate_ro(name.data(), name.size()));
+                    dst.write_ptr(state, CONST_PTR_BASE, AllocationPtr::allocate_ro(name.data(), name.size()));
                     dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), name.size());
                 }
                 else if( te->name == "type_id" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
-                    dst.write_ptr(state, EncodedLiteral::PTR_BASE, StaticRefPtr::allocate(HIR::Path(mv$(ty), "#type_id"), nullptr));
+                    dst.write_ptr(state, CONST_PTR_BASE, StaticRefPtr::allocate(HIR::Path(mv$(ty), "#type_id"), nullptr));
                 }
                 else if( te->name == "needs_drop" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
@@ -2565,10 +2579,10 @@ namespace HIR {
                         MIR_ASSERT(state, repr->fields.size() == 3, "Unexpected item count in panic::Location");
                     }
                     auto val = RelocPtr(AllocationPtr::allocate(resolve, state, ty));
-                    dst.write_ptr(state, EncodedLiteral::PTR_BASE, val);
+                    dst.write_ptr(state, CONST_PTR_BASE, val);
                     auto rv = ValueRef(val);
                     auto pb = Target_GetPointerBits()/8;
-                    rv.slice(repr->fields[0].offset+ 0, pb).write_ptr(state, EncodedLiteral::PTR_BASE, ConstantPtr::allocate("", 0)); // file.ptr
+                    rv.slice(repr->fields[0].offset+ 0, pb).write_ptr(state, CONST_PTR_BASE, ConstantPtr::allocate("", 0)); // file.ptr
                     rv.slice(repr->fields[0].offset+pb, pb).write_uint(state, Target_GetPointerBits(), 0);    // file.len
                     rv.slice(repr->fields[1].offset, 4).write_uint(state, 32, 0);  // line: u32
                     rv.slice(repr->fields[2].offset, 4).write_uint(state, 32, 0);  // col: u32
@@ -2827,7 +2841,7 @@ namespace HIR {
                     TU_MATCH_HDRA( (fcn_arg), {)
                     TU_ARMA(LValue, e) {
                         auto fcn_val = local_state.get_lval(e).read_ptr(state);
-                        MIR_ASSERT(state, fcn_val.first == EncodedLiteral::PTR_BASE, "");
+                        MIR_ASSERT(state, fcn_val.first == CONST_PTR_BASE, "");
 
                         const auto* fcn_sr = fcn_val.second.as_staticref();
                         MIR_ASSERT(state, fcn_sr, "");
@@ -2875,10 +2889,10 @@ namespace HIR {
                     MIR_ASSERT(state, count.is_u64(), "Excessive count in `" << te->name << "`");
                     MIR_ASSERT(state, count * element_size < U128(SIZE_MAX), "Excessive size in `" << te->name << "`");
                     size_t nbytes = element_size * count.truncate_u64();
-                    MIR_ASSERT(state, ptr_src.first >= EncodedLiteral::PTR_BASE, "");
-                    MIR_ASSERT(state, ptr_dst.first >= EncodedLiteral::PTR_BASE, "");
-                    auto vr_src = ValueRef(ptr_src.second, ptr_src.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
-                    auto vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
+                    MIR_ASSERT(state, ptr_src.first >= CONST_PTR_BASE, "");
+                    MIR_ASSERT(state, ptr_dst.first >= CONST_PTR_BASE, "");
+                    auto vr_src = ValueRef(ptr_src.second, ptr_src.first - CONST_PTR_BASE).slice(0, nbytes);
+                    auto vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - CONST_PTR_BASE).slice(0, nbytes);
                     vr_dst.copy_from(state, vr_src);
                 }
                 else if( te->name == "offset" ) {
@@ -2901,14 +2915,14 @@ namespace HIR {
                     MIR_ASSERT(state, count.is_u64(), "Excessive count in `" << te->name << "`");
                     MIR_ASSERT(state, count * element_size < U128(SIZE_MAX), "Excessive size in `" << te->name << "`");
                     size_t nbytes = element_size * count.truncate_u64();
-                    MIR_ASSERT(state, ptr_dst.first >= EncodedLiteral::PTR_BASE, "");
-                    ValueRef vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
+                    MIR_ASSERT(state, ptr_dst.first >= CONST_PTR_BASE, "");
+                    ValueRef vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - CONST_PTR_BASE).slice(0, nbytes);
                     memset(vr_dst.ext_write_bytes(state, nbytes), val.truncate_u64(), nbytes);
                 }
                 // Innards of `core::ptr::read` (on 1.90+)
                 else if( te->name == "read_via_copy" ) {
                     auto ptr_src = local_state.read_param_ptr(e.args.at(0));
-                    auto vr_src = ValueRef(ptr_src.second, ptr_src.first - EncodedLiteral::PTR_BASE);
+                    auto vr_src = ValueRef(ptr_src.second, ptr_src.first - CONST_PTR_BASE);
                     dst.copy_from(state, vr_src);
                 }
                 else if( te->name == "variant_count" ) {

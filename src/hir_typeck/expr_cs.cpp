@@ -5305,17 +5305,23 @@ namespace {
                 const auto* se = &ft.data().as_Function();
 
                 // ABI must match
-                if( se->m_abi != de->m_abi )
+                if( se->m_abi != de->m_abi ) {
+                    DEBUG("named fn -> fn ptr: ABI Mismatch - " << de->m_abi << " == " << se->m_abi);
                     return CoerceResult::Equality;
+                }
                 // const can be removed
                 //if( se->is_const != de->is_const && de->is_const ) // Error going TO a const function pointer
                 //    return CoerceResult::Equality;
                 // unsafe can be added
-                if( se->is_unsafe != de->is_unsafe && se->is_unsafe ) // Error going FROM an unsafe function pointer
+                if( se->is_unsafe != de->is_unsafe && se->is_unsafe ) { // Error going FROM an unsafe function pointer
+                    DEBUG("named fn -> fn ptr: Casing away `unsafe`");
                     return CoerceResult::Equality;
+                }
                 // argument/return types must match
-                if( se->m_arg_types.size() != de->m_arg_types.size() )
+                if( se->m_arg_types.size() != de->m_arg_types.size() ) {
+                    DEBUG("named fn -> fn ptr: Arg list length mismatch");
                     return CoerceResult::Equality;
+                }
 
                 if(context_mut)
                 {

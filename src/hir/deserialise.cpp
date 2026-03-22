@@ -241,7 +241,7 @@ namespace {
         ::HIR::GenericBound deserialise_genericbound();
 
         ::HIR::Crate deserialise_crate();
-        ::HIR::ExternLibrary deserialise_extlib();
+        ExternLibrary deserialise_extlib();
         ::HIR::Module deserialise_module();
 
         ::HIR::ProcMacro deserialise_procmacro()
@@ -1057,7 +1057,7 @@ namespace {
         rv.generic = d.deserialise_vec< ::std::unique_ptr<T> >();
         return rv;
         )
-    template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
+    template<> DEF_D( ExternLibrary, return d.deserialise_extlib(); )
 
     ::HIR::LifetimeDef HirDeserialiser::deserialise_lifetimedef()
     {
@@ -1730,11 +1730,27 @@ namespace {
 
         return rv;
     }
-    ::HIR::ExternLibrary HirDeserialiser::deserialise_extlib()
+    ExternLibrary HirDeserialiser::deserialise_extlib()
     {
-        return ::HIR::ExternLibrary {
-            m_in.read_string()
+        struct H {
+            static ExternLibrary::Kind kind_from_tag(size_t i) {
+                switch(i)
+                {
+                case 0: return ExternLibrary::Kind::Dylib;
+                case 1: return ExternLibrary::Kind::RawDylib;
+                case 2: return ExternLibrary::Kind::Static;
+                case 3: return ExternLibrary::Kind::Framework;
+                default: BUG(Span(), "Bad tag for ExternLibrary::Kind");
+                }
+            }
+        };
+        auto rv = ExternLibrary {
+            m_in.read_string(),
+            H::kind_from_tag(m_in.read_count())
             };
+        rv.mod_path_nodes = deserialise_vec<RcString>();
+        rv.contained_names = deserialise_vec<RcString>();
+        return rv;
     }
     ::HIR::Crate HirDeserialiser::deserialise_crate()
     {
@@ -1770,7 +1786,7 @@ namespace {
             }
         }
 
-        rv.m_ext_libs = deserialise_vec< ::HIR::ExternLibrary>();
+        rv.m_ext_libs = deserialise_vec< ExternLibrary>();
         rv.m_link_paths = deserialise_vec< ::std::string>();
 
         //rv.m_proc_macros = deserialise_vec< ::HIR::ProcMacro>();

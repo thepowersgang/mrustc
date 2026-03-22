@@ -239,7 +239,7 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
                 if( repr.variants.is_None() ) {
                     HIR::Union  unn;
                     for(const auto& f : repr.fields) {
-                        unn.m_variants.push_back(std::make_pair( RcString(), HIR::VisEnt<HIR::TypeRef>{ HIR::Publicity::new_global(), f.ty.clone() } ));
+                        unn.m_variants.push_back(HIR::StructField { RcString(), HIR::Publicity::new_global(), f.ty.clone(), {} });
                     }
                     unn.m_markings.is_copy = true;
                     auto vi = ::HIR::VisEnt<HIR::TypeItem> {
@@ -555,11 +555,11 @@ namespace {
 
                     case TOK_AMP:
                         if( consume_if(lex, TOK_RWORD_MOVE) )
-                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Owned, parse_lvalue(lex, val_name_map) });
+                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Owned, false, parse_lvalue(lex, val_name_map) });
                         else if( consume_if(lex, TOK_RWORD_MUT) )
-                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, parse_lvalue(lex, val_name_map) });
+                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, false, parse_lvalue(lex, val_name_map) });
                         else
-                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Shared, parse_lvalue(lex, val_name_map) });
+                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Shared, false, parse_lvalue(lex, val_name_map) });
                         break;
 
                     // mmir format: Explicit lvalue

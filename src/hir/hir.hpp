@@ -663,11 +663,6 @@ public:
     ::std::string   m_basename; // Just the filename (serialised)
     ::std::string   m_path; // The path used to load this crate
 };
-class ExternLibrary
-{
-public:
-    ::std::string   name;
-};
 class Crate
 {
 public:

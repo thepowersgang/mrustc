@@ -646,15 +646,14 @@ bool Parser::parse_one()
                     src_rval = state.parse_lvalue(*this);
                 }
                 else if( lex.consume_if('&') ) {
-                    auto bt = ::HIR::BorrowType::Shared;
-                    if( lex.consume_if("move") )
-                        bt = ::HIR::BorrowType::Move;
-                    else if( lex.consume_if("mut") )
-                        bt = ::HIR::BorrowType::Unique;
-                    else {
-                    }
+                    bool is_raw = lex.consume_if("raw");
+                    auto bt
+                        = lex.consume_if("move") ? ::HIR::BorrowType::Move
+                        : lex.consume_if("mut") ? ::HIR::BorrowType::Unique
+                        : ::HIR::BorrowType::Shared
+                        ;
                     auto val = state.parse_lvalue(*this);
-                    src_rval = ::MIR::RValue::make_Borrow({ bt, ::std::move(val) });
+                    src_rval = ::MIR::RValue::make_Borrow({ bt, is_raw, ::std::move(val) });
                 }
                 // Composites
                 else if( lex.consume_if('(') ) {

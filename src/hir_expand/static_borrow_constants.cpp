@@ -1102,35 +1102,57 @@ namespace static_borrow_constants {
         void visit_crate(::HIR::Crate& crate) override {
             ::HIR::Visitor::visit_crate(crate);
 
+            std::vector<HIR::SimplePath>   to_const_eval;
+
             // Once the crate is complete, add the newly created statics to the module tree
             for(auto& mod_list : m_new_statics)
             {
                 auto& mod = *const_cast<HIR::Module*>(mod_list.first);
                 m_current_module = &mod;
 
-                HIR::SimplePath mod_path;
-                if( !mod_list.second.empty() )
+                for(auto& new_static_pair : mod_list.second)
                 {
-                    mod_path = mod_list.second[0].path;
-                    mod_path.pop_component();
+                    Span    sp;
+
+                    TRACE_FUNCTION_F("New static " << new_static_pair.path << new_static_pair.data.m_params.fmt_args());
+
+                    struct H {
+                        static HIR::Constant to_const(HIR::Static& s) {
+                            return HIR::Constant { std::move(s.m_params), std::move(s.m_type), std::move(s.m_value) };
+                        }
+                    };
+                    to_const_eval.push_back(new_static_pair.path);
+                    auto new_ent = new_static_pair.is_const
+                        ? HIR::ValueItem(H::to_const(new_static_pair.data))
+                        : HIR::ValueItem(std::move(new_static_pair.data));
+                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.path.components().back()), box$(HIR::VisEnt<HIR::ValueItem> {
+                        HIR::Publicity::new_none(), // Should really be private, but we're well after checking
+                        std::move(new_ent)
+                        })) );
                 }
+            }
+
+            // NOTE: Run consteval _after_ every static has been inserted
+            // - Otherwise MIR generation might look up a static that doens't yet exist
+            for(const auto& path : to_const_eval)
+            {
+                const Span  sp;
+                const auto mod_path = path.parent();
+                const auto& mod_const = m_resolve.m_crate.get_mod_by_path(sp, mod_path);
+                auto& mod = const_cast<::HIR::Module&>(mod_const);
 
                 struct Nvs: ::HIR::Evaluator::Newval {
-
-                    ::HIR::SimplePath   m_current_module_path;
+                    const ::HIR::SimplePath& m_current_module_path;
                     ::HIR::Module&  m_current_module;
-                    size_t m_next_idx;
 
-                    Nvs(::HIR::SimplePath current_module_path, ::HIR::Module& current_module, size_t idx)
+                    Nvs(const ::HIR::SimplePath& current_module_path, ::HIR::Module& current_module)
                         : m_current_module_path(::std::move(current_module_path))
                         , m_current_module(current_module)
-                        , m_next_idx (idx)
                     {
                     }
 
                     ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
-                        auto name = RcString::new_interned( FMT("lifted#" << m_next_idx) );
-                        m_next_idx ++;
+                        auto name = RcString::new_interned( FMT("lifted#" << m_current_module.m_value_items.size()) );
                         auto path = m_current_module_path + name;
                         auto new_static = HIR::Static(
                             HIR::Linkage(),
@@ -1142,47 +1164,34 @@ namespace static_borrow_constants {
                         new_static.m_value_res = ::std::move(value);
                         DEBUG(path << " = " << new_static.m_value_res);
                         m_current_module.m_value_items.insert(std::make_pair( name, box$(HIR::VisEnt<HIR::ValueItem> {
-                                HIR::Publicity::new_none(), // Should really be private, but we're well after checking
+                            HIR::Publicity::new_none(), // Should really be private, but we're well after checking
                                 HIR::ValueItem(::std::move(new_static))
-                            })) );
+                        })) );
                         return path;
                     }
-                } nvs { mod_path, mod, mod_list.second.size() };
+                } nvs { mod_path, mod };
 
-                for(auto& new_static_pair : mod_list.second)
-                {
-                    Span    sp;
-                    auto& new_static = new_static_pair.data;
-
-                    TRACE_FUNCTION_F("New static " << new_static_pair.path << new_static.m_params.fmt_args());
-
-                    if( !new_static.m_params.is_generic() )
+                auto& v = const_cast<HIR::ValueItem&>(m_resolve.m_crate.get_valitem_by_path(sp, path));
+                if( auto* new_static = v.opt_Static() ) {
+                    if( !new_static->m_params.is_generic() )
                     {
-                        new_static.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
-                        new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( new_static_pair.path, new_static.m_value, new_static.m_type.clone());
-                        new_static.m_value_generated = true;
+                        new_static->m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
+                        new_static->m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( path, new_static->m_value, new_static->m_type.clone());
+                        new_static->m_value_generated = true;
                     }
-
-                    struct H {
-                        static HIR::Constant to_const(HIR::Static& s) {
-                            HIR::Constant rv { std::move(s.m_params), std::move(s.m_type), std::move(s.m_value) };
-                            if( s.m_value_generated ) {
-                                rv.m_value_state = HIR::Constant::ValueState::Known;
-                                rv.m_value_res = std::move(s.m_value_res);
-                            }
-                            else {
-                                rv.m_value_state = HIR::Constant::ValueState::Generic;
-                            }
-                            return rv;
-                        }
-                    };
-                    auto new_ent = new_static_pair.is_const
-                        ? HIR::ValueItem(H::to_const(new_static))
-                        : HIR::ValueItem(std::move(new_static_pair.data));
-                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.path.components().back()), box$(HIR::VisEnt<HIR::ValueItem> {
-                        HIR::Publicity::new_none(), // Should really be private, but we're well after checking
-                        std::move(new_ent)
-                        })) );
+                }
+                else if( auto* new_static = v.opt_Constant() ) {
+                    if( !new_static->m_params.is_generic() )
+                    {
+                        new_static->m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
+                        new_static->m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( path, new_static->m_value, new_static->m_type.clone());
+                        new_static->m_value_state = HIR::Constant::ValueState::Known;
+                    }
+                    else {
+                        new_static->m_value_state = HIR::Constant::ValueState::Generic;
+                    }
+                }
+                else {
                 }
             }
         }

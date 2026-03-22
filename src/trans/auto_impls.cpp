@@ -722,7 +722,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 DEBUG("@" << ofs << " = " << p);
                 assert(ofs + ptr_bytes <= vtable_data.bytes.size());
                 vtable_data.relocations.push_back(Reloc::new_named( ofs, ptr_bytes, mv$(p) ));
-                vtable_data.write_uint(ofs, ptr_bytes, EncodedLiteral::PTR_BASE);
+                vtable_data.write_uint(ofs, ptr_bytes, CONST_PTR_BASE);
                 ofs += ptr_bytes;
                 assert(ofs <= vtable_data.bytes.size());
             };
@@ -794,7 +794,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 DEBUG("@" << ofs << " = " << p);
                 assert(ofs + ptr_bytes <= vtable_data.bytes.size());
                 vtable_data.relocations.push_back(Reloc::new_named( ofs, ptr_bytes, mv$(p) ));
-                vtable_data.write_uint(ofs, ptr_bytes, EncodedLiteral::PTR_BASE);
+                vtable_data.write_uint(ofs, ptr_bytes, CONST_PTR_BASE);
                 ofs += ptr_bytes;
                 assert(ofs <= vtable_data.bytes.size());
             };

@@ -1910,6 +1910,7 @@ void Expand_ExternBlock(const ExpandState& es, ::AST::Module& mod, ::AST::Extern
             }
         TU_ARMA(Function, e) {
             Expand_Function(es, mod, e);
+            e.set_abi( block.abi() );
             }
         TU_ARMA(Static, e) {
             Expand_Expr(es, e.value());

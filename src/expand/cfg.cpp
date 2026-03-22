@@ -22,7 +22,12 @@
 ::std::map< ::std::string, ::std::function<bool(const ::std::string&)> >   g_cfg_value_fcns;
 ::std::set< ::std::string >   g_cfg_flags;
 
-static const RcString rcstring_cfg = RcString::new_interned("cfg");
+namespace {
+    const RcString rcstring_cfg = RcString::new_interned("cfg");
+    const RcString rcstring_any = RcString::new_interned("any");
+    const RcString rcstring_not = RcString::new_interned("not");
+    const RcString rcstring_all = RcString::new_interned("all");
+}
 
 void Cfg_Dump(::std::ostream& os) {
     for(const auto& v : g_cfg_values) {
@@ -99,12 +104,9 @@ namespace {
             //WARNING(lex.point_span(), W0000, "Unknown cfg() param '" << name << "'");
             return false;
             }
-        case TOK_PAREN_OPEN:
+        case TOK_PAREN_OPEN: {
             GET_TOK(tok, lex);
 
-            static const RcString rcstring_any = RcString::new_interned("any");
-            static const RcString rcstring_not = RcString::new_interned("not");
-            static const RcString rcstring_all = RcString::new_interned("all");
             if( name == rcstring_any || name == rcstring_cfg ) {
                 bool rv = false;
                 while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
@@ -140,6 +142,7 @@ namespace {
             }
 
             break;
+            }
         default:
             auto its = g_cfg_values.equal_range(name.c_str());
             for(auto it = its.first; it != its.second; ++it) {

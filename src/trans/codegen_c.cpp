@@ -1226,35 +1226,92 @@ namespace {
                 }
                 libraries_and_dirs.push_border();
 
-                for(const auto& path : m_crate.m_link_paths ) {
-                    libraries_and_dirs.push_dir(path.c_str());
-                }
-                for(const auto& lib : m_crate.m_ext_libs) {
-                    ASSERT_BUG(Span(), lib.name != "", "");
-                    libraries_and_dirs.push_lib(lib.name.c_str());
-                }
-
-                for( const auto& crate_name : m_crate.m_ext_crates_ordered )
                 {
-                    const auto& crate = m_crate.m_ext_crates.at(crate_name);
-                    if( !crate.m_data->m_ext_libs.empty() || !crate.m_data->m_link_paths.empty() ) {
-                        libraries_and_dirs.push_border();
-                    }
-                    for(const auto& path : crate.m_data->m_link_paths ) {
+                    auto push_ext_lib = [&libraries_and_dirs,&opt,this](const HIR::Crate& crate, const ExternLibrary& lib) {
+                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.m_crate_name);
+                        switch(lib.kind)
+                        {
+                        case ExternLibrary::Kind::Dylib:
+                        case ExternLibrary::Kind::Static:
+                        case ExternLibrary::Kind::Framework:    // TODO: Is there anything special for OSX frameworks?
+                        {
+                            // NOTE: Does explicit lookup, to provide scoped search directories
+                            // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
+                            auto path = H::find_library(crate.m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
+                            if( path != "" ) {
+                                libraries_and_dirs.push_explicit(std::move(path));
+                            }
+                            else {
+                                libraries_and_dirs.push_lib(lib.name.c_str());
+                            }
+                        }
+                        break;
+                        case ExternLibrary::Kind::RawDylib:
+                            // This needs to create an import library :(
+                            // - For this, need to get the list of functions that were in the tagged block, and save the signatures
+                            // - I guess for that the list could be added during expand?
+                            {
+                                HIR::SimplePath p { crate.m_crate_name, lib.mod_path_nodes };
+                                const auto& mod = crate.get_mod_by_path(Span(), p);
+                                auto def_path = m_outfile_path_c + "_" + lib.name + ".def";
+                                {
+                                    ::std::ofstream ofs(def_path);
+                                    ofs << "LIBRARY " << lib.name << "\r\n";
+                                    ofs << "EXPORTS\r\n";
+                                    for(const auto& name : lib.contained_names) {
+                                        const auto& v = mod.m_value_items.at(name);
+                                        ofs << "  " << name << (v->ent.is_Static() ? " DATA" : "") << "\r\n";
+                                    }
+                                }
+                                auto lib_path = m_outfile_path_c + "_" + lib.name + ".lib";
+                                StringList  args;
+                                args.push_back(detect_msvc().path_vcvarsall);
+                                args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler );
+                                args.push_back("&");
+                                args.push_back("lib");
+                                args.push_back(FMT("/def:" << def_path));
+                                args.push_back(FMT("/out:" << lib_path));
+
+                                ::std::stringstream cmd_ss;
+                                cmd_ss << "echo \"\" & ";
+                                size_t i = -1;
+                                for(const auto& arg : args.get_vec())
+                                {
+                                    if(strcmp(arg, "&") == 0 ) {
+                                        cmd_ss << "&";
+                                    }
+                                    else if( strchr(arg, ' ') == nullptr ) {
+                                        cmd_ss << arg << " ";
+                                    }
+                                    else {
+                                        cmd_ss << "\"" << FmtShell(arg, true) << "\" ";
+                                    }
+                                }
+                                system(cmd_ss.str().c_str());
+                                libraries_and_dirs.push_explicit(std::move(lib_path));
+                            }
+                            break;
+                        }
+                    };
+
+                    for(const auto& path : m_crate.m_link_paths ) {
                         libraries_and_dirs.push_dir(path.c_str());
                     }
-                    // NOTE: Does explicit lookup, to provide scoped search directories
-                    // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
-                    for(const auto& lib : crate.m_data->m_ext_libs) {
-                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate_name);
-                        auto path = H::find_library(crate.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
-                        if( path != "" )
-                        {
-                            libraries_and_dirs.push_explicit(std::move(path));
+                    for(const auto& lib : m_crate.m_ext_libs) {
+                        push_ext_lib(m_crate, lib);
+                    }
+
+                    for( const auto& crate_name : m_crate.m_ext_crates_ordered )
+                    {
+                        const auto& crate = m_crate.m_ext_crates.at(crate_name);
+                        if( !crate.m_data->m_ext_libs.empty() || !crate.m_data->m_link_paths.empty() ) {
+                            libraries_and_dirs.push_border();
                         }
-                        else
-                        {
-                            libraries_and_dirs.push_lib(lib.name.c_str());
+                        for(const auto& path : crate.m_data->m_link_paths ) {
+                            libraries_and_dirs.push_dir(path.c_str());
+                        }
+                        for(const auto& lib : crate.m_data->m_ext_libs) {
+                            push_ext_lib(*crate.m_data, lib);
                         }
                     }
                 }
@@ -2573,7 +2630,7 @@ namespace {
                         if( reloc_it != encoded.relocations.end() && reloc_it->ofs <= i ) {
                             MIR_ASSERT(*m_mir_res, reloc_it->ofs == i, "Relocation not aligned to a pointer - " << reloc_it->ofs << " != " << i);
                             MIR_ASSERT(*m_mir_res, reloc_it->len == ptr_size, "Relocation size not pointer size - " << reloc_it->len << " != " << ptr_size);
-                            v -= EncodedLiteral::PTR_BASE;
+                            v -= CONST_PTR_BASE;
                             //MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Reloc=" << *reloc_it << " Literal=" << encoded);
 
                             m_of << "(uintptr_t)";
