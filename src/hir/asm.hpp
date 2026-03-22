@@ -8,6 +8,32 @@
 #define ABI_RUST    "Rust"
 #define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
 
+class ExternLibrary
+{
+public:
+    ::std::string   name;
+    /// <summary>
+    /// Values for `link(kind="...")` on extern blocks
+    /// </summary>
+    enum class Kind {
+        /// Dynamic link
+        Dylib,
+        // "raw-dylib"
+        /// (Windows-only) Raw dynamic library, doesn't require an import library for the named DLL
+        RawDylib,
+        // Static link
+        Static,
+        /// OSX-ony 
+        Framework,
+    } kind;
+
+    ExternLibrary(::std::string name, Kind kind = Kind::Dylib)
+        : name(std::move(name))
+        , kind(kind)
+    {
+    }
+};
+
 namespace AsmCommon {
 
     enum class Direction {

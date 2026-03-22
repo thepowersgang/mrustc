@@ -1226,35 +1226,52 @@ namespace {
                 }
                 libraries_and_dirs.push_border();
 
-                for(const auto& path : m_crate.m_link_paths ) {
-                    libraries_and_dirs.push_dir(path.c_str());
-                }
-                for(const auto& lib : m_crate.m_ext_libs) {
-                    ASSERT_BUG(Span(), lib.name != "", "");
-                    libraries_and_dirs.push_lib(lib.name.c_str());
-                }
-
-                for( const auto& crate_name : m_crate.m_ext_crates_ordered )
                 {
-                    const auto& crate = m_crate.m_ext_crates.at(crate_name);
-                    if( !crate.m_data->m_ext_libs.empty() || !crate.m_data->m_link_paths.empty() ) {
-                        libraries_and_dirs.push_border();
-                    }
-                    for(const auto& path : crate.m_data->m_link_paths ) {
+                    auto push_ext_lib = [&libraries_and_dirs,&opt,this](const HIR::Crate& crate, const ExternLibrary& lib) {
+                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.m_crate_name);
+                        switch(lib.kind)
+                        {
+                        case ExternLibrary::Kind::Dylib:
+                        case ExternLibrary::Kind::Static:
+                        case ExternLibrary::Kind::Framework:    // TODO: Is there anything special for OSX frameworks?
+                        {
+                            // NOTE: Does explicit lookup, to provide scoped search directories
+                            // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
+                            auto path = H::find_library(crate.m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
+                            if( path != "" ) {
+                                libraries_and_dirs.push_explicit(std::move(path));
+                            }
+                            else {
+                                libraries_and_dirs.push_lib(lib.name.c_str());
+                            }
+                        }
+                        break;
+                        case ExternLibrary::Kind::RawDylib:
+                            // TODO: 
+                            //libraries_and_dirs.push_lib(lib.name.c_str());
+                            TODO(Span(), "Handle raw-dylib");
+                            break;
+                        }
+                    };
+
+                    for(const auto& path : m_crate.m_link_paths ) {
                         libraries_and_dirs.push_dir(path.c_str());
                     }
-                    // NOTE: Does explicit lookup, to provide scoped search directories
-                    // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
-                    for(const auto& lib : crate.m_data->m_ext_libs) {
-                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate_name);
-                        auto path = H::find_library(crate.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
-                        if( path != "" )
-                        {
-                            libraries_and_dirs.push_explicit(std::move(path));
+                    for(const auto& lib : m_crate.m_ext_libs) {
+                        push_ext_lib(m_crate, lib);
+                    }
+
+                    for( const auto& crate_name : m_crate.m_ext_crates_ordered )
+                    {
+                        const auto& crate = m_crate.m_ext_crates.at(crate_name);
+                        if( !crate.m_data->m_ext_libs.empty() || !crate.m_data->m_link_paths.empty() ) {
+                            libraries_and_dirs.push_border();
                         }
-                        else
-                        {
-                            libraries_and_dirs.push_lib(lib.name.c_str());
+                        for(const auto& path : crate.m_data->m_link_paths ) {
+                            libraries_and_dirs.push_dir(path.c_str());
+                        }
+                        for(const auto& lib : crate.m_data->m_ext_libs) {
+                            push_ext_lib(*crate.m_data, lib);
                         }
                     }
                 }

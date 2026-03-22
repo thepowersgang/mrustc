@@ -625,10 +625,7 @@ class ExternBlock
     ::std::string   m_abi;
     ::std::vector< Named<Item>> m_items;
 public:
-    struct Link {
-        std::string lib_name;
-    };
-    std::vector<Link>   m_libraries;
+    std::vector<ExternLibrary>   m_libraries;
 
     ExternBlock(::std::string abi):
         m_abi( mv$(abi) )

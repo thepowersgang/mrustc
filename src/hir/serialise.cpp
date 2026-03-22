@@ -463,9 +463,22 @@
             serialise_vec(crate.m_ext_libs);
             serialise_vec(crate.m_link_paths);
         }
-        void serialise(const ::HIR::ExternLibrary& lib)
+        void serialise(const ExternLibrary& lib)
         {
+            struct H {
+                static size_t tag_from_kind(ExternLibrary::Kind v) {
+                    switch(v)
+                    {
+                    case ExternLibrary::Kind::Dylib: return 0;
+                    case ExternLibrary::Kind::RawDylib: return 1;
+                    case ExternLibrary::Kind::Static:   return 2;
+                    case ExternLibrary::Kind::Framework:    return 3;
+                    }
+                    BUG(Span(), "Bad tag for ExternLibrary::Kind");
+                }
+            };
             m_out.write_string(lib.name);
+            m_out.write_count(H::tag_from_kind(lib.kind));
         }
         void serialise_module(const ::HIR::Module& mod)
         {

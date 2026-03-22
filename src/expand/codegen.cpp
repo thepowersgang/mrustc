@@ -441,7 +441,7 @@ class CHandler_Link:
             lex.getTokenCheck(TOK_PAREN_OPEN);
             std::string lib_name;
             bool emit = true;
-            AST::ExternBlock::Link  link;
+            ExternLibrary   link { "" };    // Default to blank string, and check below if it's still empty at the end
 
             while(lex.lookahead(0) != TOK_PAREN_CLOSE)
             {
@@ -451,14 +451,29 @@ class CHandler_Link:
                     auto v = lex.getTokenCheck(TOK_STRING).str();
                     if(v == "")
                         ERROR(sp, E0000, "Empty name on extern block");
-                    link.lib_name = v;
+                    link.name = v;
                 }
                 else if( key == "kind" ) {
                     lex.getTokenCheck(TOK_EQUAL);
                     auto v = lex.getTokenCheck(TOK_STRING).str();
                     if(v == "")
                         ERROR(sp, E0000, "Empty `kind` on extern block #[link]");
-                    // TODO: save and use the kind
+                    // note: "raw-dylib" matters on windows
+                    if( v == "dylib" ) {
+                        link.kind = ExternLibrary::Kind::Dylib;
+                    }
+                    else if( v == "raw-dylib" ) {
+                        link.kind = ExternLibrary::Kind::RawDylib;
+                    }
+                    else if( v == "static" ) {
+                        link.kind = ExternLibrary::Kind::Static;
+                    }
+                    else if( v == "framework" ) {
+                        link.kind = ExternLibrary::Kind::Framework;
+                    }
+                    else {
+                        ERROR(sp, E0000, "Unknown `kind` on extern block #[link] - `" << v << "`");
+                    }
                 }
                 else if( key == "cfg" ) {
                     emit &= check_cfg_stream(lex);
@@ -476,8 +491,9 @@ class CHandler_Link:
                 if( !lex.getTokenIf(TOK_COMMA) )
                     break ;
             }
-            if(link.lib_name == "")
+            if(link.name == "") {
                 ERROR(sp, E0000, "No name in `#[link]`");
+            }
             if( emit )
             {
                 b->m_libraries.push_back(std::move(link));

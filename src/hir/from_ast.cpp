@@ -2105,7 +2105,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             }
             for(const auto& lib : e.m_libraries)
             {
-                g_crate_ptr->m_ext_libs.push_back( ::HIR::ExternLibrary { lib.lib_name } );
+                g_crate_ptr->m_ext_libs.push_back(lib);
             }
             }
         TU_ARMA(Impl, e) {

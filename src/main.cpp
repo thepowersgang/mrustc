@@ -811,7 +811,7 @@ int main(int argc, char *argv[])
             hir_crate->m_link_paths.push_back( libdir );
         }
         for(const char* libname : params.libraries ) {
-            hir_crate->m_ext_libs.push_back(::HIR::ExternLibrary { libname });
+            hir_crate->m_ext_libs.push_back(ExternLibrary { libname });
         }
         trans_opt.emit_debug_info = params.emit_debug_info;
 
