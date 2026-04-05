@@ -192,6 +192,13 @@ namespace {
         }
     private:
         std::pair<const RcString*,bool> insert_into_block(std::vector<Block>::iterator block, std::vector<RcString>::iterator slot, RcString rv) {
+#define VALIDATE 0
+#if VALIDATE
+            size_t start_len = 0;
+            for(const auto& v : *this) {
+                start_len += 1;
+            }
+#endif
             if( block->ents.size() == block->ents.capacity() ) {
                 // Block is full, so create a new block and split the contents between the two
                 // - The new block should go after the current one, and get half of its contents
@@ -216,8 +223,9 @@ namespace {
                 slot = block->ents.insert(slot, rv);
             }
 
-#if 0
+#if VALIDATE
             StringView    prev { nullptr, 0 };
+            size_t end_len = 0;
             for(auto& v : *this) {
                 if( prev.p ) {
                     if( v.ord(prev.p, prev.l) > 0 ) {
@@ -229,21 +237,30 @@ namespace {
                 }
                 prev.p = v.c_str();
                 prev.l = v.size();
+                end_len += 1;
             }
+            if(start_len+1 != end_len) {
+                std::cerr << "BUG: Counts failed after addition of `" << rv << " (was " << start_len << ", now " << end_len << ")`\n";
+                abort();
+            }
+            ::std::cerr << "ADDED #" << end_len << ": `" << rv << "`\n";
 #endif
 
             return std::make_pair(&*slot, true);
         }
     };
 }
-TieredSet   RcString_interned_strings;
+TieredSet*   RcString_interned_strings;
 bool    RcString_interned_ordering_valid;
 
 RcString RcString::new_interned(const char* s, size_t len)
 {
     if(len == 0)
         return RcString();
-    auto ret = RcString_interned_strings.lookup_or_add(StringView { s, len });
+    if(!RcString_interned_strings) {
+        RcString_interned_strings = new TieredSet;
+    }
+    auto ret = RcString_interned_strings->lookup_or_add(StringView { s, len });
     // Set interned and invalidate the cache if an insert happened
     if(ret.second)
     {
@@ -260,7 +277,8 @@ Ordering RcString::ord_interned(const RcString& s) const
     {
         // Populate cache
         unsigned i = 1;
-        for(auto& e : RcString_interned_strings)
+        assert(RcString_interned_strings);
+        for(auto& e : *RcString_interned_strings)
             e.m_ptr->ordering = i++;
         RcString_interned_ordering_valid = true;
     }
