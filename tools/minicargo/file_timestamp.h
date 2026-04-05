@@ -1,6 +1,7 @@
 #pragma once
 
 #include <path.h>
+#include <stdint.h>
 
 class Timestamp
 {

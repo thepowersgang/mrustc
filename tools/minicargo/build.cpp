@@ -1063,6 +1063,7 @@ RunnableJob Job_Codegen::start()
         line.pop_back();
     }
     StringList  args;
+    StringListKV    env;
     #ifdef _WIN32
     const auto* exe = "cmd.exe";
     args.push_back("/c");
@@ -1071,7 +1072,6 @@ RunnableJob Job_Codegen::start()
     const auto* exe = getenv("SHELL");
     args.push_back("-c");
     args.push_back(std::move(line));
-    StringListKV    env;
     #endif
     return RunnableJob(exe, std::move(args), std::move(env), helpers::path());
 }
