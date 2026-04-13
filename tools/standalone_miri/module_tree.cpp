@@ -654,7 +654,7 @@ bool Parser::parse_one()
                     else {
                     }
                     auto val = state.parse_lvalue(*this);
-                    src_rval = ::MIR::RValue::make_Borrow({ bt, ::std::move(val) });
+                    src_rval = ::MIR::RValue::make_Borrow({ bt, false, ::std::move(val) });
                 }
                 // Composites
                 else if( lex.consume_if('(') ) {

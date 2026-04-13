@@ -6,6 +6,8 @@
  * - MIR (Middle Intermediate Representation) definitions
  */
 #include "../../src/include/rc_string.hpp"
+struct Span {};
+struct Monomorphiser {};
 #include "../../src/mir/mir.hpp"
 #include "hir_sim.hpp"
 #include <iostream>
@@ -453,6 +455,8 @@ namespace MIR {
                 os << (e.new_val ? "!" : "") << "df$" << e.other;
             }
             ),
+        (SaveDropFlag, throw "todo";),
+        (LoadDropFlag, throw "todo";),
         (Drop,
             os << "drop(" << e.slot;
             if(e.kind == ::MIR::eDropKind::SHALLOW)
@@ -703,6 +707,8 @@ namespace MIR {
                 && ae.new_val == be.new_val
                 ;
             }
+        TU_ARMA(SaveDropFlag, ae,be) throw "todo";
+        TU_ARMA(LoadDropFlag, ae,be) throw "todo";
         TU_ARMA(Drop, ae,be) {
             return ae.slot == be.slot
                 && ae.kind == be.kind

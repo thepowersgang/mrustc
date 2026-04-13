@@ -12,6 +12,8 @@
 #include <set>
 
 #include "../../src/include/rc_string.hpp"
+struct Span {};
+struct Monomorphiser {};
 #include "../../src/mir/mir.hpp"
 #include "hir_sim.hpp"
 #include "value.hpp"

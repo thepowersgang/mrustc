@@ -1496,6 +1496,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             LOG_DEBUG("- " << val);
             cur_frame.drop_flags.at(se.idx) = val;
             } break;
+        case ::MIR::Statement::TAG_LoadDropFlag:
+        case ::MIR::Statement::TAG_SaveDropFlag:
         case ::MIR::Statement::TAG_ScopeEnd:
             LOG_TODO(stmt);
             break;
