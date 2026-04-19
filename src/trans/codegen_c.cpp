@@ -1323,6 +1323,13 @@ namespace {
                 }
 #endif
 #endif
+#if defined(__clang__)
+                // https://github.com/thepowersgang/mrustc/issues/388#issuecomment-3920956315
+                if( opt.opt_level > 0 )
+                {
+                    args.push_back("-fno-delete-null-pointer-checks");
+                }
+#endif
                 if( opt.emit_debug_info )
                 {
                     args.push_back("-g");
