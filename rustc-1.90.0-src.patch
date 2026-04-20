@@ -1,3 +1,195 @@
+--- vendor/crossterm-0.28.1/Cargo.toml
++++ vendor/crossterm-0.28.1/Cargo.toml
+@@ -177,6 +177,7 @@ features = [
+     "std",
+     "stdio",
+     "termios",
++    "use-libc"
+ ]
+ default-features = false
+
+--- vendor/fd-lock-4.0.4/Cargo.toml
++++ vendor/fd-lock-4.0.4/Cargo.toml
+@@ -56,7 +56,7 @@ version = "3.0.8"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "1.0.0"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target."cfg(windows)".dependencies.windows-sys]
+ version = ">=0.52.0, <0.60.0"
+--- vendor/gix-index-0.38.0/Cargo.toml
++++ vendor/gix-index-0.38.0/Cargo.toml
+@@ -129,6 +129,7 @@ version = "0.38.20"
+ features = [
+     "std",
+     "fs",
++    "use-libc"
+ ]
+ default-features = false
+
+--- vendor/gix-index-0.41.0/Cargo.toml
++++ vendor/gix-index-0.41.0/Cargo.toml
+@@ -126,6 +126,7 @@ version = "1.0.7"
+ features = [
+     "std",
+     "fs",
++    "use-libc"
+ ]
+ default-features = false
+
+--- vendor/gix-prompt-0.11.1/Cargo.toml
++++ vendor/gix-prompt-0.11.1/Cargo.toml
+@@ -57,7 +57,7 @@ version = "0.12.4"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "1.0.7"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [lints.clippy]
+ bool_to_int_with_if = "allow"
+--- vendor/gix-prompt-0.9.1/Cargo.toml
++++ vendor/gix-prompt-0.9.1/Cargo.toml
+@@ -57,7 +57,7 @@ version = "0.12.1"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "0.38.4"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [lints.clippy]
+ bool_to_int_with_if = "allow"
+--- vendor/is-terminal-0.4.13/Cargo.toml
++++ vendor/is-terminal-0.4.13/Cargo.toml
+@@ -58,7 +58,7 @@ version = "0.2.110"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dev-dependencies.rustix]
+ version = "0.38.0"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [target.'cfg(not(any(windows, target_os = "hermit", target_os = "unknown")))'.dev-dependencies.rustix]
+ version = "0.38.0"
+--- vendor/is-terminal-0.4.15/Cargo.toml
++++ vendor/is-terminal-0.4.15/Cargo.toml
+@@ -59,7 +59,7 @@ version = "0.2.110"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dev-dependencies.rustix]
+ version = "0.38.44"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [target.'cfg(not(any(windows, target_os = "hermit", target_os = "unknown")))'.dev-dependencies.rustix]
+ version = "0.38.0"
+--- vendor/junction-1.2.0/Cargo.toml
++++ vendor/junction-1.2.0/Cargo.toml
+@@ -46,6 +46,7 @@ path = "src/lib.rs"
+
+ [dev-dependencies.rustix]
+ version = "=0.38.9"
++features = ["use-libc"]
+
+ [dev-dependencies.tempfile]
+ version = "=3.8.0"
+--- vendor/tempfile-3.14.0/Cargo.toml
++++ vendor/tempfile-3.14.0/Cargo.toml
+@@ -80,7 +80,7 @@ nightly = []
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "0.38.39"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target."cfg(windows)".dependencies.windows-sys]
+ version = ">=0.52,<=0.59"
+--- vendor/tempfile-3.16.0/Cargo.toml
++++ vendor/tempfile-3.16.0/Cargo.toml
+@@ -82,7 +82,7 @@ nightly = []
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "0.38.39"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target.'cfg(any(unix, windows, target_os = "wasi"))'.dependencies.getrandom]
+ version = "0.3.0"
+--- vendor/tempfile-3.19.0/Cargo.toml
++++ vendor/tempfile-3.19.0/Cargo.toml
+@@ -80,7 +80,7 @@ version = "0.3"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "1.0.0"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target.'cfg(any(unix, windows, target_os = "wasi"))'.dependencies.getrandom]
+ version = "0.3.0"
+--- vendor/tempfile-3.19.1/Cargo.toml
++++ vendor/tempfile-3.19.1/Cargo.toml
+@@ -80,7 +80,7 @@ version = "0.3"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "1.0.0"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target.'cfg(any(unix, windows, target_os = "wasi"))'.dependencies.getrandom]
+ version = "0.3.0"
+--- vendor/tempfile-3.20.0/Cargo.toml
++++ vendor/tempfile-3.20.0/Cargo.toml
+@@ -83,7 +83,7 @@ version = "0.3"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "1.0.0"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target.'cfg(any(unix, windows, target_os = "wasi"))'.dependencies.getrandom]
+ version = "0.3.0"
+--- vendor/terminal_size-0.4.1/Cargo.toml
++++ vendor/terminal_size-0.4.1/Cargo.toml
+@@ -44,7 +44,7 @@ path = "examples/get_size.rs"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "0.38.0"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [target."cfg(windows)".dependencies.windows-sys]
+ version = "0.59.0"
+--- vendor/terminal_size-0.4.2/Cargo.toml
++++ vendor/terminal_size-0.4.2/Cargo.toml
+@@ -44,7 +44,7 @@ path = "examples/get_size.rs"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "1.0.1"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [target."cfg(windows)".dependencies.windows-sys]
+ version = "0.59.0"
+--- vendor/xattr-1.5.0/Cargo.toml
++++ vendor/xattr-1.5.0/Cargo.toml
+@@ -51,6 +51,7 @@ version = "1.0.0"
+ features = [
+     "fs",
+     "std",
++    "use-libc"
+ ]
+ default-features = false
+
+--- vendor/xattr-1.5.1/Cargo.toml
++++ vendor/xattr-1.5.1/Cargo.toml
+@@ -51,6 +51,7 @@ version = "1.0.0"
+ features = [
+     "fs",
+     "std",
++    "use-libc"
+ ]
+ default-features = false
+
 --- Cargo.lock
 +++ Cargo.lock
 @@ -4344,7 +4344,6 @@ dependencies = [
