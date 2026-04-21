@@ -1,38 +1,1194 @@
---- compiler/rustc_hir/src/hir.rs
-+++ compiler/rustc_hir/src/hir.rs
-@@ -4938,4 +4938,5 @@
- // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
-+#[cfg(not(rust_compiler="mrustc"))]
- #[cfg(target_pointer_width = "64")]
- mod size_asserts {
-     use rustc_data_structures::static_assert_size;
+--- vendor/crossterm-0.28.1/Cargo.toml
++++ vendor/crossterm-0.28.1/Cargo.toml
+@@ -177,6 +177,7 @@ features = [
+     "std",
+     "stdio",
+     "termios",
++    "use-libc"
+ ]
+ default-features = false
+
+--- vendor/fd-lock-4.0.4/Cargo.toml
++++ vendor/fd-lock-4.0.4/Cargo.toml
+@@ -56,7 +56,7 @@ version = "3.0.8"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "1.0.0"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target."cfg(windows)".dependencies.windows-sys]
+ version = ">=0.52.0, <0.60.0"
+--- vendor/gix-index-0.38.0/Cargo.toml
++++ vendor/gix-index-0.38.0/Cargo.toml
+@@ -129,6 +129,7 @@ version = "0.38.20"
+ features = [
+     "std",
+     "fs",
++    "use-libc"
+ ]
+ default-features = false
+
+--- vendor/gix-index-0.41.0/Cargo.toml
++++ vendor/gix-index-0.41.0/Cargo.toml
+@@ -126,6 +126,7 @@ version = "1.0.7"
+ features = [
+     "std",
+     "fs",
++    "use-libc"
+ ]
+ default-features = false
+
+--- vendor/gix-prompt-0.11.1/Cargo.toml
++++ vendor/gix-prompt-0.11.1/Cargo.toml
+@@ -57,7 +57,7 @@ version = "0.12.4"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "1.0.7"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [lints.clippy]
+ bool_to_int_with_if = "allow"
+--- vendor/gix-prompt-0.9.1/Cargo.toml
++++ vendor/gix-prompt-0.9.1/Cargo.toml
+@@ -57,7 +57,7 @@ version = "0.12.1"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "0.38.4"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [lints.clippy]
+ bool_to_int_with_if = "allow"
+--- vendor/is-terminal-0.4.13/Cargo.toml
++++ vendor/is-terminal-0.4.13/Cargo.toml
+@@ -58,7 +58,7 @@ version = "0.2.110"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dev-dependencies.rustix]
+ version = "0.38.0"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [target.'cfg(not(any(windows, target_os = "hermit", target_os = "unknown")))'.dev-dependencies.rustix]
+ version = "0.38.0"
+--- vendor/is-terminal-0.4.15/Cargo.toml
++++ vendor/is-terminal-0.4.15/Cargo.toml
+@@ -59,7 +59,7 @@ version = "0.2.110"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dev-dependencies.rustix]
+ version = "0.38.44"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [target.'cfg(not(any(windows, target_os = "hermit", target_os = "unknown")))'.dev-dependencies.rustix]
+ version = "0.38.0"
+--- vendor/junction-1.2.0/Cargo.toml
++++ vendor/junction-1.2.0/Cargo.toml
+@@ -46,6 +46,7 @@ path = "src/lib.rs"
+
+ [dev-dependencies.rustix]
+ version = "=0.38.9"
++features = ["use-libc"]
+
+ [dev-dependencies.tempfile]
+ version = "=3.8.0"
+--- vendor/tempfile-3.14.0/Cargo.toml
++++ vendor/tempfile-3.14.0/Cargo.toml
+@@ -80,7 +80,7 @@ nightly = []
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "0.38.39"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target."cfg(windows)".dependencies.windows-sys]
+ version = ">=0.52,<=0.59"
+--- vendor/tempfile-3.16.0/Cargo.toml
++++ vendor/tempfile-3.16.0/Cargo.toml
+@@ -82,7 +82,7 @@ nightly = []
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "0.38.39"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target.'cfg(any(unix, windows, target_os = "wasi"))'.dependencies.getrandom]
+ version = "0.3.0"
+--- vendor/tempfile-3.19.0/Cargo.toml
++++ vendor/tempfile-3.19.0/Cargo.toml
+@@ -80,7 +80,7 @@ version = "0.3"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "1.0.0"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target.'cfg(any(unix, windows, target_os = "wasi"))'.dependencies.getrandom]
+ version = "0.3.0"
+--- vendor/tempfile-3.19.1/Cargo.toml
++++ vendor/tempfile-3.19.1/Cargo.toml
+@@ -80,7 +80,7 @@ version = "0.3"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "1.0.0"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target.'cfg(any(unix, windows, target_os = "wasi"))'.dependencies.getrandom]
+ version = "0.3.0"
+--- vendor/tempfile-3.20.0/Cargo.toml
++++ vendor/tempfile-3.20.0/Cargo.toml
+@@ -83,7 +83,7 @@ version = "0.3"
+
+ [target.'cfg(any(unix, target_os = "wasi"))'.dependencies.rustix]
+ version = "1.0.0"
+-features = ["fs"]
++features = ["fs", "use-libc"]
+
+ [target.'cfg(any(unix, windows, target_os = "wasi"))'.dependencies.getrandom]
+ version = "0.3.0"
+--- vendor/terminal_size-0.4.1/Cargo.toml
++++ vendor/terminal_size-0.4.1/Cargo.toml
+@@ -44,7 +44,7 @@ path = "examples/get_size.rs"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "0.38.0"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [target."cfg(windows)".dependencies.windows-sys]
+ version = "0.59.0"
+--- vendor/terminal_size-0.4.2/Cargo.toml
++++ vendor/terminal_size-0.4.2/Cargo.toml
+@@ -44,7 +44,7 @@ path = "examples/get_size.rs"
+
+ [target."cfg(unix)".dependencies.rustix]
+ version = "1.0.1"
+-features = ["termios"]
++features = ["termios", "use-libc"]
+
+ [target."cfg(windows)".dependencies.windows-sys]
+ version = "0.59.0"
+--- vendor/xattr-1.5.0/Cargo.toml
++++ vendor/xattr-1.5.0/Cargo.toml
+@@ -51,6 +51,7 @@ version = "1.0.0"
+ features = [
+     "fs",
+     "std",
++    "use-libc"
+ ]
+ default-features = false
+
+--- vendor/xattr-1.5.1/Cargo.toml
++++ vendor/xattr-1.5.1/Cargo.toml
+@@ -51,6 +51,7 @@ version = "1.0.0"
+ features = [
+     "fs",
+     "std",
++    "use-libc"
+ ]
+ default-features = false
+
+--- Cargo.lock
++++ Cargo.lock
+@@ -4344,7 +4344,6 @@ dependencies = [
+  "rustc-literal-escaper",
+  "rustc_ast",
+  "rustc_ast_pretty",
+- "rustc_attr_parsing",
+  "rustc_data_structures",
+  "rustc_errors",
+  "rustc_feature",
+--- compiler/rustc_ast/src/attr/mod.rs
++++ compiler/rustc_ast/src/attr/mod.rs
+@@ -217,10 +217,6 @@ fn doc_resolution_scope(&self) -> Option<AttrStyle> {
+             _ => None,
+         }
+     }
+-
+-    fn is_automatically_derived_attr(&self) -> bool {
+-        self.has_name(sym::automatically_derived)
+-    }
+ }
+ 
+ impl Attribute {
+@@ -814,7 +810,6 @@ fn is_proc_macro_attr(&self) -> bool {
+             .iter()
+             .any(|kind| self.has_name(*kind))
+     }
+-    fn is_automatically_derived_attr(&self) -> bool;
+ 
+     /// Returns the documentation and its kind if this is a doc comment or a sugared doc comment.
+     /// * `///doc` returns `Some(("doc", CommentKind::Line))`.
+--- compiler/rustc_attr_parsing/src/attributes/link_attrs.rs
++++ compiler/rustc_attr_parsing/src/attributes/link_attrs.rs
+@@ -60,27 +60,6 @@ fn convert(cx: &mut AcceptContext<'_, '_, S>, args: &ArgParser<'_>) -> Option<At
+     }
+ }
+ 
+-pub(crate) struct ExportStableParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for ExportStableParser {
+-    const PATH: &[Symbol] = &[sym::export_stable];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
+-    const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::ExportStable;
+-}
+-
+-pub(crate) struct FfiConstParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for FfiConstParser {
+-    const PATH: &[Symbol] = &[sym::ffi_const];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::FfiConst;
+-}
+-
+-pub(crate) struct FfiPureParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for FfiPureParser {
+-    const PATH: &[Symbol] = &[sym::ffi_pure];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::FfiPure;
+-}
+-
+ pub(crate) struct StdInternalSymbolParser;
+ impl<S: Stage> NoArgsAttributeParser<S> for StdInternalSymbolParser {
+     const PATH: &[Symbol] = &[sym::rustc_std_internal_symbol];
+--- compiler/rustc_attr_parsing/src/attributes/lint_helpers.rs
++++ /dev/null
+@@ -1,33 +0,0 @@
+-use rustc_hir::attrs::AttributeKind;
+-use rustc_span::{Span, Symbol, sym};
+-
+-use crate::attributes::{NoArgsAttributeParser, OnDuplicate};
+-use crate::context::Stage;
+-
+-pub(crate) struct AsPtrParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for AsPtrParser {
+-    const PATH: &[Symbol] = &[sym::rustc_as_ptr];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::AsPtr;
+-}
+-
+-pub(crate) struct PubTransparentParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for PubTransparentParser {
+-    const PATH: &[Symbol] = &[sym::rustc_pub_transparent];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::PubTransparent;
+-}
+-
+-pub(crate) struct PassByValueParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for PassByValueParser {
+-    const PATH: &[Symbol] = &[sym::rustc_pass_by_value];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::PassByValue;
+-}
+-
+-pub(crate) struct AutomaticallyDerivedParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for AutomaticallyDerivedParser {
+-    const PATH: &[Symbol] = &[sym::automatically_derived];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::AutomaticallyDerived;
+-}
+--- compiler/rustc_attr_parsing/src/attributes/mod.rs
++++ compiler/rustc_attr_parsing/src/attributes/mod.rs
+@@ -34,19 +34,15 @@
+ pub(crate) mod dummy;
+ pub(crate) mod inline;
+ pub(crate) mod link_attrs;
+-pub(crate) mod lint_helpers;
+ pub(crate) mod loop_match;
+ pub(crate) mod macro_attrs;
+ pub(crate) mod must_use;
+ pub(crate) mod no_implicit_prelude;
+-pub(crate) mod non_exhaustive;
+-pub(crate) mod path;
+ pub(crate) mod proc_macro_attrs;
+ pub(crate) mod repr;
+ pub(crate) mod rustc_internal;
+ pub(crate) mod semantics;
+ pub(crate) mod stability;
+-pub(crate) mod test_attrs;
+ pub(crate) mod traits;
+ pub(crate) mod transparency;
+ pub(crate) mod util;
+--- compiler/rustc_attr_parsing/src/attributes/non_exhaustive.rs
++++ /dev/null
+@@ -1,13 +0,0 @@
+-use rustc_hir::attrs::AttributeKind;
+-use rustc_span::{Span, Symbol, sym};
+-
+-use crate::attributes::{NoArgsAttributeParser, OnDuplicate};
+-use crate::context::Stage;
+-
+-pub(crate) struct NonExhaustiveParser;
+-
+-impl<S: Stage> NoArgsAttributeParser<S> for NonExhaustiveParser {
+-    const PATH: &[Symbol] = &[sym::non_exhaustive];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::NonExhaustive;
+-}
+--- compiler/rustc_attr_parsing/src/attributes/test_attrs.rs
++++ /dev/null
+@@ -1,46 +0,0 @@
+-use rustc_feature::{AttributeTemplate, template};
+-use rustc_hir::attrs::AttributeKind;
+-use rustc_hir::lints::AttributeLintKind;
+-use rustc_span::{Symbol, sym};
+-
+-use crate::attributes::{AttributeOrder, OnDuplicate, SingleAttributeParser};
+-use crate::context::{AcceptContext, Stage};
+-use crate::parser::ArgParser;
+-
+-pub(crate) struct IgnoreParser;
+-
+-impl<S: Stage> SingleAttributeParser<S> for IgnoreParser {
+-    const PATH: &[Symbol] = &[sym::ignore];
+-    const ATTRIBUTE_ORDER: AttributeOrder = AttributeOrder::KeepOutermost;
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
+-    const TEMPLATE: AttributeTemplate = template!(Word, NameValueStr: "reason");
+-
+-    fn convert(cx: &mut AcceptContext<'_, '_, S>, args: &ArgParser<'_>) -> Option<AttributeKind> {
+-        Some(AttributeKind::Ignore {
+-            span: cx.attr_span,
+-            reason: match args {
+-                ArgParser::NoArgs => None,
+-                ArgParser::NameValue(name_value) => {
+-                    let Some(str_value) = name_value.value_as_str() else {
+-                        let suggestions = <Self as SingleAttributeParser<S>>::TEMPLATE
+-                            .suggestions(false, "ignore");
+-                        let span = cx.attr_span;
+-                        cx.emit_lint(
+-                            AttributeLintKind::IllFormedAttributeInput { suggestions },
+-                            span,
+-                        );
+-                        return None;
+-                    };
+-                    Some(str_value)
+-                }
+-                ArgParser::List(_) => {
+-                    let suggestions =
+-                        <Self as SingleAttributeParser<S>>::TEMPLATE.suggestions(false, "ignore");
+-                    let span = cx.attr_span;
+-                    cx.emit_lint(AttributeLintKind::IllFormedAttributeInput { suggestions }, span);
+-                    return None;
+-                }
+-            },
+-        })
+-    }
+-}
+--- compiler/rustc_attr_parsing/src/attributes/traits.rs
++++ compiler/rustc_attr_parsing/src/attributes/traits.rs
+@@ -4,9 +4,7 @@
+ use rustc_hir::attrs::AttributeKind;
+ use rustc_span::{Span, Symbol, sym};
+ 
+-use crate::attributes::{
+-    AttributeOrder, NoArgsAttributeParser, OnDuplicate, SingleAttributeParser,
+-};
++use crate::attributes::{AttributeOrder, NoArgsAttributeParser, OnDuplicate, SingleAttributeParser};
+ use crate::context::{AcceptContext, Stage};
+ use crate::parser::ArgParser;
+ 
+@@ -54,99 +52,11 @@ fn convert(cx: &mut AcceptContext<'_, '_, S>, args: &ArgParser<'_>) -> Option<At
+     }
+ }
+ 
+-pub(crate) struct ParenSugarParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for ParenSugarParser {
+-    const PATH: &[Symbol] = &[sym::rustc_paren_sugar];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::ParenSugar;
+-}
+-
+-pub(crate) struct TypeConstParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for TypeConstParser {
+-    const PATH: &[Symbol] = &[sym::type_const];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::TypeConst;
+-}
+-
+-// Markers
+-
+-pub(crate) struct MarkerParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for MarkerParser {
+-    const PATH: &[Symbol] = &[sym::marker];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::Marker;
+-}
+-
+-pub(crate) struct DenyExplicitImplParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for DenyExplicitImplParser {
+-    const PATH: &[Symbol] = &[sym::rustc_deny_explicit_impl];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::DenyExplicitImpl;
+-}
+-
+-pub(crate) struct DoNotImplementViaObjectParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for DoNotImplementViaObjectParser {
+-    const PATH: &[Symbol] = &[sym::rustc_do_not_implement_via_object];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::DoNotImplementViaObject;
+-}
+-
+ // FIXME(const_trait_impl): remove this
+ // Const traits
+ 
+-pub(crate) struct ConstTraitParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for ConstTraitParser {
+-    const PATH: &[Symbol] = &[sym::const_trait];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::ConstTrait;
+-}
+-
+-// Specialization
+-
+-pub(crate) struct SpecializationTraitParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for SpecializationTraitParser {
+-    const PATH: &[Symbol] = &[sym::rustc_specialization_trait];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::SpecializationTrait;
+-}
+-
+-pub(crate) struct UnsafeSpecializationMarkerParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for UnsafeSpecializationMarkerParser {
+-    const PATH: &[Symbol] = &[sym::rustc_unsafe_specialization_marker];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::UnsafeSpecializationMarker;
+-}
+-
+ // Coherence
+ 
+-pub(crate) struct CoinductiveParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for CoinductiveParser {
+-    const PATH: &[Symbol] = &[sym::rustc_coinductive];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::Coinductive;
+-}
+-
+-pub(crate) struct AllowIncoherentImplParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for AllowIncoherentImplParser {
+-    const PATH: &[Symbol] = &[sym::rustc_allow_incoherent_impl];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = AttributeKind::AllowIncoherentImpl;
+-}
+-
+-pub(crate) struct CoherenceIsCoreParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for CoherenceIsCoreParser {
+-    const PATH: &[Symbol] = &[sym::rustc_coherence_is_core];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::CoherenceIsCore;
+-}
+-
+-pub(crate) struct FundamentalParser;
+-impl<S: Stage> NoArgsAttributeParser<S> for FundamentalParser {
+-    const PATH: &[Symbol] = &[sym::fundamental];
+-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Error;
+-    const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::Fundamental;
+-}
+-
+ pub(crate) struct PointeeParser;
+ impl<S: Stage> NoArgsAttributeParser<S> for PointeeParser {
+     const PATH: &[Symbol] = &[sym::pointee];
+--- compiler/rustc_attr_parsing/src/context.rs
++++ compiler/rustc_attr_parsing/src/context.rs
+@@ -26,18 +26,14 @@
+ use crate::attributes::dummy::DummyParser;
+ use crate::attributes::inline::{InlineParser, RustcForceInlineParser};
+ use crate::attributes::link_attrs::{
+-    ExportStableParser, FfiConstParser, FfiPureParser, LinkNameParser, LinkOrdinalParser,
++    LinkNameParser, LinkOrdinalParser,
+     LinkSectionParser, StdInternalSymbolParser,
+ };
+-use crate::attributes::lint_helpers::{
+-    AsPtrParser, AutomaticallyDerivedParser, PassByValueParser, PubTransparentParser,
+-};
++
+ use crate::attributes::loop_match::{ConstContinueParser, LoopMatchParser};
+ use crate::attributes::macro_attrs::{MacroEscapeParser, MacroUseParser};
+ use crate::attributes::must_use::MustUseParser;
+ use crate::attributes::no_implicit_prelude::NoImplicitPreludeParser;
+-use crate::attributes::non_exhaustive::NonExhaustiveParser;
+-use crate::attributes::path::PathParser as PathAttributeParser;
+ use crate::attributes::proc_macro_attrs::{
+     ProcMacroAttributeParser, ProcMacroDeriveParser, ProcMacroParser, RustcBuiltinMacroParser,
+ };
+@@ -50,12 +46,8 @@
+ use crate::attributes::stability::{
+     BodyStabilityParser, ConstStabilityIndirectParser, ConstStabilityParser, StabilityParser,
+ };
+-use crate::attributes::test_attrs::IgnoreParser;
+ use crate::attributes::traits::{
+-    AllowIncoherentImplParser, CoherenceIsCoreParser, CoinductiveParser, ConstTraitParser,
+-    DenyExplicitImplParser, DoNotImplementViaObjectParser, FundamentalParser, MarkerParser,
+-    ParenSugarParser, PointeeParser, SkipDuringMethodDispatchParser, SpecializationTraitParser,
+-    TypeConstParser, UnsafeSpecializationMarkerParser,
++    PointeeParser, SkipDuringMethodDispatchParser,
+ };
+ use crate::attributes::transparency::TransparencyParser;
+ use crate::attributes::{AttributeParser as _, Combine, Single, WithoutArgs};
+@@ -149,14 +141,12 @@ mod late {
+         Single<DeprecationParser>,
+         Single<DummyParser>,
+         Single<ExportNameParser>,
+-        Single<IgnoreParser>,
+         Single<InlineParser>,
+         Single<LinkNameParser>,
+         Single<LinkOrdinalParser>,
+         Single<LinkSectionParser>,
+         Single<MustUseParser>,
+         Single<OptimizeParser>,
+-        Single<PathAttributeParser>,
+         Single<ProcMacroDeriveParser>,
+         Single<RustcBuiltinMacroParser>,
+         Single<RustcForceInlineParser>,
+@@ -165,40 +155,20 @@ mod late {
+         Single<RustcObjectLifetimeDefaultParser>,
+         Single<SkipDuringMethodDispatchParser>,
+         Single<TransparencyParser>,
+-        Single<WithoutArgs<AllowIncoherentImplParser>>,
+-        Single<WithoutArgs<AsPtrParser>>,
+-        Single<WithoutArgs<AutomaticallyDerivedParser>>,
+-        Single<WithoutArgs<CoherenceIsCoreParser>>,
+-        Single<WithoutArgs<CoinductiveParser>>,
+         Single<WithoutArgs<ColdParser>>,
+         Single<WithoutArgs<ConstContinueParser>>,
+         Single<WithoutArgs<ConstStabilityIndirectParser>>,
+-        Single<WithoutArgs<ConstTraitParser>>,
+-        Single<WithoutArgs<DenyExplicitImplParser>>,
+-        Single<WithoutArgs<DoNotImplementViaObjectParser>>,
+-        Single<WithoutArgs<ExportStableParser>>,
+-        Single<WithoutArgs<FfiConstParser>>,
+-        Single<WithoutArgs<FfiPureParser>>,
+-        Single<WithoutArgs<FundamentalParser>>,
+         Single<WithoutArgs<LoopMatchParser>>,
+         Single<WithoutArgs<MacroEscapeParser>>,
+-        Single<WithoutArgs<MarkerParser>>,
+         Single<WithoutArgs<MayDangleParser>>,
+         Single<WithoutArgs<NoImplicitPreludeParser>>,
+         Single<WithoutArgs<NoMangleParser>>,
+-        Single<WithoutArgs<NonExhaustiveParser>>,
+         Single<WithoutArgs<OmitGdbPrettyPrinterSectionParser>>,
+-        Single<WithoutArgs<ParenSugarParser>>,
+-        Single<WithoutArgs<PassByValueParser>>,
+         Single<WithoutArgs<PointeeParser>>,
+         Single<WithoutArgs<ProcMacroAttributeParser>>,
+         Single<WithoutArgs<ProcMacroParser>>,
+-        Single<WithoutArgs<PubTransparentParser>>,
+-        Single<WithoutArgs<SpecializationTraitParser>>,
+         Single<WithoutArgs<StdInternalSymbolParser>>,
+         Single<WithoutArgs<TrackCallerParser>>,
+-        Single<WithoutArgs<TypeConstParser>>,
+-        Single<WithoutArgs<UnsafeSpecializationMarkerParser>>,
+         // tidy-alphabetical-end
+     ];
+ );
+--- compiler/rustc_codegen_ssa/src/codegen_attrs.rs
++++ compiler/rustc_codegen_ssa/src/codegen_attrs.rs
+@@ -325,10 +325,6 @@ fn process_builtin_attrs(
+                     UsedBy::Compiler => codegen_fn_attrs.flags |= CodegenFnAttrFlags::USED_COMPILER,
+                     UsedBy::Linker => codegen_fn_attrs.flags |= CodegenFnAttrFlags::USED_LINKER,
+                 },
+-                AttributeKind::FfiConst(_) => {
+-                    codegen_fn_attrs.flags |= CodegenFnAttrFlags::FFI_CONST
+-                }
+-                AttributeKind::FfiPure(_) => codegen_fn_attrs.flags |= CodegenFnAttrFlags::FFI_PURE,
+                 AttributeKind::StdInternalSymbol(_) => {
+                     codegen_fn_attrs.flags |= CodegenFnAttrFlags::RUSTC_STD_INTERNAL_SYMBOL
+                 }
+@@ -342,6 +338,8 @@ fn process_builtin_attrs(
+ 
+         match name {
+             sym::rustc_allocator => codegen_fn_attrs.flags |= CodegenFnAttrFlags::ALLOCATOR,
++            sym::ffi_pure => codegen_fn_attrs.flags |= CodegenFnAttrFlags::FFI_PURE,
++            sym::ffi_const => codegen_fn_attrs.flags |= CodegenFnAttrFlags::FFI_CONST,
+             sym::rustc_nounwind => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NEVER_UNWIND,
+             sym::rustc_reallocator => codegen_fn_attrs.flags |= CodegenFnAttrFlags::REALLOCATOR,
+             sym::rustc_deallocator => codegen_fn_attrs.flags |= CodegenFnAttrFlags::DEALLOCATOR,
 --- compiler/rustc_errors/src/lib.rs
 +++ compiler/rustc_errors/src/lib.rs
-@@ -102,5 +102,6 @@
+@@ -102,6 +102,7 @@
  // `PResult` is used a lot. Make sure it doesn't unintentionally get bigger.
  #[cfg(target_pointer_width = "64")]
  rustc_data_structures::static_assert_size!(PResult<'_, ()>, 24);
 +#[cfg(not(rust_compiler="mrustc"))]
  #[cfg(target_pointer_width = "64")]
  rustc_data_structures::static_assert_size!(PResult<'_, bool>, 24);
---- compiler/rustc_parse/src/parser/mod.rs
-+++ compiler/rustc_parse/src/parser/mod.rs
-@@ -229,3 +229,4 @@
- // though, because `TokenTypeSet(u128)` alignment varies on others, changing the total size.
-+#[cfg(not(rust_compiler="mrustc"))]
- #[cfg(all(target_pointer_width = "64", any(target_arch = "aarch64", target_arch = "x86_64")))]
- rustc_data_structures::static_assert_size!(Parser<'_>, 288);
---- compiler/rustc_middle/src/ty/sty.rs
-+++ compiler/rustc_middle/src/ty/sty.rs
-@@ -2026,4 +2026,4 @@
- impl<'tcx> rustc_type_ir::inherent::Tys<TyCtxt<'tcx>> for &'tcx ty::List<Ty<'tcx>> {
-     fn inputs(self) -> &'tcx [Ty<'tcx>] {
--        self.split_last().unwrap().1
-+        (**self).split_last().unwrap().1
+ 
+--- compiler/rustc_feature/src/builtin_attrs.rs
++++ compiler/rustc_feature/src/builtin_attrs.rs
+@@ -724,7 +724,7 @@ pub struct BuiltinAttribute {
+     ),
+     rustc_attr!(
+         rustc_pub_transparent, Normal, template!(Word),
+-        ErrorFollowing, EncodeCrossCrate::Yes,
++        WarnFollowing, EncodeCrossCrate::Yes,
+         "used internally to mark types with a `transparent` representation when it is guaranteed by the documentation",
+     ),
+ 
+--- compiler/rustc_hir/src/attrs/data_structures.rs
++++ compiler/rustc_hir/src/attrs/data_structures.rs
+@@ -246,18 +246,9 @@ pub enum AttributeKind {
+     /// Represents `#[rustc_allow_const_fn_unstable]`.
+     AllowConstFnUnstable(ThinVec<Symbol>, Span),
+ 
+-    /// Represents `#[rustc_allow_incoherent_impl]`.
+-    AllowIncoherentImpl(Span),
+-
+     /// Represents `#[allow_internal_unstable]`.
+     AllowInternalUnstable(ThinVec<(Symbol, Span)>, Span),
+ 
+-    /// Represents `#[rustc_as_ptr]` (used by the `dangling_pointers_from_temporaries` lint).
+-    AsPtr(Span),
+-
+-    /// Represents `#[automatically_derived]`
+-    AutomaticallyDerived(Span),
+-
+     /// Represents `#[rustc_default_body_unstable]`.
+     BodyStability {
+         stability: DefaultBodyStability,
+@@ -265,12 +256,6 @@ pub enum AttributeKind {
+         span: Span,
+     },
+ 
+-    /// Represents `#[rustc_coherence_is_core]`.
+-    CoherenceIsCore,
+-
+-    /// Represents `#[rustc_coinductive]`.
+-    Coinductive(Span),
+-
+     /// Represents `#[cold]`.
+     Cold(Span),
+ 
+@@ -294,21 +279,12 @@ pub enum AttributeKind {
+     /// Represents `#[rustc_const_stable_indirect]`.
+     ConstStabilityIndirect,
+ 
+-    /// Represents `#[const_trait]`.
+-    ConstTrait(Span),
+-
+     /// Represents `#[coverage(..)]`.
+     Coverage(Span, CoverageAttrKind),
+ 
+-    ///Represents `#[rustc_deny_explicit_impl]`.
+-    DenyExplicitImpl(Span),
+-
+     /// Represents [`#[deprecated]`](https://doc.rust-lang.org/stable/reference/attributes/diagnostics.html#the-deprecated-attribute).
+     Deprecation { deprecation: Deprecation, span: Span },
+ 
+-    /// Represents `#[rustc_do_not_implement_via_object]`.
+-    DoNotImplementViaObject(Span),
+-
+     /// Represents [`#[doc]`](https://doc.rust-lang.org/stable/rustdoc/write-documentation/the-doc-attribute.html).
+     DocComment { style: AttrStyle, kind: CommentKind, span: Span, comment: Symbol },
+ 
+@@ -323,25 +299,6 @@ pub enum AttributeKind {
+         span: Span,
+     },
+ 
+-    /// Represents `#[export_stable]`.
+-    ExportStable,
+-
+-    /// Represents `#[ffi_const]`.
+-    FfiConst(Span),
+-
+-    /// Represents `#[ffi_pure]`.
+-    FfiPure(Span),
+-
+-    /// Represents `#[fundamental]`.
+-    Fundamental,
+-
+-    /// Represents `#[ignore]`
+-    Ignore {
+-        span: Span,
+-        /// ignore can optionally have a reason: `#[ignore = "reason this is ignored"]`
+-        reason: Option<Symbol>,
+-    },
+-
+     /// Represents `#[inline]` and `#[rustc_force_inline]`.
+     Inline(InlineAttr, Span),
+ 
+@@ -366,9 +323,6 @@ pub enum AttributeKind {
+     /// Represents `#[macro_use]`.
+     MacroUse { span: Span, arguments: MacroUseArgs },
+ 
+-    /// Represents `#[marker]`.
+-    Marker(Span),
+-
+     /// Represents [`#[may_dangle]`](https://std-dev-guide.rust-lang.org/tricky/may-dangle.html).
+     MayDangle(Span),
+ 
+@@ -388,24 +342,12 @@ pub enum AttributeKind {
+     /// Represents `#[no_mangle]`
+     NoMangle(Span),
+ 
+-    /// Represents `#[non_exhaustive]`
+-    NonExhaustive(Span),
+-
+     /// Represents `#[omit_gdb_pretty_printer_section]`
+     OmitGdbPrettyPrinterSection,
+ 
+     /// Represents `#[optimize(size|speed)]`
+     Optimize(OptimizeAttr, Span),
+ 
+-    /// Represents `#[rustc_paren_sugar]`.
+-    ParenSugar(Span),
+-
+-    /// Represents `#[rustc_pass_by_value]` (used by the `rustc_pass_by_value` lint).
+-    PassByValue(Span),
+-
+-    /// Represents `#[path]`
+-    Path(Symbol, Span),
+-
+     /// Represents `#[pointee]`
+     Pointee(Span),
+ 
+@@ -418,9 +360,6 @@ pub enum AttributeKind {
+     /// Represents `#[proc_macro_derive]`
+     ProcMacroDerive { trait_name: Symbol, helper_attrs: ThinVec<Symbol>, span: Span },
+ 
+-    /// Represents `#[rustc_pub_transparent]` (used by the `repr_transparent_external_private_fields` lint).
+-    PubTransparent(Span),
+-
+     /// Represents [`#[repr]`](https://doc.rust-lang.org/stable/reference/type-layout.html#representations).
+     Repr { reprs: ThinVec<(ReprAttr, Span)>, first_span: Span },
+ 
+@@ -439,9 +378,6 @@ pub enum AttributeKind {
+     /// Represents `#[rustc_skip_during_method_dispatch]`.
+     SkipDuringMethodDispatch { array: bool, boxed_slice: bool, span: Span },
+ 
+-    /// Represents `#[rustc_specialization_trait]`.
+-    SpecializationTrait(Span),
+-
+     /// Represents `#[stable]`, `#[unstable]` and `#[rustc_allowed_through_unstable_modules]`.
+     Stability {
+         stability: Stability,
+@@ -458,12 +394,6 @@ pub enum AttributeKind {
+     /// Represents `#[track_caller]`
+     TrackCaller(Span),
+ 
+-    /// Represents `#[type_const]`.
+-    TypeConst(Span),
+-
+-    /// Represents `#[rustc_unsafe_specialization_marker]`.
+-    UnsafeSpecializationMarker(Span),
+-
+     /// Represents `#[unstable_feature_bound]`.
+     UnstableFeatureBound(ThinVec<(Symbol, Span)>),
+ 
+--- compiler/rustc_hir/src/attrs/encode_cross_crate.rs
++++ compiler/rustc_hir/src/attrs/encode_cross_crate.rs
+@@ -15,31 +15,18 @@ pub fn encode_cross_crate(&self) -> EncodeCrossCrate {
+             // tidy-alphabetical-start
+             Align { .. } => No,
+             AllowConstFnUnstable(..) => No,
+-            AllowIncoherentImpl(..) => No,
+             AllowInternalUnstable(..) => Yes,
+-            AsPtr(..) => Yes,
+-            AutomaticallyDerived(..) => Yes,
+             BodyStability { .. } => No,
+-            CoherenceIsCore => No,
+-            Coinductive(..) => No,
+             Cold(..) => No,
+             Confusables { .. } => Yes,
+             ConstContinue(..) => No,
+             ConstStability { .. } => Yes,
+             ConstStabilityIndirect => No,
+-            ConstTrait(..) => No,
+             Coverage(..) => No,
+-            DenyExplicitImpl(..) => No,
+             Deprecation { .. } => Yes,
+-            DoNotImplementViaObject(..) => No,
+             DocComment { .. } => Yes,
+             Dummy => No,
+             ExportName { .. } => Yes,
+-            ExportStable => No,
+-            FfiConst(..) => No,
+-            FfiPure(..) => No,
+-            Fundamental { .. } => Yes,
+-            Ignore { .. } => No,
+             Inline(..) => No,
+             LinkName { .. } => Yes, // Needed for rustdoc
+             LinkOrdinal { .. } => No,
+@@ -48,36 +35,27 @@ pub fn encode_cross_crate(&self) -> EncodeCrossCrate {
+             MacroEscape(..) => No,
+             MacroTransparency(..) => Yes,
+             MacroUse { .. } => No,
+-            Marker(..) => No,
+             MayDangle(..) => No,
+             MustUse { .. } => Yes,
+             Naked(..) => No,
+             NoImplicitPrelude(..) => No,
+             NoMangle(..) => Yes,      // Needed for rustdoc
+-            NonExhaustive(..) => Yes, // Needed for rustdoc
+             OmitGdbPrettyPrinterSection => No,
+             Optimize(..) => No,
+-            ParenSugar(..) => No,
+-            PassByValue(..) => Yes,
+-            Path(..) => No,
+             Pointee(..) => No,
+             ProcMacro(..) => No,
+             ProcMacroAttribute(..) => No,
+             ProcMacroDerive { .. } => No,
+-            PubTransparent(..) => Yes,
+             Repr { .. } => No,
+             RustcBuiltinMacro { .. } => Yes,
+             RustcLayoutScalarValidRangeEnd(..) => Yes,
+             RustcLayoutScalarValidRangeStart(..) => Yes,
+             RustcObjectLifetimeDefault => No,
+             SkipDuringMethodDispatch { .. } => No,
+-            SpecializationTrait(..) => No,
+             Stability { .. } => Yes,
+             StdInternalSymbol(..) => No,
+             TargetFeature(..) => No,
+             TrackCaller(..) => Yes,
+-            TypeConst(..) => Yes,
+-            UnsafeSpecializationMarker(..) => No,
+             UnstableFeatureBound(..) => No,
+             Used { .. } => No,
+             // tidy-alphabetical-end
+--- compiler/rustc_hir/src/hir.rs
++++ compiler/rustc_hir/src/hir.rs
+@@ -1309,8 +1309,6 @@ fn span(&self) -> Span {
+             Attribute::Parsed(AttributeKind::DocComment { span, .. }) => *span,
+             Attribute::Parsed(AttributeKind::MacroUse { span, .. }) => *span,
+             Attribute::Parsed(AttributeKind::MayDangle(span)) => *span,
+-            Attribute::Parsed(AttributeKind::Ignore { span, .. }) => *span,
+-            Attribute::Parsed(AttributeKind::AutomaticallyDerived(span)) => *span,
+             a => panic!("can't get the span of an arbitrary parsed attribute: {a:?}"),
+         }
      }
+@@ -1341,11 +1339,6 @@ fn doc_str(&self) -> Option<Symbol> {
+             _ => None,
+         }
+     }
+-
+-    fn is_automatically_derived_attr(&self) -> bool {
+-        matches!(self, Attribute::Parsed(AttributeKind::AutomaticallyDerived(..)))
+-    }
+-
+     #[inline]
+     fn doc_str_and_comment_kind(&self) -> Option<(Symbol, CommentKind)> {
+         match &self {
+@@ -4936,6 +4929,7 @@ pub fn fn_kind(self) -> Option<FnKind<'hir>> {
+ }
+ 
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
++#[cfg(not(rust_compiler="mrustc"))]
+ #[cfg(target_pointer_width = "64")]
+ mod size_asserts {
+     use rustc_data_structures::static_assert_size;
+--- compiler/rustc_hir_analysis/src/check/check.rs
++++ compiler/rustc_hir_analysis/src/check/check.rs
+@@ -1535,11 +1535,7 @@ fn check_non_exhaustive<'tcx>(
+                 ty::Tuple(list) => list.iter().try_for_each(|t| check_non_exhaustive(tcx, t)),
+                 ty::Array(ty, _) => check_non_exhaustive(tcx, *ty),
+                 ty::Adt(def, args) => {
+-                    if !def.did().is_local()
+-                        && !find_attr!(
+-                            tcx.get_all_attrs(def.did()),
+-                            AttributeKind::PubTransparent(_)
+-                        )
++                    if !def.did().is_local() && !tcx.has_attr(def.did(), sym::rustc_pub_transparent)
+                     {
+                         let non_exhaustive = def.is_variant_list_non_exhaustive()
+                             || def
+--- compiler/rustc_hir_analysis/src/coherence/inherent_impls.rs
++++ compiler/rustc_hir_analysis/src/coherence/inherent_impls.rs
+@@ -8,10 +8,8 @@
+ //! is computed by selecting an idea from this table.
+ 
+ use rustc_hir as hir;
+-use rustc_hir::attrs::AttributeKind;
+ use rustc_hir::def::DefKind;
+ use rustc_hir::def_id::{DefId, LocalDefId};
+-use rustc_hir::find_attr;
+ use rustc_middle::bug;
+ use rustc_middle::ty::fast_reject::{SimplifiedType, TreatParams, simplify_type};
+ use rustc_middle::ty::{self, CrateInherentImpls, Ty, TyCtxt};
+@@ -87,10 +85,7 @@ fn check_def_id(
+             }
+ 
+             for &impl_item in items {
+-                if !find_attr!(
+-                    self.tcx.get_all_attrs(impl_item),
+-                    AttributeKind::AllowIncoherentImpl(_)
+-                ) {
++                if !self.tcx.has_attr(impl_item, sym::rustc_allow_incoherent_impl) {
+                     let impl_span = self.tcx.def_span(impl_def_id);
+                     return Err(self.tcx.dcx().emit_err(errors::InherentTyOutsideRelevant {
+                         span: impl_span,
+@@ -121,10 +116,7 @@ fn check_primitive_impl(
+         if !self.tcx.hir_rustc_coherence_is_core() {
+             if self.tcx.features().rustc_attrs() {
+                 for &impl_item in items {
+-                    if !find_attr!(
+-                        self.tcx.get_all_attrs(impl_item),
+-                        AttributeKind::AllowIncoherentImpl(_)
+-                    ) {
++                    if !self.tcx.has_attr(impl_item, sym::rustc_allow_incoherent_impl) {
+                         let span = self.tcx.def_span(impl_def_id);
+                         return Err(self.tcx.dcx().emit_err(errors::InherentTyOutsidePrimitive {
+                             span,
+--- compiler/rustc_hir_analysis/src/collect.rs
++++ compiler/rustc_hir_analysis/src/collect.rs
+@@ -772,11 +772,9 @@ fn lower_variant<'tcx>(
+         fields,
+         parent_did.to_def_id(),
+         recovered,
+-        adt_kind == AdtKind::Struct
+-            && find_attr!(tcx.get_all_attrs(parent_did), AttributeKind::NonExhaustive(..))
+-            || variant_did.is_some_and(|variant_did| {
+-                find_attr!(tcx.get_all_attrs(variant_did), AttributeKind::NonExhaustive(..))
+-            }),
++        adt_kind == AdtKind::Struct && tcx.has_attr(parent_did, sym::non_exhaustive)
++            || variant_did
++                .is_some_and(|variant_did| tcx.has_attr(variant_did, sym::non_exhaustive)),
+     )
+ }
+ 
+@@ -851,44 +849,42 @@ fn trait_def(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::TraitDef {
+         _ => span_bug!(item.span, "trait_def_of_item invoked on non-trait"),
+     };
+ 
+-    let attrs = tcx.get_all_attrs(def_id);
+     // Only regular traits can be const.
+     // FIXME(const_trait_impl): remove this
+     let constness = if constness == hir::Constness::Const
+-        || !is_alias && find_attr!(attrs, AttributeKind::ConstTrait(_))
++        || !is_alias && tcx.has_attr(def_id, sym::const_trait)
+     {
+         hir::Constness::Const
+     } else {
+         hir::Constness::NotConst
+     };
+ 
+-    let paren_sugar = find_attr!(attrs, AttributeKind::ParenSugar(_));
++    let paren_sugar = tcx.has_attr(def_id, sym::rustc_paren_sugar);
+     if paren_sugar && !tcx.features().unboxed_closures() {
+         tcx.dcx().emit_err(errors::ParenSugarAttribute { span: item.span });
+     }
+ 
+     // Only regular traits can be marker.
+-    let is_marker = !is_alias && find_attr!(attrs, AttributeKind::Marker(_));
++    let is_marker = !is_alias && tcx.has_attr(def_id, sym::marker);
+ 
+-    let rustc_coinductive = find_attr!(attrs, AttributeKind::Coinductive(_));
+-    let is_fundamental = find_attr!(attrs, AttributeKind::Fundamental);
++    let rustc_coinductive = tcx.has_attr(def_id, sym::rustc_coinductive);
++    let is_fundamental = tcx.has_attr(def_id, sym::fundamental);
+ 
+     let [skip_array_during_method_dispatch, skip_boxed_slice_during_method_dispatch] = find_attr!(
+-        attrs,
+-        AttributeKind::SkipDuringMethodDispatch { array, boxed_slice, span: _ } => [*array, *boxed_slice]
++        tcx.get_all_attrs(def_id),
++        AttributeKind::SkipDuringMethodDispatch { array, boxed_slice, span:_ } => [*array, *boxed_slice]
+     )
+     .unwrap_or([false; 2]);
+ 
+-    let specialization_kind = if find_attr!(attrs, AttributeKind::UnsafeSpecializationMarker(_)) {
++    let specialization_kind = if tcx.has_attr(def_id, sym::rustc_unsafe_specialization_marker) {
+         ty::trait_def::TraitSpecializationKind::Marker
+-    } else if find_attr!(attrs, AttributeKind::SpecializationTrait(_)) {
++    } else if tcx.has_attr(def_id, sym::rustc_specialization_trait) {
+         ty::trait_def::TraitSpecializationKind::AlwaysApplicable
+     } else {
+         ty::trait_def::TraitSpecializationKind::None
+     };
+-    let must_implement_one_of = attrs
+-        .iter()
+-        .find(|attr| attr.has_name(sym::rustc_must_implement_one_of))
++    let must_implement_one_of = tcx
++        .get_attr(def_id, sym::rustc_must_implement_one_of)
+         // Check that there are at least 2 arguments of `#[rustc_must_implement_one_of]`
+         // and that they are all identifiers
+         .and_then(|attr| match attr.meta_item_list() {
+@@ -965,8 +961,8 @@ fn trait_def(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::TraitDef {
+             no_dups.then_some(list)
+         });
+ 
+-    let deny_explicit_impl = find_attr!(attrs, AttributeKind::DenyExplicitImpl(_));
+-    let implement_via_object = !find_attr!(attrs, AttributeKind::DoNotImplementViaObject(_));
++    let deny_explicit_impl = tcx.has_attr(def_id, sym::rustc_deny_explicit_impl);
++    let implement_via_object = !tcx.has_attr(def_id, sym::rustc_do_not_implement_via_object);
+ 
+     ty::TraitDef {
+         def_id: def_id.to_def_id(),
+--- compiler/rustc_lint/src/dangling.rs
++++ compiler/rustc_lint/src/dangling.rs
+@@ -1,8 +1,7 @@
+ use rustc_ast::visit::{visit_opt, walk_list};
+-use rustc_hir::attrs::AttributeKind;
+ use rustc_hir::def_id::LocalDefId;
+ use rustc_hir::intravisit::{FnKind, Visitor, walk_expr};
+-use rustc_hir::{Block, Body, Expr, ExprKind, FnDecl, LangItem, find_attr};
++use rustc_hir::{Block, Body, Expr, ExprKind, FnDecl, LangItem};
+ use rustc_middle::ty::{Ty, TyCtxt};
+ use rustc_session::{declare_lint, impl_lint_pass};
+ use rustc_span::{Span, sym};
+@@ -134,7 +133,7 @@ fn lint_expr(cx: &LateContext<'_>, expr: &Expr<'_>) {
+         && let ty = cx.typeck_results().expr_ty(receiver)
+         && owns_allocation(cx.tcx, ty)
+         && let Some(fn_id) = cx.typeck_results().type_dependent_def_id(expr.hir_id)
+-        && find_attr!(cx.tcx.get_all_attrs(fn_id), AttributeKind::AsPtr(_))
++        && cx.tcx.has_attr(fn_id, sym::rustc_as_ptr)
+     {
+         // FIXME: use `emit_node_lint` when `#[primary_span]` is added.
+         cx.tcx.emit_node_span_lint(
+--- compiler/rustc_lint/src/default_could_be_derived.rs
++++ compiler/rustc_lint/src/default_could_be_derived.rs
+@@ -1,8 +1,6 @@
+ use rustc_data_structures::fx::FxHashMap;
+ use rustc_errors::{Applicability, Diag};
+ use rustc_hir as hir;
+-use rustc_hir::attrs::AttributeKind;
+-use rustc_hir::find_attr;
+ use rustc_middle::ty;
+ use rustc_middle::ty::TyCtxt;
+ use rustc_session::{declare_lint, impl_lint_pass};
+@@ -64,7 +62,7 @@ fn check_impl_item(&mut self, cx: &LateContext<'_>, impl_item: &hir::ImplItem<'_
+         let hir::ImplItemKind::Fn(_sig, body_id) = impl_item.kind else { return };
+         let assoc = cx.tcx.associated_item(impl_item.owner_id);
+         let parent = assoc.container_id(cx.tcx);
+-        if find_attr!(cx.tcx.get_all_attrs(parent), AttributeKind::AutomaticallyDerived(..)) {
++        if cx.tcx.has_attr(parent, sym::automatically_derived) {
+             // We don't care about what `#[derive(Default)]` produces in this lint.
+             return;
+         }
+--- compiler/rustc_lint/src/levels.rs
++++ compiler/rustc_lint/src/levels.rs
+@@ -644,7 +644,7 @@ fn add(
+     ) {
+         let sess = self.sess;
+         for (attr_index, attr) in attrs.iter().enumerate() {
+-            if attr.is_automatically_derived_attr() {
++            if attr.has_name(sym::automatically_derived) {
+                 self.insert(
+                     LintId::of(SINGLE_USE_LIFETIMES),
+                     LevelAndSource {
+--- compiler/rustc_lint/src/pass_by_value.rs
++++ compiler/rustc_lint/src/pass_by_value.rs
+@@ -1,8 +1,8 @@
+-use rustc_hir::attrs::AttributeKind;
+ use rustc_hir::def::Res;
+-use rustc_hir::{self as hir, AmbigArg, GenericArg, PathSegment, QPath, TyKind, find_attr};
++use rustc_hir::{self as hir, AmbigArg, GenericArg, PathSegment, QPath, TyKind};
+ use rustc_middle::ty;
+ use rustc_session::{declare_lint_pass, declare_tool_lint};
++use rustc_span::sym;
+ 
+ use crate::lints::PassByValueDiag;
+ use crate::{LateContext, LateLintPass, LintContext};
+@@ -45,16 +45,14 @@ fn check_ty(&mut self, cx: &LateContext<'_>, ty: &'tcx hir::Ty<'tcx, AmbigArg>)
+ fn path_for_pass_by_value(cx: &LateContext<'_>, ty: &hir::Ty<'_>) -> Option<String> {
+     if let TyKind::Path(QPath::Resolved(_, path)) = &ty.kind {
+         match path.res {
+-            Res::Def(_, def_id)
+-                if find_attr!(cx.tcx.get_all_attrs(def_id), AttributeKind::PassByValue(_)) =>
+-            {
++            Res::Def(_, def_id) if cx.tcx.has_attr(def_id, sym::rustc_pass_by_value) => {
+                 let name = cx.tcx.item_ident(def_id);
+                 let path_segment = path.segments.last().unwrap();
+                 return Some(format!("{}{}", name, gen_args(cx, path_segment)));
+             }
+             Res::SelfTyAlias { alias_to: did, is_trait_impl: false, .. } => {
+                 if let ty::Adt(adt, args) = cx.tcx.type_of(did).instantiate_identity().kind() {
+-                    if find_attr!(cx.tcx.get_all_attrs(adt.did()), AttributeKind::PassByValue(_)) {
++                    if cx.tcx.has_attr(adt.did(), sym::rustc_pass_by_value) {
+                         return Some(cx.tcx.def_path_str_with_args(adt.did(), args));
+                     }
+                 }
+--- compiler/rustc_middle/src/hir/map.rs
++++ compiler/rustc_middle/src/hir/map.rs
+@@ -8,7 +8,6 @@
+ use rustc_data_structures::stable_hasher::{HashStable, StableHasher};
+ use rustc_data_structures::svh::Svh;
+ use rustc_data_structures::sync::{DynSend, DynSync, par_for_each_in, try_par_for_each_in};
+-use rustc_hir::attrs::AttributeKind;
+ use rustc_hir::def::{DefKind, Res};
+ use rustc_hir::def_id::{DefId, LOCAL_CRATE, LocalDefId, LocalModDefId};
+ use rustc_hir::definitions::{DefKey, DefPath, DefPathHash};
+@@ -16,7 +15,7 @@
+ use rustc_hir::*;
+ use rustc_hir_pretty as pprust_hir;
+ use rustc_span::def_id::StableCrateId;
+-use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol, kw, with_metavar_spans};
++use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol, kw, sym, with_metavar_spans};
+ 
+ use crate::hir::{ModuleItems, nested_filter};
+ use crate::middle::debugger_visualizer::DebuggerVisualizerFile;
+@@ -370,7 +369,7 @@ pub fn hir_krate_attrs(self) -> &'tcx [Attribute] {
+     }
+ 
+     pub fn hir_rustc_coherence_is_core(self) -> bool {
+-        find_attr!(self.hir_krate_attrs(), AttributeKind::CoherenceIsCore)
++        self.hir_krate_attrs().iter().any(|attr| attr.has_name(sym::rustc_coherence_is_core))
+     }
+ 
+     pub fn hir_get_module(self, module: LocalModDefId) -> (&'tcx Mod<'tcx>, Span, HirId) {
+--- compiler/rustc_middle/src/ty/adt.rs
++++ compiler/rustc_middle/src/ty/adt.rs
+@@ -9,14 +9,14 @@
+ use rustc_data_structures::intern::Interned;
+ use rustc_data_structures::stable_hasher::{HashStable, HashingControls, StableHasher};
+ use rustc_errors::ErrorGuaranteed;
+-use rustc_hir::attrs::AttributeKind;
+ use rustc_hir::def::{CtorKind, DefKind, Res};
+ use rustc_hir::def_id::DefId;
+-use rustc_hir::{self as hir, LangItem, find_attr};
++use rustc_hir::{self as hir, LangItem};
+ use rustc_index::{IndexSlice, IndexVec};
+ use rustc_macros::{HashStable, TyDecodable, TyEncodable};
+ use rustc_query_system::ich::StableHashingContext;
+ use rustc_session::DataTypeKind;
++use rustc_span::sym;
+ use rustc_type_ir::solve::AdtDestructorKind;
+ use tracing::{debug, info, trace};
+ 
+@@ -278,9 +278,7 @@ pub(super) fn new(
+         debug!("AdtDef::new({:?}, {:?}, {:?}, {:?})", did, kind, variants, repr);
+         let mut flags = AdtFlags::NO_ADT_FLAGS;
+ 
+-        if kind == AdtKind::Enum
+-            && find_attr!(tcx.get_all_attrs(did), AttributeKind::NonExhaustive(..))
+-        {
++        if kind == AdtKind::Enum && tcx.has_attr(did, sym::non_exhaustive) {
+             debug!("found non-exhaustive variant list for {:?}", did);
+             flags = flags | AdtFlags::IS_VARIANT_LIST_NON_EXHAUSTIVE;
+         }
+@@ -295,7 +293,7 @@ pub(super) fn new(
+             flags |= AdtFlags::HAS_CTOR;
+         }
+ 
+-        if find_attr!(tcx.get_all_attrs(did), AttributeKind::Fundamental) {
++        if tcx.has_attr(did, sym::fundamental) {
+             flags |= AdtFlags::IS_FUNDAMENTAL;
+         }
+         if tcx.is_lang_item(did, LangItem::PhantomData) {
+--- compiler/rustc_middle/src/ty/assoc.rs
++++ compiler/rustc_middle/src/ty/assoc.rs
+@@ -1,11 +1,9 @@
+ use rustc_data_structures::sorted_map::SortedIndexMultiMap;
+ use rustc_hir as hir;
+-use rustc_hir::attrs::AttributeKind;
+ use rustc_hir::def::{DefKind, Namespace};
+ use rustc_hir::def_id::DefId;
+-use rustc_hir::find_attr;
+ use rustc_macros::{Decodable, Encodable, HashStable};
+-use rustc_span::{Ident, Symbol};
++use rustc_span::{Ident, Symbol, sym};
+ 
+ use super::{TyCtxt, Visibility};
+ use crate::ty;
+@@ -162,7 +160,7 @@ pub fn is_type_const_capable(&self, tcx: TyCtxt<'_>) -> bool {
+             // Inherent impl but this attr is only applied to trait assoc items.
+             (AssocItemContainer::Impl, None) => return true,
+         };
+-        find_attr!(tcx.get_all_attrs(def_id), AttributeKind::TypeConst(_))
++        tcx.has_attr(def_id, sym::type_const)
+     }
+ }
+ 
 --- compiler/rustc_middle/src/ty/generic_args.rs
 +++ compiler/rustc_middle/src/ty/generic_args.rs
-@@ -703,7 +703,7 @@
+@@ -703,7 +703,7 @@ fn fold_with<F: TypeFolder<TyCtxt<'tcx>>>(self, folder: &mut F) -> Self {
  impl<'tcx, T: TypeVisitable<TyCtxt<'tcx>>> TypeVisitable<TyCtxt<'tcx>> for &'tcx ty::List<T> {
      #[inline]
      fn visit_with<V: TypeVisitor<TyCtxt<'tcx>>>(&self, visitor: &mut V) -> V::Result {
@@ -40,4 +1196,736 @@
 +        walk_visitable_list!(visitor, (***self).iter());
          V::Result::output()
      }
+ }
+--- compiler/rustc_middle/src/ty/mod.rs
++++ compiler/rustc_middle/src/ty/mod.rs
+@@ -1710,19 +1710,21 @@ pub fn get_attrs(
+         did: impl Into<DefId>,
+         attr: Symbol,
+     ) -> impl Iterator<Item = &'tcx hir::Attribute> {
+-        self.get_all_attrs(did).iter().filter(move |a: &&hir::Attribute| a.has_name(attr))
++        self.get_all_attrs(did).filter(move |a: &&hir::Attribute| a.has_name(attr))
+     }
+ 
+     /// Gets all attributes.
+     ///
+-    /// To see if an item has a specific attribute, you should use
+-    /// [`rustc_hir::find_attr!`] so you can use matching.
+-    pub fn get_all_attrs(self, did: impl Into<DefId>) -> &'tcx [hir::Attribute] {
++    /// To see if an item has a specific attribute, you should use [`rustc_attr_data_structures::find_attr!`] so you can use matching.
++    pub fn get_all_attrs(
++        self,
++        did: impl Into<DefId>,
++    ) -> impl Iterator<Item = &'tcx hir::Attribute> {
+         let did: DefId = did.into();
+         if let Some(did) = did.as_local() {
+-            self.hir_attrs(self.local_def_id_to_hir_id(did))
++            self.hir_attrs(self.local_def_id_to_hir_id(did)).iter()
+         } else {
+-            self.attrs_for_def(did)
++            self.attrs_for_def(did).iter()
+         }
+     }
+ 
+@@ -1955,7 +1957,7 @@ pub fn is_builtin_derived(self, def_id: DefId) -> bool {
+ 
+     /// Check if the given `DefId` is `#\[automatically_derived\]`.
+     pub fn is_automatically_derived(self, def_id: DefId) -> bool {
+-        find_attr!(self.get_all_attrs(def_id), AttributeKind::AutomaticallyDerived(..))
++        self.has_attr(def_id, sym::automatically_derived)
+     }
+ 
+     /// Looks up the span of `impl_did` if the impl is local; otherwise returns `Err`
+--- compiler/rustc_middle/src/ty/sty.rs
++++ compiler/rustc_middle/src/ty/sty.rs
+@@ -2025,7 +2025,7 @@ pub fn walk(self) -> TypeWalker<TyCtxt<'tcx>> {
+ 
+ impl<'tcx> rustc_type_ir::inherent::Tys<TyCtxt<'tcx>> for &'tcx ty::List<Ty<'tcx>> {
+     fn inputs(self) -> &'tcx [Ty<'tcx>] {
+-        self.split_last().unwrap().1
++        (**self).split_last().unwrap().1
+     }
+ 
+     fn output(self) -> Ty<'tcx> {
+--- compiler/rustc_mir_build/src/thir/pattern/const_to_pat.rs
++++ compiler/rustc_mir_build/src/thir/pattern/const_to_pat.rs
+@@ -5,8 +5,6 @@
+ use rustc_data_structures::fx::FxHashSet;
+ use rustc_errors::Diag;
+ use rustc_hir as hir;
+-use rustc_hir::attrs::AttributeKind;
+-use rustc_hir::find_attr;
+ use rustc_index::Idx;
+ use rustc_infer::infer::TyCtxtInferExt;
+ use rustc_infer::traits::Obligation;
+@@ -17,7 +15,7 @@
+ };
+ use rustc_middle::{mir, span_bug};
+ use rustc_span::def_id::DefId;
+-use rustc_span::{DUMMY_SP, Span};
++use rustc_span::{DUMMY_SP, Span, sym};
+ use rustc_trait_selection::traits::ObligationCause;
+ use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt;
+ use tracing::{debug, instrument, trace};
+@@ -497,8 +495,7 @@ fn type_has_partial_eq_impl<'tcx>(
+     let mut structural_peq = false;
+     let mut impl_def_id = None;
+     for def_id in tcx.non_blanket_impls_for_ty(partial_eq_trait_id, ty) {
+-        automatically_derived =
+-            find_attr!(tcx.get_all_attrs(def_id), AttributeKind::AutomaticallyDerived(..));
++        automatically_derived = tcx.has_attr(def_id, sym::automatically_derived);
+         impl_def_id = Some(def_id);
+     }
+     for _ in tcx.non_blanket_impls_for_ty(structural_partial_eq_trait_id, ty) {
+--- compiler/rustc_parse/Cargo.toml
++++ compiler/rustc_parse/Cargo.toml
+@@ -9,7 +9,6 @@ bitflags = "2.4.1"
+ rustc-literal-escaper = "0.0.5"
+ rustc_ast = { path = "../rustc_ast" }
+ rustc_ast_pretty = { path = "../rustc_ast_pretty" }
+-rustc_attr_parsing = { path = "../rustc_attr_parsing" }
+ rustc_data_structures = { path = "../rustc_data_structures" }
+ rustc_errors = { path = "../rustc_errors" }
+ rustc_feature = { path = "../rustc_feature" }
+--- compiler/rustc_parse/src/parser/mod.rs
++++ compiler/rustc_parse/src/parser/mod.rs
+@@ -227,6 +227,7 @@ pub struct Parser<'a> {
+ // This type is used a lot, e.g. it's cloned when matching many declarative macro rules with
+ // nonterminals. Make sure it doesn't unintentionally get bigger. We only check a few arches
+ // though, because `TokenTypeSet(u128)` alignment varies on others, changing the total size.
++#[cfg(not(rust_compiler="mrustc"))]
+ #[cfg(all(target_pointer_width = "64", any(target_arch = "aarch64", target_arch = "x86_64")))]
+ rustc_data_structures::static_assert_size!(Parser<'_>, 288);
+ 
+--- compiler/rustc_parse/src/validate_attr.rs
++++ compiler/rustc_parse/src/validate_attr.rs
+@@ -1,14 +1,11 @@
+ //! Meta-syntax validation logic of attributes for post-expansion.
+ 
+-use std::slice;
+-
+ use rustc_ast::token::Delimiter;
+ use rustc_ast::tokenstream::DelimSpan;
+ use rustc_ast::{
+     self as ast, AttrArgs, Attribute, DelimArgs, MetaItem, MetaItemInner, MetaItemKind, NodeId,
+     Path, Safety,
+ };
+-use rustc_attr_parsing::{AttributeParser, Late};
+ use rustc_errors::{Applicability, DiagCtxtHandle, FatalError, PResult};
+ use rustc_feature::{AttributeSafety, AttributeTemplate, BUILTIN_ATTRIBUTE_MAP, BuiltinAttribute};
+ use rustc_session::errors::report_lit_error;
+@@ -269,7 +266,39 @@ pub fn check_builtin_meta_item(
+ ) {
+     if !is_attr_template_compatible(&template, &meta.kind) {
+         // attrs with new parsers are locally validated so excluded here
+-        if AttributeParser::<Late>::is_parsed_attribute(slice::from_ref(&name)) {
++        if matches!(
++            name,
++            sym::inline
++                | sym::ffi_const
++                | sym::ffi_pure
++                | sym::rustc_std_internal_symbol
++                | sym::may_dangle
++                | sym::rustc_as_ptr
++                | sym::rustc_pub_transparent
++                | sym::rustc_const_stable_indirect
++                | sym::rustc_force_inline
++                | sym::rustc_confusables
++                | sym::rustc_skip_during_method_dispatch
++                | sym::repr
++                | sym::align
++                | sym::deprecated
++                | sym::optimize
++                | sym::cold
++                | sym::target_feature
++                | sym::rustc_allow_const_fn_unstable
++                | sym::naked
++                | sym::no_mangle
++                | sym::ignore
++                | sym::must_use
++                | sym::track_caller
++                | sym::link_name
++                | sym::export_name
++                | sym::rustc_macro_transparency
++                | sym::link_section
++                | sym::rustc_layout_scalar_valid_range_start
++                | sym::rustc_layout_scalar_valid_range_end
++                | sym::no_implicit_prelude
++        ) {
+             return;
+         }
+         emit_malformed_attribute(psess, style, meta.span, name, template);
+@@ -289,7 +318,8 @@ fn emit_malformed_attribute(
+ ) {
+     // Some of previously accepted forms were used in practice,
+     // report them as warnings for now.
+-    let should_warn = |name| matches!(name, sym::doc | sym::link | sym::test | sym::bench);
++    let should_warn =
++        |name| matches!(name, sym::doc | sym::ignore | sym::link | sym::test | sym::bench);
+ 
+     let error_msg = format!("malformed `{name}` attribute input");
+     let mut suggestions = vec![];
+--- compiler/rustc_passes/src/check_attr.rs
++++ compiler/rustc_passes/src/check_attr.rs
+@@ -144,46 +144,15 @@ fn check_attributes(
+                     );
+                     self.check_proc_macro(hir_id, target, ProcMacroKind::Derive)
+                 }
+-                Attribute::Parsed(
+-                    AttributeKind::SkipDuringMethodDispatch { span: attr_span, .. }
+-                    | AttributeKind::Coinductive(attr_span)
+-                    | AttributeKind::ConstTrait(attr_span)
+-                    | AttributeKind::DenyExplicitImpl(attr_span)
+-                    | AttributeKind::DoNotImplementViaObject(attr_span),
+-                ) => {
++                Attribute::Parsed(AttributeKind::SkipDuringMethodDispatch {
++                    span: attr_span,
++                    ..
++                }) => {
+                     self.check_must_be_applied_to_trait(*attr_span, span, target);
+                 }
+-                &Attribute::Parsed(
+-                    AttributeKind::SpecializationTrait(attr_span)
+-                    | AttributeKind::UnsafeSpecializationMarker(attr_span)
+-                    | AttributeKind::ParenSugar(attr_span),
+-                ) => {
+-                    // FIXME: more validation is needed
+-                    self.check_must_be_applied_to_trait(attr_span, span, target);
+-                }
+-                &Attribute::Parsed(AttributeKind::TypeConst(attr_span)) => {
+-                    self.check_type_const(hir_id, attr_span, target)
+-                }
+-                &Attribute::Parsed(AttributeKind::Marker(attr_span)) => {
+-                    self.check_marker(hir_id, attr_span, span, target)
+-                }
+-                Attribute::Parsed(AttributeKind::Fundamental | AttributeKind::CoherenceIsCore) => {
+-                    // FIXME: add validation
+-                }
+-                &Attribute::Parsed(AttributeKind::AllowIncoherentImpl(attr_span)) => {
+-                    self.check_allow_incoherent_impl(attr_span, span, target)
+-                }
+                 Attribute::Parsed(AttributeKind::Confusables { first_span, .. }) => {
+                     self.check_confusables(*first_span, target);
+                 }
+-                Attribute::Parsed(AttributeKind::AutomaticallyDerived(attr_span)) => self
+-                    .check_generic_attr(
+-                        hir_id,
+-                        sym::automatically_derived,
+-                        *attr_span,
+-                        target,
+-                        Target::Impl { of_trait: true },
+-                    ),
+                 Attribute::Parsed(
+                     AttributeKind::Stability {
+                         span: attr_span,
+@@ -226,9 +195,6 @@ fn check_attributes(
+                 Attribute::Parsed(AttributeKind::RustcObjectLifetimeDefault) => {
+                     self.check_object_lifetime_default(hir_id);
+                 }
+-                &Attribute::Parsed(AttributeKind::PubTransparent(attr_span)) => {
+-                    self.check_rustc_pub_transparent(attr_span, span, attrs)
+-                }
+                 Attribute::Parsed(AttributeKind::Cold(attr_span)) => {
+                     self.check_cold(hir_id, *attr_span, span, target)
+                 }
+@@ -258,28 +224,13 @@ fn check_attributes(
+                         target,
+                         Target::Mod,
+                     ),
+-                Attribute::Parsed(AttributeKind::Path(_, attr_span)) => {
+-                    self.check_generic_attr(hir_id, sym::path, *attr_span, target, Target::Mod)
+-                }
+                 Attribute::Parsed(AttributeKind::TrackCaller(attr_span)) => {
+                     self.check_track_caller(hir_id, *attr_span, attrs, span, target)
+                 }
+-                Attribute::Parsed(AttributeKind::NonExhaustive(attr_span)) => {
+-                    self.check_non_exhaustive(hir_id, *attr_span, span, target, item)
+-                }
+                 Attribute::Parsed(
+                     AttributeKind::RustcLayoutScalarValidRangeStart(_num, attr_span)
+                     | AttributeKind::RustcLayoutScalarValidRangeEnd(_num, attr_span),
+                 ) => self.check_rustc_layout_scalar_valid_range(*attr_span, span, target),
+-                Attribute::Parsed(AttributeKind::ExportStable) => {
+-                    // handled in `check_export`
+-                }
+-                &Attribute::Parsed(AttributeKind::FfiConst(attr_span)) => {
+-                    self.check_ffi_const(attr_span, target)
+-                }
+-                &Attribute::Parsed(AttributeKind::FfiPure(attr_span)) => {
+-                    self.check_ffi_pure(attr_span, attrs, target)
+-                }
+                 Attribute::Parsed(AttributeKind::UnstableFeatureBound(syms)) => {
+                     self.check_unstable_feature_bound(syms.first().unwrap().1, span, target)
+                 }
+@@ -292,9 +243,6 @@ fn check_attributes(
+                     | AttributeKind::RustcBuiltinMacro { .. }
+                     | AttributeKind::OmitGdbPrettyPrinterSection,
+                 ) => { /* do nothing  */ }
+-                Attribute::Parsed(AttributeKind::AsPtr(attr_span)) => {
+-                    self.check_applied_to_fn_or_method(hir_id, *attr_span, span, target)
+-                }
+                 Attribute::Parsed(AttributeKind::LinkName { span: attr_span, name }) => {
+                     self.check_link_name(hir_id, *attr_span, *name, span, target)
+                 }
+@@ -304,9 +252,6 @@ fn check_attributes(
+                 Attribute::Parsed(AttributeKind::MayDangle(attr_span)) => {
+                     self.check_may_dangle(hir_id, *attr_span)
+                 }
+-                Attribute::Parsed(AttributeKind::Ignore { span, .. }) => {
+-                    self.check_generic_attr(hir_id, sym::ignore, *span, target, Target::Fn)
+-                }
+                 Attribute::Parsed(AttributeKind::MustUse { span, .. }) => {
+                     self.check_must_use(hir_id, *span, target)
+                 }
+@@ -316,9 +261,6 @@ fn check_attributes(
+                 Attribute::Parsed(AttributeKind::Used { span: attr_span, .. }) => {
+                     self.check_used(*attr_span, target, span);
+                 }
+-                &Attribute::Parsed(AttributeKind::PassByValue(attr_span)) => {
+-                    self.check_pass_by_value(attr_span, span, target)
+-                }
+                 &Attribute::Parsed(AttributeKind::StdInternalSymbol(attr_span)) => {
+                     self.check_rustc_std_internal_symbol(attr_span, span, target)
+                 }
+@@ -337,6 +279,8 @@ fn check_attributes(
+                         [sym::no_sanitize, ..] => {
+                             self.check_no_sanitize(attr, span, target)
+                         }
++                        [sym::non_exhaustive, ..] => self.check_non_exhaustive(hir_id, attr, span, target, item),
++                        [sym::marker, ..] => self.check_marker(hir_id, attr, span, target),
+                         [sym::thread_local, ..] => self.check_thread_local(attr, span, target),
+                         [sym::doc, ..] => self.check_doc_attrs(
+                             attr,
+@@ -348,6 +292,9 @@ fn check_attributes(
+                         ),
+                         [sym::no_link, ..] => self.check_no_link(hir_id, attr, span, target),
+                         [sym::debugger_visualizer, ..] => self.check_debugger_visualizer(attr, target),
++                        [sym::rustc_as_ptr, ..] => {
++                            self.check_applied_to_fn_or_method(hir_id, attr.span(), span, target)
++                        }
+                         [sym::rustc_no_implicit_autorefs, ..] => {
+                             self.check_applied_to_fn_or_method(hir_id, attr.span(), span, target)
+                         }
+@@ -374,9 +321,17 @@ fn check_attributes(
+                         | [sym::rustc_dirty, ..]
+                         | [sym::rustc_if_this_changed, ..]
+                         | [sym::rustc_then_this_would_need, ..] => self.check_rustc_dirty_clean(attr),
+-                        [sym::rustc_must_implement_one_of, ..] => self.check_must_be_applied_to_trait(attr.span(), span, target),
++                        [sym::rustc_coinductive, ..]
++                        | [sym::rustc_must_implement_one_of, ..]
++                        | [sym::rustc_deny_explicit_impl, ..]
++                        | [sym::rustc_do_not_implement_via_object, ..]
++                        | [sym::const_trait, ..] => self.check_must_be_applied_to_trait(attr.span(), span, target),
+                         [sym::collapse_debuginfo, ..] => self.check_collapse_debuginfo(attr, span, target),
+                         [sym::must_not_suspend, ..] => self.check_must_not_suspend(attr, span, target),
++                        [sym::rustc_pass_by_value, ..] => self.check_pass_by_value(attr, span, target),
++                        [sym::rustc_allow_incoherent_impl, ..] => {
++                            self.check_allow_incoherent_impl(attr, span, target)
++                        }
+                         [sym::rustc_has_incoherent_inherent_impls, ..] => {
+                             self.check_has_incoherent_inherent_impls(attr, span, target)
+                         }
+@@ -385,16 +340,33 @@ fn check_attributes(
+                         [sym::link, ..] => self.check_link(hir_id, attr, span, target),
+                         [sym::path, ..] => self.check_generic_attr_unparsed(hir_id, attr, target, Target::Mod),
+                         [sym::macro_export, ..] => self.check_macro_export(hir_id, attr, target),
+-                        [sym::should_panic, ..] => {
++                        [sym::ignore, ..] | [sym::should_panic, ..] => {
+                             self.check_generic_attr_unparsed(hir_id, attr, target, Target::Fn)
+                         }
++                        [sym::automatically_derived, ..] => {
++                            self.check_generic_attr_unparsed(hir_id, attr, target, Target::Impl { of_trait: true })
++                        }
++                        [sym::proc_macro, ..] => {
++                            self.check_proc_macro(hir_id, target, ProcMacroKind::FunctionLike)
++                        }
++                        [sym::proc_macro_attribute, ..] => {
++                            self.check_proc_macro(hir_id, target, ProcMacroKind::Attribute);
++                        }
++                        [sym::proc_macro_derive, ..] => {
++                            self.check_generic_attr_unparsed(hir_id, attr, target, Target::Fn);
++                            self.check_proc_macro(hir_id, target, ProcMacroKind::Derive)
++                        }
+                         [sym::autodiff_forward, ..] | [sym::autodiff_reverse, ..] => {
+                             self.check_autodiff(hir_id, attr, span, target)
+                         }
+                         [sym::coroutine, ..] => {
+                             self.check_coroutine(attr, target);
+                         }
++                        [sym::type_const, ..] => {
++                            self.check_type_const(hir_id,attr, target);
++                        }
+                         [sym::linkage, ..] => self.check_linkage(attr, span, target),
++                        [sym::rustc_pub_transparent, ..] => self.check_rustc_pub_transparent(attr.span(), span, attrs),
+                         [
+                             // ok
+                             sym::allow
+@@ -406,6 +378,7 @@ fn check_attributes(
+                             | sym::cfg_attr
+                             | sym::cfg_trace
+                             | sym::cfg_attr_trace
++                            | sym::export_stable // handled in `check_export`
+                             // need to be fixed
+                             | sym::cfi_encoding // FIXME(cfi_encoding)
+                             | sym::instruction_set // broken on stable!!!
+@@ -416,6 +389,7 @@ fn check_attributes(
+                             | sym::prelude_import
+                             | sym::panic_handler
+                             | sym::allow_internal_unsafe
++                            | sym::fundamental
+                             | sym::lang
+                             | sym::needs_allocator
+                             | sym::default_lib_allocator
+@@ -849,7 +823,7 @@ fn check_track_caller(
+     fn check_non_exhaustive(
+         &self,
+         hir_id: HirId,
+-        attr_span: Span,
++        attr: &Attribute,
+         span: Span,
+         target: Target,
+         item: Option<ItemLike<'_>>,
+@@ -864,7 +838,7 @@ fn check_non_exhaustive(
+                     && fields.iter().any(|f| f.default.is_some())
+                 {
+                     self.dcx().emit_err(errors::NonExhaustiveWithDefaultFieldValues {
+-                        attr_span,
++                        attr_span: attr.span(),
+                         defn_span: span,
+                     });
+                 }
+@@ -875,17 +849,19 @@ fn check_non_exhaustive(
+             // erroneously allowed it and some crates used it accidentally, to be compatible
+             // with crates depending on them, we can't throw an error here.
+             Target::Field | Target::Arm | Target::MacroDef => {
+-                self.inline_attr_str_error_with_macro_def(hir_id, attr_span, "non_exhaustive");
++                self.inline_attr_str_error_with_macro_def(hir_id, attr.span(), "non_exhaustive");
+             }
+             _ => {
+-                self.dcx()
+-                    .emit_err(errors::NonExhaustiveWrongLocation { attr_span, defn_span: span });
++                self.dcx().emit_err(errors::NonExhaustiveWrongLocation {
++                    attr_span: attr.span(),
++                    defn_span: span,
++                });
+             }
+         }
+     }
+ 
+     /// Checks if the `#[marker]` attribute on an `item` is valid.
+-    fn check_marker(&self, hir_id: HirId, attr_span: Span, span: Span, target: Target) {
++    fn check_marker(&self, hir_id: HirId, attr: &Attribute, span: Span, target: Target) {
+         match target {
+             Target::Trait => {}
+             // FIXME(#80564): We permit struct fields, match arms and macro defs to have an
+@@ -893,11 +869,13 @@ fn check_marker(&self, hir_id: HirId, attr_span: Span, span: Span, target: Targe
+             // erroneously allowed it and some crates used it accidentally, to be compatible
+             // with crates depending on them, we can't throw an error here.
+             Target::Field | Target::Arm | Target::MacroDef => {
+-                self.inline_attr_str_error_with_macro_def(hir_id, attr_span, "marker");
++                self.inline_attr_str_error_with_macro_def(hir_id, attr.span(), "marker");
+             }
+             _ => {
+-                self.dcx()
+-                    .emit_err(errors::AttrShouldBeAppliedToTrait { attr_span, defn_span: span });
++                self.dcx().emit_err(errors::AttrShouldBeAppliedToTrait {
++                    attr_span: attr.span(),
++                    defn_span: span,
++                });
+             }
+         }
+     }
+@@ -1535,20 +1513,20 @@ fn check_doc_attrs(
+     }
+ 
+     /// Warns against some misuses of `#[pass_by_value]`
+-    fn check_pass_by_value(&self, attr_span: Span, span: Span, target: Target) {
++     fn check_pass_by_value(&self, attr: &Attribute, span: Span, target: Target) {
+         match target {
+             Target::Struct | Target::Enum | Target::TyAlias => {}
+             _ => {
+-                self.dcx().emit_err(errors::PassByValue { attr_span, span });
++                self.dcx().emit_err(errors::PassByValue { attr_span: attr.span(), span });
+             }
+         }
+     }
+ 
+-    fn check_allow_incoherent_impl(&self, attr_span: Span, span: Span, target: Target) {
++    fn check_allow_incoherent_impl(&self, attr: &Attribute, span: Span, target: Target) {
+         match target {
+             Target::Method(MethodKind::Inherent) => {}
+             _ => {
+-                self.dcx().emit_err(errors::AllowIncoherentImpl { attr_span, span });
++                self.dcx().emit_err(errors::AllowIncoherentImpl { attr_span: attr.span(), span });
+             }
+         }
+     }
+@@ -1569,7 +1547,7 @@ fn check_ffi_pure(&self, attr_span: Span, attrs: &[Attribute], target: Target) {
+             self.dcx().emit_err(errors::FfiPureInvalidTarget { attr_span });
+             return;
+         }
+-        if find_attr!(attrs, AttributeKind::FfiConst(_)) {
++        if attrs.iter().any(|a| a.has_name(sym::ffi_const)) {
+             // `#[ffi_const]` functions cannot be `#[ffi_pure]`
+             self.dcx().emit_err(errors::BothFfiConstAndPure { attr_span });
+         }
+@@ -2661,7 +2639,7 @@ fn check_coroutine(&self, attr: &Attribute, target: Target) {
+         }
+     }
+ 
+-    fn check_type_const(&self, hir_id: HirId, attr_span: Span, target: Target) {
++    fn check_type_const(&self, hir_id: HirId, attr: &Attribute, target: Target) {
+         let tcx = self.tcx;
+         if target == Target::AssocConst
+             && let parent = tcx.parent(hir_id.expect_owner().to_def_id())
+@@ -2671,7 +2649,7 @@ fn check_type_const(&self, hir_id: HirId, attr_span: Span, target: Target) {
+         } else {
+             self.dcx()
+                 .struct_span_err(
+-                    attr_span,
++                    attr.span(),
+                     "`#[type_const]` must only be applied to trait associated constants",
+                 )
+                 .emit();
+@@ -2952,6 +2930,8 @@ fn check_invalid_crate_level_attr(tcx: TyCtxt<'_>, attrs: &[Attribute]) {
+     // resolution for the attribute macro error.
+     const ATTRS_TO_CHECK: &[Symbol] = &[
+         sym::macro_export,
++        sym::path,
++        sym::automatically_derived,
+         sym::rustc_main,
+         sym::derive,
+         sym::test,
+@@ -2972,10 +2952,6 @@ fn check_invalid_crate_level_attr(tcx: TyCtxt<'_>, attrs: &[Attribute]) {
+         }) = attr
+         {
+             (*first_attr_span, sym::repr)
+-        } else if let Attribute::Parsed(AttributeKind::Path(.., span)) = attr {
+-            (*span, sym::path)
+-        } else if let Attribute::Parsed(AttributeKind::AutomaticallyDerived(span)) = attr {
+-            (*span, sym::automatically_derived)
+         } else {
+             continue;
+         };
+--- compiler/rustc_passes/src/check_export.rs
++++ compiler/rustc_passes/src/check_export.rs
+@@ -4,10 +4,8 @@
+ use rustc_abi::ExternAbi;
+ use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
+ use rustc_hir as hir;
+-use rustc_hir::attrs::AttributeKind;
+ use rustc_hir::def::DefKind;
+ use rustc_hir::def_id::{DefId, LocalDefId};
+-use rustc_hir::find_attr;
+ use rustc_hir::intravisit::{self, Visitor};
+ use rustc_middle::hir::nested_filter;
+ use rustc_middle::middle::privacy::{EffectiveVisibility, Level};
+@@ -16,7 +14,7 @@
+     self, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable, TypeVisitor, Visibility,
+ };
+ use rustc_session::config::CrateType;
+-use rustc_span::Span;
++use rustc_span::{Span, sym};
+ 
+ use crate::errors::UnexportableItem;
+ 
+@@ -46,7 +44,7 @@ fn report_wrong_site(&self, def_id: LocalDefId) {
+     }
+ 
+     fn item_is_exportable(&self, def_id: LocalDefId) -> bool {
+-        let has_attr = find_attr!(self.tcx.get_all_attrs(def_id), AttributeKind::ExportStable);
++        let has_attr = self.tcx.has_attr(def_id, sym::export_stable);
+         if !self.in_exportable_mod && !has_attr {
+             return false;
+         }
+@@ -82,7 +80,7 @@ fn add_exportable(&mut self, def_id: LocalDefId) {
+     fn walk_item_with_mod(&mut self, item: &'tcx hir::Item<'tcx>) {
+         let def_id = item.hir_id().owner.def_id;
+         let old_exportable_mod = self.in_exportable_mod;
+-        if find_attr!(self.tcx.get_all_attrs(def_id), AttributeKind::ExportStable) {
++        if self.tcx.get_attr(def_id, sym::export_stable).is_some() {
+             self.in_exportable_mod = true;
+         }
+         let old_seen_exportable_in_mod = std::mem::replace(&mut self.seen_exportable_in_mod, false);
+--- compiler/rustc_passes/src/liveness.rs
++++ compiler/rustc_passes/src/liveness.rs
+@@ -97,7 +97,7 @@
+ use rustc_middle::span_bug;
+ use rustc_middle::ty::{self, RootVariableMinCaptureList, Ty, TyCtxt};
+ use rustc_session::lint;
+-use rustc_span::{BytePos, Span, Symbol};
++use rustc_span::{BytePos, Span, Symbol, sym};
+ use tracing::{debug, instrument};
+ 
+ use self::LiveNodeKind::*;
+@@ -140,7 +140,7 @@ fn check_liveness(tcx: TyCtxt<'_>, def_id: LocalDefId) {
+     // Don't run unused pass for #[derive()]
+     let parent = tcx.local_parent(def_id);
+     if let DefKind::Impl { .. } = tcx.def_kind(parent)
+-        && find_attr!(tcx.get_all_attrs(parent), AttributeKind::AutomaticallyDerived(..))
++        && tcx.has_attr(parent, sym::automatically_derived)
+     {
+         return;
+     }
+--- compiler/rustc_resolve/src/diagnostics.rs
++++ compiler/rustc_resolve/src/diagnostics.rs
+@@ -12,11 +12,11 @@
+     report_ambiguity_error, struct_span_code_err,
+ };
+ use rustc_feature::BUILTIN_ATTRIBUTES;
+-use rustc_hir::attrs::{AttributeKind, CfgEntry, StrippedCfgItem};
++use rustc_hir::attrs::{CfgEntry, StrippedCfgItem};
+ use rustc_hir::def::Namespace::{self, *};
+ use rustc_hir::def::{self, CtorKind, CtorOf, DefKind, NonMacroAttrKind, PerNS};
+ use rustc_hir::def_id::{CRATE_DEF_ID, DefId};
+-use rustc_hir::{PrimTy, Stability, StabilityLevel, find_attr};
++use rustc_hir::{PrimTy, Stability, StabilityLevel};
+ use rustc_middle::bug;
+ use rustc_middle::ty::TyCtxt;
+ use rustc_session::Session;
+@@ -1998,9 +1998,9 @@ fn report_privacy_error(&mut self, privacy_error: &PrivacyError<'ra>) {
+         // Otherwise, point out if the struct has any private fields.
+         if let Some(def_id) = res.opt_def_id()
+             && !def_id.is_local()
+-            && let Some(attr_span) = find_attr!(self.tcx.get_all_attrs(def_id), AttributeKind::NonExhaustive(span) => *span)
++            && let Some(attr) = self.tcx.get_attr(def_id, sym::non_exhaustive)
+         {
+-            non_exhaustive = Some(attr_span);
++            non_exhaustive = Some(attr.span());
+         } else if let Some(span) = ctor_fields_span {
+             let label = errors::ConstructorPrivateIfAnyFieldPrivate { span };
+             err.subdiagnostic(label);
+--- src/librustdoc/clean/types.rs
++++ src/librustdoc/clean/types.rs
+@@ -616,7 +616,7 @@ pub(crate) fn stable_since(&self, tcx: TyCtxt<'_>) -> Option<StableSince> {
+     }
+ 
+     pub(crate) fn is_non_exhaustive(&self) -> bool {
+-        find_attr!(&self.attrs.other_attrs, AttributeKind::NonExhaustive(..))
++        self.attrs.other_attrs.iter().any(|a| a.has_name(sym::non_exhaustive))
+     }
+ 
+     /// Returns a documentation-level item type from the item.
+--- src/tools/clippy/clippy_lints/src/exhaustive_items.rs
++++ src/tools/clippy/clippy_lints/src/exhaustive_items.rs
+@@ -6,6 +6,7 @@
+ use rustc_hir::{Item, ItemKind};
+ use rustc_lint::{LateContext, LateLintPass};
+ use rustc_session::declare_lint_pass;
++use rustc_span::sym;
+ 
+ declare_clippy_lint! {
+     /// ### What it does
+@@ -86,7 +87,7 @@ fn check_item(&mut self, cx: &LateContext<'_>, item: &Item<'_>) {
+         };
+         if cx.effective_visibilities.is_exported(item.owner_id.def_id)
+             && let attrs = cx.tcx.hir_attrs(item.hir_id())
+-            && !find_attr!(attrs, AttributeKind::NonExhaustive(..))
++            && !attrs.iter().any(|a| a.has_name(sym::non_exhaustive))
+             && fields.iter().all(|f| cx.tcx.visibility(f.def_id).is_public())
+         {
+             span_lint_and_then(cx, lint, item.span, msg, |diag| {
+--- src/tools/clippy/clippy_lints/src/format_args.rs
++++ src/tools/clippy/clippy_lints/src/format_args.rs
+@@ -659,10 +659,7 @@ fn has_pointer_debug(&mut self, ty: Ty<'tcx>, depth: usize) -> bool {
+                     };
+                     let selection = SelectionContext::new(&infcx).select(&obligation);
+                     let derived = if let Ok(Some(Selection::UserDefined(data))) = selection {
+-                        find_attr!(
+-                            tcx.get_all_attrs(data.impl_def_id),
+-                            AttributeKind::AutomaticallyDerived(..)
+-                        )
++                        tcx.has_attr(data.impl_def_id, sym::automatically_derived)
+                     } else {
+                         false
+                     };
+--- src/tools/clippy/clippy_lints/src/manual_non_exhaustive.rs
++++ src/tools/clippy/clippy_lints/src/manual_non_exhaustive.rs
+@@ -6,14 +6,15 @@
+ use itertools::Itertools;
+ use rustc_hir::attrs::{AttributeKind};
+ use rustc_hir::find_attr;
++use rustc_ast::attr;
+ use rustc_data_structures::fx::FxHashSet;
+ use rustc_errors::Applicability;
+ use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
+ use rustc_hir::{Expr, ExprKind, Item, ItemKind, QPath, TyKind, VariantData};
+ use rustc_lint::{LateContext, LateLintPass};
+ use rustc_session::impl_lint_pass;
+-use rustc_span::Span;
+ use rustc_span::def_id::LocalDefId;
++use rustc_span::{Span, sym};
+ 
+ declare_clippy_lint! {
+     /// ### What it does
+@@ -94,7 +95,7 @@ fn check_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx Item<'_>) {
+                         .then_some((v.def_id, v.span))
+                 });
+                 if let Ok((id, span)) = iter.exactly_one()
+-                    && !find_attr!(cx.tcx.hir_attrs(item.hir_id()), AttributeKind::NonExhaustive(..))
++                    && !attr::contains_name(cx.tcx.hir_attrs(item.hir_id()), sym::non_exhaustive)
+                 {
+                     self.potential_enums.push((item.owner_id.def_id, id, item.span, span));
+                 }
+@@ -114,10 +115,10 @@ fn check_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx Item<'_>) {
+                         item.span,
+                         "this seems like a manual implementation of the non-exhaustive pattern",
+                         |diag| {
+-                            if let Some(non_exhaustive_span) =
+-                                find_attr!(cx.tcx.hir_attrs(item.hir_id()), AttributeKind::NonExhaustive(span) => *span)
++                            if let Some(non_exhaustive) =
++                                attr::find_by_name(cx.tcx.hir_attrs(item.hir_id()), sym::non_exhaustive)
+                             {
+-                                diag.span_note(non_exhaustive_span, "the struct is already non-exhaustive");
++                                diag.span_note(non_exhaustive.span(), "the struct is already non-exhaustive");
+                             } else {
+                                 let indent = snippet_indent(cx, item.span).unwrap_or_default();
+                                 diag.span_suggestion_verbose(
+--- src/tools/clippy/clippy_lints_internal/src/derive_deserialize_allowing_unknown.rs
++++ src/tools/clippy/clippy_lints_internal/src/derive_deserialize_allowing_unknown.rs
+@@ -89,10 +89,7 @@ fn check_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx Item<'tcx>) {
+         }
+ 
+         // Is it derived?
+-        if !find_attr!(
+-            cx.tcx.get_all_attrs(item.owner_id),
+-            AttributeKind::AutomaticallyDerived(..)
+-        ) {
++        if !cx.tcx.has_attr(item.owner_id, sym::automatically_derived) {
+             return;
+         }
+ 
+--- src/tools/clippy/clippy_utils/src/attrs.rs
++++ src/tools/clippy/clippy_utils/src/attrs.rs
+@@ -166,14 +166,14 @@ pub fn is_doc_hidden(attrs: &[impl AttributeExt]) -> bool {
+ 
+ pub fn has_non_exhaustive_attr(tcx: TyCtxt<'_>, adt: AdtDef<'_>) -> bool {
+     adt.is_variant_list_non_exhaustive()
+-        || find_attr!(tcx.get_all_attrs(adt.did()), AttributeKind::NonExhaustive(..))
++        || tcx.has_attr(adt.did(), sym::non_exhaustive)
+         || adt.variants().iter().any(|variant_def| {
+             variant_def.is_field_list_non_exhaustive()
+-                || find_attr!(tcx.get_all_attrs(variant_def.def_id), AttributeKind::NonExhaustive(..))
++                || tcx.has_attr(variant_def.def_id, sym::non_exhaustive)
+         })
+         || adt
+             .all_fields()
+-            .any(|field_def| find_attr!(tcx.get_all_attrs(field_def.did), AttributeKind::NonExhaustive(..)))
++            .any(|field_def| tcx.has_attr(field_def.did, sym::non_exhaustive))
+ }
+ 
+ /// Checks if the given span contains a `#[cfg(..)]` attribute
+--- src/tools/clippy/clippy_utils/src/lib.rs
++++ src/tools/clippy/clippy_utils/src/lib.rs
+@@ -1786,9 +1786,9 @@ pub fn in_automatically_derived(tcx: TyCtxt<'_>, id: HirId) -> bool {
+     tcx.hir_parent_owner_iter(id)
+         .filter(|(_, node)| matches!(node, OwnerNode::Item(item) if matches!(item.kind, ItemKind::Impl(_))))
+         .any(|(id, _)| {
+-            find_attr!(
++            has_attr(
+                 tcx.hir_attrs(tcx.local_def_id_to_hir_id(id.def_id)),
+-                AttributeKind::AutomaticallyDerived(..)
++                sym::automatically_derived,
+             )
+         })
  }
