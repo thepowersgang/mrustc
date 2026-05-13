@@ -6,6 +6,7 @@
  * - Clones of the mrustc HIR types (HEADER)
  */
 #pragma once
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>
