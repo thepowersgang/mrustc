@@ -217,7 +217,17 @@ bin/testrunner$(EXESUF):
 #
 # rustc (with std/cargo) source download
 #
+# If $(RUSTCSRC) (the extracted source directory) already exists, skip both the
+# download and extract steps -- this lets distro packagers / offline builds
+# pre-populate the tree from any source (.tar.zst, git checkout, ...) without
+# having to forge stamps. The patch step still runs unless its stamp is present.
 RUSTC_SRC_TARBALL := rustc-$(RUSTC_VERSION)-src.tar.gz
+ifneq ($(wildcard $(RUSTCSRC)),)
+# Pre-extracted source tree detected: no tarball needed, just touch the stamp.
+rustc-$(RUSTC_VERSION)-src/extracted:
+	@echo "[SKIP] extract (using pre-extracted $(RUSTCSRC))"
+	@touch $@
+else
 $(RUSTC_SRC_TARBALL):
 	@echo [CURL] $@
 	@rm -f $@
@@ -225,6 +235,7 @@ $(RUSTC_SRC_TARBALL):
 rustc-$(RUSTC_VERSION)-src/extracted: $(RUSTC_SRC_TARBALL)
 	tar -xzf $(RUSTC_SRC_TARBALL)
 	touch $@
+endif
 $(RUSTC_SRC_DL): rustc-$(RUSTC_VERSION)-src/extracted rustc-$(RUSTC_VERSION)-src.patch
 	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
 	touch $@
