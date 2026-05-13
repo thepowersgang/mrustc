@@ -385,7 +385,7 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 break;
             case 'h':
                 this->help();
-                exit(1);
+                exit(0);
             default:
                 ::std::cerr << "Unknown flag -" << arg[1] << ::std::endl;
                 return 1;
@@ -400,7 +400,7 @@ int ProgramOptions::parse(int argc, const char* argv[])
             // Long arguments
             if( ::std::strcmp(arg, "--help") == 0 ) {
                 this->help();
-                exit(1);
+                exit(0);
             }
             else if( ::std::strcmp(arg, "--script-overrides") == 0 ) {
                 if(i+1 == argc) {
