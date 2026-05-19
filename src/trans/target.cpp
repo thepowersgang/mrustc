@@ -32,7 +32,8 @@ const TargetArch ARCH_X32 = {
 const TargetArch ARCH_X86 = {
     "x86",
     32, false,
-    { /*atomic(u8)=*/true, false, true, false,  true },
+    // i586+ baseline: 8/16/32-bit atomics via LOCK prefix, 64-bit via cmpxchg8b
+    { /*atomic(u8)=*/true, /*u16=*/true, /*u32=*/true, /*u64=*/true,  /*ptr=*/true },
     TargetArch::Alignments(2, 4, /*u64*/4, /*u128*/4, 4, 4, /*ptr*/4)    // u128 has the same alignment as u64, which is u32's alignment. And f64 is 4 byte aligned
 };
 const TargetArch ARCH_ARM64 = {
