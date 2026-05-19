@@ -16,6 +16,12 @@ namespace MIR {
 
 namespace HIR {
 
+// Thrown by Evaluator::evaluate_constant when some dependency of the
+// constant being evaluated is itself not yet resolved (typically still a
+// generic parameter or an inferred type). Callers outside this module are
+// expected to catch and treat as "leave for a later pass to retry".
+struct Defer {};
+
 struct Evaluator
 {
     class Newval
