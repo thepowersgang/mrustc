@@ -112,7 +112,7 @@ namespace HIR {
     {
         if( this->expr.get() != x.expr.get() ) {
             // If only one has populated MIR, they can't be equal (sort populated MIR after)
-            if( !this->expr->m_mir != !this->expr->m_mir ) {
+            if( !this->expr->m_mir != !x.expr->m_mir ) {
                 return (this->expr->m_mir ? OrdGreater : OrdLess);
             }
 
