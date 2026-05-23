@@ -6,6 +6,7 @@
  * - Interpreter debug logging
  */
 #include "debug.hpp"
+#include <cstdint>
 #include <fstream>
 #include "../../src/common.hpp" // FmtEscaped
 

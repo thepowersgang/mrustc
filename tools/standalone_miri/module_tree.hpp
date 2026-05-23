@@ -6,6 +6,7 @@
  * - In-memory representation of a Monomorphised MIR executable (HEADER)
  */
 #pragma once
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <map>

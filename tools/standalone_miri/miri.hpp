@@ -6,6 +6,7 @@
  * - MIR Interpreter State (HEADER)
  */
 #pragma once
+#include <cstdint>
 #include "module_tree.hpp"
 #include "value.hpp"
 

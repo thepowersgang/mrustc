@@ -6,6 +6,7 @@
  * - Simple lexer for MIR files (HEADER)
  */
 #pragma once
+#include <cstdint>
 #include <string>
 #include <fstream>
 #include "../include/int128.h"
