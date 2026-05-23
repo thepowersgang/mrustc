@@ -5618,11 +5618,33 @@ namespace {
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
                     m_of << ".intel_syntax noprefix; ";
                 bool escape_percent = true || !inputs.empty() || !outputs.empty();
+                // Rust's `asm!` templates are passed verbatim to LLVM, where `$$`
+                // is the escape for a literal `$` (LLVM IR uses `$N` for operand
+                // references). The GCC inline-asm backend has no such escape, and
+                // a stray `$` survives into the GAS input as e.g. `int $0x80` —
+                // which GAS rejects in `.intel_syntax noprefix` mode with
+                // "operand type mismatch". Collapse `$$` here: drop it entirely
+                // for Intel-syntax blocks (so `int $$0x80` -> `int 0x80`), and
+                // halve it for AT&T blocks (so the immediate prefix survives).
+                auto xlat_dollars = [&](const std::string& s) {
+                    std::string r;
+                    r.reserve(s.size());
+                    for(size_t i = 0; i < s.size(); ++i) {
+                        if(s[i] == '$' && i+1 < s.size() && s[i+1] == '$') {
+                            if(se.options.att_syntax) r += '$';
+                            i++;
+                        }
+                        else {
+                            r += s[i];
+                        }
+                    }
+                    return r;
+                };
                 for(const auto& l : se.lines)
                 {
                     for(const auto& f : l.frags)
                     {
-                        m_of << FmtGccAsm(f.before, escape_percent);
+                        m_of << FmtGccAsm(xlat_dollars(f.before), escape_percent);
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
                         m_of << "%";
                         if( arg_mappings.at(f.index) == UINT8_MAX-1 ) {
@@ -5644,7 +5666,7 @@ namespace {
                         }
                         m_of << arg_mappings.at(f.index);
                     }
-                    m_of << FmtGccAsm(l.trailing, escape_percent);
+                    m_of << FmtGccAsm(xlat_dollars(l.trailing), escape_percent);
                     m_of << ";\\n ";
                 }
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
