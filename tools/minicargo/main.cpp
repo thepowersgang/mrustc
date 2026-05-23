@@ -64,7 +64,7 @@ struct ProgramOptions
     ::std::vector<::std::string>    features;
 
     int parse(int argc, const char* argv[]);
-    void usage() const;
+    void usage(::std::ostream& os) const;
     void help() const;
 };
 
@@ -468,16 +468,16 @@ int ProgramOptions::parse(int argc, const char* argv[])
 
     if( !this->directory /*|| !this->outfile*/ )
     {
-        usage();
+        usage(::std::cerr);
         exit(1);
     }
 
     return 0;
 }
 
-void ProgramOptions::usage() const
+void ProgramOptions::usage(::std::ostream& os) const
 {
-    ::std::cerr
+    os
         << "Usage: minicargo <package dir>" << ::std::endl
         << ::std::endl
         << "   Build a cargo package using mrustc. Point it at a directory containing Cargo.toml" << ::std::endl
@@ -486,8 +486,8 @@ void ProgramOptions::usage() const
 
 void ProgramOptions::help() const
 {
-    usage();
-    ::std::cerr
+    usage(::std::cout);
+    ::std::cout
         << ::std::endl
         << "--help, -h  : Show this help text\n"
         << "--script-overrides <dir> : Directory containing <package>.txt files containing the build script output\n"
