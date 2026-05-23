@@ -910,7 +910,23 @@ namespace static_borrow_constants {
             } v(resolve, monomorph);
             node->visit(v);
             v.visit_type(node->m_res_type);
-            if( !v.is_generic ) {
+            // `is_generic` is set by the targeted visit overrides above
+            // (ExprNode_ConstParam, ExprNode_ArraySized) plus visit_type /
+            // visit_path_params. Those reliably cover type- and lifetime-
+            // generic references, but a const-generic value param can still
+            // leak through paths not yet enumerated -- e.g. ARM Neon's
+            // `core_arch::arm_shared::neon::generated` lifted const blocks
+            // hit `_ = Constant(N/*M:0*/)` in MIR with the surrounding
+            // method's `const N: i32` never remapped, then assert in
+            // MonomorphiserPP::get_value because the lifted static was
+            // wiped to a concrete (empty params) item. Preserve the params
+            // whenever the source context carries any const-generic value
+            // param: the only cost is a slightly later (Trans Monomorph)
+            // evaluation instead of an SBC-time concrete one.
+            bool has_value_generics =
+                   !m_resolve.impl_generics().m_values.empty()
+                || !m_resolve.item_generics().m_values.empty();
+            if( !v.is_generic && !has_value_generics ) {
                 params_def = HIR::GenericParams();
                 constr_params = HIR::PathParams();
                 DEBUG("Concrete static");
