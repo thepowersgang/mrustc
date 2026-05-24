@@ -32,7 +32,8 @@ const TargetArch ARCH_X32 = {
 const TargetArch ARCH_X86 = {
     "x86",
     32, false,
-    { /*atomic(u8)=*/true, false, true, false,  true },
+    // i586+ baseline: 8/16/32-bit atomics via LOCK prefix, 64-bit via cmpxchg8b
+    { /*atomic(u8)=*/true, /*u16=*/true, /*u32=*/true, /*u64=*/true,  /*ptr=*/true },
     TargetArch::Alignments(2, 4, /*u64*/4, /*u128*/4, 4, 4, /*ptr*/4)    // u128 has the same alignment as u64, which is u32's alignment. And f64 is 4 byte aligned
 };
 const TargetArch ARCH_ARM64 = {
@@ -731,11 +732,15 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
     Cfg_SetValue("target_abi", "llvm"); // This is a lie, but hopefully works?
+    // target_has_atomic_equal_alignment="N" means align_of::<AtomicN>() == align_of::<N>().
+    // Since libcore declares AtomicN with repr(align(sizeof(N))), only set it when the
+    // primitive's natural alignment already matches its size (e.g. u64 on x86 has align 4,
+    // so target_has_atomic_equal_alignment="64" must be unset there even with cmpxchg8b).
     if(g_target.m_arch.m_atomics.u8)    { Cfg_SetValue("target_has_atomic", "8"  ); Cfg_SetValue("target_has_atomic_load_store", "8"  ); Cfg_SetValue("target_has_atomic_equal_alignment", "8"  ); }
-    if(g_target.m_arch.m_atomics.u16)   { Cfg_SetValue("target_has_atomic", "16" ); Cfg_SetValue("target_has_atomic_load_store", "16" ); Cfg_SetValue("target_has_atomic_equal_alignment", "16" ); }
-    if(g_target.m_arch.m_atomics.u32)   { Cfg_SetValue("target_has_atomic", "32" ); Cfg_SetValue("target_has_atomic_load_store", "32" ); Cfg_SetValue("target_has_atomic_equal_alignment", "32"); }
-    if(g_target.m_arch.m_atomics.u64)   { Cfg_SetValue("target_has_atomic", "64" ); Cfg_SetValue("target_has_atomic_load_store", "64" ); Cfg_SetValue("target_has_atomic_equal_alignment", "64"); }
-    if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "ptr"); Cfg_SetValue("target_has_atomic_load_store", "ptr"); Cfg_SetValue("target_has_atomic_equal_alignment", "ptr"); }
+    if(g_target.m_arch.m_atomics.u16)   { Cfg_SetValue("target_has_atomic", "16" ); Cfg_SetValue("target_has_atomic_load_store", "16" ); if(g_target.m_arch.m_alignments.u16 >= 2) Cfg_SetValue("target_has_atomic_equal_alignment", "16" ); }
+    if(g_target.m_arch.m_atomics.u32)   { Cfg_SetValue("target_has_atomic", "32" ); Cfg_SetValue("target_has_atomic_load_store", "32" ); if(g_target.m_arch.m_alignments.u32 >= 4) Cfg_SetValue("target_has_atomic_equal_alignment", "32" ); }
+    if(g_target.m_arch.m_atomics.u64)   { Cfg_SetValue("target_has_atomic", "64" ); Cfg_SetValue("target_has_atomic_load_store", "64" ); if(g_target.m_arch.m_alignments.u64 >= 8) Cfg_SetValue("target_has_atomic_equal_alignment", "64" ); }
+    if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "ptr"); Cfg_SetValue("target_has_atomic_load_store", "ptr"); if(g_target.m_arch.m_alignments.ptr * 8u >= g_target.m_arch.m_pointer_bits) Cfg_SetValue("target_has_atomic_equal_alignment", "ptr"); }
     // TODO: Atomic compare-and-set option
     if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "cas");  }
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
