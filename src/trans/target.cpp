@@ -1391,10 +1391,24 @@ namespace {
             switch(str.m_repr)
             {
             case ::HIR::Struct::Repr::C:
-            case ::HIR::Struct::Repr::Simd:
                 // No sorting, no packing
                 sorting = StructSorting::None;
                 break;
+            case ::HIR::Struct::Repr::Simd: {
+                // No sorting, no packing.
+                sorting = StructSorting::None;
+                // Link: https://github.com/rust-lang/rust/commit/79f41c773aaad6a10c2c752d223bd5aba0371f9b
+                // Not for `repr(packed)` - the C backend packs those already.
+                if (str.m_max_field_alignment == 0) {
+                    size_t total_size = 0;
+                    for(const auto& e : ents) total_size += e.size;
+                    size_t simd_align = 1;
+                    while(simd_align < total_size) simd_align <<= 1;
+                    if(forced_alignment < simd_align)
+                        forced_alignment = static_cast<unsigned>(simd_align);
+                }
+                break;
+                }
             case ::HIR::Struct::Repr::Transparent:
             case ::HIR::Struct::Repr::Rust:
                 if( str.m_struct_markings.dst_type != HIR::StructMarkings::DstType::None )
