@@ -112,7 +112,7 @@ namespace HIR {
     {
         if( this->expr.get() != x.expr.get() ) {
             // If only one has populated MIR, they can't be equal (sort populated MIR after)
-            if( !this->expr->m_mir != !this->expr->m_mir ) {
+            if( !this->expr->m_mir != !x.expr->m_mir ) {
                 return (this->expr->m_mir ? OrdGreater : OrdLess);
             }
 
@@ -126,18 +126,12 @@ namespace HIR {
                 return ::ord(tn->m_binding, xn->m_binding);
             }
 
-            // If the MIR is populated
-            if( this->expr->m_mir )
-            {
-                TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
-            }
-            else {
-                // EVIL OPTION: Just compare the string representations
-                // - Hopefully there's no pointers printed involved.
-                auto v_t = FMT(*this);
-                auto v_x = FMT(x);
-                return ::ord(v_t, v_x);
-            }
+            // EVIL OPTION: Just compare the string representations
+            // - The fmt() routine prints MIR blocks (when populated) or the source expression
+            //   (when not) in a deterministic, pointer-free form, so this gives a stable order.
+            auto v_t = FMT(*this);
+            auto v_x = FMT(x);
+            return ::ord(v_t, v_x);
         }
         if(auto cmp = this->params_impl.ord(x.params_impl)) return cmp;
         if(auto cmp = this->params_item.ord(x.params_item)) return cmp;
