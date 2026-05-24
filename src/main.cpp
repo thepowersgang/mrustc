@@ -968,22 +968,22 @@ ProgramParams::ProgramParams(int argc, char *argv[])
 {
     if( const auto* a = getenv("MRUSTC_TARGET_VER") )
     {
-        if( strcmp(a, "1.19") == 0 ) {
+        if( strcmp(a, "1.19") == 0 || strncmp(a, "1.19.", 5) == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_19;
         }
-        else if( strcmp(a, "1.29") == 0 ) {
+        else if( strcmp(a, "1.29") == 0 || strncmp(a, "1.29.", 5) == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_29;
         }
-        else if( strcmp(a, "1.39") == 0 ) {
+        else if( strcmp(a, "1.39") == 0 || strncmp(a, "1.39.", 5) == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_39;
         }
-        else if( strcmp(a, "1.54") == 0 ) {
+        else if( strcmp(a, "1.54") == 0 || strncmp(a, "1.54.", 5) == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_54;
         }
-        else if( strcmp(a, "1.74") == 0 ) {
+        else if( strcmp(a, "1.74") == 0 || strncmp(a, "1.74.", 5) == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_74;
         }
-        else if( strcmp(a, "1.90") == 0 ) {
+        else if( strcmp(a, "1.90") == 0 || strncmp(a, "1.90.", 5) == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_90;
         }
         else {
