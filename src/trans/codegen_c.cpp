@@ -5780,9 +5780,16 @@ namespace {
                     }
                 }
                 m_of << ":";
+                bool need_clobber_comma = false;
                 for(size_t i = 0; i < clobbers.size(); i ++ ) {
-                    if( i > 0 ) m_of << ",";
+                    if( need_clobber_comma ) m_of << ",";
                     m_of << " \"" << clobbers[i] << "\"";
+                    need_clobber_comma = true;
+                }
+                // Link: https://github.com/rust-lang/rust/blob/1159e78c4747b02ef996e55082b704c09b970588/compiler/rustc_codegen_llvm/src/asm.rs#L293-L298
+                if( !se.options.nomem ) {
+                    if( need_clobber_comma ) m_of << ",";
+                    m_of << " \"memory\"";
                 }
                 m_of << ");\n";
                 for(size_t i = 0; i < se.params.size(); i ++)
