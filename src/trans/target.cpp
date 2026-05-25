@@ -431,7 +431,8 @@ namespace
         {
             return load_spec_from_file(target_name);
         }
-        else if(target_name == "i586-linux-gnu" || target_name == "i586-unknown-linux-gnu")
+        else if(target_name == "i586-linux-gnu" || target_name == "i586-unknown-linux-gnu"
+             || target_name == "i686-linux-gnu" || target_name == "i686-unknown-linux-gnu")
         {
             return TargetSpec {
                 "unix", "linux", "gnu", {CodegenMode::Gnu11, true, "i586-linux-gnu", BACKEND_C_OPTS_GNU},
