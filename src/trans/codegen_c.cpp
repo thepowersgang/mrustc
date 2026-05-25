@@ -1721,6 +1721,17 @@ namespace {
                 }
             }
         }
+        /// GCC calling-convention attribute for a Rust ABI string, NULL if the
+        /// ABI is the platform default (i.e. needs no attribute).
+        /// Link: https://gcc.gnu.org/onlinedocs/gcc/x86-Function-Attributes.html
+        static const char* gcc_abi_attribute(const RcString& abi)
+        {
+            if( abi == "fastcall" ) return "__attribute__((fastcall))";
+            if( abi == "stdcall"  ) return "__attribute__((stdcall))";
+            if( abi == "sysv64"   ) return "__attribute__((sysv_abi))";
+            if( abi == "win64"    ) return "__attribute__((ms_abi))";
+            return nullptr;
+        }
         void emit_type_fn(const ::HIR::TypeRef& ty)
         {
             if( m_emitted_fn_types.count(ty) ) {
@@ -1749,6 +1760,11 @@ namespace {
                 else
                 {
                 }
+            }
+            else if( m_compiler == Compiler::Gcc )
+            {
+                if( const char* attr = gcc_abi_attribute(te.m_abi) )
+                    m_of << attr << " ";
             }
             m_of << "*"; emit_ctype(ty); m_of << ")(";
             if( te.m_arg_types.size() == 0 )
@@ -5849,6 +5865,11 @@ namespace {
                 if( item.m_abi == "system" && m_compiler == Compiler::Msvc )
                 {
                     ss << " __stdcall";
+                }
+                else if( m_compiler == Compiler::Gcc )
+                {
+                    if( const char* attr = gcc_abi_attribute(item.m_abi) )
+                        ss << " " << attr;
                 }
                 ss << " " << Trans_Mangle(p) << "(";
                 if( item.m_args.size() == 0 )
