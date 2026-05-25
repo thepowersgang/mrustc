@@ -787,6 +787,11 @@ namespace {
                     << "static inline uint128_t intrinsic_cttz_u128(uint128_t v) {\n"
                     << "\treturn (v == 0 ? 128 : ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v)));\n"
                     << "}\n"
+                    // `__builtin_popcountll` takes a 64-bit argument, so it
+                    // would silently drop the upper half of a `__int128`.
+                    << "static inline uint128_t intrinsic_popcount_u128(uint128_t v) {\n"
+                    << "\treturn (uint128_t)__builtin_popcountll((uint64_t)v) + (uint128_t)__builtin_popcountll((uint64_t)(v >> 64));\n"
+                    << "}\n"
                     ;
             }
 
@@ -7236,14 +7241,20 @@ namespace {
             }
             // - CounT POPulated
             else if( name == "ctpop" ) {
+                const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = ";
 
-                if( type_is_emulated_i128(params.m_types.at(0)) )
+                if( type_is_emulated_i128(ty) )
                 {
                     m_of << "popcount128("; emit_param(e.args.at(0)); m_of << ")";
                     if( TARGETVER_LEAST_1_90 ) {
                         m_of << ".lo";
                     }
+                }
+                else if( get_prim_size(ty) == 128 )
+                {
+                    // `__builtin_popcountll` would only count the low half.
+                    m_of << "intrinsic_popcount_u128("; emit_param(e.args.at(0)); m_of << ")";
                 }
                 else
                 {
