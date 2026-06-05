@@ -105,6 +105,11 @@ else ifeq ($(RUSTC_VERSION),1.29.0)
 else
   VENDOR_DIR := $(RUSTCSRC)vendor
   MINICARGO_FLAGS += --manifest-overrides rustc-$(RUSTC_VERSION)-overrides.toml
+  # Pass `-C panic=unwind` to mrustc for these rustc versions so the panic-unwind
+  # runtime (which uses mrustc's setjmp/longjmp _Unwind_RaiseException shim) is
+  # selected instead of panic_abort. Without this, every emitted bin defaults
+  # to panic_abort and any rustc-driven FatalError aborts the process via libc.
+  MINICARGO_FLAGS += --panic unwind
 endif
 ifeq ($(RUSTC_VERSION),1.54.0)
   RUST_LIB_PREFIX := library/
