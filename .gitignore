@@ -8,6 +8,8 @@
 /obj
 /bin
 /build
+/result
+/result-*
 /mrustc.depend
 /mrustc.layout
 /rustc-*-src.tar.gz
