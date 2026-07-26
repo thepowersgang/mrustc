@@ -8,12 +8,9 @@
 #pragma once
 
 enum class TargetVersion {
-	Rustc1_19,
-	Rustc1_29,
-	Rustc1_39,
-	Rustc1_54,
-	Rustc1_74,
-	Rustc1_90,
+#define X_TARGET_VERSION(name, str)	name,
+#include "target_versions.def"
+#undef X_TARGET_VERSION
 };
 
 // Defined in main.cpp
@@ -24,8 +21,10 @@ extern TargetVersion	gTargetVersion;
 #define TARGETVER_MOST_1_39  (gTargetVersion <= TargetVersion::Rustc1_39)
 #define TARGETVER_MOST_1_54  (gTargetVersion <= TargetVersion::Rustc1_54)
 #define TARGETVER_MOST_1_74  (gTargetVersion <= TargetVersion::Rustc1_74)
+#define TARGETVER_MOST_1_90  (gTargetVersion <= TargetVersion::Rustc1_90)
 #define TARGETVER_LEAST_1_29  (gTargetVersion >= TargetVersion::Rustc1_29)
 #define TARGETVER_LEAST_1_39  (gTargetVersion >= TargetVersion::Rustc1_39)
 #define TARGETVER_LEAST_1_54  (gTargetVersion >= TargetVersion::Rustc1_54)
 #define TARGETVER_LEAST_1_74  (gTargetVersion >= TargetVersion::Rustc1_74)
 #define TARGETVER_LEAST_1_90  (gTargetVersion >= TargetVersion::Rustc1_90)
+#define TARGETVER_LEAST_1_97  (gTargetVersion >= TargetVersion::Rustc1_97)

@@ -140,9 +140,12 @@ PCHS := ast/ast.hpp
 
 OBJ := $(addprefix $(OBJDIR),$(OBJ))
 
-.PHONY: all clean
+.PHONY: all clean test_target_version_default
 
 all: $(BIN)
+
+test_target_version_default: $(BIN)
+	./test_target_version_default.sh $(BIN)
 
 clean:
 	$(RM) -rf -- $(BIN) $(OBJ) bin/mrustc.a
@@ -202,4 +205,3 @@ bin/common_lib.a: $(wildcard tools/common/*)
 -include $(OBJ:%=%.dep)
 
 # vim: noexpandtab ts=4
-

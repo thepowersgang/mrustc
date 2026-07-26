@@ -1,0 +1,1 @@
+# Rust 1.97's library/test build script emits no required directives for mrustc.

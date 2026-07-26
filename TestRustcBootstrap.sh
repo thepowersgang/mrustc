@@ -6,7 +6,7 @@ set -u  # Error on unset variables
 WORKDIR=${WORKDIR:-rustc_bootstrap}/
 
 RUSTC_TARGET=${RUSTC_TARGET:-x86_64-unknown-linux-gnu}
-RUSTC_VERSION=${*-1.29.0}
+RUSTC_VERSION=${*:-$(tr -d '[:space:]' < rust-version)}
 RUN_RUSTC_SUF=""
 if [[ "$RUSTC_VERSION" == "1.29.0" ]]; then
     RUSTC_VERSION_NEXT=1.30.0
@@ -26,8 +26,12 @@ elif [[ "$RUSTC_VERSION" == "1.90.0" ]]; then
     # 1.91 had a patch release
     RUSTC_VERSION_NEXT=1.91.1
     RUN_RUSTC_SUF=-1.90.0
+elif [[ "$RUSTC_VERSION" == "1.97.1" ]]; then
+    echo "Rust 1.97.1 is the latest stable release; no next stable source exists for self-bootstrap validation"
+    exit 1
 else
     echo "Unknown rustc version"
+    exit 1
 fi
 
 MAKEFLAGS=-j${PARLEVEL:-8}

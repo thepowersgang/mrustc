@@ -1,0 +1,1 @@
+cargo:rustc-cfg=libc_const_extern_fn

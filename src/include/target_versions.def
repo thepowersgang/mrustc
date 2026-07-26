@@ -1,0 +1,26 @@
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * include/target_versions.def
+ * - X-macro table of supported rustc target versions
+ *
+ * Included multiple times with a definition of `X_TARGET_VERSION(enum_name, string)`.
+ * Order matters: enum discriminants are compared with `<=`/`>=` (see the
+ * TARGETVER_MOST_* / TARGETVER_LEAST_* macros in target_version.hpp), so
+ * entries must stay in ascending release order.
+ *
+ * Adding one line here only extends the enum/parse/print mapping; version-specific
+ * build files and TARGETVER_* predicates must be updated separately.
+ */
+#ifndef X_TARGET_VERSION
+#error "X_TARGET_VERSION must be defined before including target_versions.def"
+#endif
+
+X_TARGET_VERSION(Rustc1_19, "1.19")
+X_TARGET_VERSION(Rustc1_29, "1.29")
+X_TARGET_VERSION(Rustc1_39, "1.39")
+X_TARGET_VERSION(Rustc1_54, "1.54")
+X_TARGET_VERSION(Rustc1_74, "1.74")
+X_TARGET_VERSION(Rustc1_90, "1.90")
+X_TARGET_VERSION(Rustc1_97, "1.97")
