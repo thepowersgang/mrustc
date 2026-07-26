@@ -174,3 +174,15 @@
 - `windows` crate references DLLs that don't exist on all versions, requiring proper tree-shaking to avoid it
 - MSVC doesn't support arrays with more than 2^31-1 items, nor structs larger than 2^32-1 bytes
   - This impacts the `hex` crate, but was fixable using `#[cfg]`
+
+Rust 1.97.1
+============
+- Stable release selected from the official 2026-07-16 channel manifest.
+- The source patch carries forward mrustc-specific size-assert suppression and
+  list method-resolution fixes, rebased against the 1.97.1 source archive.
+- First-class target scaffolding does not by itself prove a completed bootstrap;
+  compiler and source compatibility failures must be reported rather than hidden.
+- Rust 1.97's `[const]`, `const`, and `~const` trait-bound spellings are
+  accepted for parsing, but their qualifiers are not represented semantically.
+- The bootstrap reaches `library/core` and next stops on unsupported
+  `const move` closure syntax.

@@ -15,8 +15,8 @@ Progress
 --------
 
 - Builds working copies of `rustc` and `cargo` from a release source tarball
-  - Currently tested to fully bootstrap (with a binary-equal 1.91.1) version 1.90.0
-  - Slso supports and might still bootstrap (assuming the right environment) - rustc 1.19.0, 1.29.0, 1.39.0, 1.54.0, 1.74.0
+  - The current first-class target is rustc 1.97.1; direct bootstrap is blocked on `const move` closure syntax
+  - Also supports and might still bootstrap (assuming the right environment) - rustc 1.19.0, 1.29.0, 1.39.0, 1.54.0, 1.74.0, 1.90.0
   - NOTE: Older versions (1.29 and older) don't build on modern systems, due to outdated openssl bindings
 - Supported Targets (CI tested for libstd):
   - x86-64 linux GNU (Specifically Debian/Ubuntu; should always work, fully bootstrap tested)
@@ -47,7 +47,7 @@ Dependencies
 
 Linux GNU and macOS
 -----
-- `make RUSTCSRC` - Downloads the rustc source tarball (1.29.0 by default)
+- `make RUSTCSRC` - Downloads the rustc source tarball (1.97.1 by default)
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc` and `cargo`
 - `make -C run_rustc` - Build `libstd` and a "hello, world" using the above-built rustc
 
@@ -131,4 +131,3 @@ Medium-term
 - Implement MIR borrow checker
 - Emit C code that is (more) human readable (uses names from the original source, reduced/no gotos)
 - Add alternate backends (e.g. LLVM IR, cretonne, ...)
-

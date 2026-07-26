@@ -1,3 +1,19 @@
+# Unreleased
+
+Housekeeping
+* Default `rust-version` bumped from `1.29.0` through `1.90.0` to `1.97.1`, the
+  latest stable release as of 2026-07-25.
+* Added first-class Rust 1.97 target scaffolding, source integration, build and
+  smoke-test scripts, and Linux build-script overrides.
+* Removed the unused `rust-nightly-date` file (last-touched by the 1.29 upgrade; no
+  in-tree reader remained).
+* Consolidated the target-version enum, parser, and printer behind
+  `src/include/target_versions.def`, and added a regression test that keeps the
+  compiler's default target coherent with `rust-version`.
+* Rust 1.97 const trait bounds now parse, but a full 1.97.1 bootstrap is not yet
+  supported: the bootstrap currently reaches unsupported `const move` closure
+  syntax.
+
 # 2021-04-04: rustc 1.39.0 bootstrap
 
 New/interesting supported features since 1.29
@@ -33,4 +49,3 @@ Minor/notable changes
 * LOTS of usage of `TU_MATCH`/`TU_MATCH_DEF` replaced with `TU_MATCH_HDRA`
 * HIR serialisation reworked to support some encoded structure (for better error diagnosis)
 * Speed up Trans Enumerate by caching paths/types needed by a function
-
