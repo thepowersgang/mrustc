@@ -140,12 +140,15 @@ PCHS := ast/ast.hpp
 
 OBJ := $(addprefix $(OBJDIR),$(OBJ))
 
-.PHONY: all clean test_target_version_default
+.PHONY: all clean test_target_version_default test_rust_1_97_const_bound
 
 all: $(BIN)
 
 test_target_version_default: $(BIN)
 	./test_target_version_default.sh $(BIN)
+
+test_rust_1_97_const_bound: $(BIN)
+	MRUSTC_TARGET_VER=1.97 $(BIN) samples/no_core-1_97-const-bound.rs -Z stop-after=parse
 
 clean:
 	$(RM) -rf -- $(BIN) $(OBJ) bin/mrustc.a

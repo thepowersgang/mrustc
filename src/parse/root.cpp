@@ -251,7 +251,11 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
                 } ));
         }
         else {
-            if( lex.getTokenIf(TOK_TILDE) ) {
+            if( lex.getTokenIf(TOK_SQUARE_OPEN) ) {
+                GET_CHECK_TOK(tok, lex, TOK_RWORD_CONST);
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            }
+            else if( lex.getTokenIf(TOK_TILDE) ) {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_CONST);
             }
             else if( lex.getTokenIf(TOK_RWORD_CONST) ) {
@@ -906,7 +910,12 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
                 break;
             }
             else {
-                if( tok.type() == TOK_TILDE ) {
+                if( tok.type() == TOK_SQUARE_OPEN ) {
+                    GET_CHECK_TOK(tok, lex, TOK_RWORD_CONST);
+                    GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                    GET_TOK(tok, lex);
+                }
+                else if( tok.type() == TOK_TILDE ) {
                     GET_CHECK_TOK(tok, lex, TOK_RWORD_CONST);
                     GET_TOK(tok, lex);
                 }
@@ -2029,6 +2038,14 @@ namespace {
             item_data = ::AST::Item( ::AST::Static(AST::Static::CONST, mv$(type), mv$(val)) );
             break; }
         case TOK_RWORD_UNSAFE: {
+            if( lex.getTokenIf(TOK_RWORD_TRAIT) ) {
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                item_name = tok.ident().name;
+                auto tr = Parse_TraitDef(lex, meta_items, Parse_GenericParamsOpt(lex));
+                tr.set_is_unsafe();
+                item_data = ::AST::Item( ::std::move(tr) );
+                break;
+            }
             struct H { static std::string opt_extern(Token& tok, TokenStream& lex) {
                 if( lex.lookahead(0) == TOK_RWORD_EXTERN ) {
                     GET_TOK(tok, lex);
@@ -2063,8 +2080,13 @@ namespace {
             // - self not allowed, not prototype
             item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, /*allow_self=*/false,  ABI_RUST, AST::Function::Flags().set_const()) );
             break;
+        case TOK_RWORD_TRAIT:
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            item_name = tok.ident().name;
+            item_data = ::AST::Item( Parse_TraitDef(lex, meta_items, Parse_GenericParamsOpt(lex)) );
+            break;
         default:
-            throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_UNDERSCORE, TOK_RWORD_UNSAFE, TOK_RWORD_FN});
+            throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_UNDERSCORE, TOK_RWORD_UNSAFE, TOK_RWORD_FN, TOK_RWORD_TRAIT});
         }
         break;
     // `static NAME`
