@@ -1,5 +1,5 @@
 {
-  description = "Build and test mrustc's rustc bootstrap chain (mrustc/minicargo -> rustc+cargo)";
+  description = "Build mrustc and directly bootstrap supported rustc releases";
 
   inputs = {
     # Pinned dated stable release (not nixpkgs-unstable): the packages this flake needs
@@ -21,6 +21,7 @@
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       lib = nixpkgs.lib;
       forAllSystems = lib.genAttrs systems;
+      latestVersion = "1.97.1";
 
       # Per-version metadata, encoding the confirmed differences between the supported
       # rustc versions at the *invocation* level (minicargo.mk itself already handles
@@ -286,11 +287,9 @@
             then lib.filterAttrs (n: _: versions.${n}.darwinSupported) versionPkgsAll
             else versionPkgsAll;
 
-          # Rust 1.97.1 is not directly bootstrappable by mrustc yet. Publish
-          # that version only through the completed chained toolchain below.
-          directVersionPkgs = lib.removeAttrs versionPkgs [ chainTip.version ];
+          directVersionPkgs = versionPkgs;
           defaultPkg =
-            directVersionPkgs."1.90.0" or (builtins.head (builtins.attrValues directVersionPkgs));
+            directVersionPkgs.${latestVersion} or (builtins.head (builtins.attrValues directVersionPkgs));
 
           # ── Chained rustc bootstrap ─────────────────────────────────────────
           # rustc N is only buildable by rustc N-1 (stage0 policy), so the path
@@ -560,11 +559,8 @@
             folded.pkgs
             // {
               "rustc-${chainRegistry.root}-toolchain" = stage0Toolchain;
-              # The chain tip — what "the latest rustc via mrustc" resolves to.
+              # Explicit opt-in selector for the historical compiler chain.
               rustc-chain-target = folded.prev;
-              # Stable user-facing selectors for the current chain tip.
-              "${chainTip.version}" = folded.prev;
-              latest = folded.prev;
             }
           );
 
@@ -576,7 +572,8 @@
 
           basePackages = directVersionPkgs // chainPkgs // {
             mrustc-tools = mrustcTools;
-            default = chainPkgs.latest or defaultPkg;
+            latest = defaultPkg;
+            default = defaultPkg;
           };
 
           baseChecks = directVersionPkgs // {
