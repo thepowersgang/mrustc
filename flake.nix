@@ -13,6 +13,7 @@
     # compile with a modern (gcc 13+) compiler or configure with modern (cmake 4+) cmake.
     # nixos-24.05 still ships gcc9Stdenv/gcc10Stdenv and openssl_1_1.
     nixpkgs-legacy.url = "github:NixOS/nixpkgs/nixos-24.05";
+
   };
 
   outputs = { self, nixpkgs, nixpkgs-legacy }:
@@ -21,7 +22,7 @@
       lib = nixpkgs.lib;
       forAllSystems = lib.genAttrs systems;
 
-      # Per-version metadata, encoding the confirmed differences between the 6 supported
+      # Per-version metadata, encoding the confirmed differences between the supported
       # rustc versions at the *invocation* level (minicargo.mk itself already handles
       # source-layout differences internally via RUSTC_VERSION branches -- this table does
       # not duplicate that).
@@ -104,6 +105,19 @@
           smokeSample = "samples/no_core-1_90.rs";
           runLocalTests = true; # build-1.90.0.sh runs it
           darwinSupported = false; # no script-overrides/stable-1.90.0-macos in this repo
+        };
+        "1.97.1" = {
+          mrustcTargetVer = "1.97";
+          outdirSuf = "-1.97.1";
+          # rustc stable manifest dated 2026-07-16:
+          # https://static.rust-lang.org/dist/2026-07-16/rustc-1.97.1-src.tar.gz.sha256
+          srcHash = "sha256-YiwrQpxTy/3A3TpR0DVU6RzWPr7BkSwfVwlkDN/vGp0=";
+          legacyToolchain = false;
+          legacyOpenssl = false;
+          libgit2PkgConfig = true;
+          smokeSample = "samples/no_core-1_97.rs";
+          runLocalTests = true;
+          darwinSupported = false; # no script-overrides/stable-1.97.1-macos in this repo
         };
       };
 
@@ -250,7 +264,7 @@
                 # Deliberately minimal: excludes rustc-build/, cargo-build/, rust_tests/,
                 # stdtest/, local_tests/, rust/ (logs), and rustc-${version}-src/ (contains the
                 # multi-GB LLVM build tree) -- none needed at runtime, all would bloat the
-                # store across 6 versions.
+                # store across all supported versions.
                 shopt -s nullglob
                 for f in output${meta.outdirSuf}/*.rlib output${meta.outdirSuf}/*.hir; do
                   cp "$f" "$out/output${meta.outdirSuf}/"
@@ -272,18 +286,310 @@
             then lib.filterAttrs (n: _: versions.${n}.darwinSupported) versionPkgsAll
             else versionPkgsAll;
 
+          # Rust 1.97.1 is not directly bootstrappable by mrustc yet. Publish
+          # that version only through the completed chained toolchain below.
+          directVersionPkgs = lib.removeAttrs versionPkgs [ chainTip.version ];
           defaultPkg =
-            versionPkgs."1.90.0" or versionPkgs."1.54.0" or (builtins.head (builtins.attrValues versionPkgs));
-        in
-        {
-          packages = versionPkgs // {
-            mrustc-tools = mrustcTools;
-            default = defaultPkg;
+            directVersionPkgs."1.90.0" or (builtins.head (builtins.attrValues directVersionPkgs));
+
+          # ── Chained rustc bootstrap ─────────────────────────────────────────
+          # rustc N is only buildable by rustc N-1 (stage0 policy), so the path
+          # from mrustc's 1.90.0 ceiling to a modern rustc is a CHAIN of full
+          # toolchain builds. chain-versions.nix is the registry; each stage is
+          # its own derivation, so the nix store is the durable checkpoint: a
+          # failed stage never rebuilds its predecessors, and re-running after a
+          # fix resumes at the frontier for free.
+          #
+          # x86_64-linux only for now: run_rustc/Makefile defaults RUSTC_TARGET
+          # to x86_64-unknown-linux-gnu and no other host has been exercised.
+          chainRegistry = import ./chain-versions.nix;
+          chainTip = lib.last chainRegistry.chain;
+          chainSupported = system == "x86_64-linux";
+          rustcTarget = "x86_64-unknown-linux-gnu";
+          chainRootMeta = versions.${chainRegistry.root};
+          chainRootSrcTarball = mkRustcSrc {
+            version = chainRegistry.root;
+            hash = chainRootMeta.srcHash;
+          };
+          chainRuntimeInputs = with pkgs; [
+            stdenv.cc.cc.lib
+            zlib
+            openssl
+            curl
+            libgit2
+            zstd
+          ];
+
+          # Full mrustc -> rustc ${root} toolchain: run_rustc's complete `all`
+          # (Stage 1 sanity, Stage 2 std, Stage 3 rustc + cargo + matching-ABI
+          # std), installed as a RELOCATABLE prefix usable as the x.py stage0
+          # of the first chained build. The mkBootstrap packages above stop at
+          # the stage0-equivalent binaries and DISCARD this prefix; here it is
+          # the entire point. The prefix's `bin/rustc` wrapper and cargo_home
+          # bake absolute build paths, so install regenerates the wrapper
+          # against $out and drops cargo_home/tmp (chained builds write their
+          # own config.toml against the source tarball's vendor dir).
+          # Keep the root toolchain source stable when registry metadata, chain
+          # patches, notes, or packaging change: none affect the mrustc 1.90.0
+          # source build. Without this filter each such change would shift
+          # `self`, invalidate the multi-hour stage0 derivation, and force the
+          # entire chain to rebuild.
+          chainToolchainSrc = lib.cleanSourceWith {
+            name = "mrustc-chain-toolchain-src";
+            src = self;
+            filter =
+              path: _type:
+              let
+                rel = lib.removePrefix (toString self + "/") (toString path);
+                top = builtins.head (lib.splitString "/" rel);
+              in
+              !(builtins.elem top [
+                "chain-patches"
+                "chain-versions.nix"
+                "Notes"
+                "README.md"
+                "ReleaseNotes.md"
+                "flake.lock"
+                "flake.nix"
+                ".gitignore"
+              ]);
           };
 
-          checks = versionPkgs // {
+          stage0Toolchain =
+            let
+              version = chainRegistry.root;
+              vmeta = chainRootMeta;
+            in
+            pkgs.stdenv.mkDerivation {
+              pname = "rustc-${version}-toolchain";
+              inherit version;
+              src = chainToolchainSrc;
+
+              nativeBuildInputs = with pkgs; [
+                gnumake
+                patch
+                cmake
+                pkg-config
+                python3
+                perl
+                gitMinimal
+              ];
+              buildInputs = [ pkgs.zlib pkgs.curl pkgs.openssl pkgs.libgit2 ];
+
+              env = {
+                RUSTC_VERSION = version;
+                MRUSTC_TARGET_VER = vmeta.mrustcTargetVer;
+                OUTDIR_SUF = vmeta.outdirSuf;
+                # PARLEVEL=1 for the mrustc/minicargo half (README: higher "can
+                # and will break at times"); the cargo-driven run_rustc half
+                # gets real parallelism via its own PARLEVEL override below.
+                PARLEVEL = "1";
+                LLVM_CMAKE_OPTS_EXTRA = "";
+              };
+
+              dontConfigure = true;
+              enableParallelBuilding = false;
+
+              buildPhase = ''
+                runHook preBuild
+                set -euo pipefail
+                export HOME="$TMPDIR"
+
+                make all
+                make -C tools/minicargo
+
+                cp ${chainRootSrcTarball} ./rustc-${version}-src.tar.gz
+                make RUSTCSRC
+
+                make -f minicargo.mk LIBS
+                RUSTC_INSTALL_BINDIR=bin make -f minicargo.mk output${vmeta.outdirSuf}/rustc
+                LIBGIT2_SYS_USE_PKG_CONFIG=${if vmeta.libgit2PkgConfig then "1" else "0"} \
+                  make -f minicargo.mk output${vmeta.outdirSuf}/cargo
+
+                # Full self-hosting ladder: Stage 1 (mrustc-built std sanity),
+                # Stage 2 (std via cargo), Stage 3 (rustc + cargo + final std
+                # with matching symbol hashes). Cargo-driven, so it can take
+                # real parallelism.
+                make -C run_rustc RUSTC_VERSION=${version} RUSTC_TARGET=${rustcTarget} \
+                  PARLEVEL=''${NIX_BUILD_CORES:-8} all
+
+                runHook postBuild
+              '';
+
+              installPhase = ''
+                runHook preInstall
+                mkdir -p $out
+                cp -r run_rustc/output${vmeta.outdirSuf}/prefix/. $out/
+                # cargo_home/config points at the (deleted) build tree's vendor
+                # dir; tmp is scratch. Neither survives relocation meaningfully.
+                rm -rf $out/cargo_home $out/tmp
+                # The generated bin/rustc wrapper bakes absolute build paths in
+                # LD_LIBRARY_PATH; regenerate it against $out.
+                rm -f $out/bin/rustc
+                cat > $out/bin/rustc <<WRAPPER
+                #!/bin/sh
+                d="\$(cd "\$(dirname "\$0")" && pwd)"
+                LD_LIBRARY_PATH="$out/lib:$out/lib/rustlib/${rustcTarget}/lib\''${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}" exec "\$d/rustc_binary" "\$@"
+                WRAPPER
+                chmod +x $out/bin/rustc
+                $out/bin/rustc --version
+                runHook postInstall
+              '';
+
+              meta = {
+                description = "Complete mrustc-bootstrapped rustc ${version} toolchain (relocatable run_rustc prefix; x.py stage0 for the chained builds)";
+                license = lib.licenses.mit;
+                platforms = [ "x86_64-linux" ];
+              };
+            };
+
+          # One chained stage: build rustc ${entry.version} with the PREVIOUS
+          # stage's toolchain as x.py stage0, install the stage-2 toolchain
+          # (rustc + std + cargo) into $out. Per-version fix patches live in
+          # chain-patches/<version>/ (applied in sorted order when present);
+          # keep one concern per patch. An entry may set
+          # `llvmPackage = "llvmPackages_NN"` to link against nixpkgs
+          # LLVM instead of building the in-tree one (hours faster, but only
+          # when the versions actually match — verify before flipping).
+          mkChainStage =
+            prevToolchain: entry:
+            let
+              srcTarball = mkRustcSrc {
+                version = entry.version;
+                hash = entry.srcHash;
+              };
+              patchDir = ./chain-patches + "/${entry.version}";
+              stagePatches =
+                if builtins.pathExists patchDir then
+                  map (f: patchDir + "/${f}") (builtins.sort builtins.lessThan (builtins.attrNames (builtins.readDir patchDir)))
+                else
+                  [ ];
+            in
+            pkgs.stdenv.mkDerivation {
+              pname = "rustc-${entry.version}-chained";
+              version = entry.version;
+              src = srcTarball;
+              sourceRoot = "rustc-${entry.version}-src";
+              patches = stagePatches;
+
+              nativeBuildInputs = with pkgs; [
+                autoPatchelfHook
+                python3
+                cmake
+                ninja
+                pkg-config
+                gitMinimal
+                which
+              ];
+              buildInputs = chainRuntimeInputs;
+
+              configurePhase = ''
+                runHook preConfigure
+                export HOME="$TMPDIR"
+                cat > config.toml <<EOF
+                [build]
+                rustc = "${prevToolchain}/bin/rustc"
+                cargo = "${prevToolchain}/bin/cargo"
+                vendor = true
+                extended = true
+                tools = ["cargo"]
+                docs = false
+                full-bootstrap = false
+
+                [install]
+                prefix = "$out"
+                sysconfdir = "etc"
+
+                [llvm]
+                ninja = true
+                download-ci-llvm = false
+                ${lib.optionalString (entry ? llvmPackage) ''
+                  [target.${rustcTarget}]
+                  llvm-config = "${pkgs.${entry.llvmPackage}.llvm.dev}/bin/llvm-config"
+                ''}
+                [rust]
+                channel = "stable"
+                EOF
+                runHook postConfigure
+              '';
+
+              buildPhase = ''
+                runHook preBuild
+                python3 x.py install --stage 2 -j ''${NIX_BUILD_CORES:-8}
+                runHook postBuild
+              '';
+
+              # x.py install already populated $out. autoPatchelf runs during
+              # fixup; expose the same runtime closure to this earlier smoke.
+              installPhase = ''
+                runHook preInstall
+                export LD_LIBRARY_PATH="${lib.makeLibraryPath chainRuntimeInputs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+                $out/bin/rustc --version | grep -F "${entry.version}"
+                printf 'fn main() { println!("Hello, world!"); }\n' > "$TMPDIR/hw.rs"
+                $out/bin/rustc "$TMPDIR/hw.rs" -o "$TMPDIR/hw"
+                helloWorldOutput="$("$TMPDIR/hw")"
+                test "$helloWorldOutput" = "Hello, world!"
+                runHook postInstall
+              '';
+
+              meta = {
+                description = "rustc ${entry.version} + cargo, chain-built from rustc ${entry.prev} (mrustc bootstrap ancestry)";
+                license = with lib.licenses; [
+                  mit
+                  asl20
+                ];
+                platforms = [ "x86_64-linux" ];
+              };
+            };
+
+          chainPkgs = lib.optionalAttrs chainSupported (
+            let
+              folded = lib.foldl (
+                acc: entry:
+                let
+                  drv = mkChainStage acc.prev entry;
+                in
+                {
+                  prev = drv;
+                  pkgs = acc.pkgs // {
+                    "rustc-${entry.version}-chained" = drv;
+                  };
+                }
+              ) { prev = stage0Toolchain; pkgs = { }; } chainRegistry.chain;
+            in
+            folded.pkgs
+            // {
+              "rustc-${chainRegistry.root}-toolchain" = stage0Toolchain;
+              # The chain tip — what "the latest rustc via mrustc" resolves to.
+              rustc-chain-target = folded.prev;
+              # Stable user-facing selectors for the current chain tip.
+              "${chainTip.version}" = folded.prev;
+              latest = folded.prev;
+            }
+          );
+
+          # Nix splits attr paths on `.`, so `.#1.97.1` resolves as 1 -> 97 -> 1.
+          # Keep the release-string names, add `_` aliases: `nix build .#1_97_1`.
+          withDotFreeAliases = attrs:
+            attrs // lib.mapAttrs' (n: lib.nameValuePair (builtins.replaceStrings [ "." ] [ "_" ] n))
+              (lib.filterAttrs (n: _: lib.hasInfix "." n) attrs);
+
+          basePackages = directVersionPkgs // chainPkgs // {
+            mrustc-tools = mrustcTools;
+            default = chainPkgs.latest or defaultPkg;
+          };
+
+          baseChecks = directVersionPkgs // {
             mrustc-tools = mrustcTools;
           };
+
+        in
+        {
+          # Chain stages are packages but deliberately NOT checks: each is a
+          # multi-hour toolchain build, and `nix flake check` must stay usable.
+          packages = withDotFreeAliases basePackages;
+
+          checks = withDotFreeAliases baseChecks;
 
           devShells.default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
@@ -305,7 +611,7 @@
             LEGACY_CXX = "${pkgsLegacy.gcc9Stdenv.cc}/bin/g++";
             LEGACY_OPENSSL = "${pkgsLegacy.openssl_1_1.dev}";
             shellHook = ''
-              echo "mrustc dev shell: run e.g. 'make', './build-1.90.0.sh', or"
+              echo "mrustc dev shell: run e.g. 'make', './build-1.97.1.sh', or"
               echo "  RUSTC_VERSION=1.29.0 MRUSTC_TARGET_VER=1.29 OUTDIR_SUF=-1.29.0 make -f minicargo.mk LIBS"
               echo "by hand."
               echo "For 1.19.0/1.29.0/1.39.0/1.54.0 (old bundled LLVM; 1.19.0/1.29.0 also need old"

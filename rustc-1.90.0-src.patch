@@ -8,10 +8,7 @@
      use rustc_data_structures::static_assert_size;
 --- compiler/rustc_errors/src/lib.rs
 +++ compiler/rustc_errors/src/lib.rs
-@@ -102,5 +102,6 @@
- // `PResult` is used a lot. Make sure it doesn't unintentionally get bigger.
- #[cfg(target_pointer_width = "64")]
- rustc_data_structures::static_assert_size!(PResult<'_, ()>, 24);
+@@ -105,2 +105,3 @@
 +#[cfg(not(rust_compiler="mrustc"))]
  #[cfg(target_pointer_width = "64")]
  rustc_data_structures::static_assert_size!(PResult<'_, bool>, 24);
@@ -24,12 +21,21 @@
  rustc_data_structures::static_assert_size!(Parser<'_>, 288);
 --- compiler/rustc_middle/src/ty/sty.rs
 +++ compiler/rustc_middle/src/ty/sty.rs
-@@ -2026,4 +2026,4 @@
+@@ -2024,11 +2024,11 @@
+ }
+-
++
  impl<'tcx> rustc_type_ir::inherent::Tys<TyCtxt<'tcx>> for &'tcx ty::List<Ty<'tcx>> {
      fn inputs(self) -> &'tcx [Ty<'tcx>] {
 -        self.split_last().unwrap().1
 +        (**self).split_last().unwrap().1
      }
+-
++
+     fn output(self) -> Ty<'tcx> {
+         *self.split_last().unwrap().0
+     }
+ }
 --- compiler/rustc_middle/src/ty/generic_args.rs
 +++ compiler/rustc_middle/src/ty/generic_args.rs
 @@ -703,7 +703,7 @@
