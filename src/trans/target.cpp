@@ -69,8 +69,10 @@ const TargetArch ARCH_POWERPC64LE = {
 const TargetArch ARCH_POWERPC = {
     "powerpc",
     32, true,
-    // 8-byte atomics are lock-based via libatomic here, but still available: cfg'ing out AtomicU64 breaks libstd.
-    { /*atomic(u8)=*/true, true, true, true,  true },
+    // NOTE: No AtomicU64 - ppc32 has no 8-byte atomic instructions, and libatomic's fallback takes a
+    // lock, which would break std's documented guarantee that available atomic types are lock-free.
+    // Matches rustc, where every 32-bit powerpc target sets `max_atomic_width: Some(32)`.
+    { /*atomic(u8)=*/true, true, true, false,  true },
     TargetArch::Alignments(2, 4, 8, 8, 4, 8, 4)
 };
 const TargetArch ARCH_RISCV64 = {
@@ -635,9 +637,8 @@ namespace
         else if(target_name == "powerpc-apple-darwin")
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
-            // NOTE: 32-bit PowerPC needs libatomic for the 8-byte atomics (see ARCH_POWERPC)
             return TargetSpec {
-                "unix", "macos", "", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {}, {"-l", "atomic"}},
+                "unix", "macos", "", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {}},
                 ARCH_POWERPC
                 };
         }

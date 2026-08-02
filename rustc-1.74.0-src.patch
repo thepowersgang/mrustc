@@ -175,3 +175,80 @@
          not(miri),
      ))] {
          mod darwin;
+
+# The mach_timebase_info cache was a single AtomicU64 - the only AtomicU64 use in
+# libstd without a target_has_atomic fallback. Split it into two AtomicU32s
+# (denom==0 is the uninitialized sentinel; numer is published by the Release store
+# of denom) so libstd builds on targets without 64-bit atomics (32-bit PowerPC).
+--- library/std/src/sys/unix/time.rs
++++ library/std/src/sys/unix/time.rs
+@@ -223,7 +223,7 @@
+     target_os = "tvos"
+ ))]
+ mod inner {
+-    use crate::sync::atomic::{AtomicU64, Ordering};
++    use crate::sync::atomic::{AtomicU32, Ordering};
+     use crate::sys::cvt;
+     use crate::sys_common::mul_div_u64;
+     use crate::time::Duration;
+@@ -298,19 +298,21 @@
+     }
+ 
+     fn info() -> mach_timebase_info {
+-        // INFO_BITS conceptually is an `Option<mach_timebase_info>`. We can do
+-        // this in 64 bits because we know 0 is never a valid value for the
+-        // `denom` field.
++        // The numer/denom pair is cached in two `AtomicU32`s: `denom == 0`
++        // marks an uninitialized value - we know 0 is never a valid `denom`.
+         //
+-        // Encoding this as a single `AtomicU64` allows us to use `Relaxed`
+-        // operations, as we are only interested in the effects on a single
+-        // memory location.
+-        static INFO_BITS: AtomicU64 = AtomicU64::new(0);
+-
+-        // If a previous thread has initialized `INFO_BITS`, use it.
+-        let info_bits = INFO_BITS.load(Ordering::Relaxed);
+-        if info_bits != 0 {
+-            return info_from_bits(info_bits);
++        // The `numer` store happens-before the `denom` Release store, so a
++        // thread that Acquire-loads a non-zero `denom` also observes the
++        // matching `numer`; racing initializers all write the same values.
++        // (Two 32-bit atomics rather than one `AtomicU64`, so that this also
++        // works on targets without 64-bit atomics, e.g. 32-bit PowerPC.)
++        static INFO_NUMER: AtomicU32 = AtomicU32::new(0);
++        static INFO_DENOM: AtomicU32 = AtomicU32::new(0);
++
++        // If a previous thread has initialized these, use them.
++        let denom = INFO_DENOM.load(Ordering::Acquire);
++        if denom != 0 {
++            return mach_timebase_info { numer: INFO_NUMER.load(Ordering::Relaxed), denom };
+         }
+ 
+         // ... otherwise learn for ourselves ...
+@@ -318,23 +320,14 @@
+             fn mach_timebase_info(info: mach_timebase_info_t) -> kern_return_t;
+         }
+ 
+-        let mut info = info_from_bits(0);
++        let mut info = mach_timebase_info { numer: 0, denom: 0 };
+         unsafe {
+             mach_timebase_info(&mut info);
+         }
+-        INFO_BITS.store(info_to_bits(info), Ordering::Relaxed);
++        INFO_NUMER.store(info.numer, Ordering::Relaxed);
++        INFO_DENOM.store(info.denom, Ordering::Release);
+         info
+     }
+-
+-    #[inline]
+-    fn info_to_bits(info: mach_timebase_info) -> u64 {
+-        ((info.denom as u64) << 32) | (info.numer as u64)
+-    }
+-
+-    #[inline]
+-    fn info_from_bits(bits: u64) -> mach_timebase_info {
+-        mach_timebase_info { numer: bits as u32, denom: (bits >> 32) as u32 }
+-    }
+ }
+ 
+ #[cfg(not(any(
