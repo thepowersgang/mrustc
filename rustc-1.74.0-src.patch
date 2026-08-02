@@ -161,17 +161,18 @@
                  crate::sys::unix::os::set_errno(libc::ENOSYS);
                  crate::ptr::null_mut()
 
-# The Darwin thread parker needs libdispatch (10.6+); powerpc-apple-darwin is 10.4/10.5, so use the generic pthread parker.
+# The Darwin thread parker needs libdispatch (10.6+); deployment targets older than that
+# opt out via `--cfg no_libdispatch` (set in the powerpc build_std script override).
 --- library/std/src/sys/unix/thread_parking/mod.rs
 +++ library/std/src/sys/unix/thread_parking/mod.rs
 @@ -18,6 +18,10 @@
              target_os = "watchos",
              target_os = "tvos",
          ),
-+        // The Darwin parker is built on libdispatch, which is 10.6+.
-+        // powerpc-apple-darwin is by definition 10.4/10.5, so it falls through
-+        // to the generic pthread parker.
-+        not(target_arch = "powerpc"),
++        // The Darwin parker is built on libdispatch, which is 10.6+. Deployment targets
++        // older than that set `--cfg no_libdispatch` (see the build_std script override
++        // for powerpc, which targets 10.4/10.5) to get the generic pthread parker.
++        not(no_libdispatch),
          not(miri),
      ))] {
          mod darwin;
