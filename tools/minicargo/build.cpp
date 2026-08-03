@@ -399,6 +399,8 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                     ::std::cerr << "ASSERTION Failed: items_notbuilt.find('"<<k<<"') != items_notbuilt.end" <<std::endl;
                     abort();
                 }
+                // Still record the edge: under deferred codegen a clean transpile can have a live codegen job the dependent must wait for.
+                job_deps.push_back(k);
                 // This crate's output is older than the dependency, force a rebuild
                 return output_ts < it->second;
             }
