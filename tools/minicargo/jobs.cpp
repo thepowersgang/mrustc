@@ -112,7 +112,13 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
     // Remove previously completed jobs after sorting
     {
         auto new_end = std::remove_if(this->waiting_jobs.begin(), this->waiting_jobs.end(),
-            [](const std::unique_ptr<Job>& a) { return a->is_already_complete(); });
+            [this](const std::unique_ptr<Job>& a) {
+                if( !a->is_already_complete() )
+                    return false;
+                // Record the name: a still-dirty child (e.g. a deferred codegen job whose .o is missing) may be waiting on this job.
+                this->completed_jobs.insert(a->name());
+                return true;
+            });
         this->waiting_jobs.erase(new_end, this->waiting_jobs.end());
     }
     #endif
