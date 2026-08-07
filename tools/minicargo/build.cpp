@@ -743,7 +743,8 @@ namespace {
     {
         env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
         env.push_back("CARGO_PKG_NAME", manifest.name());
-        env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+        // Full form: build scripts derive identifiers from this
+        env.push_back("CARGO_PKG_VERSION", manifest.version().to_string_full());
         env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
         env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
         env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
