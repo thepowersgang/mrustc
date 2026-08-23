@@ -36,7 +36,8 @@ struct PackageVersion
     unsigned minor;
     unsigned patch;
     bool patch_set;
-    std::string free_text;
+    std::string free_text;  // Semver `+build`
+    std::string prerelease; // Semver `-prerelease`; not part of ordering
 
     explicit PackageVersion()
         : major(0), minor(0), patch(0), patch_set(false) {}
@@ -113,6 +114,18 @@ struct PackageVersion
             os << "+" << v.free_text;
         }
         return os;
+    }
+
+    /// Full version string, for CARGO_PKG_VERSION (`operator<<` feeds crate tags)
+    std::string to_string_full() const {
+        std::string rv = std::to_string(major) + "." + std::to_string(minor);
+        if(patch_set)
+            rv += "." + std::to_string(patch);
+        if(!prerelease.empty())
+            rv += "-" + prerelease;
+        if(!free_text.empty())
+            rv += "+" + free_text;
+        return rv;
     }
 };
 struct PackageVersionSpec

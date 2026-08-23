@@ -1560,7 +1560,15 @@ PackageVersion PackageVersion::from_string(const ::std::string& s)
         rv.patch = 0;
         rv.patch_set = false;
     }
-    if(iss.peek() == '+') {
+    // Semver is `-prerelease` then `+build`
+    if(iss.peek() == '-') {
+        iss.get();
+        ::std::getline(iss, rv.prerelease, '+');
+        if(!iss.eof()) {   // getline ate the '+'
+            iss >> rv.free_text;
+        }
+    }
+    else if(iss.peek() == '+') {
         iss.get();
         iss >> rv.free_text;
     }
