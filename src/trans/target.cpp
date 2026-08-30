@@ -69,8 +69,10 @@ const TargetArch ARCH_POWERPC64LE = {
 const TargetArch ARCH_POWERPC = {
     "powerpc",
     32, true,
-    // 8-byte atomics are lock-based via libatomic here, but still available: cfg'ing out AtomicU64 breaks libstd.
-    { /*atomic(u8)=*/true, true, true, true,  true },
+    // NOTE: No AtomicU64 - ppc32 has no 8-byte atomic instructions, and libatomic's fallback takes a
+    // lock, which would break std's documented guarantee that available atomic types are lock-free.
+    // Matches rustc, where every 32-bit powerpc target sets `max_atomic_width: Some(32)`.
+    { /*atomic(u8)=*/true, true, true, false,  true },
     TargetArch::Alignments(2, 4, 8, 8, 4, 8, 4)
 };
 const TargetArch ARCH_RISCV64 = {
@@ -635,9 +637,8 @@ namespace
         else if(target_name == "powerpc-apple-darwin")
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
-            // NOTE: 32-bit PowerPC needs libatomic for the 8-byte atomics (see ARCH_POWERPC)
             return TargetSpec {
-                "unix", "macos", "", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {}, {"-l", "atomic"}},
+                "unix", "macos", "", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {}},
                 ARCH_POWERPC
                 };
         }
@@ -675,6 +676,13 @@ namespace
 const TargetSpec& Target_GetCurSpec()
 {
     return g_target;
+}
+bool Target_IsDarwinPPC32()
+{
+    // NOTE: Only Darwin uses the "power" alignment rules implemented here. 32-bit PowerPC
+    // linux/BSD use different rules (`long long` keeps 8-byte alignment, only `double` is
+    // capped), and 64-bit Darwin uses natural alignment.
+    return g_target.m_arch.m_name == "powerpc" && g_target.m_os_name == "macos";
 }
 void Target_ExportCurSpec(const ::std::string& filename)
 {
@@ -983,26 +991,10 @@ namespace {
         size_t  size;
         size_t  align;
         HIR::TypeRef    ty;
-        /// `align` came from an explicit `repr(align(N))` somewhere inside `ty`.
-        bool    user_align = false;
     };
     ::std::ostream& operator<<(std::ostream& os, const Ent& e) {
-        os << "Ent { #" << e.field << ": s=" << e.size << " a=" << e.align << (e.user_align ? "!" : "") << " : " << e.ty << " }";
+        os << "Ent { #" << e.field << ": s=" << e.size << " a=" << e.align << " : " << e.ty << " }";
         return os;
-    }
-
-    bool make_field_ent(const Span& sp, const StaticTraitResolve& resolve, unsigned idx, ::HIR::TypeRef ty, Ent& out)
-    {
-        size_t  size, align;
-        if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size, align) )
-        {
-            DEBUG("Can't get size/align of " << ty);
-            return false;
-        }
-        out = Ent { idx, size, align, HIR::TypeRef(), false };
-        out.user_align = Target_TypeHasUserAlignment(sp, resolve, ty);
-        out.ty = mv$(ty);
-        return true;
     }
     bool struct_enumerate_fields(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, ::std::vector<Ent>& ents)
     {
@@ -1020,24 +1012,30 @@ namespace {
             unsigned int idx = 0;
             for(const auto& e : se)
             {
-                Ent ent;
-                if( !make_field_ent(sp, resolve, idx, monomorph(e.ent), ent) )
+                auto ty = monomorph(e.ent);
+                size_t  size, align;
+                if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
+                {
+                    DEBUG("Can't get size/align of " << ty);
                     return false;
-                DEBUG("#" << idx << ": " << ent);
-                idx ++;
-                ents.push_back(mv$(ent));
+                }
+                DEBUG("#" << idx << ": s=" << size << ",a=" << align << " " << ty);
+                ents.push_back(Ent { idx++, size, align, mv$(ty) });
             }
             }
         TU_ARMA(Named, se) {
             unsigned int idx = 0;
             for(const auto& e : se)
             {
-                Ent ent;
-                if( !make_field_ent(sp, resolve, idx, monomorph(e.ty), ent) )
+                auto ty = monomorph(e.ty);
+                size_t  size, align;
+                if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
+                {
+                    DEBUG("Can't get size/align of " << ty);
                     return false;
-                DEBUG("#" << idx << " " << e.name << ": " << ent);
-                idx ++;
-                ents.push_back(mv$(ent));
+                }
+                DEBUG("#" << idx << " " << e.name << ": s=" << size << ",a=" << align << " " << ty);
+                ents.push_back(Ent { idx++, size, align, mv$(ty) });
             }
             }
         }
@@ -1056,10 +1054,204 @@ namespace {
     bool sortfn_struct_fields(const Ent& a, const Ent& b) {
         return a.align != b.align ? a.align < b.align : a.size < b.size;
     }
+
+    // --- Darwin PowerPC 32-bit "power" alignment ---
+    // The Mac OS X 32-bit PowerPC ABI (GCC >= 4.3: `ADJUST_FIELD_ALIGN` in config/rs6000/darwin.h
+    // and `darwin_rs6000_special_round_type_align` in rs6000.cc) differs from natural alignment:
+    // - Any field with alignment 8 is placed with 4-byte alignment instead. 16-byte items keep
+    //   their alignment, as do types with an explicit alignment attribute (DECL_USER_ALIGN).
+    // - The total alignment of a struct/union is raised to the natural alignment of the
+    //   "innermost first field": descend into the first emitted member of each aggregate
+    //   (stripping arrays) until a scalar is reached.
+    // The generated C must be laid out identically by the C compiler, so these rules are
+    // replicated here exactly (including which fields codegen_c emits, e.g. ZST struct fields
+    // are omitted from the C source).
+
+    /// Is `TYPE_USER_ALIGN` set on the C type emitted for `ty`?
+    /// True when the emitted type carries an explicit `__attribute__((aligned))` (mirrors
+    /// `has_manual_align` in codegen_c's emit_struct_inner), and ALSO when any emitted
+    /// member (at any depth) does: GCC propagates user alignment upwards through
+    /// containing records/unions (`TYPE_USER_ALIGN (rli->t) |= user_align` in
+    /// stor-layout.cc's update_alignment_for_field, DECL_USER_ALIGN being inherited from
+    /// the member type via do_type_align; arrays inherit it from their element in
+    /// layout_type). A user-aligned field is exempt from the `ADJUST_FIELD_ALIGN` cap,
+    /// so this propagation defeats the Darwin 8->4 capping transitively - e.g.
+    /// `ArcInner<MaybeUninit<T>>` where `T` is `repr(align(8))`.
+    bool darwin_ppc32_type_has_c_user_align(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& in_ty, unsigned depth = 0)
+    {
+        // (depth limited out of caution; types can't actually recurse by value)
+        if( depth > 64 )
+            return false;
+        // Arrays inherit the element type's user alignment
+        const auto* cur = &in_ty;
+        while(true)
+        {
+            if(const auto* te = cur->data().opt_Array())        { cur = &te->inner; }
+            else if(const auto* te = cur->data().opt_Slice())   { cur = &te->inner; }
+            else break;
+        }
+        const auto& t = *cur;
+
+        // Which checks apply to this aggregate:
+        // - structs/tuples can carry the attribute themselves (ZST-carrier or align
+        //   mismatch - the emit_struct_inner conditions)
+        // - unions/enums never carry an attribute, but propagation from members applies
+        // - ZST struct fields are not emitted in the C source, so they can't propagate;
+        //   union members are all emitted (see emit_union), enum DATA unions skip ZST
+        //   variants
+        bool self_attr = false;
+        bool zst_members = false;
+        if( t.data().is_Tuple() )
+        {
+            if( t.data().as_Tuple().size() == 0 )
+                return false;
+            self_attr = true;
+        }
+        else if( t.data().is_Path() && t.data().as_Path().binding.is_Struct() )
+        {
+            const auto& str = *t.data().as_Path().binding.as_Struct();
+            // repr(align(N)) is emitted as an explicit alignment attribute
+            if( str.m_forced_alignment > 0 )
+                return true;
+            // Packed structs are emitted with `#pragma pack` instead (and rustc's E0588
+            // rejects user-aligned types inside packed ones, so no propagation either)
+            if( str.m_max_field_alignment > 0 )
+                return false;
+            self_attr = true;
+        }
+        else if( t.data().is_Path() && t.data().as_Path().binding.is_Union() )
+        {
+            zst_members = true;
+        }
+        else if( t.data().is_Path() && t.data().as_Path().binding.is_Enum() )
+        {
+        }
+        else
+        {
+            // Scalars/pointers have no user alignment
+            return false;
+        }
+        const auto* repr = Target_GetTypeRepr(sp, resolve, t);
+        if( !repr )
+            return false;
+        size_t max_field_align = 0;
+        for(const auto& f : repr->fields)
+        {
+            size_t sz = 0, al = 0;
+            if( !Target_GetSizeAndAlignOf(sp, resolve, f.ty, sz, al) )
+                continue;
+            // An explicit attribute is emitted when a ZST field carries the alignment
+            if( self_attr && sz == 0 && al == repr->align && al > 0 )
+                return true;
+            max_field_align = ::std::max(max_field_align, al);
+            // GCC's upward propagation from emitted members
+            if( (sz != 0 || zst_members) && darwin_ppc32_type_has_c_user_align(sp, resolve, f.ty, depth+1) )
+                return true;
+        }
+        // An explicit attribute is emitted when the computed alignment doesn't match the
+        // largest field alignment
+        return self_attr && max_field_align != repr->align;
+    }
+
+    /// Which member of this type's repr is emitted first in the generated C source?
+    /// (mirrors the ordering in codegen_c's emit_struct_inner/emit_union/emit_enum)
+    const ::HIR::TypeRef* darwin_ppc32_repr_first_emitted_field(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, const TypeRepr& repr)
+    {
+        if( repr.fields.empty() )
+            return nullptr;
+        if( ty.data().is_Path() && ty.data().as_Path().binding.is_Enum() )
+        {
+            // NonZero-optimised enums emit `struct { <non-zero variant> } DATA;`
+            if( const auto* ve = repr.variants.opt_NonZero() )
+            {
+                return &repr.fields.at(1 - ve->zero_variant).ty;
+            }
+            // Single field: either a value enum (TAG) or a single variant
+            if( repr.fields.size() == 1 )
+            {
+                return &repr.fields[0].ty;
+            }
+            for(size_t i = 1; i < repr.fields.size(); i ++)
+            {
+                if( repr.fields[i].offset != repr.fields[0].offset )
+                {
+                    // External tag: emitted before the data union
+                    return &repr.fields.back().ty;
+                }
+            }
+            // Embedded tag: the data union is emitted first; its first member is the first
+            // non-zero-sized field (ZST variants are skipped in the emitted union)
+            for(const auto& f : repr.fields)
+            {
+                size_t sz = 0, al = 0;
+                if( Target_GetSizeAndAlignOf(sp, resolve, f.ty, sz, al) && sz != 0 )
+                    return &f.ty;
+            }
+            return nullptr;
+        }
+        if( ty.data().is_Path() && ty.data().as_Path().binding.is_Union() )
+        {
+            // emit_union emits all members in declaration order (even zero-sized ones)
+            return &repr.fields[0].ty;
+        }
+        // Structs and tuples: fields are emitted in offset order, ZST fields are not emitted
+        const TypeRepr::Field* best = nullptr;
+        for(const auto& f : repr.fields)
+        {
+            size_t sz = 0, al = 0;
+            if( !Target_GetSizeAndAlignOf(sp, resolve, f.ty, sz, al) )
+                continue;
+            if( sz == 0 )
+                continue;
+            if( !best || f.offset < best->offset )
+                best = &f;
+        }
+        return best ? &best->ty : nullptr;
+    }
+
+    /// The natural alignment of the "innermost first field" of a type, as GCC's
+    /// `darwin_rs6000_special_round_type_align` computes it.
+    size_t darwin_ppc32_first_field_align(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& in_ty)
+    {
+        const auto* cur = &in_ty;
+        // (depth limited out of caution; types can't actually recurse by value)
+        for(unsigned depth = 0; depth < 64 && cur; depth ++)
+        {
+            // Strip arrays
+            while(true)
+            {
+                if(const auto* te = cur->data().opt_Array())        { cur = &te->inner; }
+                else if(const auto* te = cur->data().opt_Slice())   { cur = &te->inner; }
+                else break;
+            }
+            const auto& t = *cur;
+            bool is_composite = t.data().is_Tuple()
+                || (t.data().is_Path() && (
+                       t.data().as_Path().binding.is_Struct()
+                    || t.data().as_Path().binding.is_Union()
+                    || t.data().as_Path().binding.is_Enum()
+                    ));
+            if( !is_composite )
+            {
+                // A scalar (or pointer/...): return its natural alignment.
+                // NOTE: u128 is emitted as `struct { uint64_t lo, hi; }`, for which the C
+                // compiler would derive 8 via `lo` - matching the spec alignment returned here.
+                size_t sz = 0, al = 0;
+                if( !Target_GetSizeAndAlignOf(sp, resolve, t, sz, al) )
+                    return 1;
+                return al > 0 ? al : 1;
+            }
+            const auto* repr = Target_GetTypeRepr(sp, resolve, t);
+            if( !repr )
+                return 1;
+            cur = darwin_ppc32_repr_first_emitted_field(sp, resolve, t, *repr);
+        }
+        return 1;
+    }
     /// Generate a struct representation using the provided entries
     /// 
     /// - Handles (optional) sorting and packing
-    ::std::unique_ptr<TypeRepr> make_type_repr_struct__inner(const Span&sp, const ::HIR::TypeRef& ty, ::std::vector<Ent>& ents, StructSorting sorting, unsigned forced_alignment, unsigned max_alignment)
+    ::std::unique_ptr<TypeRepr> make_type_repr_struct__inner(const Span&sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, ::std::vector<Ent>& ents, StructSorting sorting, unsigned forced_alignment, unsigned max_alignment)
     {
         if(ents.size() > 0)
         {
@@ -1087,28 +1279,21 @@ namespace {
         TypeRepr  rv;
         size_t  cur_ofs = 0;
         size_t  max_align = 1;
-        bool is_first_field = true;
         for(auto& e : ents)
         {
             auto align = e.align;
 
-            // PowerPC 32-bit ABI
-            // First element uses natural alignment, subsequent elements with natural alignment
-            // >= 4 and up to 8 use embedding = 4. Skip ZST.
-            // The cap is on natural alignment only: an explicitly aligned member keeps it, as in gcc.
-            if(Target_CapsMemberAlignment())
+            // Darwin PowerPC 32-bit: fields with alignment 8 are placed with 4-byte alignment
+            // (GCC `ADJUST_FIELD_ALIGN`), unless the type carries an explicit alignment
+            // attribute. ZST entries keep their alignment: they aren't emitted in the C source,
+            // and codegen forces the resulting struct alignment via `__attribute__((aligned))`.
+            // The total alignment is fixed up after this loop.
+            if( Target_IsDarwinPPC32() )
             {
-                if ( e.size > 0 )
+                if( e.size > 0 && align == 8 && !darwin_ppc32_type_has_c_user_align(sp, resolve, e.ty) )
                 {
-                    if( !is_first_field && !e.user_align && align >= 4 && align <= 8 )
-                    {
-                        align = 4;
-                    }
-                    is_first_field = false;
+                    align = 4;
                 }
-            }
-            if( e.user_align ) {
-                rv.user_align = true;
             }
 
             // Increase offset to fit alignment
@@ -1142,10 +1327,22 @@ namespace {
                 cur_ofs += e.size;
             }
         }
+        // Darwin PowerPC 32-bit: the alignment of a record is raised to the natural alignment of
+        // its innermost first field (GCC `darwin_rs6000_special_round_type_align`). Not applied
+        // to packed structs. ZST fields are skipped, as they aren't emitted in the C source.
+        if( Target_IsDarwinPPC32() && max_alignment == 0 )
+        {
+            for(const auto& e : ents)
+            {
+                if( e.field != ~0u && e.size != 0 )
+                {
+                    max_align = ::std::max(max_align, darwin_ppc32_first_field_align(sp, resolve, e.ty));
+                    break;
+                }
+            }
+        }
         if(forced_alignment > 0) {
             max_align = std::max(max_align, static_cast<size_t>(forced_alignment));
-            // `repr(align(N))` - this is the root of a user-alignment chain.
-            rv.user_align = true;
         }
         // If not packing (and the size isn't infinite/unsized) then round the size up to the alignment
         if( cur_ofs != SIZE_MAX )
@@ -1212,11 +1409,13 @@ namespace {
             unsigned int idx = 0;
             for(const auto& t : *te)
             {
-                Ent ent;
-                if( !make_field_ent(sp, resolve, idx, t.clone(), ent) )
+                size_t  size, align;
+                if( !Target_GetSizeAndAlignOf(sp, resolve, t, size,align) )
+                {
+                    DEBUG("Can't get size/align of " << t);
                     return nullptr;
-                idx ++;
-                ents.push_back(mv$(ent));
+                }
+                ents.push_back(Ent { idx++, size, align, t.clone() });
             }
             sorting = StructSorting::All;
         }
@@ -1225,7 +1424,7 @@ namespace {
             BUG(sp, "Unexpected type in creating type repr - " << ty);
         }
 
-        return make_type_repr_struct__inner(sp, ty, ents, sorting, forced_alignment, max_alignment);
+        return make_type_repr_struct__inner(sp, resolve, ty, ents, sorting, forced_alignment, max_alignment);
     }
 
 
@@ -1723,7 +1922,7 @@ namespace {
                         std::vector< std::unique_ptr<TypeRepr> >    reprs;
                         for( size_t i = 0; i < variants.size(); i ++ )
                         {
-                            reprs.push_back( make_type_repr_struct__inner(sp, e[i].type, variants[i].ents, StructSorting::All, 0,0) );
+                            reprs.push_back( make_type_repr_struct__inner(sp, resolve, e[i].type, variants[i].ents, StructSorting::All, 0,0) );
                             max_align = std::max(max_align, reprs.back()->align);
                             size_t var_size = reprs.back()->size;
                             // If larger than current max, update current max and reset
@@ -1864,9 +2063,6 @@ namespace {
                             // Generate raw struct reprs for all variants
                             // - Add `non_niche_offset` to all variants
                             assert(reprs.size() == variants.size());
-                            // Size/alignment of the union of the *final* variant layouts, which is what codegen emits.
-                            size_t final_size = 0;
-                            size_t final_align = 1;
                             for(size_t i = 0; i < reprs.size(); i ++)
                             {
                                 if( e[i].type != HIR::TypeRef::new_unit() )
@@ -1888,13 +2084,15 @@ namespace {
                                             TODO(sp, "Handle adding padding");
                                         }
                                         // Add the tag
+                                        // NOTE: Any target-specific field alignment adjustment happens in
+                                        // make_type_repr_struct__inner - insert with the natural alignment here
                                         variants[i].ents.insert( variants[i].ents.begin(), Ent() );
                                         variants[i].ents[0].align = niche_path.size;
                                         variants[i].ents[0].size = niche_path.size;
                                         variants[i].ents[0].field = variants[i].ents.size() - 1;
                                         variants[i].ents[0].ty = niche_ty.clone();
                                         // Create the new repr
-                                        reprs[i] = make_type_repr_struct__inner(sp, variants[i].type, variants[i].ents, StructSorting::None, 0,0);
+                                        reprs[i] = make_type_repr_struct__inner(sp, resolve, variants[i].type, variants[i].ents, StructSorting::None, 0,0);
                                         // Make sure that the newly calculated repr doesn't change the size/alignment
                                         assert(reprs[i]->size <= max_size);
                                         assert(reprs[i]->align <= max_align);
@@ -1928,43 +2126,24 @@ namespace {
                                         variants[i].ents.back().field = tag_fld_idx;
                                         variants[i].ents.back().ty = niche_ty.clone();
                                         // Create the new repr
-                                        reprs[i] = make_type_repr_struct__inner(sp, variants[i].type, variants[i].ents, StructSorting::None, 0,0);
+                                        reprs[i] = make_type_repr_struct__inner(sp, resolve, variants[i].type, variants[i].ents, StructSorting::None, 0,0);
                                         // Make sure that the newly calculated repr doesn't change the size/alignment
                                         assert(reprs[i]->size <= max_size);
                                         assert(reprs[i]->align <= max_align);
                                     }
-                                    final_size  = std::max(final_size , reprs[i]->size );
-                                    final_align = std::max(final_align, reprs[i]->align);
                                     set_type_repr(sp, variants[i].type, std::move(reprs[i]));
                                 }
                                 else
                                 {
                                     // Note: unit type (any empty type) doesn't need the tag added
                                     // NOTE: Unit type should already have a repr, but make sure
-                                    if( const auto* r = Target_GetTypeRepr(sp, resolve, variants[i].type) ) {
-                                        final_size  = std::max(final_size , r->size );
-                                        final_align = std::max(final_align, r->align);
-                                    }
+                                    Target_GetTypeRepr(sp, resolve, variants[i].type);
                                 }
                                 rv.fields.push_back(TypeRepr::Field { 0, mv$(variants[i].type) });
                             }
 
                             rv.size = max_size;
                             rv.align = max_align;
-
-                            // Under a capping ABI take size/align from the final variant layouts - `max_align` predates the tag field, so it over-states them
-                            if( Target_CapsMemberAlignment() && final_size > 0 )
-                            {
-                                size_t sz = final_size;
-                                while( sz % final_align != 0 )
-                                    sz ++;
-                                if( sz != rv.size || final_align != rv.align ) {
-                                    DEBUG("Capping ABI: " << ty << " " << rv.size << "/" << rv.align
-                                        << " -> " << sz << "/" << final_align << " (union of the final variants)");
-                                    rv.size = sz;
-                                    rv.align = final_align;
-                                }
-                            }
 
                             // Ensure that the tag offset is still valid
                             auto tag_offset = get_offset(sp, resolve, &rv, niche_path);
@@ -2032,14 +2211,16 @@ namespace {
                             // - Sort
                             ::std::sort(ents.begin(), ents.end(), sortfn_struct_fields);
                             // - Add tag
+                            // NOTE: Any target-specific field alignment adjustment happens in
+                            // make_type_repr_struct__inner - insert with the natural alignment here
                             ents.insert(ents.begin(), Ent());
-                            ents[0].align = tag_size;
-                            ents[0].size = tag_align;
+                            ents[0].align = tag_align;
+                            ents[0].size = tag_size;
                             ents[0].field = ents.size() - 1;
                             ents[0].ty = tag_ty.clone();
 
                             // - Create repr and assign
-                            auto repr = make_type_repr_struct__inner(sp, var_ty, ents, StructSorting::None, 0,0);
+                            auto repr = make_type_repr_struct__inner(sp, resolve, var_ty, ents, StructSorting::None, 0,0);
                             max_size  = std::max(max_size , repr->size );
                             max_align = std::max(max_align, repr->align);
                             set_type_repr(sp, var_ty, std::move(repr));
@@ -2167,11 +2348,36 @@ namespace {
             }
         }
 
-        // An enum inherits user-alignment from any variant, as in gcc; every variant repr is already cached here, so this cannot recurse.
-        for(const auto& f : rv.fields) {
-            if( Target_TypeHasUserAlignment(sp, resolve, f.ty) ) {
-                rv.user_align = true;
-                break;
+        // Darwin PowerPC 32-bit: recompute the total alignment the way the C compiler will see
+        // the emitted `struct e_X` (see codegen_c's emit_enum): each member's alignment is capped
+        // at 4 (GCC `ADJUST_FIELD_ALIGN`), then the alignment is raised to the natural alignment
+        // of the innermost first emitted member (`darwin_rs6000_special_round_type_align`).
+        // This can lower the alignment relative to the variants' own (bumped) alignments, since
+        // the C compiler caps them when they become union members.
+        if( Target_IsDarwinPPC32() && !rv.fields.empty() )
+        {
+            size_t  c_align = 1;
+            size_t  c_size = 0;
+            for(const auto& f : rv.fields)
+            {
+                size_t  sz, al;
+                if( Target_GetSizeAndAlignOf(sp, resolve, f.ty, sz, al) && sz != SIZE_MAX )
+                {
+                    if( al == 8 && !darwin_ppc32_type_has_c_user_align(sp, resolve, f.ty) )
+                        al = 4;
+                    c_align = ::std::max(c_align, al);
+                    c_size = ::std::max(c_size, sz);
+                }
+            }
+            if( const auto* first_ty = darwin_ppc32_repr_first_emitted_field(sp, resolve, ty, rv) )
+            {
+                c_align = ::std::max(c_align, darwin_ppc32_first_field_align(sp, resolve, *first_ty));
+            }
+            if( rv.align != c_align || rv.size != (c_size + c_align - 1) / c_align * c_align )
+            {
+                rv.align = c_align;
+                rv.size = (c_size + c_align - 1) / c_align * c_align;
+                DEBUG("Darwin ppc32 fixup: size = " << rv.size << ", align = " << rv.align);
             }
         }
         return box$(rv);
@@ -2187,8 +2393,6 @@ namespace {
         };
 
         TypeRepr  rv;
-        // codegen_c pins union alignment with an explicit `__attribute__((aligned))`, which gcc counts as user-alignment - so a union, and anything containing it, is exempt from the cap.
-        rv.user_align = true;
         for(const auto& var : unn.m_variants)
         {
             rv.fields.push_back({ 0, monomorph(var.ty) });
@@ -2202,12 +2406,24 @@ namespace {
             if( size == SIZE_MAX ) {
                 BUG(sp, "Unsized type in union");
             }
+            // Darwin PowerPC 32-bit: member alignment is capped at 4 (GCC `ADJUST_FIELD_ALIGN`),
+            // unless the member's type carries an explicit alignment attribute.
+            // The union's total alignment is fixed up below.
+            if( Target_IsDarwinPPC32() )
+            {
+                if( align == 8 && !darwin_ppc32_type_has_c_user_align(sp, resolve, rv.fields.back().ty) )
+                {
+                    align = 4;
+                }
+            }
             rv.size  = ::std::max(rv.size , size );
             rv.align = ::std::max(rv.align, align);
-            // A union inherits user-alignment from any member, as in gcc.
-            if( Target_TypeHasUserAlignment(sp, resolve, rv.fields.back().ty) ) {
-                rv.user_align = true;
-            }
+        }
+        // Darwin PowerPC 32-bit: a union's alignment is raised to the natural alignment of its
+        // innermost first member (GCC `darwin_rs6000_special_round_type_align` covers unions too)
+        if( Target_IsDarwinPPC32() && !rv.fields.empty() )
+        {
+            rv.align = ::std::max(rv.align, darwin_ppc32_first_field_align(sp, resolve, rv.fields[0].ty));
         }
         // Round the size to be a multiple of align
         if( rv.size % rv.align != 0 )
@@ -2271,31 +2487,6 @@ namespace {
 void Target_ForceTypeRepr(const Span& sp, const ::HIR::TypeRef& ty, TypeRepr repr)
 {
     set_type_repr(sp, ty, box$(repr));
-}
-bool Target_CapsMemberAlignment()
-{
-    return Target_GetCurSpec().m_arch.m_name == "powerpc";
-}
-bool Target_TypeHasUserAlignment(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
-{
-    // Arrays and slices inherit it from the element type, as in gcc's `layout_type`
-    if( const auto* te = ty.data().opt_Array() ) {
-        return Target_TypeHasUserAlignment(sp, resolve, te->inner);
-    }
-    if( const auto* te = ty.data().opt_Slice() ) {
-        return Target_TypeHasUserAlignment(sp, resolve, te->inner);
-    }
-    // Aggregates cache it on their repr; everything else is naturally aligned by definition
-    if( ty.data().is_Tuple() || (ty.data().is_Path() && (
-            ty.data().as_Path().binding.is_Struct()
-            || ty.data().as_Path().binding.is_Union()
-            || ty.data().as_Path().binding.is_Enum()
-            )) )
-    {
-        const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
-        return repr && repr->user_align;
-    }
-    return false;
 }
 const TypeRepr* Target_GetTypeRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
 {
