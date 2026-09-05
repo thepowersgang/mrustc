@@ -825,7 +825,12 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             return true;
         case ::HIR::CoreType::F128:
             out_size = 16;
-            out_align = g_target.m_arch.m_alignments.f64; //f128;
+            // The C backend emits `struct f128 { uint128_t v; }`, so its
+            // alignment must match `uint128_t` — same rule as for i128/u128.
+            if( g_target.m_backend_c.m_emulated_i128 )
+                out_align = g_target.m_arch.m_alignments.u64;
+            else
+                out_align = g_target.m_arch.m_alignments.u128;
             return true;
         case ::HIR::CoreType::Str:
             DEBUG("sizeof on a `str` - unsized");
