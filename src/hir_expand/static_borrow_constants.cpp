@@ -898,6 +898,7 @@ namespace static_borrow_constants {
                     is_generic = true;
                 }
                 void visit(HIR::ExprNode_ArraySized& node) override {
+                    HIR::ExprVisitorDef::visit(node);
                     if( auto* n = node.m_size.opt_Unevaluated() )
                     {
                         if( auto* g = n->opt_Generic() )
