@@ -37,9 +37,11 @@ namespace {
     {
         const ::std::string& s;
         bool escape_percent;
-        FmtGccAsm(const ::std::string& s, bool escape_percent)
+        bool is_intel;
+        FmtGccAsm(const ::std::string& s, bool escape_percent, bool is_intel)
             : s(s)
             , escape_percent(escape_percent)
+            , is_intel(is_intel)
         {
         }
     };
@@ -151,7 +153,12 @@ namespace {
 ::std::ostream& operator<<(::std::ostream& os, const FmtGccAsm& x)
 {
     bool in_comment = false;
+    bool skip_next = false;
     for(const char& ch : x.s) {
+        if( skip_next ) {
+            skip_next = false;
+            continue;
+        }
         if( ch == '/' && (&ch)[1] == '/' ) {
             if( !in_comment ) {
                 os << "\" ";
@@ -177,6 +184,19 @@ namespace {
         case '{':   os << "%{";   break;
         case '}':   os << "%}";   break;
         case '|':   os << "%|";   break;
+        case '$':
+            // Rust `asm!` templates are LLVM asm templates, where `$N` is an operand reference and `$$` is a literal `$`.
+            // GCC uses `%N` for operands, so un-escape - except in intel-syntax blocks, where gas rejects the AT&T immediate prefix.
+            if( (&ch)[1] == '$' ) {
+                if( !x.is_intel ) {
+                    os << '$';
+                }
+                skip_next = true;
+            }
+            else {
+                os << ch;
+            }
+            break;
         default:    os << ch; break;
         }
     }
@@ -1624,21 +1644,22 @@ namespace {
 
         void emit_global_asm(const ::HIR::GlobalAssembly& se) override
         {
+            bool is_intel = (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax;
             m_of << "__asm__ (\"";
-            if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
+            if( is_intel )
                 m_of << ".intel_syntax noprefix; ";
             for(const auto& l : se.m_lines)
             {
                 for(const auto& f : l.frags)
                 {
-                    m_of << FmtGccAsm(f.before, false);
+                    m_of << FmtGccAsm(f.before, false, is_intel);
                     ASSERT_BUG(Span(), f.index < se.m_symbols.size(), "Invalid argument reference in global assembly");
                     TODO(Span(), "Handle interpolation in global_asm! - " << se.m_symbols[f.index]);
                 }
-                m_of << FmtGccAsm(l.trailing, false);
+                m_of << FmtGccAsm(l.trailing, false, is_intel);
                 m_of << ";\\n ";
             }
-            if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
+            if( is_intel )
                 m_of << ".att_syntax; ";
             m_of << "\");\n";
         }
@@ -5621,14 +5642,15 @@ namespace {
                 m_of << indent << "__asm__ ";
                 m_of << "__volatile__"; // Default everything to volatile
                 m_of << "(\"";
-                if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
+                bool is_intel = (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax;
+                if( is_intel )
                     m_of << ".intel_syntax noprefix; ";
                 bool escape_percent = true || !inputs.empty() || !outputs.empty();
                 for(const auto& l : se.lines)
                 {
                     for(const auto& f : l.frags)
                     {
-                        m_of << FmtGccAsm(f.before, escape_percent);
+                        m_of << FmtGccAsm(f.before, escape_percent, is_intel);
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
                         m_of << "%";
                         if( arg_mappings.at(f.index) == UINT8_MAX-1 ) {
@@ -5650,10 +5672,10 @@ namespace {
                         }
                         m_of << arg_mappings.at(f.index);
                     }
-                    m_of << FmtGccAsm(l.trailing, escape_percent);
+                    m_of << FmtGccAsm(l.trailing, escape_percent, is_intel);
                     m_of << ";\\n ";
                 }
-                if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
+                if( is_intel )
                     m_of << ".att_syntax; ";
                 m_of << "\" :";
                 for(size_t i = 0; i < outputs.size(); i ++)
