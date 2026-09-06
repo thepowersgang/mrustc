@@ -28,7 +28,7 @@ namespace {
     void ConvertHIR_ConstantEvaluate_Static(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Static& e);
     void ConvertHIR_ConstantEvaluate_FcnSig(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Function& fcn);
 
-    struct Defer {};
+    using HIR::Defer;
 
     struct NewvalState
         : public HIR::Evaluator::Newval

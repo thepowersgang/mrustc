@@ -898,6 +898,7 @@ namespace static_borrow_constants {
                     is_generic = true;
                 }
                 void visit(HIR::ExprNode_ArraySized& node) override {
+                    HIR::ExprVisitorDef::visit(node);
                     if( auto* n = node.m_size.opt_Unevaluated() )
                     {
                         if( auto* g = n->opt_Generic() )
@@ -1159,8 +1160,16 @@ namespace static_borrow_constants {
                     if( !new_static.m_params.is_generic() )
                     {
                         new_static.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
-                        new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( new_static_pair.path, new_static.m_value, new_static.m_type.clone());
-                        new_static.m_value_generated = true;
+                        try {
+                            new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( new_static_pair.path, new_static.m_value, new_static.m_type.clone());
+                            new_static.m_value_generated = true;
+                        }
+                        catch(const ::HIR::Defer&) {
+                            // A dependency is not fully resolved yet; leave the
+                            // extracted static value as not-generated and let the
+                            // subsequent passes pick it up rather than aborting.
+                            DEBUG("Deferred static borrow eval: " << new_static_pair.path);
+                        }
                     }
 
                     struct H {
@@ -1402,8 +1411,13 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
         if( !new_static.m_params.is_generic() )
         {
             new_static.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
-            new_static.m_value_res = ::HIR::Evaluator(sp, crate, nvs).evaluate_constant( path, new_static.m_value, new_static.m_type.clone());
-            new_static.m_value_generated = true;
+            try {
+                new_static.m_value_res = ::HIR::Evaluator(sp, crate, nvs).evaluate_constant( path, new_static.m_value, new_static.m_type.clone());
+                new_static.m_value_generated = true;
+            }
+            catch(const ::HIR::Defer&) {
+                DEBUG("Deferred static borrow eval: " << path);
+            }
         }
 
         DEBUG(path << " = ?");
