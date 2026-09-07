@@ -2881,6 +2881,18 @@ namespace HIR {
                     auto vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
                     vr_dst.copy_from(state, vr_src);
                 }
+                else if( te->name == "arith_offset" ) {
+                    // XXX: This doesn't work, because te->params.m_types.at().data() is Generic, not Pointer
+                    size_t element_size;
+                    //auto ty = local_state.monomorph_expand(te->params.m_types.at(0).data().as_Pointer().inner);
+                    //if( !Target_GetSizeOf(state.sp, resolve, ty, element_size) )
+                    //    throw Defer();
+
+                    element_size = 1;
+                    auto ptr_pair = local_state.read_param_ptr(e.args.at(0));
+                    auto ofs = local_state.read_param_uint(Target_GetPointerBits(), e.args.at(1));
+                    dst.write_ptr(state, ptr_pair.first + ofs.truncate_u64() * element_size, ptr_pair.second);
+                }
                 else if( te->name == "offset" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0).data().as_Pointer().inner);
                     size_t element_size;
