@@ -81,6 +81,13 @@ const TargetArch ARCH_RISCV64 = {
     { /*atomic(u8)=*/true, true, true, true,  true },
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
 };
+const TargetArch ARCH_SPARC64 = {
+    "sparc64",
+    64, true,
+    // SPARCv9 has 4/8-byte CAS, and gcc synthesises the 1/2-byte operations from it
+    { /*atomic(u8)=*/true, true, true, true,  true },
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
+};
 TargetSpec  g_target;
 
 
@@ -175,6 +182,10 @@ namespace
                         {
                             rv.m_arch = ARCH_RISCV64;
                         }
+                        else if( key_val.value.as_string() == ARCH_SPARC64.m_name )
+                        {
+                            rv.m_arch = ARCH_SPARC64;
+                        }
                         else
                         {
                             // Error.
@@ -221,6 +232,21 @@ namespace
                         {
                             check_path_length(key_val, 3);
                             rv.m_backend_c.m_emulated_i128 = key_val.value.as_bool();
+                        }
+                        else if( key_val.path[2] == "emulate-overflow-intrinsics" )
+                        {
+                            check_path_length(key_val, 3);
+                            rv.m_backend_c.m_emulated_overflow_intrinsics = key_val.value.as_bool();
+                        }
+                        else if( key_val.path[2] == "emulate-c99-math" )
+                        {
+                            check_path_length(key_val, 3);
+                            rv.m_backend_c.m_emulated_c99_math = key_val.value.as_bool();
+                        }
+                        else if( key_val.path[2] == "emulate-posix2001" )
+                        {
+                            check_path_length(key_val, 3);
+                            rv.m_backend_c.m_emulated_posix2001 = key_val.value.as_bool();
                         }
                         else if( key_val.path[2] == "compiler-opts" )
                         {
@@ -397,6 +423,9 @@ namespace
             << "[backend.c]\n"
             << "variant = \"" << H::c_variant_name(spec.m_backend_c.m_codegen_mode) << "\"\n"
             << "target = \"" << spec.m_backend_c.m_c_compiler << "\"\n"
+            << "emulate-overflow-intrinsics = " << H::tfstr(spec.m_backend_c.m_emulated_overflow_intrinsics) << "\n"
+            << "emulate-c99-math = " << H::tfstr(spec.m_backend_c.m_emulated_c99_math) << "\n"
+            << "emulate-posix2001 = " << H::tfstr(spec.m_backend_c.m_emulated_posix2001) << "\n"
             << "compiler-opts = ["; for(const auto& s : spec.m_backend_c.m_compiler_opts) of << "\"" << s << "\","; of << "]\n"
             << "linker-opts-pre = ["; for(const auto& s : spec.m_backend_c.m_linker_opts_pre) of << "\"" << s << "\","; of << "]\n"
             << "linker-opts-post = ["; for(const auto& s : spec.m_backend_c.m_linker_opts_post) of << "\"" << s << "\","; of << "]\n"
@@ -650,6 +679,29 @@ namespace
                 ARCH_POWERPC64
                 };
         }
+        else if(target_name == "sparcv9-sun-solaris" || target_name == "sparc64-sun-solaris")
+        {
+            // NOTE: Solaris' `ld` has no GNU group/gc options, its sockets are in libsocket/libnsl, and its gcc defaults to gnu89
+            return TargetSpec {
+                "unix", "solaris", "", {CodegenMode::Gnu11, false, "sparcv9-sun-solaris", {"-std=gnu11", "-m64", "-mcpu=v9", "-pthread"}, {}, {"-l", "socket", "-l", "nsl", "-l", "rt"}},
+                ARCH_SPARC64
+                };
+        }
+        else if(target_name == "sparcv9-sun-solaris2.9" || target_name == "sparc64-sun-solaris2.9")
+        {
+            // As `sparcv9-sun-solaris`, but GCC obsoleted Solaris 9 in 4.9 and deleted the port
+            // in 5, so 4.9 is the newest compiler that can target it. That has <stdatomic.h> but
+            // not `__builtin_{add,sub,mul}_overflow`, so mrustc emits those itself. Solaris 9's
+            // libm is pre-C99 besides: no float entry points at all, and no exp2/log2/round/trunc.
+            // `dlsym` is still in libdl here; it only moved into libc in Solaris 10. Several
+            // libc entry points std wants (setenv, strerror_r, futimens, ...) are Solaris 10
+            // or later, so mrustc supplies those too. libgcc is linked statically because
+            // Solaris 9 has no libgcc_s.so.1 of its own.
+            return TargetSpec {
+                "unix", "solaris", "", {CodegenMode::Gnu11, false, "sparcv9-sun-solaris2.9", {"-std=gnu11", "-m64", "-mcpu=v9", "-pthread"}, {"-static-libgcc"}, {"-l", "socket", "-l", "nsl", "-l", "rt", "-l", "dl"}, /*emulated_overflow_intrinsics=*/true, /*emulated_c99_math=*/true, /*emulated_posix2001=*/true},
+                ARCH_SPARC64
+                };
+        }
         else if(target_name == "arm-unknown-haiku")
         {
             return TargetSpec {
@@ -734,6 +786,11 @@ void Target_SetCfg(const ::std::string& target_name)
     {
         Cfg_SetFlag("dragonfly");
         Cfg_SetValue("target_vendor", "unknown");
+    }
+
+    if( g_target.m_os_name == "solaris" )
+    {
+        Cfg_SetValue("target_vendor", "sun");
     }
 
     Cfg_SetValue("target_vendor", "");  // NOTE: Doesn't override a pre-set value
@@ -2429,6 +2486,11 @@ namespace {
         if( Target_IsDarwinPPC32() && !rv.fields.empty() )
         {
             rv.align = ::std::max(rv.align, darwin_ppc32_first_field_align(sp, resolve, rv.fields[0].ty));
+        }
+        // `#[repr(align(N))]` raises the alignment, and so may pad the size out
+        if( unn.m_forced_alignment > rv.align )
+        {
+            rv.align = unn.m_forced_alignment;
         }
         // Round the size to be a multiple of align
         if( rv.size % rv.align != 0 )
