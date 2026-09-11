@@ -1334,15 +1334,22 @@ namespace {
                     args.push_back("-O1");  // HACK: Work around mrustc #347 by reducing the optimisation level
                     break;
                 }
-#if defined(__GNUC__) && !defined(__clang__)
-#if __GNUC__ < 16 && !(__GNUC__ == 15 && __GNUC_MINOR__ > 1)
-                // HACK: Work around [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117423] by disabling an optimisation stage
-                if( opt.opt_level > 0 )
+                // HACK: Work around two GCC bugs by disabling an optimisation stage.
+                // - [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117423], fixed in GCC 15.2.
+                // - [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=71460], still open, 32-bit x86
+                //   only - so there the flag cannot be dropped for any GCC version.
                 {
-                    args.push_back("-fno-tree-sra");
+                    bool need_no_tree_sra = (Target_GetCurSpec().m_arch.m_name == "x86");
+#if defined(__GNUC__) && !defined(__clang__)
+# if __GNUC__ < 16 && !(__GNUC__ == 15 && __GNUC_MINOR__ > 1)
+                    need_no_tree_sra = true;
+# endif
+#endif
+                    if( opt.opt_level > 0 && need_no_tree_sra )
+                    {
+                        args.push_back("-fno-tree-sra");
+                    }
                 }
-#endif
-#endif
                 if( opt.emit_debug_info )
                 {
                     args.push_back("-g");
