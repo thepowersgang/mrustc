@@ -259,6 +259,14 @@ namespace {
         struct {
             bool emulated_i128 = false;
             bool disallow_empty_structs = false;
+            // `__builtin_{add,sub,mul}_overflow` arrived in GCC 5. When the target's C
+            // compiler is older than that (or is MSVC, which has never had them) mrustc
+            // emits its own type-suffixed stand-ins instead.
+            bool emulated_overflow_intrinsics = false;
+            // The target's libm predates C99, so mrustc supplies the missing pieces.
+            bool emulated_c99_math = false;
+            // Likewise for a libc missing pieces of POSIX.1-2001/2008.
+            bool emulated_posix2001 = false;
         } m_options;
 
 
@@ -274,6 +282,9 @@ namespace {
         {
             ASSERT_BUG(Span(), m_of.is_open(), "Failed to open `" << m_outfile_path_c << "` for writing");
             m_options.emulated_i128 = Target_GetCurSpec().m_backend_c.m_emulated_i128;
+            m_options.emulated_overflow_intrinsics = Target_GetCurSpec().m_backend_c.m_emulated_overflow_intrinsics;
+            m_options.emulated_c99_math = Target_GetCurSpec().m_backend_c.m_emulated_c99_math;
+            m_options.emulated_posix2001 = Target_GetCurSpec().m_backend_c.m_emulated_posix2001;
             switch(Target_GetCurSpec().m_backend_c.m_codegen_mode)
             {
             case CodegenMode::Gnu11:
@@ -286,6 +297,7 @@ namespace {
                 break;
             case CodegenMode::Msvc:
                 m_compiler = Compiler::Msvc;
+                m_options.emulated_overflow_intrinsics = true;
                 if( !m_options.emulated_i128 )
                 {
                     WARNING(Span(), W0000, "Potentially misconfigured target, MSVC requires i128 emulation");
@@ -348,6 +360,130 @@ namespace {
                     << "typedef struct { } tTYPEID;\n"
                     ;
             }
+            // Shims below are weak rather than static: std reaches libm and libc through
+            // `extern "C"` declarations, which reach the C as asm-labelled references to the
+            // real symbol name, so a static definition would not satisfy them. Weak lets every
+            // emitted translation unit carry a copy without colliding at link time.
+            const char* const weak = "__attribute__((weak)) ";
+
+            // A libm older than C99 (Solaris 9's) has no float entry points at all, and is
+            // missing a few of the double ones. INFINITY and NAN come from the compiler
+            // rather than from libm. Narrowing a double call back into the float one would
+            // recurse, but GCC only does that under -funsafe-math-optimizations.
+            if( m_options.emulated_c99_math )
+            {
+                m_of
+                    << "#ifndef INFINITY\n"
+                    << "# define INFINITY __builtin_inff()\n"
+                    << "#endif\n"
+                    << "#ifndef NAN\n"
+                    << "# define NAN __builtin_nanf(\"\")\n"
+                    << "#endif\n"
+                    << weak << "double exp2(double v) { return pow(2.0, v); }\n"
+                    << weak << "double log2(double v) { return log(v) / 0.69314718055994530942; }\n"
+                    << weak << "double trunc(double v) { return v < 0.0 ? ceil(v) : floor(v); }\n"
+                    << weak << "double round(double v) {\n"
+                    // Not floor(v+0.5): that rounds 0.49999999999999994 up to 1.
+                    << "\tdouble t = trunc(v), d = v - t;\n"
+                    << "\tif(d >= 0.5) return t + 1.0;\n"
+                    << "\tif(d <= -0.5) return t - 1.0;\n"
+                    << "\treturn t;\n"
+                    << "}\n"
+                    << weak << "double fdim(double a, double b) { return a != a || b != b ? NAN : (a > b ? a - b : 0.0); }\n"
+                    << weak << "double tgamma(double v) { int s; double l = lgamma_r(v, &s); return s * exp(l); }\n"
+                    // Not actually fused, but SPARCv9 has no multiply-add instruction, so a
+                    // real libm would be doing this in software regardless.
+                    << weak << "double fma(double a, double b, double c) { return a * b + c; }\n"
+                    ;
+                // Every float entry point is missing, so route each through its double form.
+                // `nextafterf` is deliberately absent: narrowing the double result gives back
+                // the float it started from.
+                for(const char* n : { "acos", "acosh", "asin", "asinh", "atan", "atanh", "cbrt",
+                        "ceil", "cos", "cosh", "erf", "erfc", "exp", "exp2", "expm1", "fabs",
+                        "floor", "log", "log10", "log1p", "log2", "round", "sin", "sinh",
+                        "sqrt", "tan", "tanh", "tgamma", "trunc" })
+                {
+                    m_of << weak << "float " << n << "f(float v) { return (float)" << n << "((double)v); }\n";
+                }
+                for(const char* n : { "atan2", "copysign", "fdim", "fmod", "hypot", "pow", "remainder" })
+                {
+                    m_of << weak << "float " << n << "f(float a, float b) { return (float)" << n << "((double)a, (double)b); }\n";
+                }
+                m_of
+                    << weak << "float fmaf(float a, float b, float c) { return (float)fma((double)a, (double)b, (double)c); }\n"
+                    << weak << "float lgammaf_r(float v, int* s) { return (float)lgamma_r((double)v, s); }\n"
+                    ;
+            }
+
+            // A libc without the POSIX.1-2001/2008 entry points std expects. Each is built
+            // from something the platform does have.
+            if( m_options.emulated_posix2001 )
+            {
+                m_of
+                    << "#include <errno.h>\n"
+                    << "#include <unistd.h>\n"
+                    << "#include <fcntl.h>\n"
+                    << "#include <time.h>\n"
+                    << "#include <sys/time.h>\n"
+                    << "#include <pthread.h>\n"
+                    << "#include <dlfcn.h>\n"
+                    << "extern char** environ;\n"
+                    << weak << "int setenv(const char* k, const char* v, int overwrite) {\n"
+                    << "\tsize_t kl, vl; char* e;\n"
+                    << "\tif(!overwrite && getenv(k)) return 0;\n"
+                    << "\tkl = strlen(k); vl = strlen(v);\n"
+                    << "\tif(!(e = (char*)malloc(kl + vl + 2))) { errno = ENOMEM; return -1; }\n"
+                    << "\tmemcpy(e, k, kl); e[kl] = '=';  memcpy(e + kl + 1, v, vl + 1);\n"
+                    // putenv takes the string rather than copying it, so it cannot be freed.
+                    << "\treturn putenv(e);\n"
+                    << "}\n"
+                    << weak << "int unsetenv(const char* k) {\n"
+                    << "\tsize_t kl = strlen(k);\n"
+                    << "\tchar **r = environ, **w = environ;\n"
+                    << "\tif(!r) return 0;\n"
+                    << "\tfor(; *r; r++) if(!(strncmp(*r, k, kl) == 0 && (*r)[kl] == '=')) *w++ = *r;\n"
+                    << "\t*w = 0;\n"
+                    << "\treturn 0;\n"
+                    << "}\n"
+                    << weak << "int strerror_r(int err, char* buf, size_t len) {\n"
+                    << "\tconst char* s = strerror(err);\n"
+                    << "\tsize_t l = strlen(s);\n"
+                    << "\tif(len == 0) return ERANGE;\n"
+                    << "\tif(l >= len) { memcpy(buf, s, len - 1); buf[len - 1] = 0; return ERANGE; }\n"
+                    << "\tmemcpy(buf, s, l + 1);\n"
+                    << "\treturn 0;\n"
+                    << "}\n"
+                    << weak << "int posix_openpt(int flags) { return open(\"/dev/ptmx\", flags); }\n"
+                    << weak << "int futimens(int fd, const struct timespec t[2]) {\n"
+                    << "\tstruct timeval tv[2];\n"
+                    << "\tif(!t) return futimesat(fd, (const char*)0, (struct timeval*)0);\n"
+                    << "\ttv[0].tv_sec = t[0].tv_sec; tv[0].tv_usec = t[0].tv_nsec / 1000;\n"
+                    << "\ttv[1].tv_sec = t[1].tv_sec; tv[1].tv_usec = t[1].tv_nsec / 1000;\n"
+                    << "\treturn futimesat(fd, (const char*)0, tv);\n"
+                    << "}\n"
+                    // Condition variables here are always on the wall clock, and there is no
+                    // pthread_condattr_setclock to move them. std asks for CLOCK_MONOTONIC and
+                    // then passes a monotonic deadline, so accept the request and rebase the
+                    // deadline onto the wall clock on the way through. CLOCK_HIGHRES is what
+                    // CLOCK_MONOTONIC is called on a libc this old; the values are the same.
+                    << weak << "int pthread_condattr_setclock(pthread_condattr_t* a, clockid_t c) { (void)a; (void)c; return 0; }\n"
+                    << weak << "int pthread_cond_timedwait(pthread_cond_t* c, pthread_mutex_t* m, const struct timespec* deadline) {\n"
+                    << "\tstatic int (*real)(pthread_cond_t*, pthread_mutex_t*, const struct timespec*);\n"
+                    << "\tstruct timespec mono, wall, rebased;\n"
+                    << "\tlong ns;\n"
+                    << "\tif(!real) real = (int(*)(pthread_cond_t*, pthread_mutex_t*, const struct timespec*))dlsym(RTLD_NEXT, \"pthread_cond_timedwait\");\n"
+                    << "\tclock_gettime(CLOCK_HIGHRES, &mono);\n"
+                    << "\tclock_gettime(CLOCK_REALTIME, &wall);\n"
+                    << "\trebased.tv_sec = wall.tv_sec + (deadline->tv_sec - mono.tv_sec);\n"
+                    << "\tns = wall.tv_nsec + (deadline->tv_nsec - mono.tv_nsec);\n"
+                    << "\tif(ns < 0) { ns += 1000000000L; rebased.tv_sec -= 1; }\n"
+                    << "\telse if(ns >= 1000000000L) { ns -= 1000000000L; rebased.tv_sec += 1; }\n"
+                    << "\trebased.tv_nsec = ns;\n"
+                    << "\treturn real(c, m, &rebased);\n"
+                    << "}\n"
+                    ;
+            }
+
             m_of
                 << "static inline size_t ALIGN_TO(size_t s, size_t a) { return (s + a-1) / a * a; }\n"
                 << "\n"
@@ -411,148 +547,6 @@ namespace {
                     << "}\n"
                     << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_u8(uint8_t a, uint8_t b, uint8_t* out) {\n"
-                    << "\t*out = a*b;\n"
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > UINT8_MAX/b)  return true;\n"
-                    << "\treturn false;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_i8(int8_t a, int8_t b, int8_t* out) {\n"
-                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > INT8_MAX/b)  return true;\n"
-                    << "\tif(a < INT8_MIN/b)  return true;\n"
-                    << "\tif( (a == -1) && (b == INT8_MIN))  return true;\n"
-                    << "\tif( (b == -1) && (a == INT8_MIN))  return true;\n"
-                    << "\treturn false;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_u16(uint16_t a, uint16_t b, uint16_t* out) {\n"
-                    << "\t*out = a*b;\n"
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > UINT16_MAX/b)  return true;\n"
-                    << "\treturn false;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_i16(int16_t a, int16_t b, int16_t* out) {\n"
-                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > INT16_MAX/b)  return true;\n"
-                    << "\tif(a < INT16_MIN/b)  return true;\n"
-                    << "\tif( (a == -1) && (b == INT16_MIN))  return true;\n"
-                    << "\tif( (b == -1) && (a == INT16_MIN))  return true;\n"
-                    << "\treturn false;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_u32(uint32_t a, uint32_t b, uint32_t* out) {\n"
-                    << "\t*out = a*b;\n"
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > UINT32_MAX/b)  return true;\n"
-                    << "\treturn false;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_i32(int32_t a, int32_t b, int32_t* out) {\n"
-                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > INT32_MAX/b)  return true;\n"
-                    << "\tif(a < INT32_MIN/b)  return true;\n"
-                    << "\tif( (a == -1) && (b == INT32_MIN))  return true;\n"
-                    << "\tif( (b == -1) && (a == INT32_MIN))  return true;\n"
-                    << "\treturn false;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_u64(uint64_t a, uint64_t b, uint64_t* out) {\n"
-                    << "\t*out = a*b;\n"
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > UINT64_MAX/b)  return true;\n"
-                    << "\treturn false;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_i64(int64_t a, int64_t b, int64_t* out) {\n"
-                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > INT64_MAX/b)  return true;\n"
-                    << "\tif(a < INT64_MIN/b)  return true;\n"
-                    << "\tif( (a == -1) && (b == INT64_MIN))  return true;\n"
-                    << "\tif( (b == -1) && (a == INT64_MIN))  return true;\n"
-                    << "\treturn false;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
-                    << "\treturn __builtin_mul_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
-                    << "}\n"
-                    << "static inline bool __builtin_mul_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
-                    << "\treturn __builtin_mul_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
-                    << "\t""*o = a - b;\n"
-                    << "\t""return a < b;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_u32(uint32_t a, uint32_t b, uint32_t* o) {\n"
-                    << "\t""*o = a - b;\n"
-                    << "\t""return a < b;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_u16(uint16_t a, uint16_t b, uint16_t* o) {\n"
-                    << "\t""*o = a - b;\n"
-                    << "\t""return a < b;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_u8(uint8_t a, uint8_t b, uint8_t* o) {\n"
-                    << "\t""*o = a - b;\n"
-                    << "\t""return a < b;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
-                    << "\treturn __builtin_sub_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
-                    << "\t""*o = a + b;\n"
-                    << "\t""return a > UINT64_MAX - b;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_u32(uint32_t a, uint32_t b, uint32_t* o) {\n"
-                    << "\t""*o = a + b;\n"
-                    << "\t""return a > UINT32_MAX - b;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_u16(uint16_t a, uint16_t b, uint16_t* o) {\n"
-                    << "\t""*o = a + b;\n"
-                    << "\t""return a > UINT16_MAX - b;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_u8(uint8_t a, uint8_t b, uint8_t* o) {\n"
-                    << "\t""*o = a + b;\n"
-                    << "\t""return a > UINT8_MAX - b;\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
-                    << "\treturn __builtin_add_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_i64(int64_t a, int64_t b, int64_t* o) {\n"
-                    << "\t""*o = a - b;\n"
-                    << "\t""return ((b < 0) && (a > INT64_MAX + b)) || ((b > 0) && (a < INT64_MIN + b));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_i32(int32_t a, int32_t b, int32_t* o) {\n"
-                    << "\t""*o = a - b;\n"
-                    << "\t""return ((b < 0) && (a > INT32_MAX + b)) || ((b > 0) && (a < INT32_MIN + b));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_i16(int16_t a, int16_t b, int16_t* o) {\n"
-                    << "\t""*o = a - b;\n"
-                    << "\t""return ((b < 0) && (a > INT16_MAX + b)) || ((b > 0) && (a < INT16_MIN + b));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_i8(int8_t a, int8_t b, int8_t* o) {\n"
-                    << "\t""*o = a - b;\n"
-                    << "\t""return ((b < 0) && (a > INT8_MAX + b)) || ((b > 0) && (a < INT8_MIN + b));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_sub_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
-                    << "\treturn __builtin_sub_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_i64(int64_t a, int64_t b, int64_t* o) {\n"
-                    << "\t""*o = a + b;\n"
-                    << "\t""return ((b > 0) && (a > INT64_MAX - b)) || ((b < 0) && (a < INT64_MIN - b));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_i32(int32_t a, int32_t b, int32_t* o) {\n"
-                    << "\t""*o = a + b;\n"
-                    << "\t""return ((b > 0) && (a > INT32_MAX - b)) || ((b < 0) && (a < INT32_MIN - b));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_i16(int16_t a, int16_t b, int16_t* o) {\n"
-                    << "\t""*o = a + b;\n"
-                    << "\t""return ((b > 0) && (a > INT16_MAX - b)) || ((b < 0) && (a < INT16_MIN - b));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_i8(int8_t a, int8_t b, int8_t* o) {\n"
-                    << "\t""*o = a + b;\n"
-                    << "\t""return ((b > 0) && (a > INT8_MAX - b)) || ((b < 0) && (a < INT8_MIN - b));\n"
-                    << "}\n"
-                    << "static inline bool __builtin_add_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
-                    << "\treturn __builtin_add_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
                     << "}\n"
                     << "static inline uint64_t __builtin_bswap64(uint64_t v) { return _byteswap_uint64(v); }\n"
                     << "#define InterlockedCompareExchange8Acquire _InterlockedCompareExchange8\n"
@@ -788,6 +782,190 @@ namespace {
                     << "\treturn (v == 0 ? 128 : ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v)));\n"
                     << "}\n"
                     ;
+            }
+
+            // `__builtin_{add,sub,mul}_overflow` arrived in GCC 5, and MSVC has never had
+            // them. Emit equivalents named after the type they operate on, which the call
+            // sites below switch to whenever the target's C compiler cannot supply them.
+            if( m_options.emulated_overflow_intrinsics )
+            {
+                m_of
+                    << "static inline bool __builtin_mul_overflow_u8(uint8_t a, uint8_t b, uint8_t* out) {\n"
+                    << "\t*out = a*b;\n"
+                    << "\tif(b == 0) return false;\n"
+                    << "\tif(a > UINT8_MAX/b)  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_i8(int8_t a, int8_t b, int8_t* out) {\n"
+                    << "\t*out = (int8_t)((uint8_t)a * (uint8_t)b);\n"
+                    << "\tif(a == 0 || b == 0) return false;\n"
+                    << "\tif(a == -1) return b == INT8_MIN;\n"
+                    << "\tif(b == -1) return a == INT8_MIN;\n"
+                    << "\tif(a > 0) return b > 0 ? a > INT8_MAX / b : b < INT8_MIN / a;\n"
+                    << "\treturn b > 0 ? a < INT8_MIN / b : a < INT8_MAX / b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_u16(uint16_t a, uint16_t b, uint16_t* out) {\n"
+                    << "\t*out = (uint16_t)((unsigned)a * (unsigned)b);\n"    // 16-bit operands promote to `int`, whose range the product can leave
+                    << "\tif(b == 0) return false;\n"
+                    << "\tif(a > UINT16_MAX/b)  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_i16(int16_t a, int16_t b, int16_t* out) {\n"
+                    << "\t*out = (int16_t)((unsigned)a * (unsigned)b);\n"    // 16-bit operands promote to `int`, whose range the product can leave
+                    << "\tif(a == 0 || b == 0) return false;\n"
+                    << "\tif(a == -1) return b == INT16_MIN;\n"
+                    << "\tif(b == -1) return a == INT16_MIN;\n"
+                    << "\tif(a > 0) return b > 0 ? a > INT16_MAX / b : b < INT16_MIN / a;\n"
+                    << "\treturn b > 0 ? a < INT16_MIN / b : a < INT16_MAX / b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_u32(uint32_t a, uint32_t b, uint32_t* out) {\n"
+                    << "\t*out = a*b;\n"
+                    << "\tif(b == 0) return false;\n"
+                    << "\tif(a > UINT32_MAX/b)  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_i32(int32_t a, int32_t b, int32_t* out) {\n"
+                    << "\t*out = (int32_t)((uint32_t)a * (uint32_t)b);\n"
+                    << "\tif(a == 0 || b == 0) return false;\n"
+                    << "\tif(a == -1) return b == INT32_MIN;\n"
+                    << "\tif(b == -1) return a == INT32_MIN;\n"
+                    << "\tif(a > 0) return b > 0 ? a > INT32_MAX / b : b < INT32_MIN / a;\n"
+                    << "\treturn b > 0 ? a < INT32_MIN / b : a < INT32_MAX / b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_u64(uint64_t a, uint64_t b, uint64_t* out) {\n"
+                    << "\t*out = a*b;\n"
+                    << "\tif(b == 0) return false;\n"
+                    << "\tif(a > UINT64_MAX/b)  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_i64(int64_t a, int64_t b, int64_t* out) {\n"
+                    << "\t*out = (int64_t)((uint64_t)a * (uint64_t)b);\n"
+                    << "\tif(a == 0 || b == 0) return false;\n"
+                    << "\tif(a == -1) return b == INT64_MIN;\n"
+                    << "\tif(b == -1) return a == INT64_MIN;\n"
+                    << "\tif(a > 0) return b > 0 ? a > INT64_MAX / b : b < INT64_MIN / a;\n"
+                    << "\treturn b > 0 ? a < INT64_MIN / b : a < INT64_MAX / b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
+                    << "\treturn __builtin_mul_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
+                    << "\treturn __builtin_mul_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return a < b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_u32(uint32_t a, uint32_t b, uint32_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return a < b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_u16(uint16_t a, uint16_t b, uint16_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return a < b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_u8(uint8_t a, uint8_t b, uint8_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return a < b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
+                    << "\treturn __builtin_sub_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return a > UINT64_MAX - b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_u32(uint32_t a, uint32_t b, uint32_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return a > UINT32_MAX - b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_u16(uint16_t a, uint16_t b, uint16_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return a > UINT16_MAX - b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_u8(uint8_t a, uint8_t b, uint8_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return a > UINT8_MAX - b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
+                    << "\treturn __builtin_add_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_i64(int64_t a, int64_t b, int64_t* o) {\n"
+                    << "\t""*o = (int64_t)((uint64_t)a - (uint64_t)b);\n"
+                    << "\t""return ((b < 0) && (a > INT64_MAX + b)) || ((b > 0) && (a < INT64_MIN + b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_i32(int32_t a, int32_t b, int32_t* o) {\n"
+                    << "\t""*o = (int32_t)((uint32_t)a - (uint32_t)b);\n"
+                    << "\t""return ((b < 0) && (a > INT32_MAX + b)) || ((b > 0) && (a < INT32_MIN + b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_i16(int16_t a, int16_t b, int16_t* o) {\n"
+                    << "\t""*o = (int16_t)((uint16_t)a - (uint16_t)b);\n"
+                    << "\t""return ((b < 0) && (a > INT16_MAX + b)) || ((b > 0) && (a < INT16_MIN + b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_i8(int8_t a, int8_t b, int8_t* o) {\n"
+                    << "\t""*o = (int8_t)((uint8_t)a - (uint8_t)b);\n"
+                    << "\t""return ((b < 0) && (a > INT8_MAX + b)) || ((b > 0) && (a < INT8_MIN + b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
+                    << "\treturn __builtin_sub_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_i64(int64_t a, int64_t b, int64_t* o) {\n"
+                    << "\t""*o = (int64_t)((uint64_t)a + (uint64_t)b);\n"
+                    << "\t""return ((b > 0) && (a > INT64_MAX - b)) || ((b < 0) && (a < INT64_MIN - b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_i32(int32_t a, int32_t b, int32_t* o) {\n"
+                    << "\t""*o = (int32_t)((uint32_t)a + (uint32_t)b);\n"
+                    << "\t""return ((b > 0) && (a > INT32_MAX - b)) || ((b < 0) && (a < INT32_MIN - b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_i16(int16_t a, int16_t b, int16_t* o) {\n"
+                    << "\t""*o = (int16_t)((uint16_t)a + (uint16_t)b);\n"
+                    << "\t""return ((b > 0) && (a > INT16_MAX - b)) || ((b < 0) && (a < INT16_MIN - b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_i8(int8_t a, int8_t b, int8_t* o) {\n"
+                    << "\t""*o = (int8_t)((uint8_t)a + (uint8_t)b);\n"
+                    << "\t""return ((b > 0) && (a > INT8_MAX - b)) || ((b < 0) && (a < INT8_MIN - b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
+                    << "\treturn __builtin_add_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    ;
+                if( !m_options.emulated_i128 )
+                {
+                    // Only needed when i128 is the compiler's own __int128: the emulated
+                    // path routes 128-bit overflow through add128_o and friends instead.
+                    m_of
+                        << "#define MRUSTC_INT128_MAX ((int128_t)(((uint128_t)-1) >> 1))\n"
+                        << "#define MRUSTC_INT128_MIN ((int128_t)(-MRUSTC_INT128_MAX - 1))\n"
+                        << "static inline bool __builtin_add_overflow_u128(uint128_t a, uint128_t b, uint128_t* o) {\n"
+                        << "\t*o = a + b;\n"
+                        << "\treturn *o < a;\n"
+                        << "}\n"
+                        << "static inline bool __builtin_sub_overflow_u128(uint128_t a, uint128_t b, uint128_t* o) {\n"
+                        << "\t*o = a - b;\n"
+                        << "\treturn a < b;\n"
+                        << "}\n"
+                        << "static inline bool __builtin_mul_overflow_u128(uint128_t a, uint128_t b, uint128_t* o) {\n"
+                        << "\t*o = a * b;\n"
+                        << "\treturn b != 0 && a > ((uint128_t)-1) / b;\n"
+                        << "}\n"
+                        << "static inline bool __builtin_add_overflow_i128(int128_t a, int128_t b, int128_t* o) {\n"
+                        << "\t*o = (int128_t)((uint128_t)a + (uint128_t)b);\n"
+                        << "\treturn (b > 0 && a > MRUSTC_INT128_MAX - b) || (b < 0 && a < MRUSTC_INT128_MIN - b);\n"
+                        << "}\n"
+                        << "static inline bool __builtin_sub_overflow_i128(int128_t a, int128_t b, int128_t* o) {\n"
+                        << "\t*o = (int128_t)((uint128_t)a - (uint128_t)b);\n"
+                        << "\treturn (b < 0 && a > MRUSTC_INT128_MAX + b) || (b > 0 && a < MRUSTC_INT128_MIN + b);\n"
+                        << "}\n"
+                        << "static inline bool __builtin_mul_overflow_i128(int128_t a, int128_t b, int128_t* o) {\n"
+                        << "\t*o = (int128_t)((uint128_t)a * (uint128_t)b);\n"
+                        << "\tif(a == 0 || b == 0) return false;\n"
+                        << "\tif(a == -1) return b == MRUSTC_INT128_MIN;\n"
+                        << "\tif(b == -1) return a == MRUSTC_INT128_MIN;\n"
+                        << "\tif(a > 0) return b > 0 ? a > MRUSTC_INT128_MAX / b : b < MRUSTC_INT128_MIN / a;\n"
+                        << "\treturn b > 0 ? a < MRUSTC_INT128_MIN / b : a < MRUSTC_INT128_MAX / b;\n"
+                        << "}\n"
+                        ;
+                }
             }
 
             // Common helpers
@@ -1296,13 +1474,18 @@ namespace {
             {
             case Compiler::Gcc:
                 // Pick the compiler
-                // - from `CC_${TRIPLE}` environment variable, with all '-' in TRIPLE replaced by '_'
+                // - from `CC_${TRIPLE}` environment variable, with everything in TRIPLE that
+                //   cannot appear in a shell variable name replaced by '_'
                 // - from the `CC` environment variable
                 // - `${TRIPLE}-gcc` (if available)
                 // - `gcc` as fallback
                 {
                     std::string varname = "CC_" +  Target_GetCurSpec().m_backend_c.m_c_compiler;
-                    std::replace(varname.begin(), varname.end(), '-', '_');
+                    // Not just '-': a triple naming an OS release has a '.' in it, and no shell
+                    // can export a variable whose name contains one.
+                    for(auto& c : varname)
+                        if( !isalnum(static_cast<unsigned char>(c)) )
+                            c = '_';
 
                     if( getenv(varname.c_str()) ) {
                         args.push_back( getenv(varname.c_str()) );
@@ -2775,9 +2958,10 @@ namespace {
                     ;
                 m_of << "\t"; emit_ctype(item.m_return); m_of << " rv;\n";
 
-                // MSVC needs suffixed `__builtin_{add,sub}_overflow` calls
+                // These are always u32, so name the suffixed helpers directly when the C
+                // compiler has no type-generic `__builtin_{add,sub}_overflow`.
                 const char* msvc_suffix_u32 = "";
-                if( m_compiler == Compiler::Msvc )
+                if( m_options.emulated_overflow_intrinsics )
                 {
                     msvc_suffix_u32 = "_u32";
                 }
@@ -3529,6 +3713,35 @@ namespace {
             // NOTE: Uses the Size+Align version because that doesn't panic on unsized
             MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, ty, size, align), "Unexpected generic? " << ty);
             return align >Target_GetPointerBits() / 8;
+        }
+
+        // Tag type of a fieldless enum, which C spells as a plain integer rather than our one-field struct.
+        const ::HIR::TypeRef* enum_ffi_tag_ty(const ::HIR::TypeRef& ty) const
+        {
+            if( !ty.data().is_Path() )
+                return nullptr;
+            if( !ty.data().as_Path().binding.is_Enum() )
+                return nullptr;
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+            if( !repr )
+                return nullptr;
+            // One field plus value-only variants is the shape emit_enum renders as a bare TAG.
+            if( repr->fields.size() != 1 || !repr->variants.is_Values() )
+                return nullptr;
+            return &repr->fields[0].ty;
+        }
+
+        // Arguments only; a C function returning such an enum has the same mismatch, untested here.
+        // Non-Rust ABIs must match the C declaration; Rust-ABI calls are ours on both sides.
+        static bool abi_is_c_like(const RcString& abi)
+        {
+            return abi != "Rust" && abi != "rust-intrinsic" && abi != "platform-intrinsic";
+        }
+
+        // Only a body-less extern is a real C boundary; a Rust-defined `extern "C"` fn is a struct on both sides.
+        static bool fn_is_c_abi_extern(const ::HIR::Function& fcn)
+        {
+            return !fcn.m_code.m_mir && abi_is_c_like(fcn.m_abi);
         }
 
         void emit_borrow(const ::MIR::TypeResolve& mir_res, HIR::BorrowType bt, const MIR::LValue& val)
@@ -4781,6 +4994,8 @@ namespace {
             }
 
             bool omit_assign = false;
+            // Callee ABI decides the spelling: C takes the integer, Rust ABI keeps the struct.
+            bool callee_is_c_abi = false;
 
             // If the return type is `()`, omit the assignment (all `()` returning functions are marked as returning
             // void)
@@ -4819,6 +5034,7 @@ namespace {
                     TU_ARMA(Generic, pe) {
                         const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
                         omit_assign |= fcn.m_return.data().is_Diverge();
+                        callee_is_c_abi = fn_is_c_abi_extern(fcn);
                         // TODO: Monomorph.
                         }
                     TU_ARMA(UfcsUnknown, pe) {
@@ -4904,6 +5120,11 @@ namespace {
                     continue;
                 }
                 emit_param(e.args[j]);
+                // The C callee declared this parameter as the tag's integer, so pass the tag.
+                if( callee_is_c_abi && this->enum_ffi_tag_ty(ty) )
+                {
+                    m_of << ".TAG";
+                }
             }
             m_of << " );\n";
 
@@ -5869,7 +6090,11 @@ namespace {
                         ss << "\n\t\t";
                         // TODO: If the type has a high alignment, emit as a pointer? Might have FFI issues
                         auto ty = params.monomorph(m_resolve, item.m_args[i].second);
-                        this->emit_ctype( ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
+                        // A C ABI spells a fieldless enum as its integer; see enum_ffi_tag_ty.
+                        const ::HIR::TypeRef* tag_ty = nullptr;
+                        if( fn_is_c_abi_extern(item) )
+                            tag_ty = this->enum_ffi_tag_ty(ty);
+                        this->emit_ctype( tag_ty ? *tag_ty : ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
                         if( item.m_variadic || i+1 < item.m_args.size() )    m_of << ",";
                         m_of << " // " << ty;
                     }
@@ -6708,17 +6933,10 @@ namespace {
                 else
 
                 {
-                    switch(m_compiler)
-                    {
-                    case Compiler::Gcc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow";
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        break;
-                    case Compiler::Msvc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow_" << params.m_types.at(0).data().as_Primitive();
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        break;
-                    }
+                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow";
+                    if( m_options.emulated_overflow_intrinsics )
+                        m_of << "_" << params.m_types.at(0).data().as_Primitive();
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                 }
             }
             else if( name == "sub_with_overflow" ) {
@@ -6734,17 +6952,10 @@ namespace {
                 }
                 else
                 {
-                    switch(m_compiler)
-                    {
-                    case Compiler::Gcc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow";
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        break;
-                    case Compiler::Msvc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow_" << params.m_types.at(0).data().as_Primitive();
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        break;
-                    }
+                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow";
+                    if( m_options.emulated_overflow_intrinsics )
+                        m_of << "_" << params.m_types.at(0).data().as_Primitive();
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                 }
             }
             else if( name == "mul_with_overflow" ) {
@@ -6760,18 +6971,10 @@ namespace {
                 }
                 else
                 {
-                    switch(m_compiler)
-                    {
-                    case Compiler::Gcc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_param(e.args.at(0));
-                            m_of << ", "; emit_param(e.args.at(1));
-                            m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        break;
-                    case Compiler::Msvc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow_" << params.m_types.at(0).data().as_Primitive();
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        break;
-                    }
+                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow";
+                    if( m_options.emulated_overflow_intrinsics )
+                        m_of << "_" << params.m_types.at(0).data().as_Primitive();
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                 }
             }
             else if(
@@ -6798,17 +7001,10 @@ namespace {
                 }
                 else
                 {
-                    switch(m_compiler)
-                    {
-                    case Compiler::Gcc:
-                        m_of << "__builtin_add_overflow";
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        break;
-                    case Compiler::Msvc:
-                        m_of << "__builtin_add_overflow_" << ty.data().as_Primitive();
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        break;
-                    }
+                    m_of << "__builtin_add_overflow";
+                    if( m_options.emulated_overflow_intrinsics )
+                        m_of << "_" << ty.data().as_Primitive();
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                 }
 
                 if( name == "saturating_add" )
@@ -6884,17 +7080,10 @@ namespace {
                 }
                 else
                 {
-                    switch(m_compiler)
-                    {
-                    case Compiler::Gcc:
-                        m_of << "__builtin_sub_overflow";
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        break;
-                    case Compiler::Msvc:
-                        m_of << "__builtin_sub_overflow_" << ty.data().as_Primitive();
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        break;
-                    }
+                    m_of << "__builtin_sub_overflow";
+                    if( m_options.emulated_overflow_intrinsics )
+                        m_of << "_" << ty.data().as_Primitive();
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                 }
 
                 if( name == "saturating_sub" )
@@ -6960,17 +7149,10 @@ namespace {
                 }
                 else
                 {
-                    switch(m_compiler)
-                    {
-                    case Compiler::Gcc:
-                        m_of << "__builtin_mul_overflow";
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        break;
-                    case Compiler::Msvc:
-                        m_of << "__builtin_mul_overflow_" << params.m_types.at(0).data().as_Primitive();
-                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        break;
-                    }
+                    m_of << "__builtin_mul_overflow";
+                    if( m_options.emulated_overflow_intrinsics )
+                        m_of << "_" << params.m_types.at(0).data().as_Primitive();
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                 }
             }
             // Unchecked Arithmetic

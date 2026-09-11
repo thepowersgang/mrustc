@@ -287,6 +287,18 @@ class CHandler_Repr:
                         //e->m_markings.max_field_align = 1;
                     }
                 }
+                else if(repr_str == "align") {
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    auto n = Expand_ParseAndExpand_ExprVal(crate, mod, lex);
+                    auto* val = dynamic_cast<AST::ExprNode_Integer*>(&*n);
+                    ASSERT_BUG(n->span(), val, "#[repr(align(...))] - alignment must be an integer");
+                    auto v = val->m_value;
+                    ASSERT_BUG(lex.point_span(), v > U128(0), "#[repr(align(" << v << "))] - alignment must be non-zero");
+                    ASSERT_BUG(lex.point_span(), (v & (v-1)) == U128(0), "#[repr(align(" << v << "))] - alignment must be a power of two");
+                    ASSERT_BUG(lex.point_span(), e->m_markings.align_value == 0, "#[repr(align(" << v << "))] - conflicts with previous alignment");
+                    e->m_markings.align_value = v.truncate_u64();
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                }
                 else {
                     ERROR(lex.point_span(), E0000, "Unknown union repr '" << repr_str << "'");
                 }
