@@ -838,6 +838,9 @@ unsigned int MirBuilder::new_drop_flag(bool default_state)
     {
         if( auto* e = m_scopes.at(m_scope_stack[i]).data.opt_Loop() )
         {
+            // A `match` isn't actually a loop, so promote the drop flag to the parent scope.
+            if( e->is_match )
+                continue;
             e->drop_flags.push_back(rv);
             break;
         }
@@ -886,13 +889,14 @@ ScopeHandle MirBuilder::new_scope_split(const Span& sp)
     DEBUG("START (split) scope " << idx);
     return ScopeHandle { *this, idx };
 }
-ScopeHandle MirBuilder::new_scope_loop(const Span& sp)
+ScopeHandle MirBuilder::new_scope_loop(const Span& sp, bool is_match/*=false*/)
 {
     unsigned int idx = m_scopes.size();
     m_scopes.push_back( ScopeDef {sp, ScopeType::make_Loop({})} );
     m_scopes.back().data.as_Loop().entry_bb = m_current_block;
+    m_scopes.back().data.as_Loop().is_match = is_match;
     m_scope_stack.push_back( idx );
-    DEBUG("START (loop) scope " << idx);
+    DEBUG("START (loop" << (is_match ? ", match" : "") << ") scope " << idx);
     return ScopeHandle { *this, idx };
 }
 ScopeHandle MirBuilder::new_scope_freeze(const Span& sp)
