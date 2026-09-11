@@ -2065,6 +2065,8 @@ namespace {
                             case 8: niche_ty = ::HIR::CoreType::U64;    break;
                             default:    BUG(sp, "Unknown niche size: " << niche_path);
                             }
+                            size_t niche_size, niche_align;
+                            Target_GetSizeAndAlignOf(sp, resolve, niche_ty, niche_size, niche_align);
                             // Generate raw struct reprs for all variants
                             // - Add `non_niche_offset` to all variants
                             assert(reprs.size() == variants.size());
@@ -2092,8 +2094,8 @@ namespace {
                                         // NOTE: Any target-specific field alignment adjustment happens in
                                         // make_type_repr_struct__inner - insert with the natural alignment here
                                         variants[i].ents.insert( variants[i].ents.begin(), Ent() );
-                                        variants[i].ents[0].align = niche_path.size;
-                                        variants[i].ents[0].size = niche_path.size;
+                                        variants[i].ents[0].size = niche_size;
+                                        variants[i].ents[0].align = niche_align;
                                         variants[i].ents[0].field = variants[i].ents.size() - 1;
                                         variants[i].ents[0].ty = niche_ty.clone();
                                         // Create the new repr
@@ -2109,12 +2111,12 @@ namespace {
                                         for(const auto& f : reprs[i]->fields) {
                                             max_ofs = std::max(max_ofs, f.offset + get_size_or_zero(sp, resolve, f.ty));
                                         }
-                                        // - Increase alignment to the niche size
-                                        if( max_ofs % niche_path.size != 0 ) {
-                                            max_ofs += niche_path.size - (max_ofs % niche_path.size);
+                                        // - Round up to the niche's alignment
+                                        if( max_ofs % niche_align != 0 ) {
+                                            max_ofs += niche_align - (max_ofs % niche_align);
                                         }
-                                        assert(niche_offset % niche_path.size == 0);
-                                        assert(max_ofs % niche_path.size == 0);
+                                        assert(niche_offset % niche_align == 0);
+                                        assert(max_ofs % niche_align == 0);
                                         ASSERT_BUG(sp, niche_offset >= max_ofs,
                                             "Niche offset (" << niche_offset << ") overlaps with variant data (" << max_ofs << ")");
                                         auto req_padding = niche_offset - max_ofs;
@@ -2126,8 +2128,8 @@ namespace {
                                             variants[i].ents.back().field = ~0u;
                                         }
                                         variants[i].ents.push_back(Ent());
-                                        variants[i].ents.back().align = niche_path.size;
-                                        variants[i].ents.back().size = niche_path.size;
+                                        variants[i].ents.back().size = niche_size;
+                                        variants[i].ents.back().align = niche_align;
                                         variants[i].ents.back().field = tag_fld_idx;
                                         variants[i].ents.back().ty = niche_ty.clone();
                                         // Create the new repr
