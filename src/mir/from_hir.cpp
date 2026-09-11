@@ -3191,8 +3191,9 @@ namespace {
             }
             ::std::map<unsigned,unsigned>   drop_flag_mapping;
             for(auto idx : ev.generator_drop_flags()) {
-                drop_flag_mapping[idx] = drop_flag_mapping.size();
-                DEBUG("df$" << idx << " = BIT" << drop_flag_mapping[idx]);
+                auto bit = static_cast<unsigned>(drop_flag_mapping.size());
+                drop_flag_mapping[idx] = bit;
+                DEBUG("df$" << idx << " = BIT" << bit);
             }
             // Add drop flags to the end
             auto drop_flags_field_idx = fields.size();
