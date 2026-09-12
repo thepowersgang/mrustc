@@ -1200,8 +1200,8 @@ namespace {
             str.m_markings.is_copy = node.m_is_copy;
             ::HIR::SimplePath   closure_struct_path;
             const ::HIR::TypeItem* closure_struct_ptr;
-            ::std::tie(closure_struct_path, closure_struct_ptr) = m_out.new_type(CLOSURE_PATH_PREFIX, m_new_type_suffix, mv$(str));
-            const auto& closure_struct_ref = closure_struct_ptr->as_Struct();
+            ::std::tie(closure_struct_path, closure_struct_ptr) = m_out.new_type(CLOSURE_PATH_PREFIX, m_new_type_suffix, box$(str));
+            const auto& closure_struct_ref = *closure_struct_ptr->as_Struct();
 
             // Mark the object pathname in the closure.
             node.m_obj_ptr = &closure_struct_ref;
@@ -1637,13 +1637,13 @@ namespace {
             monomorph_cb.add_bounds(sp, m_resolve);
 
             // Create state index enum
-            auto state_idx_type = m_out.new_type("gen_state_idx#", m_new_type_suffix, ::HIR::Enum {
+            auto state_idx_type = m_out.new_type("gen_state_idx#", m_new_type_suffix, box$(::HIR::Enum {
                 ::HIR::GenericParams(),
                 false,
                 ::HIR::Enum::Repr(),
                 ::HIR::Enum::Class::make_Value({})
-                });
-            auto state_idx_ty = ::HIR::TypeRef::new_path( state_idx_type.first, &state_idx_type.second->as_Enum() );
+                }));
+            auto state_idx_ty = ::HIR::TypeRef::new_path( state_idx_type.first, &*state_idx_type.second->as_Enum() );
 
             // Create the captures structure here, and update it afterwards with the state
             // - The final entry in captures is the state, and is pre-filled with zeroes by the creator's MIR lower
@@ -1655,8 +1655,8 @@ namespace {
             state_str.m_data.as_Tuple().push_back(HIR::VisEnt<HIR::TypeRef> { HIR::Publicity::new_none(), state_idx_ty.clone() });
             ::HIR::SimplePath   state_struct_path;
             const ::HIR::TypeItem* state_struct_ptr;
-            ::std::tie(state_struct_path, state_struct_ptr) = m_out.new_type("gen_state#", m_new_type_suffix, std::move(state_str));
-            auto state_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, params.make_nop_params(0)), &state_struct_ptr->as_Struct() );
+            ::std::tie(state_struct_path, state_struct_ptr) = m_out.new_type("gen_state#", m_new_type_suffix, box$(state_str));
+            auto state_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, params.make_nop_params(0)), &*state_struct_ptr->as_Struct() );
             DEBUG("state_type = " << state_type);
             cr_vars.set_state_type(state_type.clone());
 
@@ -1668,15 +1668,15 @@ namespace {
             gen_str.m_markings.has_drop_impl = true;
             ::HIR::SimplePath   gen_struct_path;
             const ::HIR::TypeItem* gen_struct_ptr;
-            ::std::tie(gen_struct_path, gen_struct_ptr) = m_out.new_type(GENERATOR_PATH_PREFIX, m_new_type_suffix, mv$(gen_str));
-            const auto& gen_struct_ref = gen_struct_ptr->as_Struct();
+            ::std::tie(gen_struct_path, gen_struct_ptr) = m_out.new_type(GENERATOR_PATH_PREFIX, m_new_type_suffix, box$(gen_str));
+            const auto& gen_struct_ref = *gen_struct_ptr->as_Struct();
             DEBUG(gen_struct_path << " -> args=" << params.fmt_args() << " where " << params.fmt_bounds());
 
             // Mark the object pathname in the closure.
             node.m_obj_ptr = &gen_struct_ref;
             node.m_obj_path = ::HIR::GenericPath( gen_struct_path, monomorph_cb.freeze() );
             node.m_captures = std::move(cr_vars.capture_nodes);
-            node.m_state_data_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, node.m_obj_path.m_params.clone()), &state_struct_ptr->as_Struct() );
+            node.m_state_data_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, node.m_obj_path.m_params.clone()), &*state_struct_ptr->as_Struct() );
 
             auto lang_Pin = m_resolve.m_crate.get_lang_item_path(sp, "pin");
             // Return wrapper: Renamed in 1.90
@@ -1787,13 +1787,13 @@ namespace {
             monomorph_cb.add_bounds(sp, m_resolve);
 
             // Create state index enum
-            auto state_idx_type = m_out.new_type("async_state_idx#", m_new_type_suffix, ::HIR::Enum {
+            auto state_idx_type = m_out.new_type("async_state_idx#", m_new_type_suffix, box$(::HIR::Enum {
                 ::HIR::GenericParams(),
                 false,
                 ::HIR::Enum::Repr(),
                 ::HIR::Enum::Class::make_Value({})
-                });
-            auto state_idx_ty = ::HIR::TypeRef::new_path( state_idx_type.first, &state_idx_type.second->as_Enum() );
+                }));
+            auto state_idx_ty = ::HIR::TypeRef::new_path( state_idx_type.first, &*state_idx_type.second->as_Enum() );
 
             // Create the captures structure here, and update it afterwards with the state
             // - The final entry in captures is the state, and is pre-filled with zeroes by the creator's MIR lower
@@ -1805,8 +1805,8 @@ namespace {
             state_str.m_data.as_Tuple().push_back(HIR::VisEnt<HIR::TypeRef> { HIR::Publicity::new_none(), state_idx_ty.clone() });
             ::HIR::SimplePath   state_struct_path;
             const ::HIR::TypeItem* state_struct_ptr;
-            ::std::tie(state_struct_path, state_struct_ptr) = m_out.new_type("async_state#", m_new_type_suffix, std::move(state_str));
-            auto state_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, params.make_nop_params(0)), &state_struct_ptr->as_Struct() );
+            ::std::tie(state_struct_path, state_struct_ptr) = m_out.new_type("async_state#", m_new_type_suffix, box$(state_str));
+            auto state_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, params.make_nop_params(0)), &*state_struct_ptr->as_Struct() );
 
             // Update the state type entry, now that it's known
             cr_vars.set_state_type(state_type.clone());
@@ -1823,8 +1823,8 @@ namespace {
             gen_str.m_markings.has_drop_impl = true;
             ::HIR::SimplePath   gen_struct_path;
             const ::HIR::TypeItem* gen_struct_ptr;
-            ::std::tie(gen_struct_path, gen_struct_ptr) = m_out.new_type(PATH_PREFIX_FUTURE, m_new_type_suffix, mv$(gen_str));
-            const auto& gen_struct_ref = gen_struct_ptr->as_Struct();
+            ::std::tie(gen_struct_path, gen_struct_ptr) = m_out.new_type(PATH_PREFIX_FUTURE, m_new_type_suffix, box$(gen_str));
+            const auto& gen_struct_ref = *gen_struct_ptr->as_Struct();
 
             DEBUG(gen_struct_path << " -> args=" << params.fmt_args() << " where " << params.fmt_bounds());
 
@@ -1832,7 +1832,7 @@ namespace {
             node.m_obj_ptr = &gen_struct_ref;
             node.m_obj_path = ::HIR::GenericPath( gen_struct_path, monomorph_cb.freeze() );
             node.m_captures = std::move(cr_vars.capture_nodes);
-            node.m_state_data_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, node.m_obj_path.m_params.clone()), &state_struct_ptr->as_Struct() );
+            node.m_state_data_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, node.m_obj_path.m_params.clone()), &*state_struct_ptr->as_Struct() );
 
             ::HIR::TypeRef& self_arg_ty = cr_vars.new_locals[0];
             // `::path::to::struct`
@@ -1956,12 +1956,14 @@ namespace {
             ::HIR::SimplePath   root_mod_path(crate.m_crate_name,{});
             m_cur_mod_path = &root_mod_path;
             // Type construction helper used for impl blocks
-            m_out.new_type = [&](const char* prefix, const char* suffix, auto s)->auto {
+            m_out.new_type = [&](const char* prefix, const char* suffix, ::HIR::TypeItem s)->auto {
                 auto name = RcString::new_interned(FMT(prefix << "I_" << suffix << (suffix[0] ? "_" : "") << closure_count));
                 closure_count += 1;
-                auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), mv$(s) } ));
-                auto* ret_ptr = &boxed->ent;
-                crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
+                auto r = crate.m_root_module.m_mod_items.insert( ::std::make_pair(
+                    name,
+                    ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), mv$(s) }
+                ) );
+                auto* ret_ptr = &r.first->second.ent;
                 return ::std::make_pair( ::HIR::SimplePath(crate.m_crate_name, {}) + name, ret_ptr );
                 };
 
@@ -2005,7 +2007,7 @@ namespace {
             for(auto& e : new_types)
             {
                 DEBUG(p << ": Push " << e.first);
-                mod.m_mod_items.insert( mv$(e) );
+                mod.m_mod_items.insert( ::std::make_pair(e.first, mv$(*e.second)) );
             }
             // Fix module paths on all impls created during this call that haven't already had a path set
             // - Child modules will set paths on theirs
@@ -2159,12 +2161,11 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::TypeRef& exp_
 
     static int closure_count = 0;
     OutState    out;
-    out.new_type = [&](const char* prefix, const char* suffix, auto s)->auto {
+    out.new_type = [&](const char* prefix, const char* suffix, ::HIR::TypeItem s)->auto {
         auto name = RcString::new_interned(FMT(prefix << "C_" << closure_count));
         closure_count += 1;
-        auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
-        auto* ret_ptr = &boxed->ent;
-        crate.m_new_types.push_back( ::std::make_pair(name, mv$(boxed)) );
+        crate.m_new_types.push_back(::std::make_pair(name, ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), mv$(s) } ));
+        auto* ret_ptr = &crate.m_new_types.back().second.ent;
         return ::std::make_pair( ::HIR::SimplePath(crate.m_crate_name, {}) + name, ret_ptr );
         };
 

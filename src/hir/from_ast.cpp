@@ -1244,10 +1244,10 @@ namespace {
             // NOTE: I'd love to have this be a `Constant`, but that would require duplicating the type and the params
             // meh. Lazy option is to just duplicate
             auto name = RcString::new_interned(FMT(path.get_name() << "#default_" << field.m_name));
-            out_mod.m_value_items.insert(std::make_pair(name, ::std::make_unique<HIR::VisEnt<HIR::ValueItem>>(HIR::VisEnt<HIR::ValueItem>{
+            out_mod.m_value_items.insert(std::make_pair(name, HIR::VisEnt<HIR::ValueItem>{
                 HIR::Publicity::new_global(),
-                HIR::ValueItem(HIR::Constant(params.clone(), type.clone(), LowerHIR_Expr(field.m_default)))
-            })));
+                HIR::ValueItem(::std::make_unique<HIR::Constant>(params.clone(), type.clone(), LowerHIR_Expr(field.m_default)))
+            }));
             field_default = std::make_unique<HIR::GenericPath>((*path.parent + name).get_simple_path(), params.make_nop_params(0) );
         }
         fields.push_back(HIR::StructField {
@@ -1942,13 +1942,13 @@ namespace {
 }
 
 void _add_mod_ns_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub,  ::HIR::TypeItem ti) {
-    mod.m_mod_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::TypeItem> { is_pub, mv$(ti) }) ) );
+    mod.m_mod_items.insert( ::std::make_pair( mv$(name), ::HIR::VisEnt< ::HIR::TypeItem> { is_pub, mv$(ti) }) );
 }
 void _add_mod_val_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub,  ::HIR::ValueItem ti) {
-    mod.m_value_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::ValueItem> { is_pub, mv$(ti) }) ) );
+    mod.m_value_items.insert( ::std::make_pair( mv$(name), ::HIR::VisEnt< ::HIR::ValueItem> { is_pub, mv$(ti) }) );
 }
 void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub,  ::HIR::MacroItem ti) {
-    mod.m_macro_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::MacroItem> { is_pub, mv$(ti) }) ) );
+    mod.m_macro_items.insert( ::std::make_pair( mv$(name), ::HIR::VisEnt< ::HIR::MacroItem> { is_pub, mv$(ti) }) );
 }
 
 ::HIR::ValueItem LowerHIR_Static(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Static& e, const Span& sp, const RcString& name)
@@ -1957,7 +1957,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
 
     if( e.s_class() == ::AST::Static::CONST )
         // Note: Empty names are allowed for `const _: ...`
-        return ::HIR::ValueItem::make_Constant(::HIR::Constant(
+        return ::HIR::ValueItem::make_Constant(::std::make_unique<::HIR::Constant>(
             ::HIR::GenericParams {},
             LowerHIR_Type(e.type()),
             LowerHIR_Expr(e.value())
@@ -1986,7 +1986,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             linkage.name = name.c_str();
         }
 
-        return ::HIR::ValueItem::make_Static(::HIR::Static(
+        return ::HIR::ValueItem::make_Static(::std::make_unique<::HIR::Static>(
             mv$(linkage),
             (e.s_class() == ::AST::Static::MUT),
             LowerHIR_Type(e.type()),
@@ -2038,7 +2038,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             void push_trait_alias_hir(const HIR::TraitAlias& ta) {
                 for(const auto& p : ta.m_traits) {
                     if( const auto* tap = g_crate_ptr->get_typeitem_by_path(Span(), p.m_path.m_path).opt_TraitAlias()) {
-                        push_trait_alias_hir(*tap);
+                        push_trait_alias_hir(**tap);
                     }
                     else {
                         push_trait(p.m_path.m_path);
@@ -2067,7 +2067,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             auto& submod = *submod_ptr;
             auto name = RcString::new_interned(FMT("#" << i));
             auto item_path = ::HIR::ItemPath(path, name.c_str());
-            auto ti = ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, item_path, mod.m_traits) );
+            auto ti = ::HIR::TypeItem::make_Module( ::std::make_unique<HIR::Module>(LowerHIR_Module(submod, item_path, mod.m_traits)) );
             _add_mod_ns_item( mod,  mv$(name), ::HIR::Publicity::new_priv(mod_path), mv$(ti) );
         }
     }
@@ -2118,7 +2118,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             // Ignore - The index is used to add `Import`s
             }
         TU_ARMA(Module, e) {
-            _add_mod_ns_item( mod, item.name, get_vis(item.vis), LowerHIR_Module(e, mv$(item_path)) );
+            _add_mod_ns_item( mod, item.name, get_vis(item.vis), ::std::make_unique<HIR::Module>(LowerHIR_Module(e, mv$(item_path))) );
             }
         TU_ARMA(Crate, e) {
             // All 'extern crate' items should be normalised into a list in the crate root
@@ -2132,10 +2132,10 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
                 {
                     ERROR(item.span, E0000, "Generics on extern type");
                 }
-                _add_mod_ns_item(mod, item.name, get_vis(item.vis), ::HIR::ExternType {});
+                _add_mod_ns_item(mod, item.name, get_vis(item.vis), ::std::make_unique<::HIR::ExternType>());
                 break;
             }
-            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(item_path, e) ) );
+            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), ::HIR::TypeItem::make_TypeAlias( ::std::make_unique<HIR::TypeAlias>(LowerHIR_TypeAlias(item_path, e)) ) );
             }
         TU_ARMA(Struct, e) {
             /// Add value reference
@@ -2147,26 +2147,28 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             }
             else {
             }
-            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), LowerHIR_Struct(ip->span, item_path, e, item.attrs, mod) );
+            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), box$(LowerHIR_Struct(ip->span, item_path, e, item.attrs, mod)) );
             }
         TU_ARMA(Enum, e) {
-            auto enm = LowerHIR_Enum(item_path, e, item.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, get_vis(item.vis), mv$(str)); }, mod);
-            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), mv$(enm) );
+            auto enm = LowerHIR_Enum(item_path, e, item.attrs, [&](RcString name, HIR::Struct str){
+                _add_mod_ns_item(mod, name, get_vis(item.vis), box$(str));
+            }, mod);
+            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), box$(enm) );
             }
         TU_ARMA(Union, e) {
-            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), LowerHIR_Union(item_path, e, item.attrs) );
+            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), box$(LowerHIR_Union(item_path, e, item.attrs)) );
             }
         TU_ARMA(Trait, e) {
-            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), LowerHIR_Trait(item_path.get_simple_path(), e) );
+            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), box$(LowerHIR_Trait(item_path.get_simple_path(), e)) );
             }
         TU_ARMA(TraitAlias, e) {
-            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), LowerHIR_TraitAlias(sp, item_path, e) );
+            _add_mod_ns_item( mod,  item.name, get_vis(item.vis), box$(LowerHIR_TraitAlias(sp, item_path, e)) );
             }
         TU_ARMA(Function, e) {
-            _add_mod_val_item(mod, item.name, get_vis(item.vis),  LowerHIR_Function(item_path, item.attrs, e, ::HIR::TypeRef{}));
+            _add_mod_val_item( mod, item.name, get_vis(item.vis), box$(LowerHIR_Function(item_path, item.attrs, e, ::HIR::TypeRef{})) );
             }
         TU_ARMA(Static, e) {
-            _add_mod_val_item(mod, item.name, get_vis(item.vis),  LowerHIR_Static(item_path, item.attrs, e, sp, item.name));
+            _add_mod_val_item( mod, item.name, get_vis(item.vis), LowerHIR_Static(item_path, item.attrs, e, sp, item.name) );
             }
         }
     }
@@ -2598,7 +2600,7 @@ public:
             };
             // Register under an invalid SimplePath
             ::HIR::ProcMacro::Ty    ty = H::cvt_macro_ty(ent.ty);
-            macros.insert( std::make_pair(ent.name, ::HIR::ProcMacro { ty, ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes }) );
+            macros.insert( std::make_pair(ent.name, make_unique_ptr(::HIR::ProcMacro { ty, ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes })) );
             rv.m_exported_macro_names.push_back(ent.name);
             DEBUG("Export proc_macro " << ent.name);
         }
@@ -2662,7 +2664,7 @@ public:
         if(e.second.is_MacroRules() ) {
             ASSERT_BUG(Span(), !e.second.as_MacroRules()->m_rules.empty(), "Empty macro? - " << e.first);
         }
-        rv.m_root_module.m_macro_items.insert( ::std::make_pair(e.first, box$(HIR::VisEnt<HIR::MacroItem> { HIR::Publicity::new_global(), mv$(e.second) })) );
+        rv.m_root_module.m_macro_items.insert( ::std::make_pair(e.first, HIR::VisEnt<HIR::MacroItem> { HIR::Publicity::new_global(), mv$(e.second) }) );
     }
 
     LowerHIR_Module_Impls(crate.m_root_module,  rv);
@@ -2687,16 +2689,16 @@ public:
                     if( it2 == mod->m_mod_items.end() )
                         return ::HIR::SimplePath();
                     const auto& e = it2->second;
-                    if(const auto* ip = e->ent.opt_Import())
+                    if(const auto* ip = e.ent.opt_Import())
                     {
                         // TODO: Handle module aliases?
                         (void)ip;
                         return ::HIR::SimplePath();
                     }
-                    else if(const auto* ep = e->ent.opt_Module() )
+                    else if(const auto* ep = e.ent.opt_Module() )
                     {
                         cur_path_components.push_back(*it);
-                        mod = ep;
+                        mod = &**ep;
                     }
                     else
                     {
@@ -2717,7 +2719,7 @@ public:
                         return ::HIR::SimplePath();
 
                     // Found: Either return the current path, or return this alias.
-                    if(const auto* ip = it2->second->ent.opt_Import())
+                    if(const auto* ip = it2->second.ent.opt_Import())
                     {
                         if(ip->is_variant)
                             return ::HIR::SimplePath();
@@ -2899,12 +2901,12 @@ public:
             {
                 TRACE_FUNCTION_F(path);
                 for(auto& mi : mod.m_mod_items) {
-                    if(auto* submod_p = mi.second->ent.opt_Module()) {
-                        fix_macros_in_mod(path + mi.first, *submod_p);
+                    if(auto* submod_p = mi.second.ent.opt_Module()) {
+                        fix_macros_in_mod(path + mi.first, **submod_p);
                     }
                 }
                 for(auto& mi : mod.m_macro_items) {
-                    if(auto* mrpp = mi.second->ent.opt_MacroRules()) {
+                    if(auto* mrpp = mi.second.ent.opt_MacroRules()) {
                         auto& mr = **mrpp;
                         if( mr.m_source_crate.size() == 0 ) {
                             mr.m_source_crate = g_crate_name;
@@ -2914,7 +2916,7 @@ public:
                             fix_macro_contents(rule.m_contents);
                         }
                     }
-                    if( const auto* i = mi.second->ent.opt_Import() ) {
+                    if( const auto* i = mi.second.ent.opt_Import() ) {
                         DEBUG(path << ": Import " << mi.first << " = " << i->path);
                         if( i->path.crate_name() == CRATE_BUILTINS ) {
                         }

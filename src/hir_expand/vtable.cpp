@@ -168,8 +168,11 @@ namespace {
             auto saved_nt = mv$(m_new_type);
 
             ::std::vector< decltype(mod.m_mod_items)::value_type> new_types;
-            m_new_type = [&](bool pub, auto name, auto s)->auto {
-                auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { (pub ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none()), ::HIR::TypeItem( mv$(s) ) }) );
+            m_new_type = [&](bool pub, auto name, HIR::Struct s)->auto {
+                auto boxed = ::HIR::VisEnt< ::HIR::TypeItem> {
+                    (pub ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none()),
+                    ::HIR::TypeItem( box$(s) )
+                };
                 auto ret = (p + name).get_simple_path();
                 new_types.push_back( ::std::make_pair( mv$(name), mv$(boxed)) );
                 return ret;

@@ -48,7 +48,7 @@ namespace MIR {
             os << ::std::dec;
             ),
         (StaticString,
-            os << "\"" << FmtEscaped(e) << "\"";
+            os << "\"" << FmtEscaped(e.c_str(), e.size()) << "\"";
             ),
         (Const,
             assert(e.p);

@@ -336,8 +336,8 @@ namespace {
             if( it == mod->m_mod_items.end() ) {
                 BUG(sp, "Couldn't find component " << i << " of " << path);
             }
-            if(const auto* e = it->second->ent.opt_Module()) {
-                mod = e;
+            if(const auto* e = it->second.ent.opt_Module()) {
+                mod = &**e;
             }
             else {
                 BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
@@ -356,7 +356,7 @@ const ::HIR::MacroItem& ::HIR::Crate::get_macroitem_by_path(const Span& sp, cons
         BUG(sp, "Could not find macro name in " << path);
     }
 
-    return it->second->ent;
+    return it->second.ent;
 }
 
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
@@ -368,7 +368,7 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
         BUG(sp, "Could not find type " << path);
     }
 
-    return it->second->ent;
+    return it->second.ent;
 }
 
 const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node/*=false*/, bool ignore_crate_name/*=false*/) const
@@ -395,7 +395,7 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
         const auto& ti = this->get_typeitem_by_path(sp, path, ignore_crate_name, ignore_last_node);
         if(auto* e = ti.opt_Module())
         {
-            return *e;
+            return **e;
         }
         else {
             if( ignore_last_node )
@@ -409,7 +409,7 @@ const ::HIR::Trait& ::HIR::Crate::get_trait_by_path(const Span& sp, const ::HIR:
 {
     const auto& ti = this->get_typeitem_by_path(sp, path);
     TU_IFLET(::HIR::TypeItem, ti, Trait, e,
-        return e;
+        return *e;
     )
     else {
         BUG(sp, "Trait path " << path << " didn't point to a trait (" << ti.tag_str() << ")");
@@ -419,7 +419,7 @@ const ::HIR::Struct& ::HIR::Crate::get_struct_by_path(const Span& sp, const ::HI
 {
     const auto& ti = this->get_typeitem_by_path(sp, path);
     TU_IFLET(::HIR::TypeItem, ti, Struct, e,
-        return e;
+        return *e;
     )
     else {
         BUG(sp, "Struct path " << path << " didn't point to a struct (" << ti.tag_str() << ")");
@@ -429,7 +429,7 @@ const ::HIR::Union& ::HIR::Crate::get_union_by_path(const Span& sp, const ::HIR:
 {
     const auto& ti = this->get_typeitem_by_path(sp, path);
     TU_IFLET(::HIR::TypeItem, ti, Union, e,
-        return e;
+        return *e;
     )
     else {
         BUG(sp, "Path " << path << " didn't point to a union (" << ti.tag_str() << ")");
@@ -439,7 +439,7 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
 {
     const auto& ti = this->get_typeitem_by_path(sp, path, ignore_crate_name, ignore_last_node);
     TU_IFLET(::HIR::TypeItem, ti, Enum, e,
-        return e;
+        return *e;
     )
     else {
         BUG(sp, "Enum path " << path << " didn't point to an enum (" << ti.tag_str() << ")");
@@ -447,14 +447,14 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
 }
 
 namespace {
-    ::HIR::ValueItem    g_val_item_intrnsic_offsetof {
-        ::HIR::Function {
+    ::HIR::ValueItem    g_val_item_intrinsic_offsetof {
+        box$(::HIR::Function {
             ::HIR::Function::Receiver::Free,
             ::HIR::GenericParams {},
             {},
             HIR::TypeRef(HIR::CoreType::Usize),
             {}
-        }
+        })
     };
 }
 
@@ -463,19 +463,19 @@ const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const 
     if( path.crate_name() == "#intrinsics" ) {
         ASSERT_BUG(sp, path.components().size() == 1, "");
         if( path.components().back() == "offset_of" ) {
-            if( ! g_val_item_intrnsic_offsetof.as_Function().m_variadic ) {
-                auto& v =  g_val_item_intrnsic_offsetof.as_Function();
+            if( ! g_val_item_intrinsic_offsetof.as_Function()->m_variadic ) {
+                auto& v = *g_val_item_intrinsic_offsetof.as_Function();
                 v.m_variadic = true;
                 v.m_params.m_types.push_back(HIR::TypeParamDef { RcString::new_interned("T"), {}, true });
             }
-            return g_val_item_intrnsic_offsetof;
+            return g_val_item_intrinsic_offsetof;
         }
         TODO(sp, "Get intrinsic " << path.components().back());
     }
     if( path.crate_name() == this->m_crate_name && path.components().size() == 1 ) {
         auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.components().back(); });
         if( i != m_new_values.end() ) {
-            return i->second->ent;
+            return i->second.ent;
         }
     }
     const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, /*ignore_last_node=*/false);
@@ -485,13 +485,13 @@ const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const 
         BUG(sp, "Could not find value name " << path);
     }
 
-    return it->second->ent;
+    return it->second.ent;
 }
 const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const
 {
     const auto& ti = this->get_valitem_by_path(sp, path);
     TU_IFLET(::HIR::ValueItem, ti, Function, e,
-        return e;
+        return *e;
     )
     else {
         BUG(sp, "Function path " << path << " didn't point to an function (" << ti.tag_str() << ")");
@@ -505,8 +505,8 @@ const ::HIR::Static& ::HIR::Crate::get_static_by_path(const Span& sp, const ::HI
     auto it = m.m_value_items.find(path.components().back());
     if(it != m.m_value_items.end())
     {
-        ASSERT_BUG(sp, it->second->ent.is_Static(), "`static` path " << path << " didn't point to a static - " << it->second->ent.tag_str());
-        return it->second->ent.as_Static();
+        ASSERT_BUG(sp, it->second.ent.is_Static(), "`static` path " << path << " didn't point to a static - " << it->second.ent.tag_str());
+        return *it->second.ent.as_Static();
     }
     for(const auto& e : m.m_inline_statics)
     {
@@ -518,7 +518,7 @@ const ::HIR::Static& ::HIR::Crate::get_static_by_path(const Span& sp, const ::HI
     if( path.crate_name() == this->m_crate_name && path.components().size() == 1 ) {
         auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.components().back(); });
         if( i != m_new_values.end() ) {
-            return i->second->ent.as_Static();
+            return *i->second.ent.as_Static();
         }
     }
     BUG(sp, "`static` path " << path << " can't be found");
