@@ -182,7 +182,7 @@ namespace {
                         ),
                     (String,
                         for(unsigned int j = 0; j < e.targets.size(); j ++)
-                            m_os << "\"" << FmtEscaped(ve[j]) << "\" => bb" << e.targets[j] << ", ";
+                            m_os << "\"" << FmtEscaped(ve[j].c_str(), ve[j].size()) << "\" => bb" << e.targets[j] << ", ";
                         ),
                     (ByteString,
                         for(unsigned int j = 0; j < e.targets.size(); j ++) {

@@ -1036,7 +1036,7 @@ namespace
                     TU_ARM(e.values, String, ve)
                         for(size_t i = 0; i < ve.size(); i++)
                         {
-                            m_of << "\"" << FmtEscaped(ve[i]) << "\" = " << e.targets[i] << ",";
+                            m_of << "\"" << FmtEscaped(ve[i].c_str(), ve[i].size()) << "\" = " << e.targets[i] << ",";
                         }
                         break;
                     TU_ARM(e.values, ByteString, ve) {

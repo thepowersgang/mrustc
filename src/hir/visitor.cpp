@@ -55,64 +55,64 @@ void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
     for( auto& named : mod.m_mod_items )
     {
         const auto& name = named.first;
-        auto& item = named.second->ent;
+        auto& item = named.second.ent;
         TU_MATCH_HDRA( (item), {)
         TU_ARMA(Import, e) {}
         TU_ARMA(Module, e) {
             TRACE_FUNCTION_F("mod " << name);
-            this->visit_module(p + name, e);
+            this->visit_module(p + name, *e);
             }
         TU_ARMA(TypeAlias, e) {
             TRACE_FUNCTION_F("type " << name);
-            this->visit_type_alias(p + name, e);
+            this->visit_type_alias(p + name, *e);
             }
         TU_ARMA(TraitAlias, e) {
             TRACE_FUNCTION_F("trait (alias) " << name);
-            this->visit_trait_alias(p + name, e);
+            this->visit_trait_alias(p + name, *e);
             }
         TU_ARMA(ExternType, e) {
             TRACE_FUNCTION_F("extern type " << name);
             }
         TU_ARMA(Enum, e) {
             TRACE_FUNCTION_F("enum " << name);
-            this->visit_enum(p + name, e);
+            this->visit_enum(p + name, *e);
             }
         TU_ARMA(Struct, e) {
             TRACE_FUNCTION_F("struct " << name);
-            this->visit_struct(p + name, e);
+            this->visit_struct(p + name, *e);
             }
         TU_ARMA(Union, e) {
             TRACE_FUNCTION_F("union " << name);
-            this->visit_union(p + name, e);
+            this->visit_union(p + name, *e);
             }
         TU_ARMA(Trait, e) {
             TRACE_FUNCTION_F("trait " << name);
-            this->visit_trait(p + name, e);
+            this->visit_trait(p + name, *e);
             }
         }
     }
     for( auto& named : mod.m_value_items )
     {
         const auto& name = named.first;
-        auto& item = named.second->ent;
+        auto& item = named.second.ent;
         TU_MATCH_HDRA( (item), {)
         TU_ARMA(Import, e) {
             // SimplePath - no visitor
             }
         TU_ARMA(Constant, e) {
             DEBUG("const " << name);
-            this->visit_constant(p + name, e);
+            this->visit_constant(p + name, *e);
             }
         TU_ARMA(Static, e) {
             DEBUG("static " << name);
-            this->visit_static(p + name, e);
+            this->visit_static(p + name, *e);
             }
         TU_ARMA(StructConstant, e) {
             // Just a path
             }
         TU_ARMA(Function, e) {
             DEBUG("fn " << name);
-            this->visit_function(p + name, e);
+            this->visit_function(p + name, *e);
             }
         TU_ARMA(StructConstructor, e) {
             // Just a path

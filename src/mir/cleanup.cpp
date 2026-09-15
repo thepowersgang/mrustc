@@ -515,7 +515,7 @@ namespace {
                 return ::MIR::Constant( mv$(bytestr) );
             }
             else if( te.inner == ::HIR::CoreType::Str ) {
-                return ::MIR::Constant::make_StaticString(std::string(s,e));
+                return ::MIR::Constant::make_StaticString(RcString(&*s,static_cast<size_t>(e-s)));
             }
             else {
                 // Get repr, assert that there's only one field and it's a `[u8]` or `str`

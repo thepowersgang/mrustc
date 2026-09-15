@@ -272,7 +272,7 @@ namespace resolve_ufcs {
                         if( gp.m_path.components().size() > 1 )
                         {
                             const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
-                            if( ent.is_Enum() && ent.as_Enum().find_variant(gp.m_path.components().back()) != SIZE_MAX )
+                            if( ent.is_Enum() && ent.as_Enum()->find_variant(gp.m_path.components().back()) != SIZE_MAX )
                             {
                                 // Rewrite!
                                 m_replacement.reset(new ::HIR::ExprNode_TupleVariant(sp, mv$(gp), /*is_struct*/false, mv$(node.m_args)));
@@ -314,7 +314,7 @@ namespace resolve_ufcs {
                             const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
                             if( ent.is_Enum() )
                             {
-                                const auto& enm = ent.as_Enum();
+                                const auto& enm = *ent.as_Enum();
                                 auto idx = enm.find_variant(gp.m_path.components().back());
                                 if( enm.m_data.is_Value() || enm.m_data.as_Data().at(idx).type == HIR::TypeRef::new_unit() )
                                 {
@@ -351,7 +351,7 @@ namespace resolve_ufcs {
                                 node.m_is_struct = false;
                                 auto enum_path = std::move(gp);
                                 auto var_name = enum_path.m_path.pop_component();
-                                auto enum_ty = HIR::TypeRef::new_path(std::move(enum_path), &ent.as_Enum());
+                                auto enum_ty = HIR::TypeRef::new_path(std::move(enum_path), &*ent.as_Enum());
                                 p = ::HIR::Path(std::move(enum_ty), std::move(var_name));
                             }
                         }
@@ -968,10 +968,10 @@ namespace resolve_ufcs {
                     auto& gp = e.val.as_Named().path.m_data.as_Generic();
                     if( const auto* enm_p = m_crate.get_typeitem_by_path(sp, gp.m_path, false, true).opt_Enum() )
                     {
-                        unsigned idx = enm_p->find_variant(gp.m_path.components().back());
+                        unsigned idx = (*enm_p)->find_variant(gp.m_path.components().back());
                         pat.m_data = ::HIR::Pattern::Data::make_PathValue({
                             mv$(gp),
-                            ::HIR::Pattern::PathBinding::make_Enum({enm_p, idx})
+                            ::HIR::Pattern::PathBinding::make_Enum({&**enm_p, idx})
                             });
                     }
                 }

@@ -348,6 +348,10 @@ public:
         s(s.c_str()),
         e(s.c_str() + s.size())
     {}
+    FmtEscaped(const char* s, size_t l):
+        s(s),
+        e(s + l)
+    {}
     // See main.cpp
     friend ::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x);
 };

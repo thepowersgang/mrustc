@@ -107,7 +107,7 @@ class CMacroUseHandler:
                     continue;
                 }
                 ASSERT_BUG(sp, ec.m_hir->m_root_module.m_macro_items.count(name) == 1, "Macro `" << name << "` missing from crate " << ec.m_name);
-                const auto* e = &*ec.m_hir->m_root_module.m_macro_items.at(name);
+                const auto* e = &ec.m_hir->m_root_module.m_macro_items.at(name);
                 if( !e->publicity.is_global() )
                 {
                     DEBUG("Not public: " << name);
@@ -125,7 +125,7 @@ class CMacroUseHandler:
                     const ::HIR::Module& mod = crate.m_extern_crates.at(imp->path.crate_name()).m_hir->get_mod_by_path(sp, imp->path, /*ignore_last_node*/true, /*ignore_crate_name*/true);
 
                     ASSERT_BUG(sp, mod.m_macro_items.count(imp->path.components().back()), "Failed to find final component of " << imp->path);
-                    e = &*mod.m_macro_items.at(imp->path.components().back());
+                    e = &mod.m_macro_items.at(imp->path.components().back());
                     if( const auto& imp2 = e->ent.opt_Import() ) {
                         if( imp2->path.crate_name() == CRATE_BUILTINS ) {
                             DEBUG("Importing builtin (skip): " << name);
@@ -144,7 +144,7 @@ class CMacroUseHandler:
                 TU_MATCH_HDRA( (e->ent), { )
                 TU_ARMA(Import, imp) { throw "Unexpected"; }
                 TU_ARMA(MacroRules, mac_ptr) { mr = &*mac_ptr; }
-                TU_ARMA(ProcMacro, p) { mr = &p; }
+                TU_ARMA(ProcMacro, p) { mr = &*p; }
                 }
                 if(!exists(name, mr))
                 {
@@ -305,8 +305,8 @@ class CMacroReexportHandler:
             if( it == ext_crate.m_exported_macro_names.end() )
                 ERROR(sp, E0000, "Could not find macro " << name << "! in crate " << crate_name);
             // TODO: Do this differently.
-            ext_crate.m_root_module.m_macro_items.at(name)->ent.as_MacroRules()->m_exported = true;
-            //ext_crate.m_root_module.m_macro_items.at(name)->publicity = AST::Publicity::new_global();
+            ext_crate.m_root_module.m_macro_items.at(name).ent.as_MacroRules()->m_exported = true;
+            //ext_crate.m_root_module.m_macro_items.at(name).publicity = AST::Publicity::new_global();
             });
     }
 };

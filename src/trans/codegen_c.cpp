@@ -2695,6 +2695,10 @@ namespace {
         {
             print_escaped_string_inner(s.c_str(), s.c_str() + s.size());
         }
+        void print_escaped_string(const RcString& s)
+        {
+            print_escaped_string_inner(s.c_str(), s.c_str() + s.size());
+        }
         void print_escaped_string(const std::vector<uint8_t>& s)
         {
             const char* start =  reinterpret_cast<const char*>(s.data());
@@ -4179,7 +4183,7 @@ namespace {
                 TU_ARMA(EnumVariant, ve) {
                     const auto& tyi = m_crate.get_typeitem_by_path(sp, ve.path.m_path);
                     MIR_ASSERT(mir_res, tyi.is_Enum(), "");
-                    const auto* enm_p = &tyi.as_Enum();
+                    const auto* enm_p = &*tyi.as_Enum();
 
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);

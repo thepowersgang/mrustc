@@ -241,7 +241,7 @@ namespace
             const HIR::GenericParams* gp = nullptr;
             if( p.m_path.components().size() > 1 ) {
                 if( const auto* e = m_resolve.m_crate.get_typeitem_by_path(sp, p.m_path, false, true).opt_Enum() ) {
-                    gp = &e->m_params;
+                    gp = &(*e)->m_params;
                 }
             }
             if( !gp ) {
@@ -253,13 +253,13 @@ namespace
                     TU_MATCH_HDRA( (ti), {)
                     TU_ARMA(Import, e) BUG(sp, "Unexpected reference to import - " << p);
                     TU_ARMA(Module, e) BUG(sp, "Unexpected reference to module - " << p);
-                    TU_ARMA(TypeAlias, e) { gp = &e.m_params; }
-                    TU_ARMA(TraitAlias, e) { gp = &e.m_params; }
+                    TU_ARMA(TypeAlias , e) { gp = &e->m_params; }
+                    TU_ARMA(TraitAlias, e) { gp = &e->m_params; }
                     TU_ARMA(ExternType, e) { gp = nullptr; }
-                    TU_ARMA(Enum  , e) { gp = &e.m_params; }
-                    TU_ARMA(Struct, e) { gp = &e.m_params; }
-                    TU_ARMA(Union , e) { gp = &e.m_params; }
-                    TU_ARMA(Trait , e) { gp = &e.m_params; }
+                    TU_ARMA(Enum  , e) { gp = &e->m_params; }
+                    TU_ARMA(Struct, e) { gp = &e->m_params; }
+                    TU_ARMA(Union , e) { gp = &e->m_params; }
+                    TU_ARMA(Trait , e) { gp = &e->m_params; }
                     }
                     } break;
                 case HIR::Visitor::PathContext::VALUE: {
@@ -268,7 +268,7 @@ namespace
                     TU_ARMA(Import, e) BUG(sp, "Unexpected reference to import - " << p);
                     TU_ARMA(Constant, e) { gp = nullptr; }
                     TU_ARMA(Static  , e) { gp = nullptr; }
-                    TU_ARMA(Function, e) { gp = &e.m_params; }
+                    TU_ARMA(Function, e) { gp = &e->m_params; }
                     TU_ARMA(StructConstant   , e) { gp = &m_resolve.m_crate.get_struct_by_path(sp, e.ty).m_params; }
                     TU_ARMA(StructConstructor, e) { gp = &m_resolve.m_crate.get_struct_by_path(sp, e.ty).m_params; }
                     }
@@ -449,13 +449,13 @@ namespace
                     TU_MATCH_HDRA( (ti), { )
                     TU_ARMA(Import, v) { BUG(sp, "Unexpected import: " << p->m_path); }
                     TU_ARMA(Module, v) { BUG(sp, "Unexpected module: " << p->m_path); }
-                    TU_ARMA(TypeAlias, v) { gp = &v.m_params; }
-                    TU_ARMA(TraitAlias, v) { gp = &v.m_params; }
+                    TU_ARMA(TypeAlias, v) { gp = &v->m_params; }
+                    TU_ARMA(TraitAlias, v) { gp = &v->m_params; }
                     TU_ARMA(ExternType, v) { gp = nullptr; }
-                    TU_ARMA(Enum, v) { gp = &v.m_params; }
-                    TU_ARMA(Struct, v) { gp = &v.m_params; }
-                    TU_ARMA(Union, v) { gp = &v.m_params; }
-                    TU_ARMA(Trait, v) { gp = &v.m_params; }
+                    TU_ARMA(Enum  , v) { gp = &v->m_params; }
+                    TU_ARMA(Struct, v) { gp = &v->m_params; }
+                    TU_ARMA(Union , v) { gp = &v->m_params; }
+                    TU_ARMA(Trait , v) { gp = &v->m_params; }
                     }
                     if(gp) {
                         p->m_params.m_lifetimes.resize( gp->m_lifetimes.size() );

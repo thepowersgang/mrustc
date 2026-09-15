@@ -85,9 +85,9 @@ namespace {
                         for(const auto& n : mp.ents)
                         {
                             ASSERT_BUG(sp, mod->m_mod_items.count(n), "Node `" << n << "` missing in path " << mp);
-                            const auto& i = *mod->m_mod_items.at(n);
+                            const auto& i = mod->m_mod_items.at(n);
                             ASSERT_BUG(sp, i.ent.is_Module(), "Node `" << n << "` not a module in path " << mp);
-                            mod = &i.ent.as_Module();
+                            mod = &*i.ent.as_Module();
                         }
                         if(out_path) {
                             out_path->crate = mp.crate;
@@ -174,7 +174,7 @@ namespace {
                         //}
                         //else {
                             ASSERT_BUG(sp, i_ent_ptr->is_Module(), "Expected Module, got " << i_ent_ptr->tag_str() << " for " << name << " in [" << base_nodes << "]");
-                            return get_module_hir(i_ent_ptr->as_Module(), path, 1, ignore_last, out_path);
+                            return get_module_hir(*i_ent_ptr->as_Module(), path, 1, ignore_last, out_path);
                         //}
                         }
                     TU_ARMA(None, e) {
@@ -331,7 +331,7 @@ namespace {
                     }
                 TU_ARMA(Hir, e) {
                     if( const auto* i = e->opt_Module() ) {
-                        return get_module_hir(*i, path, idx+1, ignore_last, out_path);
+                        return get_module_hir(**i, path, idx+1, ignore_last, out_path);
                     }
                     else {
                         DEBUG("Found HIR " << e->tag_str() << ", not module");
@@ -363,11 +363,11 @@ namespace {
                 const auto& name = path.nodes()[i].name();
                 // Find the module for this node
                 auto it = mod->m_mod_items.find(name);
-                if( it == mod->m_mod_items.end() || !it->second->publicity.is_global() ) {
+                if( it == mod->m_mod_items.end() || !it->second.publicity.is_global() ) {
                     DEBUG(name << " Not Found");
                     return ResolveModuleRef();
                 }
-                const auto* ti = &it->second->ent;
+                const auto* ti = &it->second.ent;
                 if(const auto* imp = ti->opt_Import())
                 {
                     ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.crate_name()), "Crate " << imp->path.crate_name() << " not loaded");
@@ -391,7 +391,7 @@ namespace {
                     DEBUG(name << " Not Module, instead " << ti->tag_str());
                     return ResolveModuleRef();
                 TU_ARMA(Module, m) {
-                    mod = &m;
+                    mod = &*m;
                     }
                 }
             }
@@ -761,7 +761,7 @@ namespace {
                 }
                 static const HIR::Module& get_mod_for_hir_path(const Span& sp, const AST::Crate& crate, const HIR::SimplePath& p) {
                     const auto& hir_crate = *crate.m_extern_crates.at(p.crate_name()).m_hir;
-                    return hir_crate.get_mod_by_path(sp, p, /*ignore_last*/true, /*ingore_crate*/true);
+                    return hir_crate.get_mod_by_path(sp, p, /*ignore_last*/true, /*ignore_crate*/true);
                 }
             };
 
@@ -770,10 +770,10 @@ namespace {
             {
             case ResolveNamespace::Namespace: {
                 auto it = mod.m_mod_items.find(item_name);
-                if( it != mod.m_mod_items.end() && it->second->publicity.is_visible(vis_path) ) {
+                if( it != mod.m_mod_items.end() && it->second.publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR namespace");
                     const HIR::TypeItem*    ti;
-                    if(const auto* p = it->second->ent.opt_Import()) {
+                    if(const auto* p = it->second.ent.opt_Import()) {
                         if(out_path) {
                             *out_path = sp_to_ap(p->path);
                         }
@@ -786,18 +786,18 @@ namespace {
                     else {
                         if(out_path)
                             out_path->nodes.push_back(item_name);
-                        ti = &it->second->ent;
+                        ti = &it->second.ent;
                     }
-                    ASSERT_BUG(sp, !ti->is_Import(), "Recursive namespace import in HIR: " << it->second->ent.as_Import().path << " pointed to " << ti->as_Import().path);
+                    ASSERT_BUG(sp, !ti->is_Import(), "Recursive namespace import in HIR: " << it->second.ent.as_Import().path << " pointed to " << ti->as_Import().path);
                     return ResolveItemRef_Type(ti);
                 }
                 } break;
             case ResolveNamespace::Value: {
                 auto it = mod.m_value_items.find(item_name);
-                if( it != mod.m_value_items.end() && it->second->publicity.is_visible(vis_path) ) {
+                if( it != mod.m_value_items.end() && it->second.publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR value");
                     const HIR::ValueItem*    vi;
-                    if(const auto* p = it->second->ent.opt_Import()) {
+                    if(const auto* p = it->second.ent.opt_Import()) {
                         if(out_path) {
                             *out_path = sp_to_ap(p->path);
                         }
@@ -806,9 +806,9 @@ namespace {
                     else {
                         if(out_path)
                             out_path->nodes.push_back(item_name);
-                        vi = &it->second->ent;
+                        vi = &it->second.ent;
                     }
-                    ASSERT_BUG(sp, !vi->is_Import(), "Recursive value import in HIR: " << it->second->ent.as_Import().path << " pointed to " << vi->as_Import().path);
+                    ASSERT_BUG(sp, !vi->is_Import(), "Recursive value import in HIR: " << it->second.ent.as_Import().path << " pointed to " << vi->as_Import().path);
                     return ResolveItemRef_Value(vi);
                 }
                 } break;
@@ -817,13 +817,13 @@ namespace {
                 if( it == mod.m_macro_items.end() ) {
                     DEBUG("Did not find `" << item_name << "` in HIR macro");
                 }
-                else if( !it->second->publicity.is_visible(vis_path) ) {
+                else if( !it->second.publicity.is_visible(vis_path) ) {
                     DEBUG("Found `" << item_name << "` in HIR macro - but not public, ignoring");
                 }
                 else {
                     DEBUG("Found `" << item_name << "` in HIR macro");
                     const HIR::MacroItem* mi;
-                    if(const auto* p = it->second->ent.opt_Import()) {
+                    if(const auto* p = it->second.ent.opt_Import()) {
                         if(out_path) {
                             *out_path = sp_to_ap(p->path);
                         }
@@ -858,24 +858,24 @@ namespace {
                                 }
                                 return v;
                             }
-                            // Fall throught to fail
+                            // Fall through to fail
                         }
                     }
                     else {
-                        mi = &it->second->ent;
+                        mi = &it->second.ent;
                         if(out_path) {
                             out_path->nodes.push_back(item_name);
                         }
                     }
                     TU_MATCH_HDRA( (*mi), {)
                     TU_ARMA(Import, me) {
-                        BUG(sp, "Recursive macro import in HIR: " << it->second->ent.as_Import().path << " pointed to " << me.path);
+                        BUG(sp, "Recursive macro import in HIR: " << it->second.ent.as_Import().path << " pointed to " << me.path);
                         }
                     TU_ARMA(MacroRules, me) {
                         return ResolveItemRef_Macro(&*me);
                         }
                     TU_ARMA(ProcMacro, me) {
-                        return ResolveItemRef_Macro(&me);
+                        return ResolveItemRef_Macro(&*me);
                         }
                     }
                 }

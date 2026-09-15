@@ -229,27 +229,27 @@ namespace {
                     else
                     {
                         const auto& ti = m_crate.get_typeitem_by_path(sp, path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
-                        if( const auto& enm = ti.opt_Enum() )
+                        if( const auto* enm = ti.opt_Enum() )
                         {
                             if( !is_single_value ) {
                                 ERROR(sp, E0000, "Enum variant in range pattern - " << pat);
                             }
 
                             // Enum variant
-                            auto idx = enm->find_variant(pc);
+                            auto idx = (*enm)->find_variant(pc);
                             if( idx == SIZE_MAX ) {
                                 BUG(sp, "'" << pc << "' isn't a variant in path " << path);
                             }
                             HIR::GenericPath path = std::move(*pe);
-                            fix_type_params(sp, enm->m_params,  path.m_params);
+                            fix_type_params(sp, (*enm)->m_params,  path.m_params);
                             pat.m_data = ::HIR::Pattern::Data::make_PathValue({
                                 mv$(path),
-                                ::HIR::Pattern::PathBinding::make_Enum({ enm, static_cast<unsigned>(idx) })
+                                ::HIR::Pattern::PathBinding::make_Enum({ &**enm, static_cast<unsigned>(idx) })
                                 });
                         }
-                        else if( (mod = ti.opt_Module()) )
+                        else if( const auto* mod_p = ti.opt_Module() )
                         {
-                            mod = &ti.as_Module();
+                            mod = &**mod_p;
                         }
                         else
                         {
@@ -264,15 +264,15 @@ namespace {
                             BUG(sp, "Couldn't find final component of " << path);
                         }
                         // Unit-like struct match or a constant
-                        TU_MATCH_HDRA( (it->second->ent), { )
+                        TU_MATCH_HDRA( (it->second.ent), { )
                         default:
-                            ERROR(sp, E0000, "Value pattern " << pat << " pointing to unexpected item type - " << it->second->ent.tag_str());
+                            ERROR(sp, E0000, "Value pattern " << pat << " pointing to unexpected item type - " << it->second.ent.tag_str());
                         TU_ARMA(Constant, e2) {
                             // Store reference to this item for later use
-                            ve->binding = &e2;
+                            ve->binding = &*e2;
                             }
                         TU_ARMA(StructConstant, e2) {
-                            const auto& str = mod->m_mod_items.find(pc)->second->ent.as_Struct();
+                            const auto& str = *mod->m_mod_items.find(pc)->second.ent.as_Struct();
                             // Convert into a dedicated pattern type
                             if( !is_single_value ) {
                                 ERROR(sp, E0000, "Struct in range pattern - " << pat);
@@ -396,22 +396,22 @@ namespace {
                         // Assume it'll be filled out, with the correct binding
                         ),
                     (ExternType,
-                        e->binding = ::HIR::TypePathBinding::make_ExternType(&e3);
+                        e->binding = ::HIR::TypePathBinding::make_ExternType(&*e3);
                         DEBUG("- " << ty);
                         ),
                     (Struct,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
-                        e->binding = ::HIR::TypePathBinding::make_Struct(&e3);
+                        fix_param_count(sp, pe, e3->m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
+                        e->binding = ::HIR::TypePathBinding::make_Struct(&*e3);
                         DEBUG("- " << ty);
                         ),
                     (Union,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
-                        e->binding = ::HIR::TypePathBinding::make_Union(&e3);
+                        fix_param_count(sp, pe, e3->m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
+                        e->binding = ::HIR::TypePathBinding::make_Union(&*e3);
                         DEBUG("- " << ty);
                         ),
                     (Enum,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
-                        e->binding = ::HIR::TypePathBinding::make_Enum(&e3);
+                        fix_param_count(sp, pe, e3->m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
+                        e->binding = ::HIR::TypePathBinding::make_Enum(&*e3);
                         DEBUG("- " << ty);
                         ),
                     (Trait,
