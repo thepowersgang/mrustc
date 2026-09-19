@@ -1576,7 +1576,9 @@ namespace {
     return ::HIR::Union {
         LowerHIR_GenericParams(f.m_params, nullptr),
         repr,
-        mv$(variants)
+        mv$(variants),
+        {},
+        static_cast<unsigned>(f.m_markings.align_value)
         };
 }
 ::HIR::Trait LowerHIR_Trait(::HIR::SimplePath trait_path, const ::AST::Trait& f)

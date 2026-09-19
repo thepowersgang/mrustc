@@ -477,11 +477,14 @@ namespace {
                     }
                     else
                     {
+                        // NOTE: As in the single-character cases above, `s` has to end on the closing brace
                         if( strncmp(s, "x?}", 3) == 0 ) {
+                            s += 2;
                             args.debug_ty = FmtArgs::Debug::LowerHex;
                             trait_name = "Debug";
                         }
                         else if( strncmp(s, "X?}", 3) == 0 ) {
+                            s += 2;
                             args.debug_ty = FmtArgs::Debug::UpperHex;
                             trait_name = "Debug";
                         }
