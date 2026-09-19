@@ -63,6 +63,10 @@ struct ProgramOptions
     bool no_default_features = false;
     ::std::vector<::std::string>    features;
 
+    /// Panic strategy passed to mrustc as `-C panic=<strategy>` (e.g. "abort" or "unwind").
+    /// nullptr means "let mrustc pick its default" (currently `panic_abort`).
+    const char* panic_strategy = nullptr;
+
     int parse(int argc, const char* argv[]);
     void usage(::std::ostream& os) const;
     void help() const;
@@ -280,6 +284,7 @@ int main(int argc, const char* argv[])
         build_opts.emit_mmir = opts.emit_mmir;
         build_opts.enable_debug = opts.enable_debug;
         build_opts.target_name = opts.target;
+        build_opts.panic_strategy = opts.panic_strategy;
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
         // Indicate desire to build tests (or examples) instead of the primary target
@@ -453,6 +458,13 @@ int ProgramOptions::parse(int argc, const char* argv[])
             else if( ::std::strcmp(arg, "--no-default-features") == 0 ) {
                 this->no_default_features = true;
             }
+            else if( ::std::strcmp(arg, "--panic") == 0 ) {
+                if(i+1 == argc) {
+                    ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                    return 1;
+                }
+                this->panic_strategy = argv[++i];
+            }
             else if( ::std::strcmp(arg, "--pause") == 0 ) {
                 this->pause_before_quit = true;
             }
@@ -499,5 +511,6 @@ void ProgramOptions::help() const
         << "-g                       : Pass `-g` to compiler\n"
         << "--no-default-features    : \n"
         << "--features <list>        : \n"
+        << "--panic <strategy>       : Pass `-C panic=<strategy>` to mrustc invocations (e.g. `unwind`)\n"
         ;
 }

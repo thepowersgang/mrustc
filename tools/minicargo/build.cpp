@@ -933,6 +933,9 @@ void Job_Build::push_args_common(StringList& args, const helpers::path& outfile,
     if( parent.m_opts.emit_mmir ) {
         args.push_back("-C"); args.push_back("codegen-type=monomir");
     }
+    if( parent.m_opts.panic_strategy && !parent.is_rustc() ) {
+        args.push_back("-C"); args.push_back(format("panic=", parent.m_opts.panic_strategy));
+    }
 
     for(const auto& d : parent.m_opts.lib_search_dirs)
     {

@@ -22,6 +22,7 @@ struct BuildOptions
     bool emit_mmir = false;
     bool enable_debug = false;
     const char* target_name = nullptr;  // if null, host is used
+    const char* panic_strategy = nullptr;  // if non-null, passed to mrustc as -C panic=<strategy>
     enum class Mode {
         /// Build the binary/library
         Normal,
