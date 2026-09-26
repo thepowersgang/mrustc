@@ -6186,20 +6186,54 @@ namespace {
                     break;
                 }
                 };
+            auto emit_atomic_bitwise_cast = [&]() {
+                const auto& ty = params.m_types.at(0);
+                m_of << "(";
+                if(ty.data().is_Pointer()) {
+                    m_of << "uintptr_t ";
+                }
+                else {
+                    emit_ctype(ty);
+                }
+                m_of << "_Atomic *)";
+                };
+            auto emit_atomic_arith_arg_cast = [&](AtomicOp op) {
+                if(params.m_types.at(0).data().is_Pointer()) {
+                    switch(op)
+                    {
+                    case AtomicOp::Add:
+                    case AtomicOp::Sub:
+                        m_of << "(ptrdiff_t) ";
+                        break;
+                    case AtomicOp::And:
+                    case AtomicOp::Or:
+                    case AtomicOp::Xor:
+                        m_of << "(uintptr_t) ";
+                      break;
+                    }
+                }
+            };
             auto emit_atomic_arith = [&](AtomicOp op, Ordering ordering) {
                 emit_lvalue(e.ret_val); m_of << " = ";
+                const auto& ty = params.m_types.at(0);
+                if(ty.data().is_Pointer()) {
+                    m_of << "(";
+                    emit_ctype(ty);
+                    m_of << ")";
+                }
                 switch(m_compiler)
                 {
                 case Compiler::Gcc:
                     switch(op)
                     {
-                    case AtomicOp::Add: m_of << "atomic_fetch_add_explicit";   break;
-                    case AtomicOp::Sub: m_of << "atomic_fetch_sub_explicit";   break;
-                    case AtomicOp::And: m_of << "atomic_fetch_and_explicit";   break;
-                    case AtomicOp::Or:  m_of << "atomic_fetch_or_explicit";    break;
-                    case AtomicOp::Xor: m_of << "atomic_fetch_xor_explicit";   break;
+                    case AtomicOp::Add: m_of << "atomic_fetch_add_explicit("; emit_atomic_cast();          break;
+                    case AtomicOp::Sub: m_of << "atomic_fetch_sub_explicit("; emit_atomic_cast();          break;
+                    // Cast lhs pointers to integers, since Clang does not allow bitwise atomic operations on pointers.
+                    case AtomicOp::And: m_of << "atomic_fetch_and_explicit("; emit_atomic_bitwise_cast();  break;
+                    case AtomicOp::Or:  m_of << "atomic_fetch_or_explicit(";  emit_atomic_bitwise_cast();  break;
+                    case AtomicOp::Xor: m_of << "atomic_fetch_xor_explicit("; emit_atomic_bitwise_cast();  break;
                     }
-                    m_of << "("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
+                    emit_param(e.args.at(0)); m_of << ", "; emit_atomic_arith_arg_cast(op); emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
                     break;
                 case Compiler::Msvc:
                     switch(op)
