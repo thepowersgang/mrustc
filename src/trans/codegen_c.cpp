@@ -6571,6 +6571,10 @@ namespace {
                 // `fn ptr_offset_from_unsigned<T>(ptr: *const T, base: *const T) -> usize`
                 emit_lvalue(e.ret_val); m_of << "= ( ("; emit_param(e.args.at(0)); m_of << ") - ("; emit_param(e.args.at(1)); m_of << "))";
             }
+            else if( name == "ptr_mask" ) {
+                // `fn ptr_mask<T>(ptr: *const T, mask: usize) -> *const T`
+                emit_lvalue(e.ret_val); m_of << " = ("; emit_ctype(params.m_types.at(0)); m_of << "*) ((uintptr_t)"; emit_param(e.args.at(0)); m_of << " & "; emit_param(e.args.at(1)); m_of << ")";
+            }
             // ----
             else if( name == "bswap" ) {
                 const auto& ty = params.m_types.at(0);
