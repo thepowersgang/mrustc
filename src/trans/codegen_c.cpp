@@ -5700,12 +5700,20 @@ namespace {
                         switch( f.modifier )
                         {
                         case '\0':
+                            if( Target_GetCurSpec().m_arch.m_name == "aarch64" )
+                                m_of << 'x';
                             break;
                         case 'r':
                             m_of << 'q';    // x86: `q` selects rax explicitly
                             break;
                         case 'e':
                             m_of << 'k';    // x86: `k` selects eax instead of rax
+                            break;
+                        case 'w':
+                            m_of << 'w';    // aarch64: `w` selects 32-bit register
+                            break;
+                        case 'x':
+                            m_of << 'x';    // aarch64: `x` selects 64-bit register
                             break;
                         default:
                             MIR_TODO(mir_res, "Asm2 GCC: modifier " << f.modifier << " - " << stmt);
@@ -5746,6 +5754,8 @@ namespace {
                         // riscv
                         case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
                         case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
+                        // aarch64
+                        case AsmCommon::RegisterClass::aarch64_reg: m_of << "r"; break;
                         }
                     TU_ARMA(Explicit, name) {
                         m_of << "r";
@@ -5787,6 +5797,8 @@ namespace {
                             // riscv
                             case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
                             case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
+                            // aarch64
+                            case AsmCommon::RegisterClass::aarch64_reg: m_of << "r"; break;
                             }
                         TU_ARMA(Explicit, name) {
                             auto it = ::std::find(outputs.begin(), outputs.end(), &r);

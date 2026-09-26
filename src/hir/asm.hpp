@@ -39,7 +39,7 @@ namespace AsmCommon {
         //x86_mm, // Requires
         x86_kreg,
 
-        //aarch64_reg,
+        aarch64_reg,
         //aarch64_vreg,
         
         //arm_reg,
@@ -99,15 +99,16 @@ namespace AsmCommon {
     static inline const char* to_string(const RegisterClass& c) {
         switch(c)
         {
-        case RegisterClass::x86_reg:    return "reg";
+        case RegisterClass::x86_reg:      return "reg";
         case RegisterClass::x86_reg_abcd:   return "reg_abcd";
         case RegisterClass::x86_reg_byte:   return "reg_byte";
-        case RegisterClass::x86_xmm:    return "xmm_reg";
-        case RegisterClass::x86_ymm:    return "ymm_reg";
-        case RegisterClass::x86_zmm:    return "zmm_reg";
-        case RegisterClass::x86_kreg:   return "kreg";
-        case RegisterClass::riscv_reg:  return "reg";
-        case RegisterClass::riscv_freg: return "freg";
+        case RegisterClass::x86_xmm:      return "xmm_reg";
+        case RegisterClass::x86_ymm:      return "ymm_reg";
+        case RegisterClass::x86_zmm:      return "zmm_reg";
+        case RegisterClass::x86_kreg:     return "kreg";
+        case RegisterClass::riscv_reg:    return "reg";
+        case RegisterClass::riscv_freg:   return "freg";
+        case RegisterClass::aarch64_reg:  return "reg";
         }
         throw "";
     }
