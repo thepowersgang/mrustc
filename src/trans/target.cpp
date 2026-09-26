@@ -614,7 +614,7 @@ namespace
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             // The first 32bit Intel Mac was Core Solo aka yonah. It allows to use `-march=yonah` like Rust.
             return TargetSpec {
-                "unix", "macos", "", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {"-march=yonah"}, {}},
+                "unix", "macos", "", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {"-march=yonah"}, {"-Wl,-dead_strip"}},
                 ARCH_X86_64
                 };
         }
@@ -623,7 +623,7 @@ namespace
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             // The first 64bit Intel Mac was Core Duo. It allows to use `-march=core2` like Rust.
             return TargetSpec {
-                "unix", "macos", "", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {"-march=core2"}, {}},
+                "unix", "macos", "", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {"-march=core2"}, {"-Wl,-dead_strip"}},
                 ARCH_X86_64
                 };
         }
@@ -631,7 +631,7 @@ namespace
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
-                "unix", "macos", "", {CodegenMode::Gnu11, false, "aarch64-apple-darwin", {}, {}},
+                "unix", "macos", "", {CodegenMode::Gnu11, false, "aarch64-apple-darwin", {}, {"-Wl,-dead_strip"}},
                 ARCH_ARM64
                 };
         }
@@ -639,7 +639,7 @@ namespace
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
-                "unix", "macos", "", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {}},
+                "unix", "macos", "", {CodegenMode::Gnu11, true, "powerpc-apple-darwin", {}, {"-Wl,-dead_strip"}},
                 ARCH_POWERPC
                 };
         }
@@ -647,7 +647,7 @@ namespace
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
-                "unix", "macos", "", {CodegenMode::Gnu11, false, "powerpc64-apple-darwin", {}, {}},
+                "unix", "macos", "", {CodegenMode::Gnu11, false, "powerpc64-apple-darwin", {}, {"-Wl,-dead_strip"}},
                 ARCH_POWERPC64
                 };
         }
