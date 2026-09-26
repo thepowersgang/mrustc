@@ -743,7 +743,7 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
-    Cfg_SetValue("target_abi", "llvm"); // This is a lie, but hopefully works?
+    Cfg_SetValue("target_abi", g_target.m_os_name != "macos" ? "llvm" : ""); // This is a lie, but hopefully works?
     // target_has_atomic_equal_alignment="N" means align_of::<AtomicN>() == align_of::<N>().
     // Since libcore declares AtomicN with repr(align(sizeof(N))), only set it when the
     // primitive's natural alignment already matches its size (e.g. u64 on x86 has align 4,
