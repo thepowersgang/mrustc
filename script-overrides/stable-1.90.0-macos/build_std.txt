@@ -1,0 +1,1 @@
+cargo:rustc-cfg=backtrace_in_libstd
