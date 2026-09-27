@@ -6627,7 +6627,9 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
             }
             else if( name == "arith_offset" ) { // addition, with no requirements
-                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
+                std::size_t size = 0;
+                MIR_ASSERT(mir_res, Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size), "Size of " << params.m_types.at(0) << " is unknown");
+                emit_lvalue(e.ret_val); m_of << " = ("; emit_ctype(params.m_types.at(0)); m_of << "*)((uintptr_t)"; emit_param(e.args.at(0)); m_of << " + (uintptr_t)"; emit_param(e.args.at(1)); m_of << " * (uintptr_t)" << size << ")";
             }
             else if( name == "ptr_offset_from" ) {  // effectively subtraction
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " - "; emit_param(e.args.at(1));
