@@ -41,3 +41,48 @@
          V::Result::output()
      }
  }
+--- vendor/security-framework-3.2.0/src/trust.rs
++++ vendor/security-framework-3.2.0/src/trust.rs
+@@ -181,10 +181,13 @@
+ 
+     /// Attaches Online Certificate Status Protocol (OSCP) response data
+     /// to this trust object.
+-    pub fn set_trust_ocsp_response<I: Iterator<Item = impl AsRef<[u8]>>>(
++    pub fn set_trust_ocsp_response<I: Iterator>(
+         &mut self,
+         ocsp_response: I,
+-    ) -> Result<()> {
++    ) -> Result<()>
++    where
++        I::Item: AsRef<[u8]>,
++    {
+         let response: Vec<CFData> = ocsp_response
+             .into_iter()
+             .map(|bytes| CFData::from_buffer(bytes.as_ref()))
+@@ -197,10 +200,13 @@
+ 
+     /// Attaches signed certificate timestamp data to this trust object.
+     #[cfg(any(feature = "OSX_10_14", target_os = "ios", target_os = "tvos", target_os = "watchos", target_os = "visionos"))]
+-    pub fn set_signed_certificate_timestamps<I: Iterator<Item = impl AsRef<[u8]>>>(
++    pub fn set_signed_certificate_timestamps<I: Iterator>(
+         &mut self,
+         scts: I,
+-    ) -> Result<()> {
++    ) -> Result<()>
++    where
++        I::Item: AsRef<[u8]>,
++    {
+         let scts: Vec<CFData> = scts
+             .into_iter()
+             .map(|bytes| CFData::from_buffer(bytes.as_ref()))
+            --- vendor/security-framework-3.2.0/src/trust_settings.rs
++++ vendor/security-framework-3.2.0/src/trust_settings.rs
+@@ -156,7 +156,7 @@
+             let mut array_ptr: CFArrayRef = ptr::null_mut();
+             let cert_ptr = cert.as_CFTypeRef() as *mut _;
+             cvt(SecTrustSettingsCopyTrustSettings(cert_ptr, self.domain.into(), &mut array_ptr))?;
+-            CFArray::<CFDictionary>::wrap_under_create_rule(array_ptr)
++            CFArray::<CFDictionary<CFTypeRef, CFTypeRef>>::wrap_under_create_rule(array_ptr)
+         };
+ 
+         for settings in trust_settings.iter() {
