@@ -85,11 +85,11 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
             const auto& nse = crate_ptr->get_typeitem_by_path(sp, path.m_path, false, true);
             if(const auto* e = nse.opt_Enum())
             {
-                auto var_idx = e->find_variant(path.m_path.components().back());
-                codegen->emit_constructor_enum(sp, path, *e, var_idx);
+                auto var_idx = (*e)->find_variant(path.m_path.components().back());
+                codegen->emit_constructor_enum(sp, path, **e, var_idx);
                 continue ;
             }
-            mod_ptr = &nse.as_Module();
+            mod_ptr = &*nse.as_Module();
         }
         else
         {
@@ -97,8 +97,8 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         }
 
         // Not an enum, currently must be a struct
-        const auto& te = mod_ptr->m_mod_items.at(path.m_path.components().back())->ent;
-        codegen->emit_constructor_struct(sp, path, te.as_Struct());
+        const auto& te = mod_ptr->m_mod_items.at(path.m_path.components().back()).ent;
+        codegen->emit_constructor_struct(sp, path, *te.as_Struct());
     }
     list.m_constructors.clear();
 

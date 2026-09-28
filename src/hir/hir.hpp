@@ -531,11 +531,11 @@ public:
     ::std::vector< ::HIR::SimplePath>   m_traits;
 
     // Contains all values and functions (including type constructors)
-    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
+    ::std::unordered_map< RcString, VisEnt<ValueItem> > m_value_items;
     // Contains types, traits, and modules
-    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
+    ::std::unordered_map< RcString, VisEnt<TypeItem> > m_mod_items;
     // Macros!
-    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<MacroItem>> > m_macro_items;
+    ::std::unordered_map< RcString, VisEnt<MacroItem> > m_macro_items;
 
     ::std::vector< ::std::pair<RcString, std::unique_ptr<Static>> >  m_inline_statics;
 
@@ -550,27 +550,27 @@ public:
 
 TAGGED_UNION(TypeItem, Import,
     (Import, struct { ::HIR::SimplePath path; bool is_variant; unsigned int idx; }),
-    (Module, Module),
-    (TypeAlias, TypeAlias), // NOTE: These don't introduce new values
-    (TraitAlias, TraitAlias),
-    (ExternType, ExternType),
-    (Enum,      Enum),
-    (Struct,    Struct),
-    (Union,     Union),
-    (Trait,     Trait)
+    (Module    , ::std::unique_ptr<Module>),
+    (TypeAlias , ::std::unique_ptr<TypeAlias>), // NOTE: These don't introduce new values
+    (TraitAlias, ::std::unique_ptr<TraitAlias>),
+    (ExternType, ::std::unique_ptr<ExternType>),
+    (Enum,      ::std::unique_ptr<Enum>),
+    (Struct,    ::std::unique_ptr<Struct>),
+    (Union,     ::std::unique_ptr<Union>),
+    (Trait,     ::std::unique_ptr<Trait>)
     );
 TAGGED_UNION(ValueItem, Import,
     (Import,    struct { ::HIR::SimplePath path; bool is_variant; unsigned int idx; }),
-    (Constant,  Constant),
-    (Static,    Static),
+    (Constant,  ::std::unique_ptr<Constant>),
+    (Static,    ::std::unique_ptr<Static>),
     (StructConstant,    struct { ::HIR::SimplePath ty; }),
-    (Function,  Function),
+    (Function,  ::std::unique_ptr<Function>),
     (StructConstructor, struct { ::HIR::SimplePath ty; })
     );
 TAGGED_UNION(MacroItem, Import,
     (Import, struct { ::HIR::SimplePath path; }),
     (MacroRules, MacroRulesPtr),
-    (ProcMacro, ProcMacro)
+    (ProcMacro, ::std::unique_ptr<ProcMacro>)
     );
 
 // --------------------------------------------------------------------
@@ -677,8 +677,8 @@ public:
     Module  m_root_module;
 
     // Placeholder for types created during constant evaluation
-    mutable std::vector<std::pair<RcString, std::unique_ptr<VisEnt<TypeItem>> >>  m_new_types;
-    mutable std::vector<std::pair<RcString, std::unique_ptr<VisEnt<ValueItem>> >> m_new_values;
+    mutable std::vector<std::pair<RcString, VisEnt<TypeItem> >>  m_new_types;
+    mutable std::vector<std::pair<RcString, VisEnt<ValueItem> >> m_new_values;
 
     template<typename T>
     struct ImplGroup
@@ -773,9 +773,9 @@ public:
 
     const ::HIR::Constant& get_constant_by_path(const Span& sp, const ::HIR::SimplePath& path) const {
         const auto& ti = this->get_valitem_by_path(sp, path);
-        TU_IFLET(::HIR::ValueItem, ti, Constant, e,
-            return e;
-        )
+        if( const auto* ep = ti.opt_Constant() ) {
+            return **ep;
+        }
         else {
             BUG(sp, "`const` path " << path << " didn't point to an enum");
         }

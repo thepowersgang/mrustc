@@ -422,9 +422,9 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     const ::HIR::ProcMacro* pmp = nullptr;
     for(const auto& mi : ext_crate.m_hir->m_root_module.m_macro_items)
     {
-        if( !mi.second->ent.is_ProcMacro() )
+        if( !mi.second.ent.is_ProcMacro() )
             continue ;
-        const auto& pm = mi.second->ent.as_ProcMacro();
+        const auto& pm = *mi.second.ent.as_ProcMacro();
         bool good = true;
         for(size_t i = 0; i < ::std::min( mac_path.size()-1, pm.path.components().size() ); i++)
         {

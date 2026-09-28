@@ -59,10 +59,10 @@ namespace {
     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
     if(const auto* ep = ti.opt_TypeAlias() )
     {
-        const auto& ta = *ep;
+        const auto& ta = **ep;
         DEBUG(path << " -> type " << ta.m_params.fmt_args() << " = " << ta.m_type);
         auto pp = get_path_params(sp, ta.m_params, path, is_expr);
-        // Monomorphise the exapnded type using the created params
+        // Monomorphise the expanded type using the created params
         auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
         HIR::TypeRef rv = ms.monomorph_type(sp, ta.m_type);
         DEBUG(path << " -> " << path.m_path << pp << " -> " << rv);
@@ -96,7 +96,7 @@ std::vector<HIR::TraitPath> ConvertHIR_ExpandAliases_GetTraitExpansion_GP(const 
     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
     if(const auto* ep = ti.opt_TraitAlias() )
     {
-        const auto& ta = *ep;
+        const auto& ta = **ep;
         auto pp = get_path_params(sp, ta.m_params, path, is_expr);
         auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
         std::vector<HIR::TraitPath> rv;
@@ -128,13 +128,13 @@ std::vector<HIR::TraitPath> ConvertHIR_ExpandAliases_GetTraitExpansion(const Spa
                     }
                     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
                     if( const auto* t = ti.opt_Trait() ) {
-                        for(const auto& pt : t->m_parent_traits) {
+                        for(const auto& pt : (*t)->m_parent_traits) {
                             if( contains_trait(sp, crate, pt.m_path, des_path) )
                                 return true;
                         }
                     }
                     else if( const auto* t = ti.opt_TraitAlias() ) {
-                        for(const auto& pt : t->m_traits) {
+                        for(const auto& pt : (*t)->m_traits) {
                             if( contains_trait(sp, crate, pt.m_path, des_path) )
                                 return true;
                         }
@@ -325,7 +325,7 @@ public:
             if( !ti.is_Enum() ) {
                 ERROR(sp, E0000, "Expeted enum path in pattern binding, got " << ti.tag_str());
             }
-            const auto& enm = ti.as_Enum();
+            const auto& enm = *ti.as_Enum();
 
             auto gp2 = gp.clone();
             gp2.m_path += name;
@@ -365,12 +365,12 @@ public:
             const auto& ti = m_crate.get_typeitem_by_path(sp, gp.m_path, false, /*ignore_last*/true);
             if( ti.is_Enum() ) {
                 // Enum variant!
-                const auto& enm = ti.as_Enum();
+                const auto& enm = *ti.as_Enum();
 
                 gp.m_params.m_lifetimes.resize( enm.m_params.m_lifetimes.size() );
                 gp.m_params.m_types.resize( enm.m_params.m_types.size() );
 
-                auto idx = ti.as_Enum().find_variant(gp.m_path.components().back());
+                auto idx = enm.find_variant(gp.m_path.components().back());
                 return ::HIR::Pattern::PathBinding::make_Enum({ &enm, static_cast<unsigned>(idx) });
             }
         }
