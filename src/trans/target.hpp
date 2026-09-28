@@ -68,6 +68,16 @@ struct BackendOptsC
     ::std::vector< ::std::string>   m_compiler_opts;
     ::std::vector< ::std::string>   m_linker_opts_pre;
     ::std::vector< ::std::string>   m_linker_opts_post;
+    // `__builtin_{add,sub,mul}_overflow` arrived in GCC 5. Set for a target whose C compiler
+    // is older, and mrustc emits its own type-suffixed equivalents instead. Always on for
+    // MSVC, which has never had them.
+    bool    m_emulated_overflow_intrinsics = false;
+    // Set for a target whose libm predates C99: mrustc then defines `INFINITY`/`NAN` and
+    // the missing entry points itself, in terms of the C89 double-precision ones.
+    bool    m_emulated_c99_math = false;
+    // Set for a target whose libc predates POSIX.1-2001/2008 in places: mrustc then defines
+    // the handful of entry points std needs but the platform does not have.
+    bool    m_emulated_posix2001 = false;
 };
 struct TargetSpec
 {

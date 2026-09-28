@@ -516,6 +516,7 @@ public:
             C,
             Transparent,
         } repr = Repr::Rust;
+        uint64_t align_value = 0;
     } m_markings;
 
     Union( GenericParams params, ::std::vector<StructItem> fields )
