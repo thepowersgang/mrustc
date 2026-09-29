@@ -75,7 +75,7 @@
          let scts: Vec<CFData> = scts
              .into_iter()
              .map(|bytes| CFData::from_buffer(bytes.as_ref()))
-            --- vendor/security-framework-3.2.0/src/trust_settings.rs
+--- vendor/security-framework-3.2.0/src/trust_settings.rs
 +++ vendor/security-framework-3.2.0/src/trust_settings.rs
 @@ -156,7 +156,7 @@
              let mut array_ptr: CFArrayRef = ptr::null_mut();
@@ -86,3 +86,205 @@
          };
  
          for settings in trust_settings.iter() {
+--- compiler/rustc_codegen_llvm/src/debuginfo/metadata/enums/cpp_like.rs
++++ compiler/rustc_codegen_llvm/src/debuginfo/metadata/enums/cpp_like.rs
+@@ -387,7 +387,7 @@
+                 unknown_file_metadata(cx),
+                 UNKNOWN_LINE_NUMBER,
+                 variant_names_type_di_node,
+-                visibility_flags,
++                visibility_flags.bits(),
+                 Some(cx.const_u64(SINGLE_VARIANT_VIRTUAL_DISR)),
+                 tag_base_type_align.bits() as u32,
+             )
+@@ -594,7 +594,7 @@
+                     unknown_file_metadata(cx),
+                     UNKNOWN_LINE_NUMBER,
+                     field_type,
+-                    DIFlags::FlagZero,
++                    DIFlags::FlagZero.bits(),
+                     Some(cx.const_u64(value)),
+                     align,
+                 )
+--- compiler/rustc_codegen_llvm/src/debuginfo/metadata/enums/native.rs
++++ compiler/rustc_codegen_llvm/src/debuginfo/metadata/enums/native.rs
+@@ -290,7 +290,7 @@
+                 line_number,
+                 enum_type_and_layout.size.bits(),
+                 enum_type_and_layout.align.abi.bits() as u32,
+-                DIFlags::FlagZero,
++                DIFlags::FlagZero.bits(),
+                 tag_member_di_node,
+                 create_DIArray(DIB(cx), &[]),
+                 variant_part_unique_type_id_str.as_c_char_ptr(),
+@@ -452,7 +452,7 @@
+             enum_type_and_layout.align.abi.bits() as u32,
+             Size::ZERO.bits(),
+             discr,
+-            DIFlags::FlagZero,
++            DIFlags::FlagZero.bits(),
+             variant_member_info.variant_struct_type_di_node,
+         )
+     }
+--- compiler/rustc_codegen_llvm/src/debuginfo/metadata/type_map.rs
++++ compiler/rustc_codegen_llvm/src/debuginfo/metadata/type_map.rs
+@@ -216,7 +216,7 @@
+                     line_number,
+                     size.bits(),
+                     align.bits() as u32,
+-                    flags,
++                    flags.bits(),
+                     None,
+                     empty_array,
+                     0,
+@@ -236,7 +236,7 @@
+                 line_number,
+                 size.bits(),
+                 align.bits() as u32,
+-                flags,
++                flags.bits(),
+                 Some(empty_array),
+                 0,
+                 unique_type_id_str.as_c_char_ptr(),
+--- compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
++++ compiler/rustc_codegen_llvm/src/debuginfo/metadata.rs
+@@ -1024,7 +1024,7 @@
+             layout.size.bits(),
+             layout.align.abi.bits() as u32,
+             offset.bits(),
+-            flags,
++            flags.bits(),
+             type_di_node,
+         )
+     }
+--- compiler/rustc_codegen_llvm/src/debuginfo/mod.rs
++++ compiler/rustc_codegen_llvm/src/debuginfo/mod.rs
+@@ -410,8 +410,8 @@
+                 file_metadata,
+                 loc.line,
+                 function_type_metadata,
+-                flags,
+-                spflags & !DISPFlags::SPFlagDefinition,
++                flags.bits(),
++                (spflags & !DISPFlags::SPFlagDefinition).bits(),
+                 template_parameters,
+             )
+         });
+@@ -428,8 +428,8 @@
+                 loc.line,
+                 function_type_metadata,
+                 scope_line,
+-                flags,
+-                spflags,
++                flags.bits(),
++                spflags.bits(),
+                 maybe_definition_llfn,
+                 template_parameters,
+                 decl,
+@@ -651,7 +651,7 @@
+                 loc.line,
+                 type_metadata,
+                 true,
+-                DIFlags::FlagZero,
++                DIFlags::FlagZero.bits(),
+                 argument_index,
+                 align.bits() as u32,
+             )
+--- compiler/rustc_codegen_llvm/src/llvm/ffi.rs
++++ compiler/rustc_codegen_llvm/src/llvm/ffi.rs
+@@ -26,8 +26,8 @@
+ use super::RustString;
+ use super::debuginfo::{
+     DIArray, DIBasicType, DIBuilder, DICompositeType, DIDerivedType, DIDescriptor, DIEnumerator,
+-    DIFile, DIFlags, DIGlobalVariableExpression, DILocation, DISPFlags, DIScope, DISubprogram,
+-    DISubrange, DITemplateTypeParameter, DIType, DIVariable, DebugEmissionKind, DebugNameTableKind,
++    DIFile, DIGlobalVariableExpression, DILocation, DIScope, DISubprogram, DISubrange,
++    DITemplateTypeParameter, DIType, DIVariable, DebugEmissionKind, DebugNameTableKind,
+ };
+ use crate::llvm;
+ 
+@@ -2149,8 +2149,8 @@
+         LineNo: c_uint,
+         Ty: &'a DIType,
+         ScopeLine: c_uint,
+-        Flags: DIFlags,
+-        SPFlags: DISPFlags,
++        Flags: c_uint,
++        SPFlags: c_uint,
+         MaybeFn: Option<&'a Value>,
+         TParam: &'a DIArray,
+         Decl: Option<&'a DIDescriptor>,
+@@ -2166,8 +2166,8 @@
+         File: &'a DIFile,
+         LineNo: c_uint,
+         Ty: &'a DIType,
+-        Flags: DIFlags,
+-        SPFlags: DISPFlags,
++        Flags: c_uint,
++        SPFlags: c_uint,
+         TParam: &'a DIArray,
+     ) -> &'a DISubprogram;
+ 
+@@ -2208,7 +2208,7 @@
+         LineNumber: c_uint,
+         SizeInBits: u64,
+         AlignInBits: u32,
+-        Flags: DIFlags,
++        Flags: c_uint,
+         DerivedFrom: Option<&'a DIType>,
+         Elements: &'a DIArray,
+         RunTimeLang: c_uint,
+@@ -2227,7 +2227,7 @@
+         SizeInBits: u64,
+         AlignInBits: u32,
+         OffsetInBits: u64,
+-        Flags: DIFlags,
++        Flags: c_uint,
+         Ty: &'a DIType,
+     ) -> &'a DIDerivedType;
+ 
+@@ -2242,7 +2242,7 @@
+         AlignInBits: u32,
+         OffsetInBits: u64,
+         Discriminant: Option<&'a Value>,
+-        Flags: DIFlags,
++        Flags: c_uint,
+         Ty: &'a DIType,
+     ) -> &'a DIType;
+ 
+@@ -2254,7 +2254,7 @@
+         File: &'a DIFile,
+         LineNo: c_uint,
+         Ty: &'a DIType,
+-        Flags: DIFlags,
++        Flags: c_uint,
+         val: Option<&'a Value>,
+         AlignInBits: u32,
+     ) -> &'a DIDerivedType;
+@@ -2291,7 +2291,7 @@
+         LineNo: c_uint,
+         Ty: &'a DIType,
+         AlwaysPreserve: bool,
+-        Flags: DIFlags,
++        Flags: c_uint,
+         ArgNo: c_uint,
+         AlignInBits: u32,
+     ) -> &'a DIVariable;
+@@ -2358,7 +2358,7 @@
+         LineNumber: c_uint,
+         SizeInBits: u64,
+         AlignInBits: u32,
+-        Flags: DIFlags,
++        Flags: c_uint,
+         Elements: Option<&'a DIArray>,
+         RunTimeLang: c_uint,
+         UniqueId: *const c_char,
+@@ -2374,7 +2374,7 @@
+         LineNo: c_uint,
+         SizeInBits: u64,
+         AlignInBits: u32,
+-        Flags: DIFlags,
++        Flags: c_uint,
+         Discriminator: Option<&'a DIDerivedType>,
+         Elements: &'a DIArray,
+         UniqueId: *const c_char,
