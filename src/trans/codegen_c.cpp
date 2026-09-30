@@ -1733,6 +1733,13 @@ namespace {
                 }
             }
         }
+        void emit_asm_label(const std::string& symbol)
+        {
+            if (Target_GetCurSpec().m_os_name == "macos") // Not macOS only, but all Apple platforms.
+                m_of << " asm(\"_" << symbol << "\")";
+            else
+                m_of << " asm(\"" << symbol << "\")";
+        }
         /// GCC calling-convention attribute for a Rust ABI string, NULL if the
         /// ABI is the platform default (i.e. needs no attribute).
         /// Link: https://gcc.gnu.org/onlinedocs/gcc/x86-Function-Attributes.html
@@ -2531,10 +2538,7 @@ namespace {
             emit_static_ty(type, p, /*is_proto=*/true);
             if( linkage_name != "" && m_compiler == Compiler::Gcc)
             {
-                if (Target_GetCurSpec().m_os_name == "macos") // Not macOS only, but all Apple platforms.
-                    m_of << " asm(\"_" << linkage_name << "\")";
-                else
-                    m_of << " asm(\"" << linkage_name << "\")";
+                emit_asm_label(linkage_name);
             }
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
@@ -2935,10 +2939,7 @@ namespace {
                 switch(m_compiler)
                 {
                 case Compiler::Gcc:
-                    if (Target_GetCurSpec().m_os_name == "macos") // Not macOS only, but all Apple platforms.
-                        m_of << " asm(\"_" << item.m_linkage.name << "\")";
-                    else
-                        m_of << " asm(\"" << item.m_linkage.name << "\")";
+                    emit_asm_label(item.m_linkage.name);
                     break;
                 case Compiler::Msvc:
                     break;
