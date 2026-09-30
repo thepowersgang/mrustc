@@ -1740,6 +1740,10 @@ namespace {
             else
                 m_of << " asm(\"" << symbol << "\")";
         }
+        static bool is_rust_internal_abi(const RcString& abi)
+        {
+            return abi == ABI_RUST || abi == "rust-call" || abi == "rust-cold" || abi == "rust-intrinsic" || abi == "platform-intrinsic" || abi == "unadjusted";
+        }
         /// GCC calling-convention attribute for a Rust ABI string, NULL if the
         /// ABI is the platform default (i.e. needs no attribute).
         /// Link: https://gcc.gnu.org/onlinedocs/gcc/x86-Function-Attributes.html
@@ -1749,8 +1753,7 @@ namespace {
             if( abi == "stdcall"  ) return "__attribute__((stdcall))";
             if( abi == "sysv64"   ) return "__attribute__((sysv_abi))";
             if( abi == "win64"    ) return "__attribute__((ms_abi))";
-            // Rust-internal ABIs: emitted as plain C functions, both sides generated here.
-            if( abi == ABI_RUST || abi == "rust-call" || abi == "rust-cold" || abi == "rust-intrinsic" || abi == "platform-intrinsic" || abi == "unadjusted" ) {
+            if( is_rust_internal_abi(abi) ) {
                 return nullptr;
             }
             // Already what GCC uses without an attribute.
@@ -2802,6 +2805,7 @@ namespace {
             TRACE_FUNCTION_F(p);
 
             m_of << "// EXTERN extern \"" << item.m_abi << "\" " << p << "\n";
+            auto scalar_ret = scalar_return_bridge_type(item, params);
             // For MSVC, make a static wrapper that goes and calls the actual function
             if( item.m_linkage.name.rfind("llvm.", 0) == 0 )
             {
@@ -2929,6 +2933,12 @@ namespace {
                 m_of << "}\n";
                 return;
             }
+            else if( scalar_ret != ::HIR::TypeRef::new_unit() )
+            {
+                emit_scalar_return_bridge(p, item, params, scalar_ret);
+                m_mir_res = nullptr;
+                return;
+            }
             else
             {
                 m_of << "extern ";
@@ -2948,6 +2958,96 @@ namespace {
             m_of << ";\n";
 
             m_mir_res = nullptr;
+        }
+        /// Link: https://gitlab.com/x86-psABIs/i386-ABI
+        ::HIR::TypeRef scalar_return_bridge_type(const ::HIR::Function& item, const Trans_Params& params)
+        {
+            const auto& spec = Target_GetCurSpec();
+            if( m_compiler != Compiler::Gcc || spec.m_arch.m_name != "x86" || spec.m_os_name == "windows" )
+                return ::HIR::TypeRef::new_unit();
+            if( is_rust_internal_abi(item.m_abi) || item.m_variadic || item.m_linkage.name.empty() )
+                return ::HIR::TypeRef::new_unit();
+            ::HIR::TypeRef  tmp;
+            return scalar_abi_type_of_aggregate(monomorphise_fcn_return(tmp, item, params));
+        }
+        ::HIR::TypeRef scalar_abi_type_of_aggregate(const ::HIR::TypeRef& ty)
+        {
+            if( !ty.data().is_Path() )
+                return ::HIR::TypeRef::new_unit();
+            const auto& binding = ty.data().as_Path().binding;
+            if( !binding.is_Enum() && !binding.is_Struct() )
+                return ::HIR::TypeRef::new_unit();
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+            if( !repr )
+                return ::HIR::TypeRef::new_unit();
+            if( binding.is_Enum() )
+            {
+                if( repr->variants.is_NonZero() && repr->size == Target_GetPointerBits() / 8 )
+                    return ::HIR::CoreType::Usize;
+                if( repr->variants.is_Values() && binding.as_Enum()->m_data.is_Value() )
+                {
+                    switch(repr->size)
+                    {
+                    case 1: return ::HIR::CoreType::U8;
+                    case 2: return ::HIR::CoreType::U16;
+                    case 4: return ::HIR::CoreType::U32;
+                    case 8: return ::HIR::CoreType::U64;
+                    }
+                }
+                return ::HIR::TypeRef::new_unit();
+            }
+            if( binding.as_Struct()->m_repr != ::HIR::Struct::Repr::Transparent )
+                return ::HIR::TypeRef::new_unit();
+            for(const auto& f : repr->fields)
+            {
+                size_t size = 0;
+                Target_GetSizeOf(sp, m_resolve, f.ty, size);
+                if( size != 0 )
+                    return is_scalar_abi_leaf(f.ty, size) ? f.ty.clone() : scalar_abi_type_of_aggregate(f.ty);
+            }
+            return ::HIR::TypeRef::new_unit();
+        }
+        static bool is_scalar_abi_leaf(const ::HIR::TypeRef& ty, size_t size)
+        {
+            if( ty.data().is_Primitive() )
+            {
+                switch(ty.data().as_Primitive())
+                {
+                case ::HIR::CoreType::U128:
+                case ::HIR::CoreType::I128:
+                case ::HIR::CoreType::F16:
+                case ::HIR::CoreType::F128:
+                case ::HIR::CoreType::Str:
+                    return false;
+                default:
+                    return true;
+                }
+            }
+            bool is_pointer = ty.data().is_Pointer() || ty.data().is_Borrow() || ty.data().is_Function();
+            return is_pointer && size == Target_GetPointerBits() / 8;
+        }
+        void emit_scalar_return_bridge(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, const ::HIR::TypeRef& scalar_ty)
+        {
+            m_of << "extern ";
+            emit_function_header(p, item, params, &scalar_ty);
+            emit_asm_label(item.m_linkage.name);
+            m_of << ";\n";
+
+            m_of << "static inline ";
+            emit_function_header(p, item, params);
+            m_of << "{\n";
+            m_of << "\t"; emit_ctype(scalar_ty); m_of << " raw = " << Trans_Mangle(p) << "_scalar_ret(";
+            for(size_t i = 0; i < item.m_args.size(); i ++)
+            {
+                if(i > 0) m_of << ", ";
+                m_of << "arg" << i;
+            }
+            m_of << ");\n";
+            ::HIR::TypeRef  tmp;
+            m_of << "\t"; emit_ctype(monomorphise_fcn_return(tmp, item, params)); m_of << " rv;\n";
+            m_of << "\tmemcpy(&rv, &raw, sizeof(rv));\n";
+            m_of << "\treturn rv;\n";
+            m_of << "}\n";
         }
         void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def) override
         {
@@ -5879,7 +5979,7 @@ namespace {
             }
         }
 
-        void emit_function_header(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params)
+        void emit_function_header(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, const ::HIR::TypeRef* scalar_return=nullptr)
         {
             ::HIR::TypeRef  tmp;
             const auto& ret_ty = monomorphise_fcn_return(tmp, item, params);
@@ -5906,7 +6006,7 @@ namespace {
                         ss << " " << attr;
                     }
                 }
-                ss << " " << Trans_Mangle(p) << "(";
+                ss << " " << Trans_Mangle(p) << (scalar_return ? "_scalar_ret" : "") << "(";
                 if( item.m_args.size() == 0 )
                 {
                     ss << "void)";
@@ -5929,7 +6029,11 @@ namespace {
                     ss << "\n\t\t)";
                 }
                 );
-            if( ret_ty != ::HIR::TypeRef::new_unit() )
+            if( scalar_return )
+            {
+                emit_ctype( *scalar_return, cb );
+            }
+            else if( ret_ty != ::HIR::TypeRef::new_unit() )
             {
                 emit_ctype( ret_ty, cb );
             }
