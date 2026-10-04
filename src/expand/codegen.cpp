@@ -440,6 +440,7 @@ class CHandler_Link:
             TTStream    lex(sp, ParseState(), mi.data());
             lex.getTokenCheck(TOK_PAREN_OPEN);
             std::string lib_name;
+            std::string kind;
             bool emit = true;
             AST::ExternBlock::Link  link;
 
@@ -458,7 +459,7 @@ class CHandler_Link:
                     auto v = lex.getTokenCheck(TOK_STRING).str();
                     if(v == "")
                         ERROR(sp, E0000, "Empty `kind` on extern block #[link]");
-                    // TODO: save and use the kind
+                    kind = v;
                 }
                 else if( key == "cfg" ) {
                     emit &= check_cfg_stream(lex);
@@ -478,6 +479,13 @@ class CHandler_Link:
             }
             if(link.lib_name == "")
                 ERROR(sp, E0000, "No name in `#[link]`");
+            // Apple frameworks use the same `framework=` encoding as `-l framework=Foo` (from minicargo),
+            // which the C backend turns into `-framework Foo` instead of `-lFoo`
+            // TODO: Use the other kinds (`static`, `dylib`, `raw-dylib`)
+            if( kind == "framework" )
+            {
+                link.lib_name = "framework=" + link.lib_name;
+            }
             if( emit )
             {
                 b->m_libraries.push_back(std::move(link));
