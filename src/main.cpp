@@ -768,11 +768,11 @@ int main(int argc, char *argv[])
                 crate_for_ser.m_crate_name = hir_crate->m_crate_name;
                 crate_for_ser.m_edition    = hir_crate->m_edition;
                 for(const auto& i : hir_crate->m_root_module.m_macro_items) {
-                    DEBUG(i.first << ": " << i.second->ent.tag_str());
-                    if( const auto* e = i.second->ent.opt_ProcMacro() ) {
+                    DEBUG(i.first << ": " << i.second.ent.tag_str());
+                    if( const auto* e = i.second.ent.opt_ProcMacro() ) {
                         crate_for_ser.m_root_module.m_macro_items.insert(std::make_pair(
                             i.first,
-                            box$(HIR::VisEnt<HIR::MacroItem>{ i.second->publicity, *e })
+                            HIR::VisEnt<HIR::MacroItem>{ i.second.publicity, box$(**e) }
                             ));
                     }
                 }
