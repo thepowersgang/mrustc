@@ -5743,6 +5743,9 @@ namespace {
                         case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
                         case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
                         case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
+                        // aarch64
+                        case AsmCommon::RegisterClass::aarch64_reg: m_of << "r";  break;
+                        case AsmCommon::RegisterClass::aarch64_vreg: m_of << "w"; break;
                         // riscv
                         case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
                         case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
@@ -5784,6 +5787,9 @@ namespace {
                             case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
                             case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
                             case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
+                            // aarch64
+                            case AsmCommon::RegisterClass::aarch64_reg: m_of << "r";  break;
+                            case AsmCommon::RegisterClass::aarch64_vreg: m_of << "w"; break;
                             // riscv
                             case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
                             case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
