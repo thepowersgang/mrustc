@@ -2898,6 +2898,10 @@ namespace {
                 {
                     m_of << "\tassert(!\"Unsupprorted LLVM x86 intrinsic: " << item.m_linkage.name << "\"); abort();\n";
                 }
+                else if( item.m_linkage.name == "llvm.aarch64.isb" ) {
+                    m_of << "\t__asm__ __volatile__ (\"isb\");\n";
+                    m_of << "\treturn ;\n";
+                }
                 else {
                     // TODO: Hand off to compiler-specific intrinsics
                     //MIR_TODO(*m_mir_res, "LLVM extern linkage: " << item.m_linkage.name);
