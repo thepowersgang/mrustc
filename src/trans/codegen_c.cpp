@@ -5586,6 +5586,31 @@ namespace {
                 m_of << ");\n";
                 return;
             }
+            // AARCH64 CRC32 assembly instructions
+            else if( m.matches_template({"crc32b {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
+            {
+                m_of << indent << "__builtin_aarch64_crc32b("; emit_param(m.input(0)); m_of << ", "; emit_param(m.input(1));
+                m_of << ");\n";
+                return;
+            }
+            else if( m.matches_template({"crc32h {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
+            {
+                m_of << indent << "__builtin_aarch64_crc32h("; emit_param(m.input(0)); m_of << ", "; emit_param(m.input(1));
+                m_of << ");\n";
+                return;
+            }
+            else if( m.matches_template({"crc32w {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
+            {
+                m_of << indent << "__builtin_aarch64_crc32w("; emit_param(m.input(0)); m_of << ", "; emit_param(m.input(1));
+                m_of << ");\n";
+                return;
+            }
+            else if( m.matches_template({"crc32x {0:w}, {0:w}, {1:x}"}, {"inout:reg", "in:reg"}) )
+            {
+                m_of << indent << "__builtin_aarch64_crc32x("; emit_param(m.input(0)); m_of << ", "; emit_param(m.input(1));
+                m_of << ");\n";
+                return;
+            }
             // HACK: Abort on various `v*` operations, as they have overly complex register specs that gcc doesn't like
             else if( se.lines[0].frags.size() > 0 && (
                 false
