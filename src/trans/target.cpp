@@ -2383,28 +2383,85 @@ namespace {
         // the C compiler caps them when they become union members.
         if( Target_IsDarwinPPC32() && !rv.fields.empty() )
         {
-            size_t  c_align = 1;
-            size_t  c_size = 0;
-            for(const auto& f : rv.fields)
+            // An external tag (`repr(C)` data enums: tag at offset 0, every variant at the data offset) is emitted as
+            // `struct e_X { TAG; union { variants } DATA; }`, so the C size is the tag plus the union; an embedded tag
+            // (all offsets 0) is one member of the union.
+            bool external_tag = false;
+            for(size_t i = 1; i < rv.fields.size(); i ++)
             {
-                size_t  sz, al;
-                if( Target_GetSizeAndAlignOf(sp, resolve, f.ty, sz, al) && sz != SIZE_MAX )
+                if( rv.fields[i].offset != rv.fields[0].offset )
+                    external_tag = true;
+            }
+            if( external_tag )
+            {
+                // tokio 1.43.0 `#[repr(C)] enum MaybeDone<F> { Future(F), Done(T), Gone }`: 4 + 52 = 56, not 52
+                const auto& tag_f = rv.fields.back();
+                size_t  tag_sz = 0, tag_al = 1;
+                Target_GetSizeAndAlignOf(sp, resolve, tag_f.ty, tag_sz, tag_al);
+                size_t  u_align = 1, u_size = 0;
+                bool    u_user = false;
+                const ::HIR::TypeRef*   u_first = nullptr;
+                for(size_t i = 0; i + 1 < rv.fields.size(); i ++)
                 {
-                    if( al == 8 && !darwin_ppc32_type_has_c_user_align(sp, resolve, f.ty) )
+                    const auto& f = rv.fields[i];
+                    size_t  sz, al;
+                    if( !Target_GetSizeAndAlignOf(sp, resolve, f.ty, sz, al) || sz == SIZE_MAX || sz == 0 )
+                        continue;   // ZST variants aren't emitted
+                    bool user = darwin_ppc32_type_has_c_user_align(sp, resolve, f.ty);
+                    if( al == 8 && !user )
                         al = 4;
-                    c_align = ::std::max(c_align, al);
-                    c_size = ::std::max(c_size, sz);
+                    u_user |= user;
+                    u_align = ::std::max(u_align, al);
+                    u_size = ::std::max(u_size, sz);
+                    if( !u_first )
+                        u_first = &f.ty;
+                }
+                size_t data_ofs = tag_sz;
+                size_t c_align = (tag_al == 8 ? 4 : tag_al);
+                if( u_first )
+                {
+                    u_align = ::std::max(u_align, darwin_ppc32_first_field_align(sp, resolve, *u_first));
+                    u_size = (u_size + u_align - 1) / u_align * u_align;
+                    size_t data_fa = (u_align == 8 && !u_user) ? 4 : u_align;
+                    data_ofs = (tag_sz + data_fa - 1) / data_fa * data_fa;
+                    c_align = ::std::max(c_align, data_fa);
+                }
+                c_align = ::std::max(c_align, tag_al);    // the tag is the first field: its natural alignment
+                size_t c_size = (data_ofs + u_size + c_align - 1) / c_align * c_align;
+                if( rv.align != c_align || rv.size != c_size || (u_first && rv.fields[0].offset != data_ofs) )
+                {
+                    for(size_t i = 0; i + 1 < rv.fields.size(); i ++)
+                        rv.fields[i].offset = data_ofs;
+                    rv.align = c_align;
+                    rv.size = c_size;
+                    DEBUG("Darwin ppc32 fixup (external tag): size = " << rv.size << ", align = " << rv.align << ", data at " << data_ofs);
                 }
             }
-            if( const auto* first_ty = darwin_ppc32_repr_first_emitted_field(sp, resolve, ty, rv) )
+            else
             {
-                c_align = ::std::max(c_align, darwin_ppc32_first_field_align(sp, resolve, *first_ty));
-            }
-            if( rv.align != c_align || rv.size != (c_size + c_align - 1) / c_align * c_align )
-            {
-                rv.align = c_align;
-                rv.size = (c_size + c_align - 1) / c_align * c_align;
-                DEBUG("Darwin ppc32 fixup: size = " << rv.size << ", align = " << rv.align);
+                size_t  c_align = 1;
+                size_t  c_size = 0;
+                for(const auto& f : rv.fields)
+                {
+                    size_t  sz, al;
+                    if( Target_GetSizeAndAlignOf(sp, resolve, f.ty, sz, al) && sz != SIZE_MAX )
+                    {
+                        if( al == 8 && !darwin_ppc32_type_has_c_user_align(sp, resolve, f.ty) )
+                            al = 4;
+                        c_align = ::std::max(c_align, al);
+                        c_size = ::std::max(c_size, sz);
+                    }
+                }
+                if( const auto* first_ty = darwin_ppc32_repr_first_emitted_field(sp, resolve, ty, rv) )
+                {
+                    c_align = ::std::max(c_align, darwin_ppc32_first_field_align(sp, resolve, *first_ty));
+                }
+                if( rv.align != c_align || rv.size != (c_size + c_align - 1) / c_align * c_align )
+                {
+                    rv.align = c_align;
+                    rv.size = (c_size + c_align - 1) / c_align * c_align;
+                    DEBUG("Darwin ppc32 fixup: size = " << rv.size << ", align = " << rv.align);
+                }
             }
         }
         return box$(rv);
