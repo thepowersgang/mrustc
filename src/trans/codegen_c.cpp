@@ -1213,6 +1213,11 @@ namespace {
                     {
                         std::string lib_path;
                         if( !is_windows ) {
+                            if( Target_GetCurSpec().m_os_name == "macos" ) {
+                                lib_path = FMT(path << "/lib" << name << ".dylib");
+                                if( file_exists(lib_path) )
+                                    return lib_path;
+                            }
                             lib_path = FMT(path << "/lib" << name << ".so");
                             if( file_exists(lib_path) )
                                 return lib_path;
