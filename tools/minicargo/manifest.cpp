@@ -681,8 +681,8 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const WorkspaceManifest* wm
         }
         else if( section == "patch" )
         {
-            //const auto& repo = key_val.path[1];
-            eh.todo("Support repository patches");
+            // Only honoured at the workspace root, where WorkspaceManifest::load_from_toml applies it.
+            DEBUG("Ignoring [patch] in a package manifest: " << key_val.path);
         }
         else if( section == "profile" )
         {

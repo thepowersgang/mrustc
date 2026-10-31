@@ -127,12 +127,15 @@ void Repository::add_patch_path(const std::string& package_name, ::helpers::path
 {
     auto manifest_path = path / "Cargo.toml";
 
-    auto loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(manifest_path, m_workspace_manifest)) );
+    // Through the path cache, so a path dependency on the same directory is the same package.
+    auto loaded_manifest = from_path(manifest_path);
 
     Entry   cache_ent;
     cache_ent.manifest_path = manifest_path;
     cache_ent.version = loaded_manifest->version();
     cache_ent.loaded_manifest = ::std::move(loaded_manifest);
+    // A patch replaces the registry copies outright, as in Cargo.
+    m_cache.erase(package_name);
     m_cache.insert(::std::make_pair( package_name, ::std::move(cache_ent) ));
     // TODO: If there's other packages with the same name, check for compatability (or otherwise ensure that this is the chosen version)
 }
