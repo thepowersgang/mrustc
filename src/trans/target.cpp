@@ -2452,6 +2452,11 @@ namespace {
         {
             rv.align = ::std::max(rv.align, darwin_ppc32_first_field_align(sp, resolve, rv.fields[0].ty));
         }
+        // `#[repr(align(N))]` raises the alignment, and so may pad the size out
+        if( unn.m_forced_alignment > rv.align )
+        {
+            rv.align = unn.m_forced_alignment;
+        }
         // Round the size to be a multiple of align
         if( rv.size % rv.align != 0 )
         {
