@@ -1,0 +1,10 @@
+cargo:rustc-cfg=freebsd11
+cargo:rustc-cfg=libc_priv_mod_use
+cargo:rustc-cfg=libc_union
+cargo:rustc-cfg=libc_const_size_o
+cargo:rustc-cfg=libc_align
+cargo:rustc-cfg=libc_core_cvoid
+cargo:rustc-cfg=libc_packedN
+cargo:rustc-cfg=libc_cfg_target_vendor
+cargo:rustc-cfg=libc_thread_local
+cargo:rustc-cfg=libc_const_extern_fn
