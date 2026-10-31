@@ -3569,6 +3569,35 @@ namespace {
             return align >Target_GetPointerBits() / 8;
         }
 
+        // Tag type of a fieldless enum, which C spells as a plain integer rather than our one-field struct.
+        const ::HIR::TypeRef* enum_ffi_tag_ty(const ::HIR::TypeRef& ty) const
+        {
+            if( !ty.data().is_Path() )
+                return nullptr;
+            if( !ty.data().as_Path().binding.is_Enum() )
+                return nullptr;
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+            if( !repr )
+                return nullptr;
+            // One field plus value-only variants is the shape emit_enum renders as a bare TAG.
+            if( repr->fields.size() != 1 || !repr->variants.is_Values() )
+                return nullptr;
+            return &repr->fields[0].ty;
+        }
+
+        // Arguments only; a C function returning such an enum has the same mismatch, untested here.
+        // Non-Rust ABIs must match the C declaration; Rust-ABI calls are ours on both sides.
+        static bool abi_is_c_like(const RcString& abi)
+        {
+            return abi != "Rust" && abi != "rust-intrinsic" && abi != "platform-intrinsic";
+        }
+
+        // Only a body-less extern is a real C boundary; a Rust-defined `extern "C"` fn is a struct on both sides.
+        static bool fn_is_c_abi_extern(const ::HIR::Function& fcn)
+        {
+            return !fcn.m_code.m_mir && abi_is_c_like(fcn.m_abi);
+        }
+
         void emit_borrow(const ::MIR::TypeResolve& mir_res, HIR::BorrowType bt, const MIR::LValue& val)
         {
             ::HIR::TypeRef  tmp;
@@ -4819,6 +4848,8 @@ namespace {
             }
 
             bool omit_assign = false;
+            // Callee ABI decides the spelling: C takes the integer, Rust ABI keeps the struct.
+            bool callee_is_c_abi = false;
 
             // If the return type is `()`, omit the assignment (all `()` returning functions are marked as returning
             // void)
@@ -4857,6 +4888,7 @@ namespace {
                     TU_ARMA(Generic, pe) {
                         const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
                         omit_assign |= fcn.m_return.data().is_Diverge();
+                        callee_is_c_abi = fn_is_c_abi_extern(fcn);
                         // TODO: Monomorph.
                         }
                     TU_ARMA(UfcsUnknown, pe) {
@@ -4942,6 +4974,11 @@ namespace {
                     continue;
                 }
                 emit_param(e.args[j]);
+                // The C callee declared this parameter as the tag's integer, so pass the tag.
+                if( callee_is_c_abi && this->enum_ffi_tag_ty(ty) )
+                {
+                    m_of << ".TAG";
+                }
             }
             m_of << " );\n";
 
@@ -5953,7 +5990,11 @@ namespace {
                         ss << "\n\t\t";
                         // TODO: If the type has a high alignment, emit as a pointer? Might have FFI issues
                         auto ty = params.monomorph(m_resolve, item.m_args[i].second);
-                        this->emit_ctype( ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
+                        // A C ABI spells a fieldless enum as its integer; see enum_ffi_tag_ty.
+                        const ::HIR::TypeRef* tag_ty = nullptr;
+                        if( fn_is_c_abi_extern(item) )
+                            tag_ty = this->enum_ffi_tag_ty(ty);
+                        this->emit_ctype( tag_ty ? *tag_ty : ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
                         if( item.m_variadic || i+1 < item.m_args.size() )    m_of << ",";
                         m_of << " // " << ty;
                     }
