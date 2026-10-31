@@ -5516,6 +5516,13 @@ namespace {
                 MIR_TODO(mir_res, "Translate to MSVC");
             }
         }
+        void emit_aarch64_crc32(const Asm2TplMatch& m, const RepeatLitStr& indent, const char* insn)
+        {
+            m_of << indent << "__asm__(\".arch_extension crc\\n\\t" << insn << "\"";
+            m_of << " : \"=r\"("; emit_lvalue(m.output(0)); m_of << ")";
+            m_of << " : \"0\"("; emit_param(m.input(0)); m_of << "), \"r\"("; emit_param(m.input(1)); m_of << ")";
+            m_of << ");\n";
+        }
         void emit_asm2_gcc(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level)
         {
             auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
@@ -5590,26 +5597,22 @@ namespace {
             // AARCH64 CRC32 assembly instructions
             else if( m.matches_template({"crc32b {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
             {
-                m_of << indent << "__builtin_aarch64_crc32b("; emit_param(m.input(0)); m_of << ", "; emit_param(m.input(1));
-                m_of << ");\n";
+                emit_aarch64_crc32(m, indent, "crc32b %w0, %w0, %w2");
                 return;
             }
             else if( m.matches_template({"crc32h {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
             {
-                m_of << indent << "__builtin_aarch64_crc32h("; emit_param(m.input(0)); m_of << ", "; emit_param(m.input(1));
-                m_of << ");\n";
+                emit_aarch64_crc32(m, indent, "crc32h %w0, %w0, %w2");
                 return;
             }
             else if( m.matches_template({"crc32w {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
             {
-                m_of << indent << "__builtin_aarch64_crc32w("; emit_param(m.input(0)); m_of << ", "; emit_param(m.input(1));
-                m_of << ");\n";
+                emit_aarch64_crc32(m, indent, "crc32w %w0, %w0, %w2");
                 return;
             }
             else if( m.matches_template({"crc32x {0:w}, {0:w}, {1:x}"}, {"inout:reg", "in:reg"}) )
             {
-                m_of << indent << "__builtin_aarch64_crc32x("; emit_param(m.input(0)); m_of << ", "; emit_param(m.input(1));
-                m_of << ");\n";
+                emit_aarch64_crc32(m, indent, "crc32x %w0, %w0, %x2");
                 return;
             }
             // HACK: Abort on various `v*` operations, as they have overly complex register specs that gcc doesn't like
