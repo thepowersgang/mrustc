@@ -478,10 +478,12 @@ namespace {
                     else
                     {
                         if( strncmp(s, "x?}", 3) == 0 ) {
+                            s += 2;
                             args.debug_ty = FmtArgs::Debug::LowerHex;
                             trait_name = "Debug";
                         }
                         else if( strncmp(s, "X?}", 3) == 0 ) {
+                            s += 2;
                             args.debug_ty = FmtArgs::Debug::UpperHex;
                             trait_name = "Debug";
                         }
