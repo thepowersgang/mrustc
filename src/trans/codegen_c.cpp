@@ -3569,6 +3569,21 @@ namespace {
             return align >Target_GetPointerBits() / 8;
         }
 
+        const ::HIR::TypeRef* enum_ffi_tag_ty(const ::HIR::TypeRef& ty) const
+        {
+            if( !ty.data().is_Path() || !ty.data().as_Path().binding.is_Enum() )
+                return nullptr;
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+            if( !repr || repr->fields.size() != 1 || !repr->variants.is_Values() )
+                return nullptr;
+            return &repr->fields[0].ty;
+        }
+
+        static bool fn_is_c_abi_extern(const ::HIR::Function& fcn)
+        {
+            return !fcn.m_code.m_mir && fcn.m_abi != "Rust" && fcn.m_abi != "rust-intrinsic" && fcn.m_abi != "platform-intrinsic";
+        }
+
         void emit_borrow(const ::MIR::TypeResolve& mir_res, HIR::BorrowType bt, const MIR::LValue& val)
         {
             ::HIR::TypeRef  tmp;
@@ -4819,6 +4834,7 @@ namespace {
             }
 
             bool omit_assign = false;
+            bool callee_is_c_abi = false;
 
             // If the return type is `()`, omit the assignment (all `()` returning functions are marked as returning
             // void)
@@ -4857,6 +4873,7 @@ namespace {
                     TU_ARMA(Generic, pe) {
                         const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
                         omit_assign |= fcn.m_return.data().is_Diverge();
+                        callee_is_c_abi = fn_is_c_abi_extern(fcn);
                         // TODO: Monomorph.
                         }
                     TU_ARMA(UfcsUnknown, pe) {
@@ -4942,6 +4959,8 @@ namespace {
                     continue;
                 }
                 emit_param(e.args[j]);
+                if( callee_is_c_abi && this->enum_ffi_tag_ty(ty) )
+                    m_of << ".TAG";
             }
             m_of << " );\n";
 
@@ -5953,7 +5972,8 @@ namespace {
                         ss << "\n\t\t";
                         // TODO: If the type has a high alignment, emit as a pointer? Might have FFI issues
                         auto ty = params.monomorph(m_resolve, item.m_args[i].second);
-                        this->emit_ctype( ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
+                        const auto* tag_ty = fn_is_c_abi_extern(item) ? this->enum_ffi_tag_ty(ty) : nullptr;
+                        this->emit_ctype( tag_ty ? *tag_ty : ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
                         if( item.m_variadic || i+1 < item.m_args.size() )    m_of << ",";
                         m_of << " // " << ty;
                     }
