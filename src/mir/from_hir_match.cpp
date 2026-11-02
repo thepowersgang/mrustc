@@ -1328,7 +1328,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
             ASSERT_BUG(sp, len <= r->bytes.size(), "");
             ASSERT_BUG(sp, ptr+len <= r->bytes.size(), "");
 
-            this->push_rule(PatternRule::make_Value( std::string(r->bytes.data() + ptr, r->bytes.data() + ptr + len) ));
+            this->push_rule(PatternRule::make_Value( RcString(r->bytes.data() + ptr, len) ));
         }
         else if( e.inner.data().is_Slice() && e.inner.data().as_Slice().inner == ::HIR::CoreType::U8 ) {
             auto ptr_size = Target_GetPointerBits()/8;
@@ -2136,7 +2136,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             // TODO: Check type?
             if( pe.val.is_String() ) {
                 const auto& s = pe.val.as_String();
-                this->push_rule( PatternRule::make_Value(s) );
+                this->push_rule( PatternRule::make_Value(RcString(s)) );
             }
             else if( pe.val.is_ByteString() ) {
                 const auto& s = pe.val.as_ByteString().v;
@@ -3857,7 +3857,7 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
         val.m_wrappers.pop_back();
 
         ::std::vector< ::MIR::BasicBlockId> targets;
-        ::std::vector< ::std::string>   values;
+        ::std::vector< RcString>   values;
         size_t tgt_ofs = 0;
         for(size_t i = 0; i < rules.size(); i++)
         {

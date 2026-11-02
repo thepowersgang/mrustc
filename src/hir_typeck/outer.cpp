@@ -18,7 +18,7 @@ namespace {
         {
             const auto& pitem = crate.get_typeitem_by_path(sp, path, false, true);
             if(pitem.is_Enum() ) {
-                return pitem.as_Enum().m_params;
+                return pitem.as_Enum()->m_params;
             }
         }
 
@@ -32,14 +32,14 @@ namespace {
                 BUG(sp, "Value path pointed to import - " << path << " = " << e.path);
                 ),
             (Function,
-                return e.m_params;
+                return e->m_params;
                 ),
             (Constant,
-                return e.m_params;
+                return e->m_params;
                 ),
             (Static,
                 // TODO: Return an empty set?
-                BUG(sp, "Attepted to get parameters for static " << path);
+                BUG(sp, "Attempted to get parameters for static " << path);
                 ),
             (StructConstructor,
                 return get_params_for_item(sp, crate, e.ty, ::HIR::Visitor::PathContext::TYPE);
@@ -72,16 +72,16 @@ namespace {
                 BUG(sp, "Type path pointed to module - " << path);
                 ),
             (Struct,
-                return e.m_params;
+                return e->m_params;
                 ),
             (Enum,
-                return e.m_params;
+                return e->m_params;
                 ),
             (Union,
-                return e.m_params;
+                return e->m_params;
                 ),
             (Trait,
-                return e.m_params;
+                return e->m_params;
                 )
             )
             } break;
@@ -682,7 +682,7 @@ namespace {
                     }
                 //(NotTrait, e) {
                 //    ::HIR::TypeRef  type;
-                //    ::HIR::GenricPath    trait;
+                //    ::HIR::GenericPath    trait;
                 //    }),
                 TU_ARMA(TypeEquality, e) {
                     this->visit_type(e.type);
@@ -757,13 +757,13 @@ namespace {
 
                 const HIR::GenericParams* params = nullptr;
                 if(const auto* e = ti.opt_Struct()) {
-                    params = &e->m_params;
+                    params = &(*e)->m_params;
                 }
                 else if(const auto* e = ti.opt_Enum()) {
-                    params = &e->m_params;
+                    params = &(*e)->m_params;
                 }
                 else if(const auto* e = ti.opt_Union()) {
-                    params = &e->m_params;
+                    params = &(*e)->m_params;
                 }
                 else {
                     DEBUG("TODO: Obtain bounds from " << ti.tag_str());
@@ -827,7 +827,7 @@ namespace {
             m_self_types.pop_back();
 
             // TODO: Check that the type+trait is valid
-            // - And fix bad elided liftimes (match annotations if they were elided)
+            // - And fix bad elided lifetimes (match annotations if they were elided)
             {
                 const auto& trait = m_resolve.m_crate.get_trait_by_path(sp, trait_path);
                 for(auto& e : impl.m_methods)
