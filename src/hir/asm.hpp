@@ -42,10 +42,10 @@ namespace AsmCommon {
         aarch64_reg,
         aarch64_vreg,
         
-        //arm_reg,
-        //arm_sreg,
-        //arm_dreg,
-        //arm_qreg,
+        arm_reg,
+        arm_sreg,
+        arm_dreg,
+        arm_qreg,
         
         //mips_reg,
         //mips_freg,
@@ -110,6 +110,10 @@ namespace AsmCommon {
         case RegisterClass::aarch64_vreg:  return "vreg";
         case RegisterClass::riscv_reg:  return "reg";
         case RegisterClass::riscv_freg: return "freg";
+        case RegisterClass::arm_reg:   return "reg";
+        case RegisterClass::arm_sreg:   return "sreg";
+        case RegisterClass::arm_dreg:   return "dreg";
+        case RegisterClass::arm_qreg:   return "qreg";
         }
         throw "";
     }
