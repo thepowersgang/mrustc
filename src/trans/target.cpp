@@ -81,6 +81,12 @@ const TargetArch ARCH_RISCV64 = {
     { /*atomic(u8)=*/true, true, true, true,  true },
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
 };
+const TargetArch ARCH_SPARC64 = {
+    "sparc64",
+    64, true,
+    { /*atomic(u8)=*/true, true, true, true,  true },
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
+};
 TargetSpec  g_target;
 
 
@@ -174,6 +180,10 @@ namespace
                         else if( key_val.value.as_string() == ARCH_RISCV64.m_name )
                         {
                             rv.m_arch = ARCH_RISCV64;
+                        }
+                        else if( key_val.value.as_string() == ARCH_SPARC64.m_name )
+                        {
+                            rv.m_arch = ARCH_SPARC64;
                         }
                         else
                         {
@@ -651,6 +661,13 @@ namespace
                 ARCH_POWERPC64
                 };
         }
+        else if(target_name == "sparcv9-sun-solaris" || target_name == "sparc64-sun-solaris")
+        {
+            return TargetSpec {
+                "unix", "solaris", "", {CodegenMode::Gnu11, false, "sparcv9-sun-solaris", {"-std=gnu11", "-m64", "-mcpu=v9", "-pthread"}, {}, {"-l", "socket", "-l", "nsl", "-l", "rt"}},
+                ARCH_SPARC64
+                };
+        }
         else if(target_name == "arm-unknown-haiku")
         {
             return TargetSpec {
@@ -735,6 +752,11 @@ void Target_SetCfg(const ::std::string& target_name)
     {
         Cfg_SetFlag("dragonfly");
         Cfg_SetValue("target_vendor", "unknown");
+    }
+
+    if( g_target.m_os_name == "solaris" )
+    {
+        Cfg_SetValue("target_vendor", "sun");
     }
 
     Cfg_SetValue("target_vendor", "");  // NOTE: Doesn't override a pre-set value
