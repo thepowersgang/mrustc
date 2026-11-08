@@ -3392,19 +3392,17 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             const auto& ti = m_crate.get_typeitem_by_path(sp, pe.m_path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
             if( const auto* e = ti.opt_Enum() )
             {
+                const auto& enm = **e;
                 if(out_impl_params_def) {
-                    *out_impl_params_def = &e->m_params;
+                    *out_impl_params_def = &enm.m_params;
                 }
                 out_params.pp_impl = &pe.m_params;
-                auto idx = e->find_variant(pe.m_path.components().back());
-                if( e->m_data.is_Data() )
+                auto idx = enm.find_variant(pe.m_path.components().back());
+                if( enm.m_data.is_Data() && enm.m_data.as_Data()[idx].type != ::HIR::TypeRef::new_unit() )
                 {
-                    if( e->m_data.as_Data()[idx].type != ::HIR::TypeRef::new_unit() )
-                    {
-                        return ValuePtr::Data_EnumConstructor { e, idx };
-                    }
+                    return ValuePtr::Data_EnumConstructor { &enm, idx };
                 }
-                return ValuePtr::Data_EnumValue { e, idx };
+                return ValuePtr::Data_EnumValue { &enm, idx };
             }
         }
         const auto& v = m_crate.get_valitem_by_path(sp, pe.m_path);
@@ -3412,15 +3410,15 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         (Import, BUG(sp, "Module Import");),
         (Constant,
             out_params.pp_method = &pe.m_params;
-            return &ve;
+            return &*ve;
             ),
         (Static,
             out_params.pp_method = &pe.m_params;
-            return &ve;
+            return &*ve;
             ),
         (Function,
             out_params.pp_method = &pe.m_params;
-            return &ve;
+            return &*ve;
             ),
         (StructConstant,
             out_params.pp_impl = &pe.m_params;

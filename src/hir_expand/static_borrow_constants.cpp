@@ -1142,10 +1142,10 @@ namespace static_borrow_constants {
                         new_static.m_value_generated = true;
                         new_static.m_value_res = ::std::move(value);
                         DEBUG(path << " = " << new_static.m_value_res);
-                        m_current_module.m_value_items.insert(std::make_pair( name, box$(HIR::VisEnt<HIR::ValueItem> {
+                        m_current_module.m_value_items.insert(std::make_pair( name, HIR::VisEnt<HIR::ValueItem> {
                                 HIR::Publicity::new_none(), // Should really be private, but we're well after checking
-                                HIR::ValueItem(::std::move(new_static))
-                            })) );
+                                HIR::ValueItem(box$(new_static))
+                            }) );
                         return path;
                     }
                 } nvs { mod_path, mod, mod_list.second.size() };
@@ -1186,12 +1186,13 @@ namespace static_borrow_constants {
                         }
                     };
                     auto new_ent = new_static_pair.is_const
-                        ? HIR::ValueItem(H::to_const(new_static))
-                        : HIR::ValueItem(std::move(new_static_pair.data));
-                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.path.components().back()), box$(HIR::VisEnt<HIR::ValueItem> {
+                        ? HIR::ValueItem(box$(H::to_const(new_static)))
+                        : HIR::ValueItem(box$(new_static_pair.data))
+                        ;
+                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.path.components().back()), HIR::VisEnt<HIR::ValueItem> {
                         HIR::Publicity::new_none(), // Should really be private, but we're well after checking
                         std::move(new_ent)
-                        })) );
+                        }) );
                 }
             }
         }
@@ -1393,12 +1394,12 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
                 new_static.m_value_generated = true;
                 new_static.m_value_res = ::std::move(value);
                 DEBUG(path << " = " << new_static.m_value_res);
-                crate.m_new_values.push_back(std::make_pair( name, box$(HIR::VisEnt<HIR::ValueItem> {
+                crate.m_new_values.push_back(std::make_pair( name, HIR::VisEnt<HIR::ValueItem> {
                     HIR::Publicity::new_none(), // Should really be private, but we're well after checking
-                    HIR::ValueItem(::std::move(new_static))
-                }) ));
+                    HIR::ValueItem(box$(new_static))
+                } ));
 
-                auto& s = crate.m_new_values.back().second->ent.as_Static();
+                auto& s = *crate.m_new_values.back().second.ent.as_Static();
                 ASSERT_BUG(Span(), !s.m_value.m_state, "ExprState set already");
                 s.m_value.m_state = ::HIR::ExprStatePtr(::HIR::ExprState(crate.m_root_module, ::HIR::SimplePath(crate.m_crate_name)));
                 s.m_value.m_state->stage = ::HIR::ExprState::Stage::Sbc;
@@ -1422,16 +1423,16 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
 
         DEBUG(path << " = ?");
         auto vi = is_const
-            ? HIR::ValueItem(HIR::Constant { std::move(new_static.m_params), std::move(new_static.m_type), std::move(new_static.m_value) })
-            : HIR::ValueItem(std::move(new_static))
+            ? HIR::ValueItem(box$(HIR::Constant { std::move(new_static.m_params), std::move(new_static.m_type), std::move(new_static.m_value) }))
+            : HIR::ValueItem(box$(new_static))
             ;
-        auto boxed = box$(( ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), std::move(vi) } ));
+        auto boxed = ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), std::move(vi) };
         crate.m_new_values.push_back( ::std::make_pair(name, mv$(boxed)) );
         {
-            auto& e = crate.m_new_values.back().second->ent;
+            auto& e = crate.m_new_values.back().second.ent;
             ASSERT_BUG(sp, e.is_Static() || e.is_Constant(), "");
-            auto& p = e.is_Static() ? e.as_Static().m_params : e.as_Constant().m_params;
-            auto& v = e.is_Static() ? e.as_Static().m_value : e.as_Constant().m_value;
+            auto& p = e.is_Static() ? e.as_Static()->m_params : e.as_Constant()->m_params;
+            auto& v = e.is_Static() ? e.as_Static()->m_value : e.as_Constant()->m_value;
             ASSERT_BUG(Span(), v.m_state, "");
             v.m_state->m_impl_generics = nullptr;
             v.m_state->m_item_generics = &p;

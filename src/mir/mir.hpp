@@ -471,7 +471,7 @@ TAGGED_UNION_EX(Constant, (), Int, (
         bool    v;  // NOTE: Defensive to prevent implicit casts
         }),
     (Bytes, ::std::vector< ::std::uint8_t>),    // Byte string
-    (StaticString, ::std::string),  // String
+    (StaticString, RcString),   // A non-interned rc-string, as MIR gets copied sometimes. `std::string` is 4 words, larger than the integers
     // NOTE: These are behind pointers to save inline space (HIR::Path is ~11
     // words, compared to 4 for MIR::Constant without it)
     (Const, struct { ::std::unique_ptr<::HIR::Path> p; }),   // `const`
@@ -603,7 +603,7 @@ TAGGED_UNION(CallTarget, Intrinsic,
 TAGGED_UNION_EX(SwitchValues, (), Unsigned, (
     (Unsigned, ::std::vector<uint64_t>),
     (Signed, ::std::vector<int64_t>),
-    (String, ::std::vector<::std::string>),
+    (String, ::std::vector<RcString>),
     (ByteString, ::std::vector<::std::vector<uint8_t>>)
     ), (),(), (
         SwitchValues clone() const;

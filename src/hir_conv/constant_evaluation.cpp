@@ -855,12 +855,15 @@ namespace {
         return ofs;
     }
 
+    const ::HIR::Module* get_opt_mod(const ::std::unique_ptr<::HIR::Module>* opt_mp) {
+        return opt_mp ? opt_mp->get() : nullptr;
+    }
     EntPtr get_ent_fullpath(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::Path& path, EntNS ns, MonomorphState& out_ms, const ::HIR::GenericParams** out_impl_params_def=nullptr)
     {
         if(const auto* gp = path.m_data.opt_Generic()) {
             const auto& name = gp->m_path.components().back();
             const auto* mod = ( gp->m_path.components().size() > 1 )
-                ? resolve.m_crate.get_typeitem_by_path(sp, gp->m_path, false, /*ignore_last*/true) . opt_Module()
+                ? get_opt_mod(resolve.m_crate.get_typeitem_by_path(sp, gp->m_path, false, /*ignore_last*/true).opt_Module())
                 : &resolve.m_crate.get_mod_by_path(sp, gp->m_path, true)
                 ;
             if( mod ) {
@@ -1122,7 +1125,7 @@ namespace MIR { namespace eval {
                     DEBUG(p << " = " << item.m_value_res);
                 }
                 if(out_ty) {
-                    // Does this need monomorph? No, becuase the value is known and thus not generic?
+                    // Does this need monomorph? No, because the value is known and thus not generic?
                     *out_ty = s.m_type.clone();
                 }
                 return StaticRefPtr::allocate(std::move(p), &s.m_value_res);
@@ -1406,7 +1409,7 @@ namespace MIR { namespace eval {
                 dst.write_ptr(state, EncodedLiteral::PTR_BASE, ConstantPtr::allocate(e2.data(), e2.size()));
             }
             TU_ARM(c, StaticString, e2) {
-                dst.write_ptr(state, EncodedLiteral::PTR_BASE, ConstantPtr::allocate(e2.data(), e2.size()));
+                dst.write_ptr(state, EncodedLiteral::PTR_BASE, ConstantPtr::allocate(e2.c_str(), e2.size()));
                 dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), e2.size());
             }
             TU_ARM(c, Const, e2) {
@@ -3394,8 +3397,8 @@ namespace {
                     TU_MATCH_HDRA( (vi), { )
                     TU_ARMA(Import, e)  BUG(sp, "Module Import");
                     TU_ARMA(Static, e)  BUG(sp, "Getting params definition for Static - " << p);
-                    TU_ARMA(Constant, e)    return e.m_params;
-                    TU_ARMA(Function, e)    return e.m_params;
+                    TU_ARMA(Constant, e)    return e->m_params;
+                    TU_ARMA(Function, e)    return e->m_params;
                     TU_ARMA(StructConstant, e)   return m_crate.get_struct_by_path(sp, e.ty).m_params;
                     TU_ARMA(StructConstructor, e)   return m_crate.get_struct_by_path(sp, e.ty).m_params;
                     }
@@ -3408,10 +3411,10 @@ namespace {
                     TU_ARMA(Module, e)  BUG(sp, "mod - " << p);
                     TU_ARMA(TypeAlias, e)  BUG(sp, "type - " << p);
                     TU_ARMA(TraitAlias, e)  BUG(sp, "trait= - " << p);
-                    TU_ARMA(Struct, e)  return e.m_params;
-                    TU_ARMA(Enum , e)   return e.m_params;
-                    TU_ARMA(Union, e)   return e.m_params;
-                    TU_ARMA(Trait, e)   return e.m_params;
+                    TU_ARMA(Struct, e)  return e->m_params;
+                    TU_ARMA(Enum , e)   return e->m_params;
+                    TU_ARMA(Union, e)   return e->m_params;
+                    TU_ARMA(Trait, e)   return e->m_params;
                     TU_ARMA(ExternType, e)   BUG(sp, "extern type - " << p);
                     }
                     break; }
@@ -3796,10 +3799,7 @@ namespace {
             {
                 for(auto& v : mod.m_inline_statics)
                 {
-                    // ::std::unique_ptr<VisEnt<ValueItem>>
-                    ::std::unique_ptr<::HIR::VisEnt<::HIR::ValueItem>>  iv;
-                    iv.reset( new ::HIR::VisEnt<::HIR::ValueItem> { ::HIR::Publicity::new_none(), ::HIR::ValueItem::make_Static(mv$(*v.second)) } );
-                    mod.m_value_items.insert(::std::make_pair( v.first, mv$(iv) ));
+                    mod.m_value_items.insert(::std::make_pair( v.first, ::HIR::VisEnt<::HIR::ValueItem> { ::HIR::Publicity::new_none(), ::HIR::ValueItem::make_Static(box$(*v.second)) } ));
                 }
                 mod.m_inline_statics.clear();
             }

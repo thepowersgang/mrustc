@@ -89,6 +89,7 @@ void memory_dump(const char* phase)
             ::std::string   name;
             uint32_t first_chunk;
         };
+        // Default to a 1MiB chunk size
         size_t chunk_size = 1 << 20;
         ::std::vector<RangeEnt> range_ents;
         size_t chunk_count = 0;

@@ -31,7 +31,7 @@ namespace typeck {
                 if( ip.parent )
                 {
                     const auto& mod = H::get_mod_for_ip(crate, *ip.parent);
-                    return mod.m_mod_items.at(ip.name)->ent.as_Module();
+                    return *mod.m_mod_items.at(ip.name).ent.as_Module();
                 }
                 else
                 {
@@ -84,17 +84,17 @@ namespace typeck {
             // Namespace path
             const auto& mod = H::get_mod_for_ip(m_crate, *ip.parent);
             H::add_traits_from_mod(*this, mod);
-            const auto& item = mod.m_value_items.at(ip.name)->ent;
+            const auto& item = mod.m_value_items.at(ip.name).ent;
             m_impl_generics = nullptr;
             TU_MATCH_HDRA( (item), { )
             TU_ARMA(Constant, e) {
-                m_item_generics = &e.m_params;
+                m_item_generics = &e->m_params;
                 }
             TU_ARMA(Static, e) {
-                //m_item_generics = &e.m_params;
+                //m_item_generics = &e->m_params;
                 }
             TU_ARMA(Function, e) {
-                m_item_generics = &e.m_params;
+                m_item_generics = &e->m_params;
                 }
             TU_ARMA(StructConstant, _e) BUG(sp, ip << " is StructConstant");
             TU_ARMA(StructConstructor, _e) BUG(sp, ip << " is StructConstructor");
