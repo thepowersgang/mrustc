@@ -453,6 +453,7 @@ public:
     t_struct_fields m_variants;
 
     TraitMarkings   m_markings;
+    unsigned    m_forced_alignment = 0;    // for repr(align)
 };
 
 struct AssociatedType

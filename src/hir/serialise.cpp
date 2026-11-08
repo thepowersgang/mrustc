@@ -1397,6 +1397,7 @@
             serialise_vec(item.m_variants);
 
             serialise(item.m_markings);
+            m_out.write_count(item.m_forced_alignment);
         }
         void serialise(const ::HIR::ExternType& item)
         {

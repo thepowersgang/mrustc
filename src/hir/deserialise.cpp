@@ -1363,9 +1363,10 @@ namespace {
         auto repr = static_cast< ::HIR::Union::Repr>( m_in.read_tag() );
         auto variants = deserialise_vec<HIR::StructField>();
         auto markings = deserialise_markings();
+        unsigned forced_alignment = m_in.read_count();
 
         return ::HIR::Union {
-            mv$(params), repr, mv$(variants), mv$(markings)
+            mv$(params), repr, mv$(variants), mv$(markings), forced_alignment
             };
     }
     ::HIR::Struct HirDeserialiser::deserialise_struct()
