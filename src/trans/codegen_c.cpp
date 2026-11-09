@@ -1724,7 +1724,15 @@ namespace {
                     m_of << "union u_" << Trans_Mangle(te.path) << ";\n";
                     }
                 TU_ARMA(Enum, tpb) {
-                    m_of << "struct e_" << Trans_Mangle(te.path) << ";\n";
+                    const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                    if( is_numeric_enum(repr) )
+                    {
+                        m_of << "typedef "; emit_ctype(repr->fields.back().ty); m_of << "e_" << Trans_Mangle(te.path) << ";\n";
+                    }
+                    else
+                    {
+                        m_of << "typedef struct e_" << Trans_Mangle(te.path) << " e_" << Trans_Mangle(te.path) << ";\n";
+                    }
                     }
                 }
                 }
@@ -2166,6 +2174,11 @@ namespace {
             return false;
         }
 
+        bool is_numeric_enum(const TypeRepr* repr)
+        {
+            return repr->fields.size() == 1 && repr->variants.is_Values();
+        }
+
         const HIR::TypeRef& emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
         {
             if( is_enum_tag(repr, path.index) )
@@ -2174,7 +2187,8 @@ namespace {
                 if( m_embedded_tags.count(repr) ) {
                     m_of << ".DATA";
                 }
-                m_of << ".TAG";
+                if( !is_numeric_enum(repr) )
+                    m_of << ".TAG";
                 assert(path.sub_fields.empty());
             }
             else
@@ -2189,7 +2203,8 @@ namespace {
                     if( m_embedded_tags.count(repr) ) {
                         m_of << ".DATA";
                     }
-                    m_of << ".TAG";
+                    if ( !is_numeric_enum(repr) )
+                        m_of << ".TAG";
                     assert(&fld == &path.sub_fields.back());
                 }
                 else if( /*!repr->variants.is_None() ||*/ TU_TEST1(ty->data(), Path, .binding.is_Enum()) ) {
@@ -2242,7 +2257,21 @@ namespace {
             }
 
             m_of << "// enum " << p << "\n";
-            m_of << "struct e_" << Trans_Mangle(p) << " {\n";
+
+            const bool is_numeric = is_numeric_enum(repr);
+            if( is_numeric )
+            {
+                // ABI must match an integer for repr(C) and repr(Int), but explicitly-sized enums are a C23 feature.
+                const auto& underlying = repr->fields.back().ty;
+                m_of << "typedef ";
+                emit_ctype(underlying);
+                m_of << "e_" << Trans_Mangle(p) << ";\n";
+            }
+            else
+            {
+                m_of << "typedef struct e_" << Trans_Mangle(p) << " {\n";
+            }
+
 
             // HACK: For NonZero optimised enums, emit a struct with a single field
             // - This avoids a bug in GCC5 where it would generate incorrect code if there's a union here.
@@ -2255,18 +2284,10 @@ namespace {
                 m_of << ";\n";
                 m_of << "\t} DATA;\n";
             }
-            // If there's only one field - it's either a single variant, or a value enum
+            // If there's only one field, and not a value enum, it's a single variant.
             else if( repr->fields.size() == 1 )
             {
-                if( repr->variants.is_Values() )
-                {
-                    // Tag only.
-                    // - A value-only enum.
-                    m_of << "\t";
-                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
-                    m_of << ";\n";
-                }
-                else
+                if( !is_numeric )
                 {
                     m_of << "\tunion {\n";
                     m_of << "\t\t";
@@ -2346,10 +2367,11 @@ namespace {
                 TODO(sp, "No common offsets and more than one field, is this possible? - " << item_ty);
             }
 
-            m_of << "};\n";
+            if( !is_numeric )
+                m_of << "} e_" << Trans_Mangle(p) << ";\n";
 
             size_t exp_size = (repr->size > 0 ? repr->size : (m_options.disallow_empty_structs ? 1 : 0));
-            m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct e_" << Trans_Mangle(p) << ") == " << exp_size << ") ? 1 : -1 ];\n";
+            m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(e_" << Trans_Mangle(p) << ") == " << exp_size << ") ? 1 : -1 ];\n";
 
             m_mir_res = nullptr;
         }
@@ -4271,7 +4293,10 @@ namespace {
                         }
                     TU_ARMA(Values, re) {
                         if( re.field.index == 0 ) {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
+                            emit_lvalue(e.dst);
+                            if ( !is_numeric_enum(repr) )
+                                m_of << ".TAG";
+                            m_of << "= "; emit_enum_variant_val(repr, ve.index);
                         }
                         else {
                             emit_lvalue(e.dst); m_of << ".DATA.TAG = "; emit_enum_variant_val(repr, ve.index);
@@ -4362,11 +4387,11 @@ namespace {
                         emit_lvalue(dst);
                         m_of << ".lo = ";
                         emit_lvalue(ve.val);
-                        m_of << ".TAG; ";
+                        m_of << "; ";
                         emit_lvalue(dst);
                         m_of << ".hi = ";
                         emit_lvalue(ve.val);
-                        m_of << ".TAG < 0 ? -1 : 0";
+                        m_of << " < 0 ? -1 : 0";
                     }
                     else {
                         // Cast from small to i128/u128
@@ -4476,9 +4501,11 @@ namespace {
             }
             if (ve.type.data().is_Primitive() && ty.data().is_Path() && ty.data().as_Path().binding.is_Enum())
             {
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
                 emit_lvalue(ve.val);
                 // NOTE: Embedded tag enums can't be cast
-                m_of << ".TAG";
+                if( !is_numeric_enum(repr) )
+                    m_of << ".TAG";
                 special = true;
             }
             if (!special)
@@ -4653,7 +4680,10 @@ namespace {
                     if( e.field.index != 0 ) {
                         m_of << ".DATA";
                     }
-                    m_of << ".TAG == ";
+                    if( !is_numeric_enum(repr) ) {
+                        m_of << ".TAG";
+                    }
+                    m_of << " == ";
                     // Handle signed values
                     if( is_signed ) {
                         m_of << static_cast<int64_t>(e.values[odd_arm]);
@@ -4672,7 +4702,10 @@ namespace {
                 if( e.field.index != 0 ) {
                     m_of << ".DATA";
                 }
-                m_of << ".TAG) {\n";
+                if( !is_numeric_enum(repr) ) {
+                    m_of << ".TAG";
+                }
+                m_of << ") {\n";
                 for(size_t j = 0; j < n_arms; j ++)
                 {
                     // Handle signed values
@@ -6549,12 +6582,12 @@ namespace {
             else if( name == "three_way_compare" ) {
                 const auto& t = params.m_types.at(0);
                 if( type_is_emulated_i128(t) ) {
-                    emit_lvalue(e.ret_val); m_of << ".TAG = ";
+                    emit_lvalue(e.ret_val); m_of << " = ";
                     m_of << (t == ::HIR::CoreType::U128 ? "cmp128" : "cmp128s");
                     m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ");\n";
                 }
                 else {
-                    emit_lvalue(e.ret_val); m_of << ".TAG = (";
+                    emit_lvalue(e.ret_val); m_of << " = (";
                         emit_param(e.args.at(0)); m_of << " == "; emit_param(e.args.at(1));
                         m_of << " ? 0 : (";
                         emit_param(e.args.at(0)); m_of << " < "; emit_param(e.args.at(1));
@@ -8462,7 +8495,7 @@ namespace {
                     m_of << "union u_" << Trans_Mangle(te.path);
                     }
                 TU_ARMA(Enum, tpb) {
-                    m_of << "struct e_" << Trans_Mangle(te.path);
+                    m_of << "e_" << Trans_Mangle(te.path);
                     }
                 TU_ARMA(ExternType, tpb) {
                     m_of << "struct x_" << Trans_Mangle(te.path);
