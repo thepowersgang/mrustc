@@ -114,6 +114,16 @@
                 serialise(i);
         }
         template<typename T>
+        void serialise_vec_c(const ::std::vector<T>& vec, ::std::function<void(const T&)> cb)
+        {
+            TRACE_FUNCTION_F("<" << typeid(T).name() << "> size=" << vec.size());
+            auto _ = m_out.open_object(typeid(::std::vector<T>).name());
+            m_out.write_count(vec.size());
+            for(const auto& i : vec) {
+                cb(i);
+            }
+        }
+        template<typename T>
         void serialise(const ::std::vector<T>& vec)
         {
             serialise_vec(vec);
@@ -942,7 +952,8 @@
                 serialise_vec(e);
                 }
             TU_ARMA(String, e) {
-                serialise_vec(e);
+                //serialise_vec(e);
+                serialise_vec_c<RcString>(e, [&](const RcString& s){ m_out.write_string(s.size(), s.c_str()); });
                 }
             TU_ARMA(ByteString, e) {
                 serialise_vec(e);
@@ -1085,7 +1096,7 @@
                 m_out.write( e.data(), e.size() );
                 ),
             (StaticString,
-                m_out.write_string(e);
+                m_out.write_string(e.size(), e.c_str());
                 ),
             (Const,
                 ASSERT_BUG(Span(), monomorphise_path_needed(*e.p), "Unexpected Constant: " << *e.p);
@@ -1114,35 +1125,35 @@
                 ),
             (Module,
                 m_out.write_tag(1);
-                serialise_module(e);
+                serialise_module(*e);
                 ),
             (TypeAlias,
                 m_out.write_tag(2);
-                serialise(e);
+                serialise(*e);
                 ),
             (Enum,
                 m_out.write_tag(3);
-                serialise(e);
+                serialise(*e);
                 ),
             (Struct,
                 m_out.write_tag(4);
-                serialise(e);
+                serialise(*e);
                 ),
             (Trait,
                 m_out.write_tag(5);
-                serialise(e);
+                serialise(*e);
                 ),
             (Union,
                 m_out.write_tag(6);
-                serialise(e);
+                serialise(*e);
                 ),
             (ExternType,
                 m_out.write_tag(7);
-                serialise(e);
+                serialise(*e);
                 ),
             (TraitAlias,
                 m_out.write_tag(8);
-                serialise(e);
+                serialise(*e);
                 )
             )
         }

@@ -76,9 +76,9 @@ namespace {
         {
             for(const auto& vi : mod.m_value_items)
             {
-                if( const auto* ip = vi.second->ent.opt_Function() )
+                if( const auto* ip = vi.second.ent.opt_Function() )
                 {
-                    const auto& i = *ip;
+                    const auto& i = **ip;
                     if( i.m_code.m_mir && i.m_linkage.name != "" )
                     {
                         m_link_functions[i.m_linkage.name] = std::make_pair( (mod_path + vi.first).get_simple_path(), &i );
@@ -88,9 +88,9 @@ namespace {
 
             for(const auto& ti : mod.m_mod_items)
             {
-                if( const auto* ip = ti.second->ent.opt_Module() )
+                if( const auto* ip = ti.second.ent.opt_Module() )
                 {
-                    enumerate_link_functions_in(*ip, mod_path + ti.first);
+                    enumerate_link_functions_in(**ip, mod_path + ti.first);
                 }
             }
         }
@@ -261,36 +261,37 @@ namespace {
             if( is_visible ) {
                 // Visible constants need their relocations added as roots
                 // - Can't add this logic to `Trans_Enumerate_FillFrom_Literal` as it's used by non-public enumeration
-                for(const auto& r : e.m_value_res.relocations) {
+                for(const auto& r : e->m_value_res.relocations) {
                     if( r.p ) {
                         state.rv.m_roots.push_back(r.p->clone());
                     }
                 }
-                Trans_Enumerate_FillFrom_Literal(state, e.m_value_res, Trans_Params());
+                Trans_Enumerate_FillFrom_Literal(state, e->m_value_res, Trans_Params());
             }
             } break;
         TU_ARM(vi, Static, e) {
-            if( e.m_linkage.name != "" || e.m_linkage.section != "" )
+            if( e->m_linkage.name != "" || e->m_linkage.section != "" )
             {
                 // If a link name is set, force emit
                 is_visible = true;
             }
-            if( is_visible && !e.m_params.is_generic() )
+            if( is_visible && !e->m_params.is_generic() )
             {
                 // HACK: Refuse to emit unused generated statics
                 // - Needed because all items are visited (regardless of
                 // visibility)
-                if(e.m_type.data().is_Infer())
+                if(e->m_type.data().is_Infer())
                     continue ;
                 //state.enum_static(mod_path + vi.first, *e);
                 auto* ptr = state.rv.add_static( get_path() );
                 if(ptr)
-                    Trans_Enumerate_FillFrom_Static(state, e, *ptr);
+                    Trans_Enumerate_FillFrom_Static(state, *e, *ptr);
 
                 state.rv.m_roots.push_back(get_path());
             }
             } break;
-        TU_ARM(vi, Function, e) {
+        TU_ARM(vi, Function, ep) {
+            const auto& e = *ep;
             bool is_inline = false;
             if(is_visible)
             {
@@ -342,26 +343,26 @@ namespace {
         TRACE_FUNCTION_F(mod_path);
         for(auto& vi : mod.m_value_items)
         {
-            bool emit = is_visible && vi.second->publicity.is_global();
+            bool emit = is_visible && vi.second.publicity.is_global();
             auto p = mod_path + vi.first;
             if( ::std::any_of(state.crate.m_lang_items.begin(), state.crate.m_lang_items.end(), [&](const auto& e){ return e.second == p; }) ) {
                 emit = true;
             }
-            Trans_Enumerate_ValItem(state, vi.second->ent, emit, [&](){ return p; });
+            Trans_Enumerate_ValItem(state, vi.second.ent, emit, [&](){ return p; });
         }
 
         for(auto& ti : mod.m_mod_items)
         {
-            if(auto* e = ti.second->ent.opt_Module() )
+            if(auto* e = ti.second.ent.opt_Module() )
             {
-                Trans_Enumerate_Public_Mod(state, *e, mod_path + ti.first, ti.second->publicity.is_global());
+                Trans_Enumerate_Public_Mod(state, **e, mod_path + ti.first, ti.second.publicity.is_global());
             }
-            else if( const HIR::Trait* e = ti.second->ent.opt_Trait() )
+            else if( const auto* e = ti.second.ent.opt_Trait() )
             {
-                auto params = e->m_params.make_empty_params(true);
+                auto params = (*e)->m_params.make_empty_params(true);
                 MonomorphStatePtr   ms;
                 ms.pp_impl = &params;
-                for(const auto& vi : e->m_values )
+                for(const auto& vi : (*e)->m_values )
                 {
                     if( const auto* fcn = vi.second.opt_Function() ) {
                         Trans_Enumerate_GenericFunctionItems(state, Span(), *fcn, ms);

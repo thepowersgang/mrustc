@@ -1233,13 +1233,13 @@ namespace typecheck
             {
                 const auto& e = this->context.m_crate.get_typeitem_by_path(sp, gp.m_path);
                 if( e.is_Struct() ) {
-                    const auto& str = e.as_Struct();
+                    const auto& str = *e.as_Struct();
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, gp, str.m_params, gp.m_params);
 
                     return ::HIR::TypeRef::new_path( gp.clone(), ::HIR::TypePathBinding::make_Struct(&str) );
                 }
                 else if( e.is_Union() ) {
-                    const auto& u = e.as_Union();
+                    const auto& u = *e.as_Union();
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, gp, u.m_params, gp.m_params);
 
                     return ::HIR::TypeRef::new_path( gp.clone(), ::HIR::TypePathBinding::make_Union(&u) );
