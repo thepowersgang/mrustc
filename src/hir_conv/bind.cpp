@@ -498,7 +498,7 @@ namespace {
                         }
                         ee->m_index = m_fcn_erased_count++;
                     }
-                    // If the function _pointer_ is set (but not the path), then we're in the function arguments
+                    // If the function _pointer_ is set (but not the path), then we're in the function arguments or generic bounds
                     // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
                     else if( m_fcn_ptr )
                     {
@@ -642,6 +642,20 @@ namespace {
         {
             auto _ = this->m_ms.set_item_generics(item.m_params);
             m_fcn_ptr = &item;
+
+            // Visit generic bounds
+            // - Used to convert `impl Trait` inside bounds into additional
+            //   generics
+
+            // We're appending to the list as we iterate, so make sure size() is only called beforehand.
+            for (std::size_t i = 0, len = item.m_params.m_bounds.size(); i < len; ++i)
+            {
+                // Make sure references to this aren't invalidated by pushing a new bound while visiting.
+                auto bound = std::move(item.m_params.m_bounds[i]);
+                TRACE_FUNCTION_F("BOUND " << bound);
+                visit_generic_bound(bound);
+                item.m_params.m_bounds[i] = std::move(bound);
+            }
 
             // Visit arguments
             // - Used to convert `impl Trait` in argument position into generics
