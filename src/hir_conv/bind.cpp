@@ -11,6 +11,7 @@
 #include <hir/expr.hpp>
 #include <mir/mir.hpp>
 #include <algorithm>    // std::find_if
+#include <utility>      // std::exchange
 
 #include <mir/helpers.hpp>
 
@@ -321,7 +322,7 @@ namespace {
         }
         void visit_path_params(::HIR::PathParams& params) override
         {
-            HIR::Visitor::visit_path_params(params);
+            non_expr_context([&] { HIR::Visitor::visit_path_params(params); });
             for(auto& v : params.m_values)
             {
                 if(auto* ve = v.opt_Unevaluated())
@@ -581,6 +582,15 @@ namespace {
             if(mod)
                 m_ms.pop_traits(*mod);
         }
+
+        template <typename C>
+        void non_expr_context(const C& callable)
+        {
+            const auto in_expr = std::exchange(m_in_expr, 0);
+            callable();
+            m_in_expr = in_expr;
+        }
+
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
@@ -722,7 +732,7 @@ namespace {
                 }
                 void visit(::HIR::ExprNode_Let& node) override
                 {
-                    upper_visitor.visit_type(node.m_type);
+                    upper_visitor.non_expr_context([&] { upper_visitor.visit_type(node.m_type); });
                     upper_visitor.visit_pattern(node.m_pattern);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
