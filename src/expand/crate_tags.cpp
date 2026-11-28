@@ -25,6 +25,9 @@ public:
         else if( name == "cdylib" ) {
             crate.m_crate_type = AST::Crate::Type::CDylib;
         }
+        else if( name == "proc-macro" ) {
+            crate.m_crate_type = AST::Crate::Type::ProcMacro;
+        }
         else {
             ERROR(sp, E0000, "Unknown crate type '" << name << "'");
         }

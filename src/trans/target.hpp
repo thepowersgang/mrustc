@@ -169,6 +169,8 @@ static inline std::ostream& operator<<(std::ostream& os, const TypeRepr::FieldPa
 }
 
 extern const TargetSpec& Target_GetCurSpec();
+/// Is the current target Darwin PowerPC 32-bit? (uses the "power" alignment rules, see target.cpp)
+extern bool Target_IsDarwinPPC32();
 extern void Target_SetCfg(const ::std::string& target_name);
 extern void Target_ExportCurSpec(const ::std::string& filename);
 static inline unsigned Target_GetPointerBits() { return Target_GetCurSpec().m_arch.m_pointer_bits; }

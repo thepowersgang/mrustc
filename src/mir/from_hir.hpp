@@ -110,6 +110,8 @@ TAGGED_UNION(ScopeType, Owning,
         // TODO: Any drop flags allocated in the loop must be re-initialised at the start of the loop (or before a loopback)
         ::MIR::BasicBlockId   entry_bb;
         ::std::vector<unsigned> drop_flags;
+        /// Set for the pseudo-loop used by `match` lowering (never loops back, so drop flags are promoted past it).
+        bool is_match = false;
         }),
     (Freeze, struct {
         /// Has `unfreeze_scope` been called on this entry?
@@ -404,7 +406,7 @@ public:
     /// Scope for split code paths (e.g. `if`)
     ScopeHandle new_scope_split(const Span& sp);
     /// Scope for escapable code paths (e.g. `loop`)
-    ScopeHandle new_scope_loop(const Span& sp);
+    ScopeHandle new_scope_loop(const Span& sp, bool is_match=false);
     /// Prevent any mutation of states above this scope until `unfreeze_scope` is called
     ScopeHandle new_scope_freeze(const Span& sp);
 

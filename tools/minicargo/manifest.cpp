@@ -12,6 +12,7 @@
 #include <cassert>
 #include <algorithm>
 #include <cctype>   // toupper
+#include <set>
 #include "repository.h"
 #include "cfg.hpp"
 
@@ -287,7 +288,25 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path, const
 
     if( rv.m_enable_implicit_optional_dep_features )
     {
+        // Cargo only adds the implicit `foo = ["dep:foo"]` feature when `[features]` doesn't mention `dep:foo` itself
+        ::std::set<::std::string>   explicit_dep_refs;
+        auto note_dep_refs = [&](const ::std::vector<::std::string>& list) {
+            for(const auto& v : list) {
+                if( v.compare(0, 4, "dep:") == 0 ) {
+                    explicit_dep_refs.insert( v.substr(4) );
+                }
+            }
+            };
+        for(const auto& feat : rv.m_features) {
+            note_dep_refs(feat.second);
+        }
+        note_dep_refs(rv.m_default_features);
+
         auto cb2 = [&](const PackageRef& dep) {
+            if( explicit_dep_refs.count(dep.key()) > 0 ) {
+                DEBUG("No implicit feature for optional dependency '" << dep.key() << "' - [features] uses `dep:` for it");
+                return;
+            }
             rv.m_features[dep.key()].push_back( "dep:" + dep.key() );
             };
         auto cb = [&](const Dependencies& deps) {
@@ -855,7 +874,8 @@ namespace
             for(const auto& sv : kv.value.m_sub_values)
             {
                 const auto& s = sv.as_string();
-                if(s == "rlib") {
+                // "lib" is cargo's alias for the default library type; mrustc only produces rlibs.
+                if(s == "rlib" || s == "lib") {
                     target.m_crate_types.push_back(PackageTarget::CrateType::rlib);
                 }
                 else if(s == "dylib") {
@@ -1540,7 +1560,15 @@ PackageVersion PackageVersion::from_string(const ::std::string& s)
         rv.patch = 0;
         rv.patch_set = false;
     }
-    if(iss.peek() == '+') {
+    // Semver is `-prerelease` then `+build`
+    if(iss.peek() == '-') {
+        iss.get();
+        ::std::getline(iss, rv.prerelease, '+');
+        if(!iss.eof()) {   // getline ate the '+'
+            iss >> rv.free_text;
+        }
+    }
+    else if(iss.peek() == '+') {
         iss.get();
         iss >> rv.free_text;
     }

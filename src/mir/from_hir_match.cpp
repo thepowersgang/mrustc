@@ -341,7 +341,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     auto next_block = builder.new_bb_unlinked();
 
     /// Top level scope for the match
-    auto match_scope = builder.new_scope_loop(node.span());
+    auto match_scope = builder.new_scope_loop(node.span(), /*is_match=*/true);
 
     // 1. Stop the current block so we can generate code before generating the pattern matching code
     auto first_cmp_block = builder.pause_cur_block();

@@ -108,7 +108,7 @@ def demangle_int_pathtrait(c_iter, rv):
 def demangle_int_params(c_iter, rv):
     n = demangle_int_getcount(c_iter)
     if next(c_iter) != 'g':
-        raise "error"
+        raise RuntimeError("error")
     if n == 0:
         return
     rv.push("<")

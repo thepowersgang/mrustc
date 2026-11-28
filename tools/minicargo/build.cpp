@@ -38,6 +38,18 @@ bool deferred_codegen_enabled() {
     return getenv("MINICARGO_DEFER_CODEGEN") != 0;
 }
 
+static bool has_suffix(const ::std::string& s, const char* suffix) {
+    const size_t n = ::std::strlen(suffix);
+    return s.size() >= n && s.compare(s.size() - n, n, suffix) == 0;
+}
+/// Repoint a dependency at the deferred codegen job - not a build-script run job, which has none
+void make_dep_codegen(::std::string& d) {
+    if( has_suffix(d, " (codegen)") || has_suffix(d, " (script run)") ) {
+        return;
+    }
+    d += " (codegen)";
+}
+
 struct RunState
 {
     BuildOptions&   m_opts;
@@ -96,6 +108,10 @@ struct RunState
     ::std::string get_build_script_out(const PackageManifest& manifest) const;
     ::std::string get_build_script_exe(const PackageManifest& manifest) const {
         return get_output_dir(true) / get_build_script_out(manifest) + "_run" EXESUF;
+    }
+    /// Get `OUT_DIR`: where a package's build script writes its generated sources.
+    ::helpers::path get_build_script_out_dir(const PackageManifest& manifest) const {
+        return get_output_dir(true) / get_build_script_out(manifest);
     }
     /// Get the output file for a crate (e.g. libfoo.rlib, or foo.exe)
     ::helpers::path get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const;
@@ -439,9 +455,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                     // - For now, just need to make sure that the codegen is completed before build
                     if( deferred_codegen_enabled() ) {
                         for(auto& d : job_bs_build->m_dependencies) {
-                            if( d[d.size()-1] != ')' ) {
-                                d += " (codegen)";
-                            }
+                            make_dep_codegen(d);
                         }
                     }
                     this->add_job(std::move(job_bs_build), script_ts, bs_is_dirty);
@@ -543,9 +557,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
             convert_state.add_job(std::move(job_codegen), output_ts, is_dirty);
             // HACK: Ensure that the dependencies for this job all are for codegen
             for(auto& d : job_p->m_dependencies) {
-                if( d[d.size()-1] != ')' ) {
-                    d += " (codegen)";
-                }
+                make_dep_codegen(d);
             }
         }
     }
@@ -586,9 +598,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
             convert_state.add_job(std::move(job_codegen), output_ts, is_dirty);
             // HACK: Ensure that the dependencies for this job all are for codegen
             for(auto& d : job->m_dependencies) {
-                if( d[d.size()-1] != ')' ) {
-                    d += " (codegen)";
-                }
+                make_dep_codegen(d);
             }
         }
         convert_state.add_job(std::move(job), output_ts, is_dirty);
@@ -733,7 +743,8 @@ namespace {
     {
         env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
         env.push_back("CARGO_PKG_NAME", manifest.name());
-        env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+        // Full form: build scripts derive identifiers from this
+        env.push_back("CARGO_PKG_VERSION", manifest.version().to_string_full());
         env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
         env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
         env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
@@ -903,7 +914,8 @@ void Job_Build::push_args_common(StringList& args, const helpers::path& outfile,
     if( parent.m_opts.enable_debug ) {
         args.push_back("-g");
     }
-    if( true ) {
+    // `debug_assertions` enables `assert_unsafe_precondition!`, which a C-ABI-driven layout can't satisfy (8-aligned field at a 4-aligned offset)
+    if( !getenv("MINICARGO_NO_DEBUG_ASSERTIONS") ) {
         if( parent.is_rustc() ) {
             args.push_back("-C"); args.push_back("debug-assertions");
         }
@@ -920,6 +932,9 @@ void Job_Build::push_args_common(StringList& args, const helpers::path& outfile,
     }
     if( parent.m_opts.emit_mmir ) {
         args.push_back("-C"); args.push_back("codegen-type=monomir");
+    }
+    if( parent.m_opts.panic_strategy ) {
+        args.push_back("-C"); args.push_back(format("panic=", parent.m_opts.panic_strategy));
     }
 
     for(const auto& d : parent.m_opts.lib_search_dirs)
@@ -1078,7 +1093,8 @@ RunnableJob Job_BuildTarget::start()
 
     // Environment variables (rustc_env)
     StringListKV    env;
-    auto out_dir = parent.get_output_dir(m_is_for_host).to_absolute() / parent.get_build_script_out(m_manifest);
+    // Keyed on the build script's host-ness, not this crate's: a build script is always a host binary, and its OUT_DIR follows it.
+    auto out_dir = parent.get_build_script_out_dir(m_manifest).to_absolute();
     env.push_back("OUT_DIR", out_dir.str());
     for(const auto& e : m_manifest.build_script_output().rustc_env) {
         env.push_back(e.first.c_str(), e.second.c_str());
@@ -1194,7 +1210,7 @@ helpers::path Job_RunScript::get_script_exe() const
 }
 RunnableJob Job_RunScript::start()
 {
-    auto out_dir = parent.get_output_dir(true) / parent.get_build_script_out(m_manifest);
+    auto out_dir = parent.get_build_script_out_dir(m_manifest);
     auto out_file = get_outfile();
     auto script_exe = get_script_exe();
 

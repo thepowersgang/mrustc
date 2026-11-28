@@ -63,6 +63,11 @@ public:
 
 private:
     std::vector<std::string>    get_path(std::vector<std::string> tail) const;
+    /// Consume a balanced `[...]` / `{...}` group (nested groups included),
+    /// discarding its contents. The opening bracket/brace must already have
+    /// been consumed. Used to skip nested arrays / inline tables that only
+    /// appear in sections minicargo never reads (e.g. `[package.metadata.*]`).
+    void skip_composite_value();
 };
 
 struct TomlValue

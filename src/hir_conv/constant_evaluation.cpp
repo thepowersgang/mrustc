@@ -28,7 +28,7 @@ namespace {
     void ConvertHIR_ConstantEvaluate_Static(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Static& e);
     void ConvertHIR_ConstantEvaluate_FcnSig(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Function& fcn);
 
-    struct Defer {};
+    using HIR::Defer;
 
     struct NewvalState
         : public HIR::Evaluator::Newval
@@ -2893,6 +2893,23 @@ namespace HIR {
                     auto ofs = local_state.read_param_uint(Target_GetPointerBits(), e.args.at(1));
                     dst.write_ptr(state, ptr_pair.first + ofs.truncate_u64() * element_size, ptr_pair.second);
                 }
+                // `arith_offset` is the wrapping form of `offset`; identical arithmetic here, and the type parameter is the *pointee*.
+                else if( te->name == "arith_offset" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    size_t element_size;
+                    if( !Target_GetSizeOf(state.sp, resolve, ty, element_size) )
+                        throw Defer();
+                    auto ptr_pair = local_state.read_param_ptr(e.args.at(0));
+                    auto ofs = local_state.read_param_uint(Target_GetPointerBits(), e.args.at(1));
+                    dst.write_ptr(state, ptr_pair.first + ofs.truncate_u64() * element_size, ptr_pair.second);
+                }
+                // Returns 1/0/2 (equal / not equal / unknown). Only answer definitively for pointers sharing a relocation; different allocations report 2.
+                else if( te->name == "ptr_guaranteed_cmp" ) {
+                    auto a = local_state.read_param_ptr(e.args.at(0));
+                    auto b = local_state.read_param_ptr(e.args.at(1));
+                    uint8_t rv = (a.second == b.second) ? (a.first == b.first ? 1 : 0) : 2;
+                    dst.write_uint(state, 8, rv);
+                }
                 else if( te->name == "write_bytes" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     size_t element_size;
@@ -3635,6 +3652,10 @@ namespace {
                 }
                 void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& p) override {
                     m_exp.visit_path(p, pc);
+                }
+                void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p) override {
+                    // `visit_path_params` relies on `m_get_params` being set by the enclosing path visitor; without this override a generic path in an expression reaches it empty.
+                    m_exp.visit_generic_path(p, pc);
                 }
 
                 void visit(::HIR::ExprNode_CallMethod& node) override {

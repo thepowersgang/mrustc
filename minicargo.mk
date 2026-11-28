@@ -105,6 +105,11 @@ else ifeq ($(RUSTC_VERSION),1.29.0)
 else
   VENDOR_DIR := $(RUSTCSRC)vendor
   MINICARGO_FLAGS += --manifest-overrides rustc-$(RUSTC_VERSION)-overrides.toml
+  # Pass `-C panic=unwind` to mrustc for these rustc versions so the panic-unwind
+  # runtime (which uses mrustc's setjmp/longjmp _Unwind_RaiseException shim) is
+  # selected instead of panic_abort. Without this, every emitted bin defaults
+  # to panic_abort and any rustc-driven FatalError aborts the process via libc.
+  MINICARGO_FLAGS += --panic unwind
 endif
 ifeq ($(RUSTC_VERSION),1.54.0)
   RUST_LIB_PREFIX := library/
@@ -225,9 +230,14 @@ $(RUSTC_SRC_TARBALL):
 rustc-$(RUSTC_VERSION)-src/extracted: $(RUSTC_SRC_TARBALL)
 	tar -xzf $(RUSTC_SRC_TARBALL)
 	touch $@
+# Compare contents, not mtimes: a checkout churns mtimes and re-patching fails.
 $(RUSTC_SRC_DL): rustc-$(RUSTC_VERSION)-src/extracted rustc-$(RUSTC_VERSION)-src.patch
-	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
-	touch $@
+	@cmp -s rustc-$(RUSTC_VERSION)-src.patch $@ && exit 0; \
+	echo [PATCH] rustc-$(RUSTC_VERSION)-src; \
+	files=`cat $@ rustc-$(RUSTC_VERSION)-src.patch 2>/dev/null | sed -n 's|^--- |$(RUSTCSRC)|p' | sort -u`; \
+	tar -xzf $(RUSTC_SRC_TARBALL) $$files && \
+	( cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch ) && \
+	cp rustc-$(RUSTC_VERSION)-src.patch $@
 
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts

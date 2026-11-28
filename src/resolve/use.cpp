@@ -142,7 +142,7 @@ void Resolve_Use(::AST::Crate& crate)
             for(;;)
             {
                 DEBUG("Module " << cur_mod->path());
-                if( Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
+                if( parent_mods.empty() || Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
                 {
                     break;
                 }

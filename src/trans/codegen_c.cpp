@@ -37,9 +37,11 @@ namespace {
     {
         const ::std::string& s;
         bool escape_percent;
-        FmtGccAsm(const ::std::string& s, bool escape_percent)
+        bool is_intel;
+        FmtGccAsm(const ::std::string& s, bool escape_percent, bool is_intel)
             : s(s)
             , escape_percent(escape_percent)
+            , is_intel(is_intel)
         {
         }
     };
@@ -151,7 +153,12 @@ namespace {
 ::std::ostream& operator<<(::std::ostream& os, const FmtGccAsm& x)
 {
     bool in_comment = false;
+    bool skip_next = false;
     for(const char& ch : x.s) {
+        if( skip_next ) {
+            skip_next = false;
+            continue;
+        }
         if( ch == '/' && (&ch)[1] == '/' ) {
             if( !in_comment ) {
                 os << "\" ";
@@ -177,6 +184,19 @@ namespace {
         case '{':   os << "%{";   break;
         case '}':   os << "%}";   break;
         case '|':   os << "%|";   break;
+        case '$':
+            // Rust `asm!` templates are LLVM asm templates, where `$N` is an operand reference and `$$` is a literal `$`.
+            // GCC uses `%N` for operands, so un-escape - except in intel-syntax blocks, where gas rejects the AT&T immediate prefix.
+            if( (&ch)[1] == '$' ) {
+                if( !x.is_intel ) {
+                    os << '$';
+                }
+                skip_next = true;
+            }
+            else {
+                os << ch;
+            }
+            break;
         default:    os << ch; break;
         }
     }
@@ -399,28 +419,26 @@ namespace {
                     << "\treturn false;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_i8(int8_t a, int8_t b, int8_t* out) {\n"
-                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > INT8_MAX/b)  return true;\n"
-                    << "\tif(a < INT8_MIN/b)  return true;\n"
-                    << "\tif( (a == -1) && (b == INT8_MIN))  return true;\n"
-                    << "\tif( (b == -1) && (a == INT8_MIN))  return true;\n"
-                    << "\treturn false;\n"
+                    << "\t*out = (int8_t)((uint8_t)a * (uint8_t)b);\n"
+                    << "\tif(a == 0 || b == 0) return false;\n"
+                    << "\tif(a == -1) return b == INT8_MIN;\n"
+                    << "\tif(b == -1) return a == INT8_MIN;\n"
+                    << "\tif(a > 0) return b > 0 ? a > INT8_MAX / b : b < INT8_MIN / a;\n"
+                    << "\treturn b > 0 ? a < INT8_MIN / b : a < INT8_MAX / b;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_u16(uint16_t a, uint16_t b, uint16_t* out) {\n"
-                    << "\t*out = a*b;\n"
+                    << "\t*out = (uint16_t)((unsigned)a * (unsigned)b);\n"    // 16-bit operands promote to `int`, whose range the product can leave
                     << "\tif(b == 0) return false;\n"
                     << "\tif(a > UINT16_MAX/b)  return true;\n"
                     << "\treturn false;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_i16(int16_t a, int16_t b, int16_t* out) {\n"
-                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > INT16_MAX/b)  return true;\n"
-                    << "\tif(a < INT16_MIN/b)  return true;\n"
-                    << "\tif( (a == -1) && (b == INT16_MIN))  return true;\n"
-                    << "\tif( (b == -1) && (a == INT16_MIN))  return true;\n"
-                    << "\treturn false;\n"
+                    << "\t*out = (int16_t)((unsigned)a * (unsigned)b);\n"    // 16-bit operands promote to `int`, whose range the product can leave
+                    << "\tif(a == 0 || b == 0) return false;\n"
+                    << "\tif(a == -1) return b == INT16_MIN;\n"
+                    << "\tif(b == -1) return a == INT16_MIN;\n"
+                    << "\tif(a > 0) return b > 0 ? a > INT16_MAX / b : b < INT16_MIN / a;\n"
+                    << "\treturn b > 0 ? a < INT16_MIN / b : a < INT16_MAX / b;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_u32(uint32_t a, uint32_t b, uint32_t* out) {\n"
                     << "\t*out = a*b;\n"
@@ -429,13 +447,12 @@ namespace {
                     << "\treturn false;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_i32(int32_t a, int32_t b, int32_t* out) {\n"
-                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > INT32_MAX/b)  return true;\n"
-                    << "\tif(a < INT32_MIN/b)  return true;\n"
-                    << "\tif( (a == -1) && (b == INT32_MIN))  return true;\n"
-                    << "\tif( (b == -1) && (a == INT32_MIN))  return true;\n"
-                    << "\treturn false;\n"
+                    << "\t*out = (int32_t)((uint32_t)a * (uint32_t)b);\n"
+                    << "\tif(a == 0 || b == 0) return false;\n"
+                    << "\tif(a == -1) return b == INT32_MIN;\n"
+                    << "\tif(b == -1) return a == INT32_MIN;\n"
+                    << "\tif(a > 0) return b > 0 ? a > INT32_MAX / b : b < INT32_MIN / a;\n"
+                    << "\treturn b > 0 ? a < INT32_MIN / b : a < INT32_MAX / b;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_u64(uint64_t a, uint64_t b, uint64_t* out) {\n"
                     << "\t*out = a*b;\n"
@@ -444,13 +461,12 @@ namespace {
                     << "\treturn false;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_i64(int64_t a, int64_t b, int64_t* out) {\n"
-                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
-                    << "\tif(b == 0) return false;\n"
-                    << "\tif(a > INT64_MAX/b)  return true;\n"
-                    << "\tif(a < INT64_MIN/b)  return true;\n"
-                    << "\tif( (a == -1) && (b == INT64_MIN))  return true;\n"
-                    << "\tif( (b == -1) && (a == INT64_MIN))  return true;\n"
-                    << "\treturn false;\n"
+                    << "\t*out = (int64_t)((uint64_t)a * (uint64_t)b);\n"
+                    << "\tif(a == 0 || b == 0) return false;\n"
+                    << "\tif(a == -1) return b == INT64_MIN;\n"
+                    << "\tif(b == -1) return a == INT64_MIN;\n"
+                    << "\tif(a > 0) return b > 0 ? a > INT64_MAX / b : b < INT64_MIN / a;\n"
+                    << "\treturn b > 0 ? a < INT64_MIN / b : a < INT64_MAX / b;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
                     << "\treturn __builtin_mul_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
@@ -497,38 +513,38 @@ namespace {
                     << "\treturn __builtin_add_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
                     << "}\n"
                     << "static inline bool __builtin_sub_overflow_i64(int64_t a, int64_t b, int64_t* o) {\n"
-                    << "\t""*o = a - b;\n"
+                    << "\t""*o = (int64_t)((uint64_t)a - (uint64_t)b);\n"
                     << "\t""return ((b < 0) && (a > INT64_MAX + b)) || ((b > 0) && (a < INT64_MIN + b));\n"
                     << "}\n"
                     << "static inline bool __builtin_sub_overflow_i32(int32_t a, int32_t b, int32_t* o) {\n"
-                    << "\t""*o = a - b;\n"
+                    << "\t""*o = (int32_t)((uint32_t)a - (uint32_t)b);\n"
                     << "\t""return ((b < 0) && (a > INT32_MAX + b)) || ((b > 0) && (a < INT32_MIN + b));\n"
                     << "}\n"
                     << "static inline bool __builtin_sub_overflow_i16(int16_t a, int16_t b, int16_t* o) {\n"
-                    << "\t""*o = a - b;\n"
+                    << "\t""*o = (int16_t)((uint16_t)a - (uint16_t)b);\n"
                     << "\t""return ((b < 0) && (a > INT16_MAX + b)) || ((b > 0) && (a < INT16_MIN + b));\n"
                     << "}\n"
                     << "static inline bool __builtin_sub_overflow_i8(int8_t a, int8_t b, int8_t* o) {\n"
-                    << "\t""*o = a - b;\n"
+                    << "\t""*o = (int8_t)((uint8_t)a - (uint8_t)b);\n"
                     << "\t""return ((b < 0) && (a > INT8_MAX + b)) || ((b > 0) && (a < INT8_MIN + b));\n"
                     << "}\n"
                     << "static inline bool __builtin_sub_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
                     << "\treturn __builtin_sub_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
                     << "}\n"
                     << "static inline bool __builtin_add_overflow_i64(int64_t a, int64_t b, int64_t* o) {\n"
-                    << "\t""*o = a + b;\n"
+                    << "\t""*o = (int64_t)((uint64_t)a + (uint64_t)b);\n"
                     << "\t""return ((b > 0) && (a > INT64_MAX - b)) || ((b < 0) && (a < INT64_MIN - b));\n"
                     << "}\n"
                     << "static inline bool __builtin_add_overflow_i32(int32_t a, int32_t b, int32_t* o) {\n"
-                    << "\t""*o = a + b;\n"
+                    << "\t""*o = (int32_t)((uint32_t)a + (uint32_t)b);\n"
                     << "\t""return ((b > 0) && (a > INT32_MAX - b)) || ((b < 0) && (a < INT32_MIN - b));\n"
                     << "}\n"
                     << "static inline bool __builtin_add_overflow_i16(int16_t a, int16_t b, int16_t* o) {\n"
-                    << "\t""*o = a + b;\n"
+                    << "\t""*o = (int16_t)((uint16_t)a + (uint16_t)b);\n"
                     << "\t""return ((b > 0) && (a > INT16_MAX - b)) || ((b < 0) && (a < INT16_MIN - b));\n"
                     << "}\n"
                     << "static inline bool __builtin_add_overflow_i8(int8_t a, int8_t b, int8_t* o) {\n"
-                    << "\t""*o = a + b;\n"
+                    << "\t""*o = (int8_t)((uint8_t)a + (uint8_t)b);\n"
                     << "\t""return ((b > 0) && (a > INT8_MAX - b)) || ((b < 0) && (a < INT8_MIN - b));\n"
                     << "}\n"
                     << "static inline bool __builtin_add_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
@@ -766,6 +782,11 @@ namespace {
                     << "}\n"
                     << "static inline uint128_t intrinsic_cttz_u128(uint128_t v) {\n"
                     << "\treturn (v == 0 ? 128 : ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v)));\n"
+                    << "}\n"
+                    // `__builtin_popcountll` takes a 64-bit argument, so it
+                    // would silently drop the upper half of a `__int128`.
+                    << "static inline uint128_t intrinsic_popcount_u128(uint128_t v) {\n"
+                    << "\treturn (uint128_t)__builtin_popcountll((uint64_t)v) + (uint128_t)__builtin_popcountll((uint64_t)(v >> 64));\n"
                     << "}\n"
                     ;
             }
@@ -1188,6 +1209,11 @@ namespace {
                     {
                         std::string lib_path;
                         if( !is_windows ) {
+                            if( Target_GetCurSpec().m_os_name == "macos" ) {
+                                lib_path = FMT(path << "/lib" << name << ".dylib");
+                                if( file_exists(lib_path) )
+                                    return lib_path;
+                            }
                             lib_path = FMT(path << "/lib" << name << ".so");
                             if( file_exists(lib_path) )
                                 return lib_path;
@@ -1314,15 +1340,22 @@ namespace {
                     args.push_back("-O1");  // HACK: Work around mrustc #347 by reducing the optimisation level
                     break;
                 }
-#if defined(__GNUC__) && !defined(__clang__)
-#if __GNUC__ < 16 && !(__GNUC__ == 15 && __GNUC_MINOR__ > 1)
-                // HACK: Work around [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117423] by disabling an optimisation stage
-                if( opt.opt_level > 0 )
+                // HACK: Work around two GCC bugs by disabling an optimisation stage.
+                // - [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117423], fixed in GCC 15.2.
+                // - [https://gcc.gnu.org/bugzilla/show_bug.cgi?id=71460], still open, 32-bit x86
+                //   only - so there the flag cannot be dropped for any GCC version.
                 {
-                    args.push_back("-fno-tree-sra");
+                    bool need_no_tree_sra = (Target_GetCurSpec().m_arch.m_name == "x86");
+#if defined(__GNUC__) && !defined(__clang__)
+# if __GNUC__ < 16 && !(__GNUC__ == 15 && __GNUC_MINOR__ > 1)
+                    need_no_tree_sra = true;
+# endif
+#endif
+                    if( opt.opt_level > 0 && need_no_tree_sra )
+                    {
+                        args.push_back("-fno-tree-sra");
+                    }
                 }
-#endif
-#endif
                 if( opt.emit_debug_info )
                 {
                     args.push_back("-g");
@@ -1624,21 +1657,22 @@ namespace {
 
         void emit_global_asm(const ::HIR::GlobalAssembly& se) override
         {
+            bool is_intel = (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax;
             m_of << "__asm__ (\"";
-            if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
+            if( is_intel )
                 m_of << ".intel_syntax noprefix; ";
             for(const auto& l : se.m_lines)
             {
                 for(const auto& f : l.frags)
                 {
-                    m_of << FmtGccAsm(f.before, false);
+                    m_of << FmtGccAsm(f.before, false, is_intel);
                     ASSERT_BUG(Span(), f.index < se.m_symbols.size(), "Invalid argument reference in global assembly");
                     TODO(Span(), "Handle interpolation in global_asm! - " << se.m_symbols[f.index]);
                 }
-                m_of << FmtGccAsm(l.trailing, false);
+                m_of << FmtGccAsm(l.trailing, false, is_intel);
                 m_of << ";\\n ";
             }
-            if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
+            if( is_intel )
                 m_of << ".att_syntax; ";
             m_of << "\");\n";
         }
@@ -1690,7 +1724,13 @@ namespace {
                     m_of << "union u_" << Trans_Mangle(te.path) << ";\n";
                     }
                 TU_ARMA(Enum, tpb) {
-                    m_of << "struct e_" << Trans_Mangle(te.path) << ";\n";
+                    const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                    if( is_numeric_enum(repr) ) {
+                        m_of << "typedef "; emit_ctype(repr->fields.back().ty); m_of << "e_" << Trans_Mangle(te.path) << ";\n";
+                    }
+                    else {
+                        m_of << "typedef struct e_" << Trans_Mangle(te.path) << " e_" << Trans_Mangle(te.path) << ";\n";
+                    }
                     }
                 }
                 }
@@ -1699,6 +1739,27 @@ namespace {
                 return ;
                 }
             }
+        }
+        /// GCC calling-convention attribute for a Rust ABI string, NULL if the
+        /// ABI is the platform default (i.e. needs no attribute).
+        /// Link: https://gcc.gnu.org/onlinedocs/gcc/x86-Function-Attributes.html
+        static const char* gcc_abi_attribute(const RcString& abi)
+        {
+            if( abi == "fastcall" ) return "__attribute__((fastcall))";
+            if( abi == "stdcall"  ) return "__attribute__((stdcall))";
+            if( abi == "sysv64"   ) return "__attribute__((sysv_abi))";
+            if( abi == "win64"    ) return "__attribute__((ms_abi))";
+            // Rust-internal ABIs: emitted as plain C functions, both sides generated here.
+            if( abi == ABI_RUST || abi == "rust-call" || abi == "rust-cold" || abi == "rust-intrinsic" || abi == "platform-intrinsic" || abi == "unadjusted" ) {
+                return nullptr;
+            }
+            // Already what GCC uses without an attribute.
+            // TODO: "system" is `__stdcall` on 32-bit Windows (mingw), which isn't handled here.
+            if( abi == "C" || abi == "C-unwind" || abi == "cdecl" || abi == "system" || abi == "system-unwind" || abi == "aapcs" ) {
+                return nullptr;
+            }
+            WARNING(Span(), W0000, "Unknown ABI \"" << abi << "\", emitting with the platform default calling convention");
+            return nullptr;
         }
         void emit_type_fn(const ::HIR::TypeRef& ty)
         {
@@ -1727,6 +1788,13 @@ namespace {
                 }
                 else
                 {
+                }
+            }
+            else if( m_compiler == Compiler::Gcc )
+            {
+                if( const char* attr = gcc_abi_attribute(te.m_abi) )
+                {
+                    m_of << attr << " ";
                 }
             }
             m_of << "*"; emit_ctype(ty); m_of << ")(";
@@ -1776,6 +1844,16 @@ namespace {
             if(packing_max_align == 0 && max_align != repr->align /*&& repr->size > 0*/) {
                 has_manual_align = true;
             }
+            // repr(align(N)): always emit an explicit alignment attribute. The C compiler can't
+            // infer a user-specified alignment from the field list when it happens to equal the
+            // largest field alignment - and on Darwin ppc32 the C compiler's natural alignment
+            // for the emitted fields can be lower than `repr->align` (fields are capped to 4).
+            // Mirrored by `darwin_ppc32_type_has_c_user_align` in target.cpp.
+            if(packing_max_align == 0 && ty.data().is_Path() && ty.data().as_Path().binding.is_Struct())
+            {
+                if( ty.data().as_Path().binding.as_Struct()->m_forced_alignment > 0 )
+                    has_manual_align = true;
+            }
             // - Sort the fields by offset
             ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){
                 if( repr->fields[a].offset == repr->fields[b].offset )
@@ -1809,7 +1887,6 @@ namespace {
             bool has_unsized = false;
             size_t sized_fields = 0;
             size_t  cur_ofs = 0;
-            bool is_first_field = true;
             for(unsigned fld : fields)
             {
                 const auto& ty = repr->fields[fld].ty;
@@ -1829,17 +1906,14 @@ namespace {
                 {
                     MIR_ASSERT(*m_mir_res, cur_ofs <= offset, "Current offset is already past expected (#" << fld << "): " << cur_ofs << " > " << offset);
                     auto field_align = a;
-                    // PowerPC 32-bit ABI alignment
-                    if(Target_GetCurSpec().m_arch.m_name == "powerpc")
+                    // Darwin PowerPC 32-bit "power" alignment: 8-byte-aligned fields are placed at
+                    // 4-byte boundaries (GCC `ADJUST_FIELD_ALIGN`). The offsets computed in
+                    // target.cpp already account for explicitly-aligned types, so capping
+                    // unconditionally here can only under-estimate the alignment, which the
+                    // explicit padding fields then correct.
+                    if( Target_IsDarwinPPC32() && field_align == 8 )
                     {
-                        if( s > 0 )
-                        {
-                            if( !is_first_field && field_align >= 4 && field_align <= 8 )
-                            {
-                                field_align = 4;
-                            }
-                            is_first_field = false;
-                        }
+                        field_align = 4;
                     }
                     a = packing_max_align > 0 ? std::min<size_t>(packing_max_align, field_align) : field_align;
                     DEBUG("a = " << a);
@@ -2098,6 +2172,12 @@ namespace {
             return false;
         }
 
+        /// Check whether this is a "C-style" numeric enum with no data.
+        bool is_numeric_enum(const TypeRepr* repr)
+        {
+            return repr->fields.size() == 1 && repr->variants.is_Values();
+        }
+
         const HIR::TypeRef& emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
         {
             if( is_enum_tag(repr, path.index) )
@@ -2106,7 +2186,8 @@ namespace {
                 if( m_embedded_tags.count(repr) ) {
                     m_of << ".DATA";
                 }
-                m_of << ".TAG";
+                if( !is_numeric_enum(repr) )
+                    m_of << ".TAG";
                 assert(path.sub_fields.empty());
             }
             else
@@ -2121,7 +2202,8 @@ namespace {
                     if( m_embedded_tags.count(repr) ) {
                         m_of << ".DATA";
                     }
-                    m_of << ".TAG";
+                    if ( !is_numeric_enum(repr) )
+                        m_of << ".TAG";
                     assert(&fld == &path.sub_fields.back());
                 }
                 else if( /*!repr->variants.is_None() ||*/ TU_TEST1(ty->data(), Path, .binding.is_Enum()) ) {
@@ -2174,7 +2256,21 @@ namespace {
             }
 
             m_of << "// enum " << p << "\n";
-            m_of << "struct e_" << Trans_Mangle(p) << " {\n";
+
+            const bool is_numeric = is_numeric_enum(repr);
+            if( is_numeric )
+            {
+                // ABI must match an integer for repr(C) and repr(Int), but explicitly-sized enums are a C23 feature.
+                const auto& underlying = repr->fields.back().ty;
+                m_of << "typedef ";
+                emit_ctype(underlying);
+                m_of << "e_" << Trans_Mangle(p) << ";\n";
+            }
+            else
+            {
+                m_of << "typedef struct e_" << Trans_Mangle(p) << " {\n";
+            }
+
 
             // HACK: For NonZero optimised enums, emit a struct with a single field
             // - This avoids a bug in GCC5 where it would generate incorrect code if there's a union here.
@@ -2187,18 +2283,10 @@ namespace {
                 m_of << ";\n";
                 m_of << "\t} DATA;\n";
             }
-            // If there's only one field - it's either a single variant, or a value enum
+            // If there's only one field, and not a value enum, it's a single variant.
             else if( repr->fields.size() == 1 )
             {
-                if( repr->variants.is_Values() )
-                {
-                    // Tag only.
-                    // - A value-only enum.
-                    m_of << "\t";
-                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
-                    m_of << ";\n";
-                }
-                else
+                if( !is_numeric )
                 {
                     m_of << "\tunion {\n";
                     m_of << "\t\t";
@@ -2278,10 +2366,11 @@ namespace {
                 TODO(sp, "No common offsets and more than one field, is this possible? - " << item_ty);
             }
 
-            m_of << "};\n";
+            if( !is_numeric )
+                m_of << "} e_" << Trans_Mangle(p) << ";\n";
 
             size_t exp_size = (repr->size > 0 ? repr->size : (m_options.disallow_empty_structs ? 1 : 0));
-            m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct e_" << Trans_Mangle(p) << ") == " << exp_size << ") ? 1 : -1 ];\n";
+            m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(e_" << Trans_Mangle(p) << ") == " << exp_size << ") ? 1 : -1 ];\n";
 
             m_mir_res = nullptr;
         }
@@ -2834,6 +2923,10 @@ namespace {
                 else if( item.m_linkage.name.rfind("llvm.x86.aesni.", 0) == 0 )
                 {
                     m_of << "\tassert(!\"Unsupprorted LLVM x86 intrinsic: " << item.m_linkage.name << "\"); abort();\n";
+                }
+                else if( item.m_linkage.name == "llvm.aarch64.isb" ) {
+                    m_of << "\t__asm__ __volatile__ (\"isb\");\n";
+                    m_of << "\treturn ;\n";
                 }
                 else {
                     // TODO: Hand off to compiler-specific intrinsics
@@ -4203,7 +4296,10 @@ namespace {
                         }
                     TU_ARMA(Values, re) {
                         if( re.field.index == 0 ) {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
+                            emit_lvalue(e.dst);
+                            if ( !is_numeric_enum(repr) )
+                                m_of << ".TAG";
+                            m_of << "= "; emit_enum_variant_val(repr, ve.index);
                         }
                         else {
                             emit_lvalue(e.dst); m_of << ".DATA.TAG = "; emit_enum_variant_val(repr, ve.index);
@@ -4291,14 +4387,16 @@ namespace {
                         m_of << ".hi";
                     }
                     else if( ty.data().is_Path() && ty.data().as_Path().binding.is_Enum() ) {
+                        const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                        MIR_ASSERT(mir_res, is_numeric_enum(repr), "int128 enum should be a numeric enum: " << ty);
                         emit_lvalue(dst);
                         m_of << ".lo = ";
                         emit_lvalue(ve.val);
-                        m_of << ".TAG; ";
+                        m_of << "; ";
                         emit_lvalue(dst);
                         m_of << ".hi = ";
                         emit_lvalue(ve.val);
-                        m_of << ".TAG < 0 ? -1 : 0";
+                        m_of << " < 0 ? -1 : 0";
                     }
                     else {
                         // Cast from small to i128/u128
@@ -4408,9 +4506,11 @@ namespace {
             }
             if (ve.type.data().is_Primitive() && ty.data().is_Path() && ty.data().as_Path().binding.is_Enum())
             {
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
                 emit_lvalue(ve.val);
                 // NOTE: Embedded tag enums can't be cast
-                m_of << ".TAG";
+                if( !is_numeric_enum(repr) )
+                    m_of << ".TAG";
                 special = true;
             }
             if (!special)
@@ -4585,7 +4685,10 @@ namespace {
                     if( e.field.index != 0 ) {
                         m_of << ".DATA";
                     }
-                    m_of << ".TAG == ";
+                    if( !is_numeric_enum(repr) ) {
+                        m_of << ".TAG";
+                    }
+                    m_of << " == ";
                     // Handle signed values
                     if( is_signed ) {
                         m_of << static_cast<int64_t>(e.values[odd_arm]);
@@ -4604,7 +4707,10 @@ namespace {
                 if( e.field.index != 0 ) {
                     m_of << ".DATA";
                 }
-                m_of << ".TAG) {\n";
+                if( !is_numeric_enum(repr) ) {
+                    m_of << ".TAG";
+                }
+                m_of << ") {\n";
                 for(size_t j = 0; j < n_arms; j ++)
                 {
                     // Handle signed values
@@ -5448,6 +5554,13 @@ namespace {
                 MIR_TODO(mir_res, "Translate to MSVC");
             }
         }
+        void emit_aarch64_crc32(const Asm2TplMatch& m, const RepeatLitStr& indent, const char* insn)
+        {
+            m_of << indent << "__asm__(\".arch_extension crc\\n\\t" << insn << "\"";
+            m_of << " : \"=r\"("; emit_lvalue(m.output(0)); m_of << ")";
+            m_of << " : \"0\"("; emit_param(m.input(0)); m_of << "), \"r\"("; emit_param(m.input(1)); m_of << ")";
+            m_of << ");\n";
+        }
         void emit_asm2_gcc(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level)
         {
             auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
@@ -5517,6 +5630,27 @@ namespace {
                 m_of << " : \"=r\"("; emit_lvalue(m.output(2)); m_of << ")";
                 m_of << " : \"r\"("; emit_param(m.input(0));  m_of << "), \"r\"("; emit_param(m.input(1));  m_of << ")";
                 m_of << ");\n";
+                return;
+            }
+            // AARCH64 CRC32 assembly instructions
+            else if( m.matches_template({"crc32b {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
+            {
+                emit_aarch64_crc32(m, indent, "crc32b %w0, %w0, %w2");
+                return;
+            }
+            else if( m.matches_template({"crc32h {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
+            {
+                emit_aarch64_crc32(m, indent, "crc32h %w0, %w0, %w2");
+                return;
+            }
+            else if( m.matches_template({"crc32w {0:w}, {0:w}, {1:w}"}, {"inout:reg", "in:reg"}) )
+            {
+                emit_aarch64_crc32(m, indent, "crc32w %w0, %w0, %w2");
+                return;
+            }
+            else if( m.matches_template({"crc32x {0:w}, {0:w}, {1:x}"}, {"inout:reg", "in:reg"}) )
+            {
+                emit_aarch64_crc32(m, indent, "crc32x %w0, %w0, %x2");
                 return;
             }
             // HACK: Abort on various `v*` operations, as they have overly complex register specs that gcc doesn't like
@@ -5619,14 +5753,15 @@ namespace {
                 m_of << indent << "__asm__ ";
                 m_of << "__volatile__"; // Default everything to volatile
                 m_of << "(\"";
-                if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
+                bool is_intel = (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax;
+                if( is_intel )
                     m_of << ".intel_syntax noprefix; ";
                 bool escape_percent = true || !inputs.empty() || !outputs.empty();
                 for(const auto& l : se.lines)
                 {
                     for(const auto& f : l.frags)
                     {
-                        m_of << FmtGccAsm(f.before, escape_percent);
+                        m_of << FmtGccAsm(f.before, escape_percent, is_intel);
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
                         m_of << "%";
                         if( arg_mappings.at(f.index) == UINT8_MAX-1 ) {
@@ -5648,10 +5783,10 @@ namespace {
                         }
                         m_of << arg_mappings.at(f.index);
                     }
-                    m_of << FmtGccAsm(l.trailing, escape_percent);
+                    m_of << FmtGccAsm(l.trailing, escape_percent, is_intel);
                     m_of << ";\\n ";
                 }
-                if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
+                if( is_intel )
                     m_of << ".att_syntax; ";
                 m_of << "\" :";
                 for(size_t i = 0; i < outputs.size(); i ++)
@@ -5679,6 +5814,9 @@ namespace {
                         case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
                         case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
                         case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
+                        // aarch64
+                        case AsmCommon::RegisterClass::aarch64_reg: m_of << "r";  break;
+                        case AsmCommon::RegisterClass::aarch64_vreg: m_of << "w"; break;
                         // riscv
                         case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
                         case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
@@ -5720,6 +5858,9 @@ namespace {
                             case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
                             case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
                             case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
+                            // aarch64
+                            case AsmCommon::RegisterClass::aarch64_reg: m_of << "r";  break;
+                            case AsmCommon::RegisterClass::aarch64_vreg: m_of << "w"; break;
                             // riscv
                             case AsmCommon::RegisterClass::riscv_reg: m_of << "r"; break;
                             case AsmCommon::RegisterClass::riscv_freg: m_of << "f"; break;
@@ -5749,9 +5890,17 @@ namespace {
                     }
                 }
                 m_of << ":";
+                bool need_clobber_comma = false;
                 for(size_t i = 0; i < clobbers.size(); i ++ ) {
-                    if( i > 0 ) m_of << ",";
+                    if( need_clobber_comma ) m_of << ",";
                     m_of << " \"" << clobbers[i] << "\"";
+                    need_clobber_comma = true;
+                }
+                // Inverted defaults: rust's `asm!` may touch memory unless `options(nomem)`,
+                // but gcc assumes it doesn't unless told by a "memory" clobber.
+                if( !se.options.nomem ) {
+                    if( need_clobber_comma ) m_of << ",";
+                    m_of << " \"memory\"";
                 }
                 m_of << ");\n";
                 for(size_t i = 0; i < se.params.size(); i ++)
@@ -5825,6 +5974,13 @@ namespace {
                 if( item.m_abi == "system" && m_compiler == Compiler::Msvc )
                 {
                     ss << " __stdcall";
+                }
+                else if( m_compiler == Compiler::Gcc )
+                {
+                    if( const char* attr = gcc_abi_attribute(item.m_abi) )
+                    {
+                        ss << " " << attr;
+                    }
                 }
                 ss << " " << Trans_Mangle(p) << "(";
                 if( item.m_args.size() == 0 )
@@ -6071,20 +6227,54 @@ namespace {
                     break;
                 }
                 };
+            auto emit_atomic_bitwise_cast = [&]() {
+                const auto& ty = params.m_types.at(0);
+                m_of << "(";
+                if(ty.data().is_Pointer()) {
+                    m_of << "uintptr_t ";
+                }
+                else {
+                    emit_ctype(ty);
+                }
+                m_of << "_Atomic *)";
+                };
+            auto emit_atomic_arith_arg_cast = [&](AtomicOp op) {
+                if(params.m_types.at(0).data().is_Pointer()) {
+                    switch(op)
+                    {
+                    case AtomicOp::Add:
+                    case AtomicOp::Sub:
+                        m_of << "(ptrdiff_t) ";
+                        break;
+                    case AtomicOp::And:
+                    case AtomicOp::Or:
+                    case AtomicOp::Xor:
+                        m_of << "(uintptr_t) ";
+                      break;
+                    }
+                }
+            };
             auto emit_atomic_arith = [&](AtomicOp op, Ordering ordering) {
                 emit_lvalue(e.ret_val); m_of << " = ";
+                const auto& ty = params.m_types.at(0);
+                if(ty.data().is_Pointer()) {
+                    m_of << "(";
+                    emit_ctype(ty);
+                    m_of << ")";
+                }
                 switch(m_compiler)
                 {
                 case Compiler::Gcc:
                     switch(op)
                     {
-                    case AtomicOp::Add: m_of << "atomic_fetch_add_explicit";   break;
-                    case AtomicOp::Sub: m_of << "atomic_fetch_sub_explicit";   break;
-                    case AtomicOp::And: m_of << "atomic_fetch_and_explicit";   break;
-                    case AtomicOp::Or:  m_of << "atomic_fetch_or_explicit";    break;
-                    case AtomicOp::Xor: m_of << "atomic_fetch_xor_explicit";   break;
+                    case AtomicOp::Add: m_of << "atomic_fetch_add_explicit("; emit_atomic_cast();          break;
+                    case AtomicOp::Sub: m_of << "atomic_fetch_sub_explicit("; emit_atomic_cast();          break;
+                    // Cast lhs pointers to integers, since Clang does not allow bitwise atomic operations on pointers.
+                    case AtomicOp::And: m_of << "atomic_fetch_and_explicit("; emit_atomic_bitwise_cast();  break;
+                    case AtomicOp::Or:  m_of << "atomic_fetch_or_explicit(";  emit_atomic_bitwise_cast();  break;
+                    case AtomicOp::Xor: m_of << "atomic_fetch_xor_explicit("; emit_atomic_bitwise_cast();  break;
                     }
-                    m_of << "("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
+                    emit_param(e.args.at(0)); m_of << ", "; emit_atomic_arith_arg_cast(op); emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
                     break;
                 case Compiler::Msvc:
                     switch(op)
@@ -6400,12 +6590,12 @@ namespace {
             else if( name == "three_way_compare" ) {
                 const auto& t = params.m_types.at(0);
                 if( type_is_emulated_i128(t) ) {
-                    emit_lvalue(e.ret_val); m_of << ".TAG = ";
+                    emit_lvalue(e.ret_val); m_of << " = ";
                     m_of << (t == ::HIR::CoreType::U128 ? "cmp128" : "cmp128s");
                     m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ");\n";
                 }
                 else {
-                    emit_lvalue(e.ret_val); m_of << ".TAG = (";
+                    emit_lvalue(e.ret_val); m_of << " = (";
                         emit_param(e.args.at(0)); m_of << " == "; emit_param(e.args.at(1));
                         m_of << " ? 0 : (";
                         emit_param(e.args.at(0)); m_of << " < "; emit_param(e.args.at(1));
@@ -6508,7 +6698,9 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
             }
             else if( name == "arith_offset" ) { // addition, with no requirements
-                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
+                std::size_t size = 0;
+                MIR_ASSERT(mir_res, Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size), "Size of " << params.m_types.at(0) << " is unknown");
+                emit_lvalue(e.ret_val); m_of << " = ("; emit_ctype(params.m_types.at(0)); m_of << "*)((uintptr_t)"; emit_param(e.args.at(0)); m_of << " + (uintptr_t)"; emit_param(e.args.at(1)); m_of << " * (uintptr_t)" << size << ")";
             }
             else if( name == "ptr_offset_from" ) {  // effectively subtraction
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " - "; emit_param(e.args.at(1));
@@ -6526,6 +6718,10 @@ namespace {
             else if( name == "ptr_offset_from_unsigned" ) {
                 // `fn ptr_offset_from_unsigned<T>(ptr: *const T, base: *const T) -> usize`
                 emit_lvalue(e.ret_val); m_of << "= ( ("; emit_param(e.args.at(0)); m_of << ") - ("; emit_param(e.args.at(1)); m_of << "))";
+            }
+            else if( name == "ptr_mask" ) {
+                // `fn ptr_mask<T>(ptr: *const T, mask: usize) -> *const T`
+                emit_lvalue(e.ret_val); m_of << " = ("; emit_ctype(params.m_types.at(0)); m_of << "*) ((uintptr_t)"; emit_param(e.args.at(0)); m_of << " & "; emit_param(e.args.at(1)); m_of << ")";
             }
             // ----
             else if( name == "bswap" ) {
@@ -7212,14 +7408,20 @@ namespace {
             }
             // - CounT POPulated
             else if( name == "ctpop" ) {
+                const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = ";
 
-                if( type_is_emulated_i128(params.m_types.at(0)) )
+                if( type_is_emulated_i128(ty) )
                 {
                     m_of << "popcount128("; emit_param(e.args.at(0)); m_of << ")";
                     if( TARGETVER_LEAST_1_90 ) {
                         m_of << ".lo";
                     }
+                }
+                else if( get_prim_size(ty) == 128 )
+                {
+                    // `__builtin_popcountll` would only count the low half.
+                    m_of << "intrinsic_popcount_u128("; emit_param(e.args.at(0)); m_of << ")";
                 }
                 else
                 {
@@ -8301,7 +8503,7 @@ namespace {
                     m_of << "union u_" << Trans_Mangle(te.path);
                     }
                 TU_ARMA(Enum, tpb) {
-                    m_of << "struct e_" << Trans_Mangle(te.path);
+                    m_of << "e_" << Trans_Mangle(te.path);
                     }
                 TU_ARMA(ExternType, tpb) {
                     m_of << "struct x_" << Trans_Mangle(te.path);

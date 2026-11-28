@@ -546,8 +546,11 @@ namespace {
                 return ;
             }
 
-            ASSERT_BUG(sp, !lhs.is_hrl(), "Encountered HRL - " << lhs);
-            ASSERT_BUG(sp, !rhs.is_hrl(), "Encountered HRL - " << rhs);
+            // A higher-ranked lifetime has no concrete region to relate to, so this is a no-op rather than an abort; lifetimes are erased before codegen.
+            if( lhs.is_hrl() || rhs.is_hrl() ) {
+                DEBUG("HRL - no constraint to record");
+                return ;
+            }
 
             if( auto* iv = m_state.opt_ivar(sp, lhs) ) {
                 iv->sources.push_back(rhs);

@@ -10,6 +10,7 @@
 #include "debug.h"
 #include <cassert>
 #include <string>
+#include <iostream>
 
 /// Representation of a syntatic token in a TOML file
 struct TomlToken
@@ -203,9 +204,10 @@ TomlKeyValue TomlFile::get_next_value()
         rv.value = TomlValue { t.m_data };
         break;
     // Array: Parse the entire list and return as Type::List
-    case TomlToken::Type::SquareOpen:
+    case TomlToken::Type::SquareOpen: {
         rv.path = this->get_path(std::move(key_name));
         rv.value.m_type = TomlValue::Type::List;
+        bool skipped_nested = false;
         while( (t = m_lexer.get_token()).m_type != TomlToken::Type::SquareClose )
         {
             while( t.m_type == TomlToken::Type::Newline )
@@ -215,12 +217,31 @@ TomlKeyValue TomlFile::get_next_value()
             if( t.m_type == TomlToken::Type::SquareClose )
                 break;
 
-            // TODO: Recursively parse a value
-            // TODO: OR, support other value types
             switch(t.m_type)
             {
             case TomlToken::Type::String:
                 rv.value.m_sub_values.push_back(TomlValue { t.as_string() });
+                break;
+            case TomlToken::Type::Integer:
+                rv.value.m_sub_values.push_back(TomlValue { t.m_intval });
+                break;
+            case TomlToken::Type::Ident:
+                if( t.m_data == "true" || t.m_data == "false" ) {
+                    rv.value.m_sub_values.push_back(TomlValue { t.m_data == "true" });
+                }
+                else {
+                    throw ::std::runtime_error(::format(m_lexer, ": Unexpected identifier in array value position - ", t));
+                }
+                break;
+            // Nested array or inline table. This parser's value model is flat
+            // (strings / scalars), so these are consumed (balanced) and
+            // discarded rather than aborting the whole file. A warning is
+            // emitted after the loop so a dropped value is noticed if it ever
+            // turns out to matter.
+            case TomlToken::Type::SquareOpen:
+            case TomlToken::Type::BraceOpen:
+                skipped_nested = true;
+                this->skip_composite_value();
                 break;
             default:
                 throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in array value position - ", t));
@@ -236,7 +257,15 @@ TomlKeyValue TomlFile::get_next_value()
         }
         if(t.m_type != TomlToken::Type::SquareClose)
             throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after array - ", t));
+        if( skipped_nested )
+        {
+            ::std::string key;
+            for(const auto& c : rv.path) { if(!key.empty()) key += "."; key += c; }
+            ::std::cerr << "warning: " << m_lexer << ": skipped nested array / inline-table element(s) in `" << key
+                        << "` (not represented in the flat TOML value model)" << ::std::endl;
+        }
         break;
+    }
     case TomlToken::Type::BraceOpen:
         m_current_composite.push_back(std::move(key_name));
         DEBUG("Enter composite block " << m_current_block << ", " << m_current_composite);
@@ -287,6 +316,33 @@ TomlKeyValue TomlFile::get_next_value()
     return rv;
 }
 
+void TomlFile::skip_composite_value()
+{
+    // The opening `[` or `{` has already been consumed by the caller. Read
+    // tokens (including any nested groups) until the matching close balances
+    // the count back to zero. Contents are discarded.
+    unsigned depth = 1;
+    while( depth > 0 )
+    {
+        auto t = m_lexer.get_token();
+        switch(t.m_type)
+        {
+        case TomlToken::Type::Eof:
+            throw ::std::runtime_error(::format(m_lexer, ": Unexpected EOF in nested array/table value"));
+        case TomlToken::Type::SquareOpen:
+        case TomlToken::Type::BraceOpen:
+            depth ++;
+            break;
+        case TomlToken::Type::SquareClose:
+        case TomlToken::Type::BraceClose:
+            depth --;
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 std::vector<std::string> TomlFile::get_path(std::vector<std::string> tail) const
 {
     std::vector<std::string>    path;
@@ -328,15 +384,34 @@ TomlToken TomlToken::lex_from(::std::ifstream& is, unsigned& m_line)
     return rv;
 }
 namespace {
-    void handle_escape(::std::string& str, ::std::ifstream& is) {
-        char c = is.get();
+    void handle_escape(::std::string& str, ::std::ifstream& is, unsigned& m_line) {
+        int c = is.get();
         switch(c)
         {
         case '"':  str += '"'; break;
         case '\\': str += '\\'; break;
         case 'n':  str += '\n'; break;
+        case 't':  str += '\t'; break;
+        case 'r':  str += '\r'; break;
+        case 'b':  str += '\b'; break;
+        case 'f':  str += '\f'; break;
+        // `\uXXXX` / `\UXXXXXXXX`: consume the hex digits. minicargo never
+        // needs the exact codepoint of a string value, so store a placeholder.
+        case 'u':  for(int i = 0; i < 4; i ++) (void)is.get(); str += '?'; break;
+        case 'U':  for(int i = 0; i < 8; i ++) (void)is.get(); str += '?'; break;
+        // Line-ending backslash in a multi-line basic string: trim the newline
+        // and all following whitespace up to the next non-whitespace char.
+        case '\n': case '\r': case ' ': case '\t': {
+            if(c == '\n') m_line ++;
+            int n = is.get();
+            while( n != EOF && isspace(n) ) {
+                if(n == '\n') m_line ++;
+                n = is.get();
+            }
+            if(n != EOF) is.putback((char)n);
+            break; }
         default:
-            throw ::std::runtime_error(format("toml.cpp handle_escape: TODO: Escape sequences in strings - `", c, "`"));
+            throw ::std::runtime_error(format("toml.cpp handle_escape: TODO: Escape sequences in strings - `", (char)c, "`"));
         }
     }
 }
@@ -461,7 +536,7 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                     if( c == EOF )
                         throw ::std::runtime_error("Unexpected EOF in triple-quoted string");
                     if(c == '\\') {
-                        handle_escape(str, is);
+                        handle_escape(str, is, m_line);
                     }
                     else {
                         str += (char)c;
@@ -481,7 +556,7 @@ TomlToken TomlToken::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                     throw ::std::runtime_error("Unexpected EOF in double-quoted string");
                 if (c == '\\')
                 {
-                    handle_escape(str, is);
+                    handle_escape(str, is, m_line);
                     c = is.get();
                     continue ;
                 }

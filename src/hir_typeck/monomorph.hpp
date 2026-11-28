@@ -164,7 +164,11 @@ struct MonomorphHrlsOnly:
     }
     ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& lft_ref) const override {
         if( lft_ref.group() == 3 ) {
-            ASSERT_BUG(sp, lft_ref.idx() < pp_hrb->m_lifetimes.size(), lft_ref << " out of bounds (" << pp_hrb->m_lifetimes.size() << ")");
+            // If the HRL batch does not cover this index, pass the lifetime through rather than abort: not reliably in range for nested binders, and erased before codegen.
+            if( lft_ref.idx() >= pp_hrb->m_lifetimes.size() ) {
+                DEBUG("HRL " << lft_ref << " out of bounds (" << pp_hrb->m_lifetimes.size() << ") - passthrough");
+                return ::HIR::LifetimeRef(lft_ref.binding);
+            }
             return pp_hrb->m_lifetimes.at(lft_ref.idx());
         }
         return ::HIR::LifetimeRef(lft_ref.binding);

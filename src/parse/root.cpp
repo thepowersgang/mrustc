@@ -761,6 +761,25 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         }
     }
 
+    // An already-parsed `$item:item` fragment. A trait item *is* an `AST::Named<AST::Item>`, so it is handed straight back.
+    if( lex.lookahead(0) == TOK_INTERPOLATED_ITEM )
+    {
+        tok = lex.getToken();
+        auto item = tok.take_frag_item();
+        for(auto& a : item_attrs.m_items) {
+            item.attrs.m_items.push_back(std::move(a));
+        }
+        // Only the kinds a trait body can hold; anything else is a loud TODO rather than silently accepted.
+        TU_MATCH_HDRA((item.data), {)
+        default:
+            TODO(lex.point_span(), "Interpolated item into trait: " << item.data.tag_str());
+        TU_ARMA(Function, e) { (void)e; }
+        TU_ARMA(Static, e) { (void)e; }
+        TU_ARMA(Type, e) { (void)e; }
+        }
+        return item;
+    }
+
     GET_TOK(tok, lex);
     bool is_specialisable = false;
     if( tok.type() == TOK_IDENT && tok.ident().name == "default" ) {
@@ -1299,11 +1318,19 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         if( lex.lookahead(0) == TOK_INTERPOLATED_ITEM ) {
             tok = lex.getToken();
             auto item = tok.take_frag_item();
+            // Attributes are parsed before the fragment is seen, so without this transfer they are dropped - turning a `#[cfg]` that should remove the item into a no-op.
+            for(auto& a : item_attrs.m_items) {
+                item.attrs.m_items.push_back(std::move(a));
+            }
             TU_MATCH_HDRA((item.data), {)
             default:
                 TODO(lex.point_span(), "Interpolated item into impl: " << item.data.tag_str());
             TU_ARMA(Function, e) {
                 impl.add_function(item.span, std::move(item.attrs), item.vis, false, item.name, std::move(e) );
+                }
+            // An associated `const` - the only kind of `Static` an impl block can hold, stored as the non-interpolated path stores one.
+            TU_ARMA(Static, e) {
+                impl.add_static(item.span, std::move(item.attrs), item.vis, false, item.name, std::move(e) );
                 }
             //TU_ARMA(Type, e) {
             //    impl.add_type(item.span, std::move(item.attrs), item.vis, false, item.name, std::move(e.m_params), std::move(e.m_type));

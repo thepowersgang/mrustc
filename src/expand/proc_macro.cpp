@@ -1446,7 +1446,13 @@ namespace {
                 this->visit_type(fcn.rettype());
             //}
             this->visit_bounds(fcn.params());
-            this->visit_nodes(fcn.code());
+            // A trait method declaration has no body - send `;` rather than dereferencing an absent node.
+            if( fcn.code().is_valid() ) {
+                this->visit_nodes(fcn.code());
+            }
+            else {
+                m_pmi.send_symbol(";");
+            }
         }
         void visit_static(const RcString& name, const AST::Visibility& vis, const ::AST::Static& i)
         {
@@ -1513,6 +1519,70 @@ namespace {
             visit_type(impl.type());
             visit_bounds(impl.params());
         }
+
+        /// Send a trait definition to the proc macro.
+        void visit_trait(const RcString& name, const AST::Visibility& vis, const ::AST::Trait& trait)
+        {
+            this->visit_vis(vis);
+            if( trait.is_unsafe() ) {
+                m_pmi.send_rword("unsafe");
+            }
+            m_pmi.send_rword("trait");
+            m_pmi.send_ident(name.c_str());
+            this->visit_params(trait.params());
+
+            // Supertraits and trait-level lifetime bounds: `trait Foo: Bar + 'a`
+            bool first = true;
+            for(const auto& st : trait.supertraits())
+            {
+                m_pmi.send_symbol(first ? ":" : "+");
+                first = false;
+                this->visit_hrbs(st.ent.hrbs);
+                this->visit_path(*st.ent.path);
+            }
+            for(const auto& lft : trait.lifetimes())
+            {
+                m_pmi.send_symbol(first ? ":" : "+");
+                first = false;
+                m_pmi.send_lifetime(lft.ent.name().name.c_str());
+            }
+            this->visit_bounds(trait.params());
+
+            m_pmi.send_symbol("{");
+            // Trait items inherit the trait's visibility; mrustc records them as `pub`, which the plugin's parser rejects. Send them unqualified.
+            const auto item_vis = ::AST::Visibility::make_bare_private();
+            for(const auto& i : trait.items())
+            {
+                this->visit_attrs(i.attrs);
+                TU_MATCH_HDRA((i.data), {)
+                default:
+                    TODO(i.span, "visit_trait item - " << i.data.tag_str());
+                    break;
+                TU_ARMA(Function, e) {
+                    this->visit_function(i.name, item_vis, e);
+                    }
+                TU_ARMA(Static, e) {
+                    this->visit_static(i.name, item_vis, e);
+                    }
+                // An associated type. Bounds live in `m_self_bounds` encoded as `Self: ...`, not the shape needed here, so only the un-bounded form is emitted.
+                TU_ARMA(Type, e) {
+                    if( !e.m_self_bounds.m_bounds.empty() ) {
+                        TODO(i.span, "visit_trait - associated type with bounds - " << i.name);
+                    }
+                    this->visit_vis(item_vis);
+                    m_pmi.send_rword("type");
+                    m_pmi.send_ident(i.name.c_str());
+                    this->visit_params(e.m_params);
+                    if( e.m_type.is_valid() ) {
+                        m_pmi.send_symbol("=");
+                        this->visit_type(e.m_type);
+                    }
+                    m_pmi.send_symbol(";");
+                    }
+                }
+            }
+            m_pmi.send_symbol("}");
+        }
         void visit_impl(const ::AST::Impl& impl)
         {
             visit_impl_hdr(impl.def());
@@ -1557,6 +1627,9 @@ namespace {
                 }
             TU_ARMA(Union, e) {
                 visit_union(name, vis, e);
+                }
+            TU_ARMA(Trait, e) {
+                visit_trait(name, vis, e);
                 }
 
             // Values

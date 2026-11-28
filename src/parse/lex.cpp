@@ -519,7 +519,11 @@ Token Lexer::getTokenInt()
                     else if(suffix == "f64") num_type = CORETYPE_F64;
                     else if(suffix == "f128") num_type = CORETYPE_F128;
                     else
-                        ERROR(this->point_span(), E0000, "Unknown integer suffix " << suffix);
+                    {
+                        // Not a numeric type suffix - rustc allows any identifier here, so emit it as a following ident token
+                        m_next_tokens.push_back(Token(TOK_IDENT, Ident(this->realGetHygiene(), RcString::new_interned(suffix))));
+                        return Token(val, CORETYPE_ANY);
+                    }
                     return Token(val, num_type);
                 }
                 else {

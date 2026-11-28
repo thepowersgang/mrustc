@@ -131,8 +131,10 @@ impl ::std::str::FromStr for TokenStream {
                             '0' => '\0',
                             'n' => '\n',
                             'r' => '\r',
+                            't' => '\t',
                             '\\' => '\\',
                             '\'' => '\'',
+                            '"' => '"',
                             'u' => {
                                 if it.consume() != Some('{') {
                                     return err("Expected `{` after `\\u` in char literal");
@@ -294,6 +296,41 @@ impl ::std::str::FromStr for TokenStream {
                             else if c == '\\' {
                                 match some_else!(it.consume() => return err("str eof"))
                                 {
+                                'n' => s.push('\n'),
+                                'r' => s.push('\r'),
+                                't' => s.push('\t'),
+                                '0' => s.push('\0'),
+                                '\\' => s.push('\\'),
+                                '\'' => s.push('\''),
+                                '"' => s.push('"'),
+                                'x' => {
+                                    let mut v = 0u32;
+                                    for _ in 0 .. 2 {
+                                        let d = some_else!(it.consume() => return err("str eof"));
+                                        v = v * 16 + some_else!(d.to_digit(16) => return err("Invalid hex digit in `\\x` escape"));
+                                    }
+                                    s.push(some_else!(::std::char::from_u32(v) => return err("Invalid `\\x` escape")));
+                                    },
+                                'u' => {
+                                    if it.consume() != Some('{') {
+                                        return err("Expected `{` after `\\u` in string literal");
+                                    }
+                                    let mut v = 0u32;
+                                    loop {
+                                        let d = some_else!(it.consume() => return err("str eof"));
+                                        if d == '}' {
+                                            break ;
+                                        }
+                                        v = v * 16 + some_else!(d.to_digit(16) => return err("Invalid hex digit in `\\u` escape"));
+                                    }
+                                    s.push(some_else!(::std::char::from_u32(v) => return err("Invalid `\\u` escape")));
+                                    },
+                                // A backslash at end-of-line eats the newline and the next line's leading whitespace
+                                '\n' | '\r' => {
+                                    while it.next().map(|c| c.is_whitespace()).unwrap_or(false) {
+                                        it.consume();
+                                    }
+                                    },
                                 c @ _ => panic!("Unknown escape in string {}", c),
                                 }
                             }

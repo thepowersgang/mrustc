@@ -1490,10 +1490,10 @@ namespace typecheck
             }
 
             // Populate cache
+            // - If the path is still ambiguous, defer the equates to a revisit rather than aborting.
+            const bool cache_ok = visit_call_populate_cache(this->context, node.span(), node.m_path, node.m_cache);
+            if( cache_ok )
             {
-                if( !visit_call_populate_cache(this->context, node.span(), node.m_path, node.m_cache) ) {
-                    TODO(node.span(), "Emit revisit when _CallPath is ambiguous - " << node.m_path);
-                }
                 assert( node.m_cache.m_arg_types.size() >= 1);
                 unsigned int exp_argc = node.m_cache.m_arg_types.size() - 1;
 
@@ -1505,25 +1505,34 @@ namespace typecheck
                             << " - exp " << exp_argc << " got " << node.m_args.size());
                     }
                 }
+
+                // TODO: Figure out a way to disable coercions in desugared for loops (will speed up typecheck)
+
+                // Link arguments
+                // - NOTE: Uses the cache for the count because vaargs aren't checked (they're checked for suitability in expr_check.cpp)
+                for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
+                {
+                    this->context.equate_types_coerce(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]);
+                }
+                this->context.equate_types(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
             }
-
-
-            // TODO: Figure out a way to disable coercions in desugared for loops (will speed up typecheck)
-
-            // Link arguments
-            // - NOTE: Uses the cache for the count because vaargs aren't checked (they're checked for suitability in expr_check.cpp)
-            for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
+            else
             {
-                this->context.equate_types_coerce(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]);
+                // Ambiguous callee - revisit once inference has progressed.
+                this->context.add_revisit(node);
             }
-            this->context.equate_types(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
 
-            auto _ = this->push_inner_coerce_scoped(true);
-            for( auto& val : node.m_args ) {
-                val->visit( *this );
-                //this->context.require_sized(node.span(), val->m_res_type);
+            // Type-check the argument subtrees (independent of the cache).
+            {
+                auto _ = this->push_inner_coerce_scoped(true);
+                for( auto& val : node.m_args ) {
+                    val->visit( *this );
+                    //this->context.require_sized(node.span(), val->m_res_type);
+                }
             }
-            this->context.require_sized(node.span(), node.m_res_type);
+            if( cache_ok ) {
+                this->context.require_sized(node.span(), node.m_res_type);
+            }
         }
         void visit(::HIR::ExprNode_CallValue& node) override
         {

@@ -712,7 +712,30 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_CallPath& node) override {
-            no_revisit(node);
+            TRACE_FUNCTION_F(node.m_path << "(...)");
+            // Retry the cache now inference may have advanced; the main pass deferred here because the callee was ambiguous.
+            if( !typecheck::visit_call_populate_cache(this->context, node.span(), node.m_path, node.m_cache) )
+            {
+                DEBUG("- CallPath still ambiguous - trying again later");
+                return ;
+            }
+            assert( node.m_cache.m_arg_types.size() >= 1);
+            unsigned int exp_argc = node.m_cache.m_arg_types.size() - 1;
+            if( node.m_args.size() != exp_argc ) {
+                if( node.m_cache.m_fcn->m_variadic && node.m_args.size() > exp_argc ) {
+                }
+                else {
+                    ERROR(node.span(), E0000, "Incorrect number of arguments to " << node.m_path
+                        << " - exp " << exp_argc << " got " << node.m_args.size());
+                }
+            }
+            for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
+            {
+                this->context.equate_types_coerce(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]);
+            }
+            this->context.equate_types(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
+            this->context.require_sized(node.span(), node.m_res_type);
+            this->m_completed = true;
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
             //const auto& sp = node.span();
